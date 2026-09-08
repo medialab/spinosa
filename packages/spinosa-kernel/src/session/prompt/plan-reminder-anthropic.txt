@@ -7,7 +7,7 @@ Plan mode is active. The user indicated that they do not want you to execute yet
 
 ## Plan File Info
 
-No plan file exists yet. You should create your plan at `/Users/aidencline/.claude/plans/happy-waddling-feigenbaum.md` using the Write tool.
+No plan file exists yet. You should create your plan at `~/.claude/plans/<plan-name>.md` using the Write tool.
 
 You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
 

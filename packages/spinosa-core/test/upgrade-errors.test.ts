@@ -6,6 +6,7 @@ import { upgradeFramework, verifyInstallerChecksum } from "../src/commands/upgra
 
 const INSTALLER = "#!/bin/bash\necho ok\n"
 const CHECKSUM_OK = `${createHash("sha256").update(INSTALLER).digest("hex")}  install.sh\n`
+const CHECKSUM_EXECUTABLE = `${createHash("sha256").update(INSTALLER).digest("hex")} *install.sh\n`
 const CHECKSUM_BAD = `${"0".repeat(64)}  install.sh\n`
 const VERSION = "9.9.9-test"
 const INSTALL_URL = `https://github.com/medialab/spinosa/releases/download/v${VERSION}/install.sh`
@@ -20,6 +21,10 @@ afterAll(() => server.close())
 describe("verifyInstallerChecksum", () => {
   test("accepts a matching sha256 for install.sh", () => {
     expect(verifyInstallerChecksum(INSTALLER, CHECKSUM_OK)).toBe(true)
+  })
+
+  test("accepts executable-style checksum paths", () => {
+    expect(verifyInstallerChecksum(INSTALLER, CHECKSUM_EXECUTABLE)).toBe(true)
   })
 
   test("rejects a mismatched sha256", () => {

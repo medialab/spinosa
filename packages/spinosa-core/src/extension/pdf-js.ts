@@ -12,6 +12,7 @@ import {
   debugCanvasEnvironment,
   isCanvasDebugEnabled,
 } from "./canvas-debug"
+import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
 
 const require = createRequire(import.meta.url)
 
@@ -91,8 +92,15 @@ class NodeCanvasFactory {
 let workerConfigured = false
 function ensurePdfJsWorker(): void {
   if (workerConfigured) return
+  // The worker is bundled in product binaries but is not an on-disk module.
+  // Avoid resolving a build-machine path; pdf.js will use its fake worker.
+  if (isCompiledBinaryDistribution()) {
+    workerConfigured = true
+    return
+  }
   try {
-    const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")
+    const workerModule = "pdfjs-dist/legacy/build/pdf.worker.mjs"
+    const workerPath = require.resolve(workerModule)
     GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href
   } catch {
     // Compiled binary may lack an on-disk worker; pdfjs falls back to fake worker.

@@ -23,6 +23,7 @@ import {
   readInstalledBinaryVersion,
 } from "@spinosa/core/distribution/bootstrap"
 import { isOcrPlatformSupported, ocrUnsupportedReason } from "@spinosa/core/tools/ocr-support"
+import { moduleAvailable, ocrAvailable, pdfjsAvailable } from "@spinosa/core/tools/detection"
 import { getFormat, log, emitResult, errorOut, type OutputFormat } from "../output"
 
 interface DoctorArgs {
@@ -32,7 +33,8 @@ interface DoctorArgs {
 }
 
 /** Static-specifier probes so Bun --compile can embed the modules (variable import() cannot). */
-async function probePdfEngine(): Promise<boolean> {
+async function probePdfEngine(compiled: boolean): Promise<boolean> {
+  if (compiled) return pdfjsAvailable()
   try {
     await import("pdfjs-dist/legacy/build/pdf.mjs")
     return true
@@ -41,11 +43,12 @@ async function probePdfEngine(): Promise<boolean> {
   }
 }
 
-async function probeOcrEngine(): Promise<{ ok: boolean; unsupported?: boolean; error?: string }> {
+async function probeOcrEngine(compiled: boolean): Promise<{ ok: boolean; unsupported?: boolean; error?: string }> {
   const unsupported = ocrUnsupportedReason()
   if (unsupported) {
     return { ok: false, unsupported: true, error: unsupported }
   }
+  if (compiled) return { ok: ocrAvailable() }
   try {
     await import("ppu-paddle-ocr")
     return { ok: true }
@@ -73,15 +76,11 @@ async function probeMarkitdown(): Promise<boolean> {
   // and fail the compile. Resolve-only is enough evidence the package is
   // embedded/present; never claim available without that evidence (binary mode
   // previously always returned true).
-  try {
-    require.resolve("markitdown-ts")
-    return true
-  } catch {
-    return false
-  }
+  return moduleAvailable("markitdown-ts", true)
 }
 
-async function probeCanvas(): Promise<boolean> {
+async function probeCanvas(compiled: boolean): Promise<boolean> {
+  if (compiled) return moduleAvailable("@napi-rs/canvas", true)
   try {
     await import("@napi-rs/canvas")
     return true
@@ -119,10 +118,10 @@ export const DoctorCommand = {
       if (!existsSync(cacheRoot) && !verified.ok) healthy = false
 
       const [pdf, ocr, markitdown, canvas] = await Promise.all([
-        probePdfEngine(),
-        probeOcrEngine(),
-        probeMarkitdown(),
-        probeCanvas(),
+      probePdfEngine(binaryMode),
+      probeOcrEngine(binaryMode),
+      probeMarkitdown(),
+      probeCanvas(binaryMode),
       ])
       log(fmt, `Document converter: ${markitdown ? "available" : "missing"}`)
       log(fmt, `PDF engine: ${pdf ? "available" : "missing"}`)

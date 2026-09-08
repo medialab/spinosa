@@ -8,7 +8,11 @@ import { useTheme } from "../../context/theme"
 import { useRoute } from "../../context/route"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { useToast } from "../../ui/toast"
-import { scanAndClassifySource } from "@spinosa/core/import/pipeline"
+import {
+  preserveFailedImportFiles,
+  scanAndClassifySource,
+  type ClassifiedEntry,
+} from "@spinosa/core/import/pipeline"
 import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation"
 import { ImportBatchManager } from "@spinosa/core/import/batch"
 import { useSDK } from "../../context/sdk"
@@ -58,6 +62,7 @@ import {
 } from "./wizard-ui"
 import {
   applyImportProgressStatus,
+  countImportProgress,
   formatImportDetailLogHint,
   importOutcomeAccentKey,
   importOutcomeHeading,
@@ -128,6 +133,32 @@ export function AddFiles() {
     if (key === "warning") return theme.warning
     return theme.success
   })
+  const updateProgressFileStatus = (
+    relPath: string,
+    status: ImportFileProgressItem["status"],
+  ) => {
+    setProgressFiles((previous) => {
+      const next = applyImportProgressStatus(previous, relPath, status)
+      const counts = countImportProgress(next)
+      setProgTotal(next.length > 0 ? next.length : 1)
+      setProgCurrent(counts.succeeded + counts.failed)
+      return next
+    })
+  }
+  const appendProgressQueue = (rels: string[]) => {
+    if (rels.length === 0) return
+    setProgressFiles((previous) => {
+      const known = new Set(previous.map((item) => item.rel))
+      const next = [
+        ...previous,
+        ...seedImportQueue(rels).filter((item) => !known.has(item.rel)),
+      ]
+      const counts = countImportProgress(next)
+      setProgTotal(next.length > 0 ? next.length : 1)
+      setProgCurrent(counts.succeeded + counts.failed)
+      return next
+    })
+  }
 
   const WAVE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
   const waveString = (f: number) => { let r = ""; for (let i = 0; i < 6; i++) { const p = (i + f) % 14, l = p <= 6 ? p : 13 - p; r += WAVE[l] }; return r }
@@ -549,11 +580,13 @@ export function AddFiles() {
     setBusy(true)
     clearLog()
     setFailedCount(0)
+    setImportSummary("")
     setProcessingDone(false)
     setProgCurrent(0)
     setProgTotal(1)
     setProcessingStatus("Starting...")
     setProcessingFile("")
+    setProgressFiles([])
     abortProcessing = false
     const generation = workflow.bump()
     gateResolve = undefined
@@ -566,7 +599,6 @@ export function AddFiles() {
     const batchManager = new ImportBatchManager()
     batchManager.parseExtensionsFromFlag(selectedExtensions().join(","))
 
-    let totalFailed = 0
     let totalRenamed = 0
     let totalDirect = 0
     let totalMd = 0
@@ -574,6 +606,7 @@ export function AddFiles() {
     let dirConverted = 0
     let mdConverted = 0
     let ocrConverted = 0
+    const attemptedEntries: ClassifiedEntry[] = []
 
     const job = createImportJob({
       kind: "import",
@@ -587,11 +620,9 @@ export function AddFiles() {
     job.start()
     const sharedProg = job.prog
     sharedProg.on((e) => {
-      if (e.total > 0) setProgTotal(e.total)
-      if (e.current >= 0) setProgCurrent(e.current)
       if (e.relPath) setProcessingFile(e.relPath)
       if (e.status && e.relPath) {
-        setProgressFiles((prev) => applyImportProgressStatus(prev, e.relPath, e.status!))
+        updateProgressFileStatus(e.relPath, e.status)
       }
     })
     const onPhaseLog = job.wrapLog((msg: string) => {
@@ -603,15 +634,27 @@ export function AddFiles() {
     })
 
     try {
-      for (const src of resolved) {
+      for (let sourceIndex = 0; sourceIndex < resolved.length; sourceIndex++) {
+        const src = resolved[sourceIndex]!
+        const sourceFolder = sourceIndex === 0 ? undefined : `source-${sourceIndex + 1}`
         if (shouldAbort()) break
-        appendLogLine(`Processing: ${src}`)
+        appendLogLine(`Processing: ${src}${sourceFolder ? ` → ${sourceFolder}/` : ""}`)
 
-        const classified = await scanAndClassifySource(src, rawDir, batchManager, undefined, shouldAbort)
+        const classified = await scanAndClassifySource(src, rawDir, batchManager, sourceFolder, shouldAbort)
         if (!classified) {
           appendLogLine(`No importable files in: ${src}`)
           continue
         }
+        attemptedEntries.push(
+          ...classified.directFiles,
+          ...classified.markitdownFiles,
+          ...classified.ocrFiles,
+        )
+        appendProgressQueue([
+          ...classified.directFiles,
+          ...classified.markitdownFiles,
+          ...classified.ocrFiles,
+        ].map((file) => file.rel))
 
         // ── Shared import workflow (direct → MarkItDown → OCR) ────────────
         const phases = await runImportWorkflow(classified, {
@@ -621,15 +664,11 @@ export function AddFiles() {
           signal: job.registered.signal,
           onChild: job.registerChild,
           onRename: (original, renamed) => {
-            totalRenamed++
             appendLogLine(`  renamed (name too long): ${original} → ${renamed}`)
           },
           beforePhase: async (id, count) => {
             if (id === "direct") {
               setStep("direct")
-              setProgTotal(count > 0 ? count : 1)
-              setProgCurrent(0)
-              setProgressFiles(seedImportQueue(classified.directFiles.map((f) => f.rel)))
               setProcessingStatus(`Direct copy — ${count} files`)
               totalDirect += count
               await delay(500)
@@ -641,9 +680,6 @@ export function AddFiles() {
               setBusy(true)
               if (shouldAbort()) return false
               setStep("markitdown")
-              setProgTotal(count || 1)
-              setProgCurrent(0)
-              setProgressFiles(seedImportQueue(classified.markitdownFiles.map((f) => f.rel)))
               setProcessingStatus("MarkItDown conversion...")
               totalMd += count
               await delay(500)
@@ -654,16 +690,12 @@ export function AddFiles() {
             setBusy(true)
             if (shouldAbort()) return false
             setStep("ocr")
-            setProgTotal(count || 1)
-            setProgCurrent(0)
-            setProgressFiles(seedImportQueue(classified.ocrFiles.map((f) => f.rel)))
             setProcessingStatus("OCR...")
             totalOcr += count
             await delay(500)
             return true
           },
           afterPhase: async (id, result) => {
-            if (result.failed > 0) totalFailed += result.failed
             if (result.renamed > 0) totalRenamed += result.renamed
             if (id === "direct") {
               dirConverted += result.converted
@@ -697,17 +729,33 @@ export function AddFiles() {
         if (shouldAbort()) { spinOff(); setBusy(false); return }
       }
 
-      setFailedCount(totalFailed)
+      if (attemptedEntries.length === 0) {
+        appendLogLine("No selected files could be imported.")
+        setImportSummary("No selected files could be imported.")
+        setProcessingDone(true)
+        setStep("error")
+        job.finish("error", "No selected files could be imported.")
+        return
+      }
+
+      const preserved = await preserveFailedImportFiles(attemptedEntries, rawDir, appendLogLine)
+      for (const rel of preserved.failedFilePaths) {
+        // Close any protocol gap (for example a worker crash) in the same
+        // list used by the renderer; never leave a missing file queued.
+        updateProgressFileStatus(rel, "failed")
+      }
+      const counts = countImportProgress(progressFiles())
+      setFailedCount(counts.failed)
       const summary =
         `${dirConverted}/${totalDirect} copied · ${mdConverted}/${totalMd} markitdown · ${ocrConverted}/${totalOcr} ocr` +
         (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
-        (totalFailed > 0 ? ` · ${totalFailed} failed` : "")
+        (counts.failed > 0 ? ` · ${counts.failed} failed` : "")
       setImportSummary(summary)
       setProcessingDone(true)
       // Keep progressFiles + last phase bar counters so the results panel
       // remains visible on the done step.
       setStep("done")
-      if (totalFailed > 0) {
+      if (counts.failed > 0 || preserved.failedFilePaths.length > 0) {
         persistImportWizardLogLines(logLines(), "add-files-import")
         job.finish("error", summary)
       } else {

@@ -26,6 +26,7 @@ import { spinosaLogInfo } from "../utils/log"
 import { MarkItDown } from "markitdown-ts"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled } from "../import/cancellation"
 import { markitdownConvertFile } from "../import/markitdown-convert"
+import { preserveFailedImportFiles, type ClassifiedEntry, type ImportProgressCallback } from "../import/pipeline"
 
 export interface AddFilesOptions {
   workspacePath: string
@@ -35,6 +36,7 @@ export interface AddFilesOptions {
   extensions?: string
   overwrite?: boolean
   onProgress?: (message: string) => void
+  onFileProgress?: ImportProgressCallback
   shouldAbort?: () => boolean
   /** AbortSignal for immediate MarkItDown/OCR child cancel. */
   signal?: AbortSignal
@@ -54,10 +56,11 @@ export interface AddFilesResult {
   ocrConverted: number
   ocrSkipped: number
   ocrFailed: number
+  failedFilePaths: string[]
 }
 
 export async function addFiles(options: AddFilesOptions): Promise<AddFilesResult> {
-  const { workspacePath, sourcePath, sourceIsDir, subfolder, extensions, overwrite, onProgress, shouldAbort, signal, onChild } = options
+  const { workspacePath, sourcePath, sourceIsDir, subfolder, extensions, overwrite, onProgress, onFileProgress, shouldAbort, signal, onChild } = options
   throwIfSpinosaCancelled(shouldAbort)
   const rawDir = path.join(workspacePath, "raw")
   spinosaLogInfo("add", `sourcePath=${sourcePath} workspacePath=${workspacePath} sourceIsDir=${sourceIsDir}`)
@@ -67,9 +70,9 @@ export async function addFiles(options: AddFilesOptions): Promise<AddFilesResult
   }
 
   if (sourceIsDir) {
-    return addFilesFromDir(sourcePath, rawDir, subfolder, extensions, overwrite, onProgress, shouldAbort, signal, onChild)
+    return addFilesFromDir(sourcePath, rawDir, subfolder, extensions, overwrite, onProgress, onFileProgress, shouldAbort, signal, onChild)
   }
-  return addSingleFile(sourcePath, rawDir, overwrite, onProgress, shouldAbort)
+  return addSingleFile(sourcePath, rawDir, overwrite, onProgress, onFileProgress, shouldAbort)
 }
 
 async function addFilesFromDir(
@@ -79,6 +82,7 @@ async function addFilesFromDir(
   extensions?: string,
   overwrite?: boolean,
   onProgress?: (msg: string) => void,
+  onFileProgress?: ImportProgressCallback,
   shouldAbort?: () => boolean,
   signal?: AbortSignal,
   onChild?: (child: ChildProcess) => void,
@@ -92,18 +96,18 @@ async function addFilesFromDir(
 
   onProgress?.("Scanning source directory...")
 
-  const { detectDocumentTools } = await import("../scan/scanner")
-  const toolStatus = await detectDocumentTools()
-
   const { copySource } = await import("../import/pipeline")
   const result = await copySource(sourcePath, rawDir, {
     batchManager: importBatches,
     markitdownChoice: true,
-    ocrChoice: toolStatus.ocr,
+    // Keep selected OCR files in the attempt set so unavailable OCR is
+    // reported and preserved as a failure instead of being silently omitted.
+    ocrChoice: true,
     overwrite,
     subfolder,
     verifyAfter: false,
     shouldAbort,
+    onProgress: onFileProgress,
     signal,
     onChild,
     onPhaseChange: (phase) => {
@@ -144,6 +148,7 @@ async function addFilesFromDir(
     ocrConverted: result.ocrConverted,
     ocrSkipped: result.ocrSkipped,
     ocrFailed: result.ocrFailed,
+    failedFilePaths: result.failedFilePaths,
   }
 }
 
@@ -152,13 +157,25 @@ async function addSingleFile(
   rawDir: string,
   overwrite?: boolean,
   onProgress?: (msg: string) => void,
+  onFileProgress?: ImportProgressCallback,
   shouldAbort?: () => boolean,
 ): Promise<AddFilesResult> {
+  const relPath = path.basename(srcFile)
+  const emitFileStatus = (current: number, status: "queued" | "processing" | "done" | "failed") =>
+    onFileProgress?.("single", current, 1, relPath, status)
+
   throwIfSpinosaCancelled(shouldAbort)
+  emitFileStatus(0, "queued")
+  emitFileStatus(0, "processing")
   const klass = await classifySourceFile(srcFile)
   throwIfSpinosaCancelled(shouldAbort)
 
   if (klass === "ignored") {
+    emitFileStatus(1, "failed")
+    const preserved = await preserveFailedImportFiles(
+      [{ src: srcFile, rel: relPath, dest: path.join(rawDir, "__unimported__", relPath) }],
+      rawDir,
+    )
     return {
       success: false,
       totalTargeted: 1,
@@ -171,10 +188,16 @@ async function addSingleFile(
       ocrConverted: 0,
       ocrSkipped: 0,
       ocrFailed: 0,
+      failedFilePaths: preserved.failedFilePaths,
     }
   }
 
   if (klass === "unknown") {
+    emitFileStatus(1, "failed")
+    const preserved = await preserveFailedImportFiles(
+      [{ src: srcFile, rel: relPath, dest: path.join(rawDir, "__unimported__", relPath) }],
+      rawDir,
+    )
     return {
       success: false,
       totalTargeted: 1,
@@ -187,6 +210,7 @@ async function addSingleFile(
       ocrConverted: 0,
       ocrSkipped: 0,
       ocrFailed: 0,
+      failedFilePaths: preserved.failedFilePaths,
     }
   }
 
@@ -202,6 +226,7 @@ async function addSingleFile(
   let ocrConverted = 0
   let ocrSkipped = 0
   let ocrFailed = 0
+  let failedDest = path.join(rawDir, relPath)
 
   switch (klass) {
     case "markdown":
@@ -209,6 +234,7 @@ async function addSingleFile(
       const fileName = path.basename(srcFile)
       const destName = klass === "markdown" ? markdownRawRelPath(fileName) : fileName
       const destFile = path.join(rawDir, destName)
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -238,6 +264,7 @@ async function addSingleFile(
       const ext = fileExt(fileName)
       const destName = `${stem}__${ext}.md`
       const destFile = path.join(rawDir, destName)
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -294,7 +321,8 @@ async function addSingleFile(
         } else {
           ocrFailed = 1
         }
-      } catch {
+      } catch (error) {
+        if (isSpinosaCancellationError(error)) throw error
         ocrFailed = 1
       } finally {
         try { rmSync(tmpDest, { force: true }) } catch { /* cleanup */ }
@@ -306,6 +334,7 @@ async function addSingleFile(
     case "video":
     case "audio": {
       const destFile = path.join(rawDir, path.basename(srcFile))
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -329,6 +358,14 @@ async function addSingleFile(
 
   onProgress?.("Single file import complete.")
 
+  const failedFilePaths = failed + mdFailed + ocrFailed > 0
+    ? (await preserveFailedImportFiles(
+      [{ src: srcFile, rel: relPath, dest: failedDest }],
+      rawDir,
+    )).failedFilePaths
+    : []
+  emitFileStatus(1, failedFilePaths.length > 0 ? "failed" : "done")
+
   return {
     success: failed + mdFailed + ocrFailed === 0,
     totalTargeted,
@@ -341,5 +378,6 @@ async function addSingleFile(
     ocrConverted,
     ocrSkipped,
     ocrFailed,
+    failedFilePaths,
   }
 }

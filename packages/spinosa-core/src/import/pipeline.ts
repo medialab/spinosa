@@ -13,7 +13,6 @@ import {
   markdownRawRelPath,
   markitdownOutputRelPath,
   ocrOutputRelPath,
-  safeRelPath,
   safeRelPaths,
   scanClassifySourceFile,
   importRouteForFile,
@@ -25,7 +24,7 @@ import { injectColdFrontmatter, convertedOutputExists } from "./frontmatter"
 import type { ImportBatchManager } from "./batch"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled, SpinosaCancellationError } from "./cancellation"
 import type { PpuOcrFile, PpuOcrBatchResult } from "./ppu-ocr"
-import { ProgressEmitter } from "../progress/progress"
+import { ProgressEmitter, type FileProgressStatus } from "../progress/progress"
 import { ocrAvailable } from "../tools/detection"
 import { ocrUnsupportedReason } from "../tools/ocr-support"
 import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
@@ -49,6 +48,14 @@ export interface CopyResult {
   failedFilePaths: string[]
 }
 
+export type ImportProgressCallback = (
+  phase: string,
+  current: number,
+  total: number,
+  relPath: string,
+  status?: FileProgressStatus,
+) => void
+
 type CopyPhase = "all" | "direct" | "markitdown" | "ocr"
 
 interface CopyOptions {
@@ -59,7 +66,7 @@ interface CopyOptions {
   batchManager?: ImportBatchManager
   overwrite?: boolean
   subfolder?: string
-  onProgress?: (phase: string, current: number, total: number, relPath: string) => void
+  onProgress?: ImportProgressCallback
   onLog?: (line: string) => void
   onClassified?: (classified: { directFiles: ClassifiedEntry[]; markitdownFiles: ClassifiedEntry[]; ocrFiles: ClassifiedEntry[]; logsDir: string }) => void
   onPhaseChange?: (phase: string, message: string) => void
@@ -560,6 +567,29 @@ export async function processOcr(
       engine: "ppu-paddle-ocr", pages: "", duration_s: 0,
     })
     prog?.file("OCR", ++processed, total, ps.rel, "done")
+  }
+
+  if (toProcess.length > 0 && !ocrAvailable()) {
+    const reason = ocrUnsupportedReason() ?? "OCR engine unavailable"
+    onLog?.(`PPU PaddleOCR unavailable: ${reason}`)
+    for (const file of toProcess) {
+      throwIfSpinosaCancelled(shouldAbort)
+      failed++
+      appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+        ts: isoNow(),
+        status: "fail",
+        source: file.rel,
+        output: ocrOutputRelPath(file.rel),
+        engine: "ppu-paddle-ocr",
+        pages: "",
+        duration_s: 0,
+        error: reason,
+      })
+      onLog?.(`  ${file.rel} → OCR failed: ${reason}`)
+      prog?.file("OCR", ++processed, total, file.rel, "failed")
+      await yieldToEL()
+    }
+    return { converted, skipped, failed, renamed: 0, recoverable }
   }
 
   const { validateOcrImageInput } = await import("./ppu-ocr")
@@ -1204,8 +1234,15 @@ function isExtSelected(ext: string, bm?: ImportBatchManager): boolean {
   return !bm || bm.isSelected(ext)
 }
 
-function expectedImportDestRel(sourceRoot: string, srcFile: string, route: ImportRoute): string | undefined {
-  const rel = srcFile.replace(sourceRoot, "").replace(/^\//, "")
+function expectedImportDestRel(
+  sourceRoot: string,
+  srcFile: string,
+  route: ImportRoute,
+  safeRelPath?: string,
+  subfolder?: string,
+): string | undefined {
+  const sourceRel = safeRelPath ?? srcFile.replace(sourceRoot, "").replace(/^\//, "")
+  const rel = subfolder ? path.join(subfolder, sourceRel) : sourceRel
   switch (route) {
     case "markdown_rename":
       return markdownRawRelPath(rel)
@@ -1230,6 +1267,9 @@ interface VerifyResult {
   missing: number
   recovered: number
   stillMissing: number
+  missingFiles: string[]
+  recoveredFiles: string[]
+  stillMissingFiles: string[]
 }
 
 
@@ -1335,14 +1375,30 @@ export async function verifyAndRecoverImport(
   ocrChoice: boolean | undefined,
   onLog?: (msg: string) => void,
   shouldAbort?: () => boolean,
+  failedFilesDir?: string,
+  subfolder?: string,
+  phase?: CopyPhase,
 ): Promise<VerifyResult> {
   let missing = 0
   let recovered = 0
   let stillMissing = 0
+  const missingFiles: string[] = []
+  const recoveredFiles: string[] = []
+  const stillMissingFiles: string[] = []
+  const stillMissingEntries: ClassifiedEntry[] = []
 
   onLog?.("Verify & recover: scanning source tree...")
 
-  for (const srcFile of findSourceFiles(sourcePath)) {
+  const sourceFiles = findSourceFiles(sourcePath, shouldAbort)
+  const sourceFilesForRelPaths = sourceFiles.filter((srcFile) => !shouldSkipSourceFile(srcFile))
+  const safeRelPathsForSources = safeRelPaths(
+    sourceFilesForRelPaths.map((srcFile) => srcFile.replace(sourcePath, "").replace(/^\//, "")),
+  )
+  const safeRelBySource = new Map(
+    sourceFilesForRelPaths.map((srcFile, index) => [srcFile, safeRelPathsForSources[index]!] as const),
+  )
+
+  for (const srcFile of sourceFiles) {
     throwIfSpinosaCancelled(shouldAbort)
     if (shouldSkipSourceFile(srcFile)) continue
 
@@ -1356,13 +1412,18 @@ export async function verifyAndRecoverImport(
     throwIfSpinosaCancelled(shouldAbort)
     if (!route) continue
 
-    const expectedRel = expectedImportDestRel(sourcePath, srcFile, route)
+    const routePhase = route === "markitdown" ? "markitdown" : route === "ocr" ? "ocr" : "direct"
+    if (phase && phase !== "all" && routePhase !== phase) continue
+
+    const sourceRel = safeRelBySource.get(srcFile) ?? srcFile.replace(sourcePath, "").replace(/^\//, "")
+    const relPath = subfolder ? path.join(subfolder, sourceRel) : sourceRel
+    const expectedRel = expectedImportDestRel(sourcePath, srcFile, route, sourceRel, subfolder)
     if (!expectedRel) continue
 
     if (importOutputExists(destDir, expectedRel)) continue
 
-    const relPath = srcFile.replace(sourcePath, "").replace(/^\//, "")
     missing++
+    missingFiles.push(relPath)
     onLog?.(`  Missing: ${relPath} → expected ${expectedRel} (route=${route})`)
 
     const destFile = path.join(destDir, expectedRel)
@@ -1373,6 +1434,7 @@ export async function verifyAndRecoverImport(
       case "native_copy":
       case "media_copy":
       case "binary_copy": {
+        mkdirSync(path.dirname(destFile), { recursive: true })
         if (await safeCopyAsync(srcFile, destFile)) {
           throwIfSpinosaCancelled(shouldAbort)
           if (destFile.endsWith(".md")) injectColdFrontmatter(destFile)
@@ -1394,12 +1456,8 @@ export async function verifyAndRecoverImport(
           ok = true
         } catch (error) {
           if (isSpinosaCancellationError(error)) throw error
-          const fallbackDest = destFile
-          mkdirSync(path.dirname(fallbackDest), { recursive: true })
-          if (await safeCopyAsync(srcFile, fallbackDest)) {
-            onLog?.(`    Recovered (source copy fallback, markitdown failed): ${relPath}`)
-            ok = true
-          }
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          onLog?.(`    Still missing (MarkItDown failed, no source-copy fallback): ${relPath} — ${errorMessage}`)
         }
         break
       }
@@ -1435,17 +1493,61 @@ export async function verifyAndRecoverImport(
       }
     }
 
-    if (ok) {
-      recovered++
-    } else {
-      stillMissing++
-      onLog?.(`    Still missing: ${relPath}`)
+  if (ok) {
+    recovered++
+    recoveredFiles.push(relPath)
+  } else {
+    stillMissing++
+    stillMissingFiles.push(relPath)
+    stillMissingEntries.push({ src: srcFile, rel: relPath, dest: destFile })
+    onLog?.(`    Still missing: ${relPath}`)
     }
   }
 
   onLog?.(`Verify & recover: ${missing} missing, ${recovered} recovered, ${stillMissing} still missing`)
 
-  return { missing, recovered, stillMissing }
+  if (failedFilesDir && stillMissingEntries.length > 0) {
+    await preserveFailedImportFiles(stillMissingEntries, failedFilesDir, onLog)
+  }
+  return { missing, recovered, stillMissing, missingFiles, recoveredFiles, stillMissingFiles }
+}
+
+export interface FailedImportFilesResult {
+  failedFilePaths: string[]
+  savedFilePaths: string[]
+}
+
+/** Preserve selected inputs whose expected import output is still missing. */
+export async function preserveFailedImportFiles(
+  entries: readonly ClassifiedEntry[],
+  rawDir: string,
+  onLog?: (message: string) => void,
+): Promise<FailedImportFilesResult> {
+  const failedFilePaths: string[] = []
+  const savedFilePaths: string[] = []
+  const seen = new Set<string>()
+
+  for (const entry of entries) {
+    if (seen.has(entry.rel) || convertedOutputExists(entry.dest)) continue
+    seen.add(entry.rel)
+    failedFilePaths.push(entry.rel)
+
+    const failedPath = path.join(rawDir, "_failed_files", entry.rel)
+    try {
+      mkdirSync(path.dirname(failedPath), { recursive: true })
+      if (await safeCopyAsync(entry.src, failedPath)) {
+        savedFilePaths.push(entry.rel)
+      } else {
+        onLog?.(`Could not preserve failed file: ${entry.rel}`)
+      }
+    } catch (error) {
+      onLog?.(
+        `Could not preserve failed file ${entry.rel}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  return { failedFilePaths, savedFilePaths }
 }
 
 // ── Main copy pipeline ────────────────────────────────────────────────────
@@ -1477,11 +1579,21 @@ export async function copySource(
   })
 
   const prog = new ProgressEmitter()
-  prog.on((e) => { options?.onProgress?.(e.phase, e.current, e.total, e.relPath) })
+  prog.on((e) => options?.onProgress?.(e.phase, e.current, e.total, e.relPath, e.status))
+  let verifiedFailedFilePaths: string[] = []
 
   const runPhase = (p: "direct" | "markitdown" | "ocr"): boolean => {
     const rp = options?.runPhase ?? "all"
     return rp === "all" || rp === p
+  }
+
+  const attemptedFiles = [
+    ...(runPhase("direct") ? classified.directFiles : []),
+    ...(runPhase("markitdown") && options?.markitdownChoice ? classified.markitdownFiles : []),
+    ...(runPhase("ocr") && options?.ocrChoice ? classified.ocrFiles : []),
+  ]
+  for (const entry of attemptedFiles) {
+    prog.file("queue", 0, attemptedFiles.length, entry.rel, "queued")
   }
 
   if (runPhase("direct") && classified.directFiles.length > 0) {
@@ -1511,33 +1623,44 @@ export async function copySource(
   res.totalCopied = res.copied + res.mdConverted + res.ocrConverted
 
   if (options?.verifyAfter !== false) {
-    const verifyResult = await verifyAndRecoverImport(sourcePath, destDir, options?.batchManager, options?.markitdownChoice, options?.ocrChoice, options?.onLog, options?.shouldAbort)
+    const verifyResult = await verifyAndRecoverImport(
+      sourcePath,
+      destDir,
+      options?.batchManager,
+      options?.markitdownChoice,
+      options?.ocrChoice,
+      options?.onLog,
+      options?.shouldAbort,
+      destDir,
+      options?.subfolder,
+      options?.runPhase,
+    )
     res.stillMissing = verifyResult.stillMissing
     res.recovered = verifyResult.recovered
+    verifiedFailedFilePaths = verifyResult.stillMissingFiles
+    const verificationFiles = [
+      ...verifyResult.recoveredFiles.map((rel) => ({ rel, status: "done" as const })),
+      ...verifyResult.stillMissingFiles.map((rel) => ({ rel, status: "failed" as const })),
+    ]
+    verificationFiles.forEach(({ rel, status }, index) => {
+      options?.onProgress?.("verification", index + 1, verificationFiles.length, rel, status)
+    })
   }
 
   options?.onLog?.(`Copy complete: ${res.totalCopied} total (${res.copied} direct, ${res.mdConverted} MarkItDown, ${res.ocrConverted} OCR), ${res.skipped} skipped, ${res.failed} failed, ${res.stillMissing} still missing`)
 
-  // Collect failed files and copy originals to _failed_files/ for manual review
-  if (classified) {
-    const allInputs = [
-      ...classified.markitdownFiles.map((f) => ({ ...f, phase: "markitdown" })),
-      ...classified.ocrFiles.map((f) => ({ ...f, phase: "ocr" })),
-
-    ]
-    for (const f of allInputs) {
-      if (!convertedOutputExists(f.dest)) {
-        const dest = path.join(destDir, "_failed_files", f.rel)
-        mkdirSync(path.dirname(dest), { recursive: true })
-        try { await safeCopyAsync(f.src, dest) } catch { /* best-effort */ }
-        res.failedFileCount++
-        res.failedFilePaths.push(f.rel)
-      }
-    }
-  }
+  const preserved = await preserveFailedImportFiles(attemptedFiles, destDir, options?.onLog)
+  const failedFilePaths = new Set([...verifiedFailedFilePaths, ...preserved.failedFilePaths])
+  res.failedFilePaths = [...failedFilePaths]
+  res.failedFileCount = res.failedFilePaths.length
+  res.failedFilePaths.forEach((rel, index) => {
+    // A worker can exit before emitting its per-file terminal event. The
+    // preservation pass is authoritative, so close that gap for API users.
+    options?.onProgress?.("failure", index + 1, res.failedFilePaths.length, rel, "failed")
+  })
 
   if (res.failedFileCount > 0) {
-    options?.onLog?.(`${res.failedFileCount} failed file(s) saved to raw/_failed_files/ for review`)
+    options?.onLog?.(`${res.failedFileCount} failed file(s) copied to raw/_failed_files/ when possible`)
   }
 
   return res

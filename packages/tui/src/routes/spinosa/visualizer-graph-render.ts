@@ -319,7 +319,7 @@ export class GraphRaster {
     const hitIndex = this.hits.indexFor(hit)
     for (let py = y0; py < y1; py++) {
       for (let px = x0; px < x1; px++) {
-        this.pixel(px, py, color, hitIndex)
+        put(px, py, color, hitIndex)
       }
     }
   }

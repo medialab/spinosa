@@ -428,7 +428,7 @@ export function AddFilesView(props: AddFilesViewProps) {
                   </Show>
                   <Show when={failedCount() > 0}>
                     <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — saved to raw/_failed_files/ for review</text>
+                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — originals copied to raw/_failed_files/ when possible</text>
                     </box>
                   </Show>
                   <Show when={shouldShowImportDetailLogHint(importOutcome())}>
@@ -442,6 +442,21 @@ export function AddFilesView(props: AddFilesViewProps) {
                 <text fg={theme.error}>
                   <span style={{ bold: true }}>Spinosa could not complete this step.</span>
                 </text>
+                <Show when={progressFiles().length > 0}>
+                  <ProgressBar
+                    theme={theme}
+                    current={progCurrent()}
+                    total={progTotal()}
+                    status={processingStatus()}
+                    fileName={processingFile()}
+                    files={progressFiles()}
+                    barWidth={20}
+                    viewportHeight={dimensions().height}
+                  />
+                </Show>
+                <Show when={importSummary() !== ""}>
+                  <text fg={theme.textMuted}>{importSummary()}</text>
+                </Show>
                 <Show when={logLines().length > 0}>
                   <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
                 </Show>

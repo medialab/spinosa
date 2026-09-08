@@ -10,6 +10,7 @@ import { preferredCliName, buildLaunchCommand } from "../handoff/builder"
 import { copyToClipboard, runCliWithPrompt } from "../handoff/runner"
 import { spinosaLogInfo } from "../utils/log"
 import { throwIfSpinosaCancelled } from "../import/cancellation"
+import type { ImportProgressCallback } from "../import/pipeline"
 
 export type OnboardingPhase =
   | "scan"
@@ -44,14 +45,21 @@ export interface OnboardingOptions {
   flagCli?: string
   flagLaunch?: "copy" | "run"
   onPhase?: (phase: OnboardingPhase, message: string) => void
-  onCopyProgress?: (phase: string, current: number, total: number, relPath: string) => void
+  onCopyProgress?: ImportProgressCallback
   shouldAbort?: () => boolean
+  /** Recovery count already collected from additional interactive sources. */
+  additionalRecovered?: number
+  /** Interactive multi-source flows may have no importable files in source 1. */
+  allowEmptySelection?: boolean
 }
 
 export interface OnboardingVerifyStats {
   missing: number
   recovered: number
   stillMissing: number
+  missingFiles: string[]
+  recoveredFiles: string[]
+  stillMissingFiles: string[]
 }
 
 export interface OnboardingResult {
@@ -103,6 +111,16 @@ export interface PhaseAccumulator {
   ocr: PhaseResult
 }
 
+export function countDeliveredImportFiles(acc: PhaseAccumulator, recovered = 0): number {
+  return acc.direct.converted
+    + acc.direct.skipped
+    + acc.markitdown.converted
+    + acc.markitdown.skipped
+    + acc.ocr.converted
+    + acc.ocr.skipped
+    + recovered
+}
+
 // ── Phase A: Prepare (scan, batch selection, tool validation) ─────────────
 
 export async function prepareOnboarding(
@@ -127,7 +145,7 @@ export async function prepareOnboarding(
   if (flagExtensions) batches.parseExtensionsFromFlag(flagExtensions)
   if (!batches.validateExtensionsAgainstScan("")) batches.selectAll()
   const copyableCount = batches.selectedCount()
-  if (copyableCount === 0) {
+  if (copyableCount === 0 && !options.allowEmptySelection) {
     return { success: false, blockedPhase: "batch_selection", blockerReason: "No file types selected for import" }
   }
 
@@ -154,14 +172,33 @@ export async function completeOnboarding(
   const { verifyAndRecoverImport } = await import("../import/pipeline")
   const verifyResult = await verifyAndRecoverImport(
     ctx.sourcePath, ctx.rawDir, ctx.batches,
-    ctx.toolStatus.markitdown, true,
+    true, true,
     (msg: string) => onPhase?.("import", msg),
     options.shouldAbort,
+    ctx.rawDir,
   )
 
-  const imported = acc.direct.converted + acc.markitdown.converted + acc.ocr.converted + verifyResult.recovered
+  const verify: OnboardingVerifyStats = {
+    missing: verifyResult.missing,
+    recovered: verifyResult.recovered,
+    stillMissing: verifyResult.stillMissing,
+    missingFiles: verifyResult.missingFiles,
+    recoveredFiles: verifyResult.recoveredFiles,
+    stillMissingFiles: verifyResult.stillMissingFiles,
+  }
+  const imported = countDeliveredImportFiles(
+    acc,
+    verifyResult.recovered + (options.additionalRecovered ?? 0),
+  )
   if (imported === 0) {
-    return { success: false, blockedPhase: "verification", blockerReason: "No files were delivered to raw/" }
+    return {
+      success: false,
+      scanCounts: ctx.scanCounts,
+      toolStatus: ctx.toolStatus,
+      verify,
+      blockedPhase: "verification",
+      blockerReason: "No files were delivered to raw/",
+    }
   }
 
   throwIfSpinosaCancelled(options.shouldAbort)
@@ -221,11 +258,7 @@ export async function completeOnboarding(
     toolStatus: ctx.toolStatus,
     cli,
     handoffResult,
-    verify: {
-      missing: verifyResult.missing,
-      recovered: verifyResult.recovered,
-      stillMissing: verifyResult.stillMissing,
-    },
+    verify,
   }
 }
 
@@ -243,8 +276,10 @@ export async function runOnboarding(
   const { copySource } = await import("../import/pipeline")
   const result = await copySource(ctx.sourcePath, ctx.rawDir, {
     batchManager: ctx.batches,
-    markitdownChoice: ctx.toolStatus.markitdown,
-    ocrChoice: ctx.toolStatus.ocr,
+    // Selected files must be reported as failed when a tool is unavailable;
+    // passing false would silently omit them from copySource's attempt set.
+    markitdownChoice: true,
+    ocrChoice: true,
     verifyAfter: false,
     shouldAbort: options.shouldAbort,
     onProgress: onCopyProgress,

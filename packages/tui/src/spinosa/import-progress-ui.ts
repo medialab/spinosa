@@ -46,6 +46,16 @@ export function shortImportFileName(relPath: string, maxLen = 36): string {
   return `${base.slice(0, head)}…${base.slice(-tail)}`
 }
 
+/** Display a relative path while retaining enough directory context to disambiguate sources. */
+export function displayImportFilePath(relPath: string, maxLen = 64): string {
+  const normalized = relPath.replace(/\\/g, "/")
+  if (normalized.length <= maxLen) return normalized
+  if (maxLen < 8) return normalized.slice(0, maxLen)
+  const head = Math.ceil((maxLen - 1) / 2)
+  const tail = Math.floor((maxLen - 1) / 2)
+  return `${normalized.slice(0, head)}…${normalized.slice(-tail)}`
+}
+
 export function statusAccentKey(
   status: FileProgressStatus,
 ): "muted" | "primary" | "success" | "error" | "warning" {

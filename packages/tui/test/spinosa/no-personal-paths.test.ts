@@ -5,7 +5,8 @@ import path from "node:path"
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 
 // Built at runtime so this file does not embed the forbidden literal itself.
-const maintainerHome = ["", "Users", "tommasoprinetti"].join("/")
+// Resolve the current home at runtime so no contributor name is embedded here.
+const runtimeHome = process.env.HOME?.replaceAll("\\", "/").replace(/\/$/, "")
 const localCloneMarker = ["Documents", "spinosa-main"].join("/")
 
 function trackedFiles(): string[] {
@@ -15,13 +16,10 @@ function trackedFiles(): string[] {
 }
 
 describe("no personal machine paths in tracked files", () => {
-  test("git ls-files has no maintainer home paths", () => {
+  test("git ls-files has no local clone paths", () => {
     const files = trackedFiles()
 
     const pathHits = files.filter((file) => {
-      const lower = file.toLowerCase()
-      if (lower.includes(maintainerHome.toLowerCase())) return true
-      if (lower.includes("tommasoprinetti/") || lower.includes("tommasoprinetti\\")) return true
       if (file.includes(localCloneMarker)) return true
       // Accidental install.sh die() message turned into a filename
       if (file.includes("Cannot read from terminal")) return true
@@ -51,8 +49,9 @@ describe("no personal machine paths in tracked files", () => {
         continue
       }
 
-      // Absolute home path or local clone path — not the public GitHub username / copyright name
-      if (text.includes(maintainerHome) || text.includes(localCloneMarker)) {
+      // Detect the machine running the audit without embedding a contributor's
+      // username in the public test source.
+      if ((runtimeHome && text.includes(runtimeHome)) || text.includes(localCloneMarker)) {
         contentHits.push(file)
       }
     }

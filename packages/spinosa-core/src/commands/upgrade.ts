@@ -58,7 +58,11 @@ export function verifyInstallerChecksum(installerScript: string, checksums: stri
   const expected = checksums
     .split(/\r?\n/)
     .map((line) => line.trim().split(/\s+/, 2))
-    .find((parts) => parts.length === 2 && path.basename(parts[1]!) === "install.sh")?.[0]
+    .find((parts) => {
+      if (parts.length !== 2) return false
+      const raw = parts[1]!.trim().replace(/^\*+/, "")
+      return path.basename(raw) === "install.sh"
+    })?.[0]
   if (!expected || !/^[a-f0-9]{64}$/i.test(expected)) return false
   const actual = createHash("sha256").update(installerScript).digest("hex")
   return actual.toLowerCase() === expected.toLowerCase()
@@ -321,24 +325,30 @@ export async function upgradeFramework(
   }
   const installerPath = path.join(tmpdir, "install-spinosa.sh")
 
-  let response: Response
+  let installerResponse: Response | undefined
+  let checksumResponse: Response | undefined
   try {
     const checksumUrl = new URL("checksums.txt", installerUrl).toString()
-    const [installerResponse, checksumResponse] = await Promise.all([
+    const results = await Promise.all([
       fetch(installerUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }),
       fetch(checksumUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }),
     ])
-    response = installerResponse
-    if (!response.ok || !checksumResponse.ok) {
+    installerResponse = results[0]
+    checksumResponse = results[1]
+    if (!installerResponse.ok || !checksumResponse.ok) {
       rmSync(tmpdir, { recursive: true, force: true })
+      const instStatus = installerResponse ? String(installerResponse.status) : "no response"
+      const sumStatus = checksumResponse ? String(checksumResponse.status) : "no response"
+      const instUrl = installerUrl
+      const sumUrl = checksumUrl
       return {
         success: false,
         previousVersion: effectiveInstalled || undefined,
         workspaceUpgradesNeeded: [],
-        error: `Failed to download installer or checksums (HTTP ${response.status}/${checksumResponse.status}) from ${installerUrl}`,
+        error: `Failed to download installer or checksums (HTTP ${instStatus}/${sumStatus}) from ${instUrl} (checksums ${sumUrl})`,
       }
     }
-    const installerScript = await response.text()
+    const installerScript = await installerResponse.text()
     const checksums = await checksumResponse.text()
     if (!verifyInstallerChecksum(installerScript, checksums)) {
       rmSync(tmpdir, { recursive: true, force: true })

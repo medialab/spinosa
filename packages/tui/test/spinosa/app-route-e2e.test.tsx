@@ -285,6 +285,7 @@ test("Spinosa app route E2E boots and navigates key workspace flows", async () =
 
     expect(readyFrame).toContain("workspace v0.1.0")
     expect(readyFrame).toContain("Switch workspace")
+    expect(readyFrame).not.toContain("Visualizer")
     expect(readyFrame).not.toContain("Open setup brief in Chat")
   } finally {
     rmSync(readyRoot, { recursive: true, force: true })

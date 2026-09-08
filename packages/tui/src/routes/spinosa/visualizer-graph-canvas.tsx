@@ -18,6 +18,7 @@ import {
   createGraphPalette,
   normalizeGraphViewport,
   paintGraphScene,
+  paintGraphText,
   panGraphViewport,
   zoomGraphViewport,
   type GraphHitTarget,
@@ -140,12 +141,13 @@ export class SpinosaGraphRenderable extends FrameBufferRenderable {
       this.frameBuffer.clear(this.paletteValue.panel)
       this.raster.resize(this.frameBuffer.width, this.frameBuffer.height)
       if (this.sceneValue) {
-        paintGraphScene(this.raster, this.sceneValue, this.paletteValue, {
+        const result = paintGraphScene(this.raster, this.sceneValue, this.paletteValue, {
           viewport: this.viewportValue,
           selectedID: this.selectedIDValue,
           hoveredID: this.hoveredIDValue,
         })
         this.raster.composite(this.frameBuffer)
+        paintGraphText(this.frameBuffer, result, this.paletteValue)
       }
       this.paintDirty = false
     }

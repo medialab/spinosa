@@ -10,6 +10,7 @@ import {
   renameSync,
 } from "node:fs"
 import path from "node:path"
+import { tmpdir } from "node:os"
 import { safeCopy, copyDirContents, cleanMacMetadata, isCloudStoragePath, writeTextAtomic } from "../utils/fs"
 import { compareFrameworkVersions } from "../utils/version"
 import { writeWorkspaceFrameworkVersion } from "../workspace/meta"
@@ -538,7 +539,9 @@ function createUpdateSnapshot(options: UpdateOptions): UpdateSnapshot | undefine
   const unique = [...new Set(candidates)]
     .sort((a, b) => a.length - b.length)
     .filter((relative, index, all) => !all.slice(0, index).some((parent) => relative.startsWith(`${parent}${path.sep}`)))
-  const root = path.join(path.dirname(options.workspacePath), `.spinosa-update-backup-${process.pid}-${crypto.randomUUID()}`)
+  // Use os tmpdir, not workspace parent, to avoid permission / cross-device issues
+  // and to not pollute the user's project parent (e.g. / or /tmp parent).
+  const root = path.join(tmpdir(), `spinosa-update-backup-${process.pid}-${crypto.randomUUID()}`)
   mkdirSync(root, { recursive: true })
   for (const relative of unique) {
     const source = resolvePathWithinRoot(options.workspacePath, relative, "workspace manifest path")
@@ -588,7 +591,19 @@ export async function updateWorkspace(options: UpdateOptions): Promise<UpdateRes
   if (presence && !isUsableWorkspacePresence(presence)) {
     if (registered || presence.status !== "invalid") {
       spinosaLogWarn("update", `Skipping ${options.workspacePath}: workspace is ${presence.status}`)
-      return { success: true, added: 0, updated: 0, removed: 0, skipped: 1, changes: false, presence: presence.status }
+      if (presence.status === "non_existent") {
+        return { success: true, added: 0, updated: 0, removed: 0, skipped: 1, changes: false, presence: presence.status }
+      }
+      return {
+        success: false,
+        added: 0,
+        updated: 0,
+        removed: 0,
+        skipped: 0,
+        changes: false,
+        presence: presence.status,
+        error: `Workspace is ${presence.status}`,
+      }
     }
   }
 

@@ -11,7 +11,7 @@ import type { ProviderMetadata, Usage } from "@spinosa/llm"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { Database } from "@spinosa/kernel-core/database/database"
 import { EventV2Bridge } from "@/event-v2-bridge"
-import { SessionV2 } from "@spinosa/kernel-core/session"
+import { SessionV2, sessionTitleLike } from "@spinosa/kernel-core/session"
 import * as SessionExecutionLocal from "@spinosa/kernel-core/session/execution/local"
 import { locationServiceMapLayer } from "@spinosa/kernel-core/location-services"
 
@@ -588,7 +588,7 @@ const layer: Layer.Layer<
       if (input?.roots) conditions.push(isNull(SessionTable.parent_id))
       if (input?.start) conditions.push(gte(SessionTable.time_updated, input.start))
       if (input?.cursor) conditions.push(lt(SessionTable.time_updated, input.cursor))
-      if (input?.search) conditions.push(like(SessionTable.title, `%${input.search}%`))
+      if (input?.search) conditions.push(sessionTitleLike(input.search))
       if (!input?.archived) conditions.push(isNull(SessionTable.time_archived))
 
       const query =
@@ -1021,7 +1021,7 @@ function listByProject(
     conditions.push(gte(SessionTable.time_updated, input.start))
   }
   if (input.search) {
-    conditions.push(like(SessionTable.title, `%${input.search}%`))
+    conditions.push(sessionTitleLike(input.search))
   }
 
   const limit = input.limit ?? 100

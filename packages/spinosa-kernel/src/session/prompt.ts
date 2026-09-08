@@ -330,7 +330,7 @@ const layer = Layer.effect(
           callID: part.callID,
           extra: { bypassAgentCheck: true, promptOps },
           messages: msgs,
-          metadata: (val: { title?: string; metadata?: Record<string, any> }) =>
+          metadata: (val: { title?: string; metadata?: Record<string, unknown> }) =>
             Effect.gen(function* () {
               part = yield* sessions.updatePart({
                 ...part,
@@ -1571,7 +1571,7 @@ export type CommandInput = Schema.Schema.Type<typeof CommandInput>
 
 /** @internal Exported for testing */
 export function createStructuredOutputTool(input: {
-  schema: Record<string, any>
+  schema: Record<string, unknown>
   onSuccess: (output: unknown) => void
 }): AITool {
   // Remove $schema property if present (not needed for tool input)

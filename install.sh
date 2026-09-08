@@ -847,7 +847,9 @@ verify_asset_checksum() {
 
 available_disk_bytes() {
   local path="$1"
-  if df -k "$path" >/dev/null 2>&1; then
+  if df -kP "$path" >/dev/null 2>&1; then
+    df -kP "$path" | awk 'NR==2 { print $4 * 1024; exit }'
+  elif df -k "$path" >/dev/null 2>&1; then
     df -k "$path" | awk 'NR==2 { print $4 * 1024; exit }'
   fi
 }
@@ -855,12 +857,12 @@ available_disk_bytes() {
 check_download_disk_space() {
   local required_bytes=$((100 * 1024 * 1024))
   local check_path free_bytes
-  for check_path in "${TMPDIR:-/tmp}" "${SPINOSA_HOME}"; do
+  for check_path in "${TMPDIR:-/tmp}" "${SPINOSA_HOME}" "${SPINOSA_BIN_DIR}"; do
     mkdir -p "$check_path" 2>/dev/null || true
     free_bytes="$(available_disk_bytes "$check_path" 2>/dev/null || true)"
     [[ "$free_bytes" =~ ^[0-9]+$ ]] || continue
     if (( free_bytes < required_bytes )); then
-      die "Need ~100MB free, have $((free_bytes / 1024 / 1024))MB"
+      die "Need ~100MB free on $(dirname "$check_path") ($check_path), have $((free_bytes / 1024 / 1024))MB"
     fi
   done
 }
@@ -1498,6 +1500,7 @@ write_spinosa_env_file() {
   local env_tmp="${SPINOSA_ENV_FILE}.tmp.$$"
   cat > "$env_tmp" << EOF
 # Spinosa CLI environment — managed by install.sh
+export SPINOSA_HOME="${SPINOSA_HOME}"
 export SPINOSA_BIN_DIR="${SPINOSA_BIN_DIR}"
 export PATH="${SPINOSA_BIN_DIR}:\$PATH"
 EOF
@@ -1521,19 +1524,31 @@ shell_path_default_config() {
 }
 
 spinosa_path_block_present() {
-  local config_file="$1"
+  local config_file="$1" path_line="${2:-}"
   [[ -f "$config_file" ]] || return 1
   grep -q '# Spinosa' "$config_file" 2>/dev/null || return 1
-  grep -Eq 'env\.sh|fish_add_path|SPINOSA_BIN_DIR|SPINOSA_HOME' "$config_file" 2>/dev/null
+  if [[ -n "$path_line" ]]; then
+    local line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [ -z "$line" ] && continue
+      grep -Fqx "$line" "$config_file" 2>/dev/null || return 1
+    done <<< "$path_line"
+    return 0
+  else
+    grep -Eq 'env\.sh|fish_add_path|SPINOSA_BIN_DIR|SPINOSA_HOME' "$config_file" 2>/dev/null
+  fi
 }
 
 spinosa_path_source_line() {
   local current_shell="$1"
+  local env_file="${SPINOSA_ENV_FILE:-${SPINOSA_HOME}/env.sh}"
   case "$current_shell" in
-    fish) printf 'fish_add_path %s\n' "$SPINOSA_BIN_DIR" ;;
+    fish)
+      printf 'set -gx SPINOSA_HOME %q\n' "$SPINOSA_HOME"
+      printf 'fish_add_path %q\n' "$SPINOSA_BIN_DIR"
+      ;;
     *)
-      # shellcheck disable=SC2016
-      printf '[[ -f "${SPINOSA_HOME:-$HOME/.spinosa}/env.sh" ]] && . "${SPINOSA_HOME:-$HOME/.spinosa}/env.sh"\n'
+      printf '[[ -f %q ]] && . %q\n' "$env_file" "$env_file"
       ;;
   esac
 }
@@ -1581,7 +1596,7 @@ setup_shell_path() {
   esac
 
   for candidate in "${candidates[@]}"; do
-    if spinosa_path_block_present "$candidate"; then
+    if spinosa_path_block_present "$candidate" "$path_line"; then
       config_file="$candidate"
       ok "Spinosa PATH already configured in ${candidate}"
       break
@@ -1605,7 +1620,7 @@ setup_shell_path() {
   fi
 
   if [[ -w "$config_file" ]]; then
-    if ! spinosa_path_block_present "$config_file"; then
+    if ! spinosa_path_block_present "$config_file" "$path_line"; then
       {
         printf '\n# Spinosa\n'
         printf '%s' "$path_line"
@@ -1622,7 +1637,7 @@ setup_shell_path() {
   if [[ "$wrote" -eq 1 && "$current_shell" == "zsh" && "$(uname -s)" == "Darwin" \
         && "$config_file" != "${ZDOTDIR:-$HOME}/.zprofile" \
         && -f "${ZDOTDIR:-$HOME}/.zprofile" ]] \
-      && ! spinosa_path_block_present "${ZDOTDIR:-$HOME}/.zprofile"; then
+      && ! spinosa_path_block_present "${ZDOTDIR:-$HOME}/.zprofile" "$path_line"; then
     {
       printf '\n# Spinosa\n'
       printf '%s' "$path_line"
@@ -1759,8 +1774,8 @@ main() {
 
   INSTALL_LOCKDIR="${SPINOSA_STAGING_DIR}/.install.lock"
   local lockdir="$INSTALL_LOCKDIR"
-
-  if [ -d "$lockdir" ]; then
+  mkdir -p "$(dirname "$lockdir")"
+  if ! mkdir "$lockdir" 2>/dev/null; then
     local stale=0
     if [ -f "$lockdir/pid" ]; then
       local lock_pid
@@ -1768,16 +1783,23 @@ main() {
       if [[ "$lock_pid" =~ ^[1-9][0-9]*$ ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
         stale=1
       fi
+    else
+      # Lock dir exists but no pid file — treat as stale if older than 1h
+      local age
+      if age=$(find "$lockdir" -maxdepth 0 -mmin +60 2>/dev/null); then
+        [ -n "$age" ] && stale=1
+      fi
     fi
     if [ "$stale" -eq 1 ]; then
       rm -rf "$lockdir"
       info "Removed stale lock from previous install attempt"
+      mkdir "$lockdir" 2>/dev/null || die "Another Spinosa installer is running. Wait and retry, or remove stale lock: rm -rf '${lockdir}'"
+    else
+      die "Another Spinosa installer is running. Wait and retry, or remove stale lock: rm -rf '${lockdir}'"
     fi
   fi
-  mkdir -p "$(dirname "$lockdir")"
-  mkdir "$lockdir" 2>/dev/null || die "Another Spinosa installer is running. Wait and retry, or remove stale lock: rm -rf '${lockdir}'"
   printf '%s\n' "$$" > "${lockdir}/pid"
-  trap 'restore_binary_backup_if_needed; rm -rf "${INSTALL_LOCKDIR:-}"; [ -n "${SHIM_STAGE_FILE:-}" ] && rm -f "$SHIM_STAGE_FILE"' EXIT
+  trap 'restore_binary_backup_if_needed; rm -rf "${INSTALL_LOCKDIR:-}"; if [ -n "${SHIM_STAGE_FILE:-}" ]; then rm -f "$SHIM_STAGE_FILE"; fi' EXIT
   trap '_spinosa_install_signal 130' INT TERM HUP
 
   init_global_metadata

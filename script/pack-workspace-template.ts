@@ -17,6 +17,7 @@ import {
   listFrameworkManifestFiles,
 } from "../packages/spinosa-core/src/framework/template-pack.ts"
 import { BINARY_WORKSPACE_LAUNCHER } from "../packages/spinosa-core/src/distribution/workspace-launcher.ts"
+import { releaseTemplateInputs } from "./release/template-inputs"
 
 const root = path.resolve(import.meta.dir, "..")
 const templateRoot = path.join(root, "workspace-template")
@@ -40,7 +41,7 @@ mkdirSync(path.dirname(forwarderPath), { recursive: true })
 writeFileSync(forwarderPath, BINARY_WORKSPACE_LAUNCHER, { mode: 0o755 })
 chmodSync(forwarderPath, 0o755)
 
-const files = listFrameworkManifestFiles(templateRoot)
+const files = releaseTemplateInputs(root, listFrameworkManifestFiles(templateRoot))
 if (files.some((f) => f.relativePath.includes("node_modules"))) {
   throw new Error("template pack must not include node_modules")
 }

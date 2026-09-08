@@ -55,6 +55,90 @@ function packageDirectory(name: string) {
   return name.startsWith("@spinosa/") ? name.slice("@spinosa/".length) : name
 }
 
+function createPortableDependencyPlugin(): BunPlugin {
+  return {
+    name: "spinosa-portable-dependencies",
+    setup(build) {
+      build.onLoad(
+        {
+          filter: /jsdom.*XMLHttpRequest-impl\.js$/,
+        },
+        async (args) => {
+          const contents = await Bun.file(args.path).text()
+          const marker =
+            'const syncWorkerFile = require.resolve ? require.resolve("./xhr-sync-worker.js") : null;'
+          if (!contents.includes(marker)) {
+            throw new Error(
+              `jsdom XMLHttpRequest source changed; portability rewrite no longer applies: ${args.path}`,
+            )
+          }
+          return { contents: contents.replace(marker, "const syncWorkerFile = null;"), loader: "js" }
+        },
+      )
+    },
+  }
+}
+
+import os from "node:os"
+const builderHome = os.homedir().replaceAll("\\", "/").replace(/\/$/, "")
+const builderHomeWin = builderHome.replaceAll("/", "\\")
+const repoRoot = path.resolve(__dirname, "../..").replaceAll("\\", "/")
+const EMBEDDED_BUILD_PATH_PREFIXES = [
+  // Repo root first (longer) so "/Users/.../spinosa-main" scrubs to "/spinosa/repo" not "/spinosa/Documents/..."
+  ...(repoRoot && repoRoot !== builderHome
+    ? [{ prefix: Buffer.from(repoRoot), replacement: Buffer.from("/spinosa/repo") }]
+    : []),
+  ...(builderHome ? [{ prefix: Buffer.from(builderHome), replacement: Buffer.from("/spinosa") }] : []),
+  ...(builderHomeWin && builderHomeWin !== builderHome
+    ? [{ prefix: Buffer.from(builderHomeWin), replacement: Buffer.from("C:\\spinosa") }]
+    : []),
+] as const
+
+function isEmbeddedPathByte(byte: number): boolean {
+  if (byte < 0x20 || byte === 0x7f) return false
+  return byte !== 0x22 && byte !== 0x27 && byte !== 0x60 && byte !== 0x2c && byte !== 0x3b
+}
+
+function scrubEmbeddedBuildPaths(binaryPath: string): number {
+  const bytes = fs.readFileSync(binaryPath)
+  let replacements = 0
+  for (const { prefix, replacement } of EMBEDDED_BUILD_PATH_PREFIXES) {
+    if (prefix.length === 0) continue
+    let offset = 0
+    while (true) {
+      const match = bytes.indexOf(prefix, offset)
+      if (match < 0) break
+      let end = match + prefix.length
+      while (end < bytes.length && isEmbeddedPathByte(bytes[end])) end++
+      const length = end - match
+      const neutral = Buffer.alloc(length, 0x5f)
+      neutral.set(replacement.subarray(0, Math.min(length, replacement.length)))
+      bytes.set(neutral, match)
+      replacements++
+      offset = end
+    }
+  }
+  if (replacements > 0) fs.writeFileSync(binaryPath, bytes)
+  return replacements
+}
+
+function assertNoEmbeddedBuildPaths(binaryPath: string): void {
+  const bytes = fs.readFileSync(binaryPath)
+  for (const { prefix } of EMBEDDED_BUILD_PATH_PREFIXES) {
+    if (prefix.length === 0) continue
+    const offset = bytes.indexOf(prefix)
+    if (offset >= 0) {
+      throw new Error(`binary ${binaryPath} still contains ${prefix.toString()} at byte ${offset}`)
+    }
+  }
+  // Also fail on generic personal markers that should never ship
+  const personal = [Buffer.from("tommasoprinetti"), Buffer.from("thdxr")]
+  for (const p of personal) {
+    const off = bytes.indexOf(p)
+    if (off >= 0) throw new Error(`binary ${binaryPath} still contains personal marker ${p.toString()} at byte ${off}`)
+  }
+}
+
 export function productAssetName(item: BinaryTarget): string {
   const os = item.os === "win32" ? "windows" : item.os
   const parts = [os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi]
@@ -87,7 +171,11 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
   const solidPlugin = createSolidTransformPlugin()
   const coreFrom = path.resolve(cwd, "../spinosa-core")
   const onnxRoot = resolveOnnxRuntimeNodeRoot(coreFrom)
-  const plugins = [solidPlugin, createOnnxWorkspacePlugin(onnxRoot)]
+  const plugins = [
+    createPortableDependencyPlugin(),
+    solidPlugin,
+    createOnnxWorkspacePlugin(onnxRoot),
+  ]
 
   const distribution = options.distribution ?? "binary"
   const templatePackId = options.templatePackId ?? ""
@@ -294,6 +382,16 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
           `binary ${outfile} missing embedded bytes for ${canvasEmbed.name} (${item.os}-${item.arch}) — canvas native not packaged`,
         )
       }
+    }
+
+    const scrubbedPaths = scrubEmbeddedBuildPaths(outfile)
+    assertNoEmbeddedBuildPaths(outfile)
+    if (process.platform === "darwin" && item.os === "darwin") {
+      const signed = await $`codesign --force --sign - ${outfile}`.nothrow()
+      if (signed.exitCode !== 0) throw new Error(`failed to re-sign sanitized binary: ${outfile}`)
+    }
+    if (scrubbedPaths > 0) {
+      console.log(`scrubbed ${scrubbedPaths} embedded build path${scrubbedPaths === 1 ? "" : "s"} from ${assetName}`)
     }
 
     if (

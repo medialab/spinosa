@@ -7,6 +7,7 @@ import {
   buildTemplatePackMeta,
   listFrameworkManifestFiles,
 } from "../packages/spinosa-core/src/framework/template-pack.ts"
+import { releaseTemplateInputs } from "./release/template-inputs"
 
 const root = path.resolve(import.meta.dir, "..")
 const failures: string[] = []
@@ -67,7 +68,7 @@ function checkTemplatePack(): void {
   }
 
   const templateRoot = path.join(root, "workspace-template")
-  const manifestFiles = listFrameworkManifestFiles(templateRoot)
+  const manifestFiles = releaseTemplateInputs(root, listFrameworkManifestFiles(templateRoot))
   const expected = buildTemplatePackMeta(packageManifest.version, manifestFiles)
   const metadataPath = path.join(root, "packages/spinosa-kernel/src/generated/template-pack-meta.json")
   const generatedPath = path.join(root, "packages/spinosa-kernel/src/generated/template-pack.gen.ts")

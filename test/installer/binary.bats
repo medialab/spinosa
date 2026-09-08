@@ -276,6 +276,33 @@ EOF
   ! grep -Fq 'exec bash' "$SPINOSA_BIN_DIR/spinosa"
 }
 
+@test "fresh shell resolves default and custom SPINOSA_HOME with spaces" {
+  local test_home="$BATS_TEST_TMPDIR/Hôme With Space"
+  local case_home path_line
+
+  for case_home in "$test_home/.spinosa" "$test_home/Custom Spinosa Ω"; do
+    SPINOSA_HOME="$case_home"
+    SPINOSA_METADATA_DIR="$SPINOSA_HOME/metadata"
+    SPINOSA_BIN_DIR="$test_home/bin $(basename "$case_home")"
+    SPINOSA_ENV_FILE=""
+    mkdir -p "$SPINOSA_HOME/bin" "$SPINOSA_BIN_DIR"
+    cat >"$SPINOSA_HOME/bin/spinosa" <<EOF
+#!/bin/sh
+[ "\$SPINOSA_HOME" = "$SPINOSA_HOME" ] || exit 1
+printf 'ok\n'
+EOF
+    chmod +x "$SPINOSA_HOME/bin/spinosa"
+    PREFIX_MODE=0
+    install_shims
+    write_spinosa_env_file
+    path_line="$(spinosa_path_source_line bash)"
+
+    run env -i HOME="$test_home" PATH="/usr/bin:/bin" bash -c "$path_line; exec \"$SPINOSA_BIN_DIR/spinosa\""
+    [ "$status" -eq 0 ]
+    [ "$output" = "ok" ]
+  done
+}
+
 @test "parse_version_output accepts json and plain forms" {
   run parse_version_output '{"version":"1.0.3-beta.9"}'
   [ "$status" -eq 0 ]

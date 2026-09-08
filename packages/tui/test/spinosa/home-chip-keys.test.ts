@@ -8,22 +8,21 @@ function homeChipKeys(input: {
 }): string[] {
   if (!input.connected) return ["p"]
   if (input.workspaceReady) {
-    return input.needsUpdate ? ["n", "a", "w", "v", "u"] : ["n", "a", "w", "v"]
+    return input.needsUpdate ? ["n", "a", "w", "u"] : ["n", "a", "w"]
   }
   return ["n", "w"]
 }
 
 describe("home chip key gating", () => {
-  test("without workspace does not bind import/visualizer/update", () => {
+  test("without workspace does not bind import/update", () => {
     expect(homeChipKeys({ connected: true, workspaceReady: false, needsUpdate: false })).toEqual(["n", "w"])
   })
 
-  test("with workspace binds import/switch/visualizer", () => {
+  test("with workspace binds import/switch without visualizer", () => {
     expect(homeChipKeys({ connected: true, workspaceReady: true, needsUpdate: false })).toEqual([
       "n",
       "a",
       "w",
-      "v",
     ])
   })
 

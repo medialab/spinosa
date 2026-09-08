@@ -3,7 +3,7 @@ import path from "path"
 import fs from "fs/promises"
 import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
-import { EditTool } from "../../src/tool/edit"
+import { EditTool, replace as replaceText } from "../../src/tool/edit"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { LSP } from "@/lsp/lsp"
 import { FSUtil } from "@spinosa/kernel-core/fs-util"
@@ -259,7 +259,15 @@ describe("tool.edit", () => {
 
         yield* run({ filePath: filepath, oldString: "foo", newString: "qux", replaceAll: true })
 
-        expect(yield* load(filepath)).toBe("qux bar qux baz qux")
+      expect(yield* load(filepath)).toBe("qux bar qux baz qux")
+    }),
+    )
+
+    it.instance("rejects fuzzy matches when replaceAll is requested", () =>
+      Effect.sync(() => {
+        const content = "foo\nbar\nfoo\nbar"
+
+        expect(() => replaceText(content, "  foo\n  bar", "baz", true)).toThrow()
       }),
     )
 

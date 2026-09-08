@@ -1,34 +1,34 @@
+import { createRequire } from "node:module"
+import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
 import { isOcrPlatformSupported } from "./ocr-support"
+
+const require = createRequire(import.meta.url)
+
+/** Resolve optional modules without embedding the build machine's paths. */
+export function moduleAvailable(name: string, bundledInBinary = false): boolean {
+  if (bundledInBinary && isCompiledBinaryDistribution()) return true
+  try {
+    require.resolve(name)
+    return true
+  } catch {
+    return false
+  }
+}
 
 let _pdfjsAvailable: boolean | undefined
 
 export function pdfjsAvailable(): boolean {
   if (_pdfjsAvailable !== undefined) return _pdfjsAvailable
-  try {
-    require.resolve("pdfjs-dist/legacy/build/pdf.mjs")
-    _pdfjsAvailable = true
-  } catch {
-    _pdfjsAvailable = false
-  }
+  _pdfjsAvailable = moduleAvailable("pdfjs-dist/legacy/build/pdf.mjs", true)
   return _pdfjsAvailable
 }
 
 export async function pypdfium2Available(): Promise<boolean> {
-  try {
-    require.resolve("pypdfium2")
-    return true
-  } catch {
-    return false
-  }
+  return moduleAvailable("pypdfium2")
 }
 
 export async function pypdfAvailable(): Promise<boolean> {
-  try {
-    require.resolve("pypdf")
-    return true
-  } catch {
-    return false
-  }
+  return moduleAvailable("pypdf")
 }
 
 const LLM_COMMANDS = [
@@ -54,11 +54,6 @@ export function ocrAvailable(): boolean {
     _ocrAvailable = false
     return _ocrAvailable
   }
-  try {
-    require.resolve("ppu-paddle-ocr")
-    _ocrAvailable = true
-  } catch {
-    _ocrAvailable = false
-  }
+  _ocrAvailable = moduleAvailable("ppu-paddle-ocr", true)
   return _ocrAvailable
 }

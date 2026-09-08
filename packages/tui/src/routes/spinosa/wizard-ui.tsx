@@ -10,14 +10,12 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 import type { FileProgressStatus } from "@spinosa/core/progress/progress"
 import {
   countImportProgress,
+  displayImportFilePath,
   formatImportPhaseRecap,
   formatImportPhaseRecapFromCounters,
   isImportPhaseComplete,
-  selectImportFailedItems,
-  selectImportQueueWindow,
+  isTerminalImportFileStatus,
   selectImportResultsWindow,
-  selectImportSucceededItems,
-  shortImportFileName,
   statusAccentKey,
   statusGlyph,
   type ImportFileProgressItem,
@@ -489,6 +487,49 @@ export function LogoSummary(props: { theme: Theme; label: string }) {
   )
 }
 
+export function ImportFileResults(props: {
+  theme: Theme
+  files: ImportFileProgressItem[]
+  viewportHeight: number
+  complete?: boolean
+}) {
+  const items = createMemo(() => {
+    const files = props.files
+    const pending = files.filter((item) => !isTerminalImportFileStatus(item.status))
+    const terminal = selectImportResultsWindow(files)
+    return props.complete ? [...terminal, ...pending] : [...pending, ...terminal]
+  })
+  const counts = createMemo(() => countImportProgress(props.files))
+  const resultsMaxHeight = createMemo(() => importResultsListMaxHeight(props.viewportHeight))
+  const accent = (status: FileProgressStatus) => {
+    const key = statusAccentKey(status)
+    if (key === "primary") return props.theme.primary
+    if (key === "success") return props.theme.success
+    if (key === "error") return props.theme.error
+    if (key === "warning") return props.theme.warning
+    return props.theme.textMuted
+  }
+
+  return (
+    <Show when={items().length > 0}>
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={props.theme.textMuted}>
+          Files ({counts().succeeded} complete · {counts().failed} failed · {counts().pending} pending)
+        </text>
+        <scrollbox maxHeight={resultsMaxHeight()}>
+          <For each={items()}>
+            {(item) => (
+              <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
+                {statusGlyph(item.status)} {displayImportFilePath(item.rel)}
+              </text>
+            )}
+          </For>
+        </scrollbox>
+      </box>
+    </Show>
+  )
+}
+
 export function ProgressBar(props: {
   theme: Theme
   current: number
@@ -507,11 +548,6 @@ export function ProgressBar(props: {
   const filled = () => Math.round(pct() * blocks())
   const bar = () => "█".repeat(filled()) + "░".repeat(blocks() - filled())
   const complete = createMemo(() => isImportPhaseComplete(props.current, props.total, props.files))
-  const queue = createMemo(() => (complete() ? [] : selectImportQueueWindow(props.files ?? [], 4)))
-  const failed = createMemo(() => (complete() ? [] : selectImportFailedItems(props.files ?? [])))
-  const succeeded = createMemo(() => (complete() ? [] : selectImportSucceededItems(props.files ?? [])))
-  const results = createMemo(() => (complete() ? selectImportResultsWindow(props.files ?? []) : []))
-  const resultsMaxHeight = createMemo(() => importResultsListMaxHeight(props.viewportHeight ?? 24))
   const recap = createMemo(() => {
     if (!complete()) return ""
     const files = props.files ?? []
@@ -521,21 +557,13 @@ export function ProgressBar(props: {
     }
     return formatImportPhaseRecap(countImportProgress(files), props.status)
   })
-  const accent = (status: FileProgressStatus) => {
-    const key = statusAccentKey(status)
-    if (key === "primary") return props.theme.primary
-    if (key === "success") return props.theme.success
-    if (key === "error") return props.theme.error
-    if (key === "warning") return props.theme.warning
-    return props.theme.textMuted
-  }
   const currentLabel = createMemo(() => {
     if (complete()) return ""
     if (props.files && props.files.length > 0) {
       const active = props.files.find((f) => f.status === "processing")
-      if (active) return shortImportFileName(active.rel)
+      if (active) return displayImportFilePath(active.rel)
     }
-    return props.fileName ? shortImportFileName(props.fileName) : ""
+    return props.fileName ? displayImportFilePath(props.fileName) : ""
   })
 
   return (
@@ -561,53 +589,12 @@ export function ProgressBar(props: {
       <Show when={!complete() && props.status !== "" && !(props.files && props.files.length > 0)}>
         <text fg={props.theme.textMuted} wrapMode="none" overflow="hidden">{Locale.truncate(props.status, 80)}</text>
       </Show>
-      <Show when={queue().length > 0}>
-        <box flexDirection="column" gap={0}>
-          <For each={queue()}>
-            {(item) => (
-              <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
-                {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-              </text>
-            )}
-          </For>
-        </box>
-      </Show>
-      <Show when={succeeded().length > 0}>
-        <scrollbox maxHeight={resultsMaxHeight()}>
-          <For each={succeeded()}>
-            {(item) => (
-              <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
-                {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-              </text>
-            )}
-          </For>
-        </scrollbox>
-      </Show>
-      <Show when={results().length > 0}>
-        <scrollbox maxHeight={resultsMaxHeight()}>
-          <For each={results()}>
-            {(item) => (
-              <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
-                {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-              </text>
-            )}
-          </For>
-        </scrollbox>
-      </Show>
-      <Show when={failed().length > 0}>
-        <box flexDirection="column" gap={0} paddingTop={1}>
-          <text fg={props.theme.error}>Failed ({failed().length})</text>
-          <scrollbox maxHeight={resultsMaxHeight()}>
-            <For each={failed()}>
-              {(item) => (
-                <text fg={props.theme.error} wrapMode="none" overflow="hidden">
-                  {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-                </text>
-              )}
-            </For>
-          </scrollbox>
-        </box>
-      </Show>
+      <ImportFileResults
+        theme={props.theme}
+        files={props.files ?? []}
+        viewportHeight={props.viewportHeight ?? 24}
+        complete={complete()}
+      />
     </box>
   )
 }

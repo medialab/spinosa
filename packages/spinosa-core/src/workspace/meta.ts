@@ -83,7 +83,7 @@ export async function readWorkspaceMeta(workspacePath: string): Promise<SpinosaW
 }
 
 export async function writeWorkspaceFrameworkVersion(workspacePath: string, version: string): Promise<void> {
-  const markerPath = path.join(workspacePath, ".spinosa", "workspace")
+  const markerPath = workspaceMarkerPath(workspacePath)
   const file = Bun.file(markerPath)
   if (!(await file.exists())) return
 

@@ -4,7 +4,7 @@ import { findSourceFiles, classifySourceFile } from "../extension/classifier"
 import { fileExt } from "../constants"
 import { resolveUserPath } from "../utils/path"
 import type { ImportBatchManager } from "../import/batch"
-import { ocrAvailable, pdfjsAvailable } from "../tools/detection"
+import { moduleAvailable, ocrAvailable, pdfjsAvailable } from "../tools/detection"
 import { ocrUnsupportedReason } from "../tools/ocr-support"
 
 export interface ScanCounts {
@@ -135,12 +135,7 @@ export async function detectDocumentTools(): Promise<ToolStatus> {
 }
 
 function checkModuleAvailable(name: string): boolean {
-  try {
-    require.resolve(name)
-    return true
-  } catch {
-    return false
-  }
+  return moduleAvailable(name, name === "markitdown-ts")
 }
 
 export function suggestWorkspacePath(sourcePath: string): string | undefined {

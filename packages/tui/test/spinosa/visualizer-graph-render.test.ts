@@ -197,6 +197,13 @@ describe("graph raster", () => {
     expect(raster.grid[4]).toBe(4) // 1*3+1 = 4
   })
 
+  test("solid rectangles use the solid-cell painter", () => {
+    const raster = new GraphRaster(4, 3)
+    raster.clear(black)
+    raster.paintRectSolid(1, 1, 1, 1, red)
+    expect(raster.grid[5]).toBe(4) // 1*4+1 = 5
+  })
+
   test("rect, ellipse, line, and polygon painting produce non-zero density", () => {
     const raster = new GraphRaster(10, 6)
     raster.clear(black)
@@ -255,9 +262,15 @@ describe("OpenTUI graph renderable", () => {
     graph.on("graph-input", (event) => events.push(event))
     app.renderer.root.add(graph)
 
-    try {
-      await app.renderOnce()
-      const center = worldToRaster({ x: 0.25, y: 0.35 }, FIT_GRAPH_VIEWPORT, 60, 18)
+      try {
+        await app.renderOnce()
+        const frameBuffer = (
+          graph as unknown as { frameBuffer: { getRealCharBytes(addLineBreaks?: boolean): Uint8Array } }
+        ).frameBuffer
+        const rendered = new TextDecoder().decode(frameBuffer.getRealCharBytes(true))
+        expect(rendered).toContain("Trace graph")
+
+        const center = worldToRaster({ x: 0.25, y: 0.35 }, FIT_GRAPH_VIEWPORT, 60, 18)
       const x = Math.floor(center.x)
       const y = Math.floor(center.y)
 

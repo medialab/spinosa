@@ -50,6 +50,30 @@ describe("session.listGlobal", () => {
   )
 
   it.instance(
+    "treats LIKE wildcards as literal global search text",
+    () =>
+      Effect.gen(function* () {
+        yield* withSession({ title: "100% global" })
+        yield* withSession({ title: "100X global" })
+        yield* withSession({ title: "foo_bar global" })
+        yield* withSession({ title: "fooXbar global" })
+
+        const percentTitles = (
+          yield* SessionNs.Service.use((session) => session.listGlobal({ search: "100%" }))
+        ).map((session) => session.title)
+        const underscoreTitles = (
+          yield* SessionNs.Service.use((session) => session.listGlobal({ search: "foo_bar" }))
+        ).map((session) => session.title)
+
+        expect(percentTitles).toContain("100% global")
+        expect(percentTitles).not.toContain("100X global")
+        expect(underscoreTitles).toContain("foo_bar global")
+        expect(underscoreTitles).not.toContain("fooXbar global")
+      }),
+    { git: true },
+  )
+
+  it.instance(
     "excludes archived sessions by default",
     () =>
       Effect.gen(function* () {

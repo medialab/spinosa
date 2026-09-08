@@ -12,6 +12,7 @@ export type WorkspacePreparationDeps = {
   projectTitle?: string;
   resumeWorkspacePath?: string;
   extensions: string;
+  sourcePaths?: readonly string[];
   onProgress: (message: string) => void;
   onRecover: (message: string) => void;
   shouldAbort: () => boolean;
@@ -67,6 +68,7 @@ export async function prepareOnboardingWorkspace(
     sourcePath: deps.primarySource,
     projectTitle: deps.projectTitle ?? deps.workspaceName,
     flagExtensions: deps.extensions,
+    allowEmptySelection: (deps.sourcePaths?.length ?? 1) > 1,
   })) as OnboardingContext;
   if ("success" in context && !context.success)
     return { kind: "error", message: "Could not prepare onboarding." };

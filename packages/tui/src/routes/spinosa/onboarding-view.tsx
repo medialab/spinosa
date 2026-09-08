@@ -384,10 +384,10 @@ export function OnboardingView(props: OnboardingViewProps) {
                   </Show>
                   <Show when={failedCount() > 0}>
                     <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — saved to raw/_failed_files/ for review</text>
+                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — originals copied to raw/_failed_files/ when possible</text>
                     </box>
                   </Show>
-                  <Show when={stillMissingCount() > 0}>
+                  <Show when={stillMissingCount() > 0 && failedCount() === 0}>
                     <box paddingTop={1} flexDirection="column" gap={0}>
                       <text fg={theme.warning}>{stillMissingCount()} file{stillMissingCount() === 1 ? "" : "s"} still missing after verify/recover</text>
                     </box>

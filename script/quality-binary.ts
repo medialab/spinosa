@@ -8,7 +8,7 @@
  * 4. Smoke host binary when present (version/doctor)
  */
 import { $ } from "bun"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { productBinaryAssetName, resolveProductBinaryTarget } from "../packages/spinosa-core/src/distribution/contract.ts"
 
@@ -18,6 +18,21 @@ const version = (
 ).version
 const channel = version.includes("-") ? "beta" : "stable"
 const outDir = path.join(root, `dist/v${version}`)
+
+const forbiddenPersonalMarkers = [
+  Buffer.from("tommasoprinetti"),
+  Buffer.from("thdxr"),
+]
+
+function assertPortableBinary(binaryPath: string): void {
+  const bytes = readFileSync(binaryPath)
+  for (const marker of forbiddenPersonalMarkers) {
+    const offset = bytes.indexOf(marker)
+    if (offset >= 0) {
+      throw new Error(`binary ${binaryPath} contains forbidden personal marker ${marker.toString()} at byte ${offset}`)
+    }
+  }
+}
 
 async function step(label: string, fn: () => Promise<void>): Promise<void> {
   const started = performance.now()
@@ -53,6 +68,7 @@ const hostBinary = path.join(outDir, hostAsset)
 
 await step("host binary smoke", async () => {
   if (!existsSync(hostBinary)) throw new Error(`missing host binary ${hostBinary}`)
+  assertPortableBinary(hostBinary)
   const result = await $`bun script/smoke-install.ts --binary ${hostBinary}`.cwd(root).nothrow()
   if (result.exitCode !== 0) {
     if (process.env.SPINOSA_BINARY_SMOKE_STRICT === "1") {

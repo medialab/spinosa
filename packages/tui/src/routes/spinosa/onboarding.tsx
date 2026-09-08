@@ -30,10 +30,12 @@ import {
   completeOnboarding,
 } from "@spinosa/core/commands/onboard";
 import type { OnboardingContext } from "@spinosa/core/commands/onboard";
-import { scanAndClassifySource } from "@spinosa/core/import/pipeline";
+import {
+  scanAndClassifySource,
+  verifyAndRecoverImport,
+} from "@spinosa/core/import/pipeline";
 import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation";
 import { runImportWorkflow } from "@spinosa/core/import/import-workflow";
-import { addFiles } from "@spinosa/core/commands/add";
 import {
   buildStartupChatPrompt,
   formatStartupProgressMessage,
@@ -127,6 +129,7 @@ import { scanOnboardingSources } from "./onboarding-scan";
 import { prepareOnboardingWorkspace } from "./onboarding-workspace";
 import {
   applyImportProgressStatus,
+  countImportProgress,
   formatImportDetailLogHint,
   importOutcomeAccentKey,
   importOutcomeHeading,
@@ -306,6 +309,32 @@ export function Onboarding() {
     if (key === "warning") return theme.warning;
     return theme.success;
   });
+  const updateProgressFileStatus = (
+    relPath: string,
+    status: ImportFileProgressItem["status"],
+  ) => {
+    setProgressFiles((previous) => {
+      const next = applyImportProgressStatus(previous, relPath, status);
+      const counts = countImportProgress(next);
+      setProgTotal(next.length > 0 ? next.length : 1);
+      setProgCurrent(counts.succeeded + counts.failed);
+      return next;
+    });
+  };
+  const appendProgressQueue = (rels: string[]) => {
+    if (rels.length === 0) return;
+    setProgressFiles((previous) => {
+      const known = new Set(previous.map((item) => item.rel));
+      const next = [
+        ...previous,
+        ...seedImportQueue(rels).filter((item) => !known.has(item.rel)),
+      ];
+      const counts = countImportProgress(next);
+      setProgTotal(next.length > 0 ? next.length : 1);
+      setProgCurrent(counts.succeeded + counts.failed);
+      return next;
+    });
+  };
   const [scanningFile, setScanningFile] = createSignal("");
   const [scanCount, setScanCount] = createSignal(0);
   const [processingStatus, setProcessingStatus] = createSignal("");
@@ -829,10 +858,14 @@ export function Onboarding() {
     setBusy(true);
     clearLog();
     setFailedCount(0);
+    setStillMissingCount(0);
+    setImportSummary("");
     setProcessingDone(false);
     setProgCurrent(0);
     setProgTotal(1);
     setProcessingFile("");
+    setProgressFiles([]);
+    setVerifyStatus("");
     setProcessingStatus("Starting...");
     abortProcessing = false;
     const generation = workflow.bump();
@@ -846,9 +879,6 @@ export function Onboarding() {
       preview()?.workspacePath ??
       suggestWorkspacePath(primarySource);
     if (plannedWorkspace) setCreatedWorkspace(plannedWorkspace);
-    let totalFailed = 0;
-    let totalRenamed = 0;
-
     const job = createImportJob({
       kind: "import",
       title: "Onboarding import",
@@ -862,15 +892,12 @@ export function Onboarding() {
     job.start();
     const sharedProg = job.prog;
     sharedProg.on((e) => {
-      // Use the emitter as the source of truth for both numerator and denominator
-      // so the bar self-corrects even if the pre-set total was wrong/empty.
-      if (e.total > 0) setProgTotal(e.total);
-      if (e.current >= 0) setProgCurrent(e.current);
       if (e.relPath) setProcessingFile(e.relPath);
       if (e.status && e.relPath) {
-        setProgressFiles((prev) =>
-          applyImportProgressStatus(prev, e.relPath, e.status!),
-        );
+        updateProgressFileStatus(e.relPath, e.status);
+      } else if (e.phase === "setup") {
+        setProgTotal(e.total > 0 ? e.total : 1);
+        setProgCurrent(Math.max(0, e.current));
       }
     });
     const onPhaseLog = job.wrapLog((msg: string) => {
@@ -918,6 +945,7 @@ export function Onboarding() {
         projectTitle: workspaceName() || path.basename(primarySource),
         resumeWorkspacePath,
         extensions,
+        sourcePaths: resolved,
         onProgress: setupProgress,
         onRecover: (message) => appendLogLine(`Note: ${message}`),
         shouldAbort,
@@ -932,6 +960,10 @@ export function Onboarding() {
       const { frameworkRoot, context: ctx } = preparation;
 
       setProcessingStatus("Preparing import plan...");
+      // The scan selector merges extensions from every source. Re-apply that
+      // selection after the primary workspace scan so extra-source-only
+      // extensions do not cause the primary batch to fall back to select-all.
+      ctx.batches.parseExtensionsFromFlag(extensions);
       const classified = await scanAndClassifySource(
         ctx.sourcePath,
         ctx.rawDir,
@@ -946,6 +978,11 @@ export function Onboarding() {
       const totalMd = classified.markitdownFiles.length;
       const totalOcr = classified.ocrFiles.length;
       const totalDirect = classified.directFiles.length;
+      appendProgressQueue([
+        ...classified.directFiles,
+        ...classified.markitdownFiles,
+        ...classified.ocrFiles,
+      ].map((file) => file.rel));
       appendLogLine(
         `[diag] direct=${totalDirect} markitdown=${classified.markitdownFiles.length} ocr=${classified.ocrFiles.length}`,
       );
@@ -960,19 +997,13 @@ export function Onboarding() {
           setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`);
         },
         onRename: (original, renamed) => {
-          totalRenamed++;
           appendLogLine(`  renamed (name too long): ${original} → ${renamed}`);
         },
         beforePhase: async (id, count) => {
           if (id === "direct") {
             setStep("direct");
-            setProgTotal(count > 0 ? count : 1);
-            setProgCurrent(0);
-            setProgressFiles(
-              seedImportQueue(classified.directFiles.map((f) => f.rel)),
-            );
             setProcessingStatus("Preparing direct copy...");
-            await delay(1000);
+            await delay(500);
             return true;
           }
           if (id === "markitdown") {
@@ -981,13 +1012,8 @@ export function Onboarding() {
             if (shouldAbort()) return false;
             setBusy(true);
             setStep("markitdown");
-            setProgTotal(count);
-            setProgCurrent(0);
-            setProgressFiles(
-              seedImportQueue(classified.markitdownFiles.map((f) => f.rel)),
-            );
             setProcessingStatus("Preparing MarkItDown conversion...");
-            await delay(1000);
+            await delay(500);
             return true;
           }
           setBusy(false);
@@ -995,25 +1021,18 @@ export function Onboarding() {
           if (shouldAbort()) return false;
           setBusy(true);
           setStep("ocr");
-          setProgTotal(count);
-          setProgCurrent(0);
-          setProgressFiles(
-            seedImportQueue(classified.ocrFiles.map((f) => f.rel)),
-          );
           setProcessingStatus("Preparing OCR...");
-          await delay(1000);
+          await delay(500);
           return true;
         },
         afterPhase: async (id, result) => {
-          if (result.failed > 0) totalFailed += result.failed;
-          if (result.renamed > 0) totalRenamed += result.renamed;
           if (id === "direct") {
-            setProcessingStatus(`Direct copy complete — ${totalDirect} files`);
-            await delay(1000);
+            setProcessingStatus(`Direct copy complete — ${result.converted} files`);
+            await delay(500);
           }
           if (id === "markitdown") {
-            setProcessingStatus(`MarkItDown complete — ${totalMd} files`);
-            await delay(1000);
+            setProcessingStatus(`MarkItDown complete — ${result.converted} files`);
+            await delay(500);
           }
           if (id === "ocr") {
             setProcessingStatus(
@@ -1022,7 +1041,7 @@ export function Onboarding() {
                 : `OCR complete — ${totalOcr} files`,
             );
             // Dwell so failure-first 100% results are readable before verify.
-            await delay(1500);
+            await delay(1000);
           }
         },
       });
@@ -1042,6 +1061,100 @@ export function Onboarding() {
       const mr = phases.markitdown;
       const or = phases.ocr;
 
+      const mergePhase = (target: typeof dr, addition: typeof dr) => {
+        target.converted += addition.converted;
+        target.skipped += addition.skipped;
+        target.failed += addition.failed;
+        target.renamed += addition.renamed;
+        target.recoverable.push(...addition.recoverable);
+      };
+      let totalRecovered = 0;
+      let totalStillMissing = 0;
+      const applyVerification = (verification: {
+        recoveredFiles?: string[];
+        stillMissingFiles?: string[];
+      }) => {
+        for (const file of verification.recoveredFiles ?? []) {
+          updateProgressFileStatus(file, "done");
+        }
+        for (const file of verification.stillMissingFiles ?? []) {
+          updateProgressFileStatus(file, "failed");
+        }
+      };
+
+      // Namespace additional source folders so equal filenames do not overwrite
+      // one another and all sources remain distinguishable in the result list.
+      for (let i = 1; i < resolved.length; i++) {
+        const source = resolved[i]!;
+        const sourceFolder = `source-${i + 1}`;
+        appendLogLine(`Processing: ${source} → ${sourceFolder}/`);
+        const extraClassified = await scanAndClassifySource(
+          source,
+          ctx.rawDir,
+          ctx.batches,
+          sourceFolder,
+          shouldAbort,
+        );
+        if (!extraClassified) {
+          appendLogLine(`No importable files in: ${source}`);
+          continue;
+        }
+
+        appendProgressQueue([
+          ...extraClassified.directFiles,
+          ...extraClassified.markitdownFiles,
+          ...extraClassified.ocrFiles,
+        ].map((file) => file.rel));
+
+        const extraPhases = await runImportWorkflow(extraClassified, {
+          prog: sharedProg,
+          onLog: onPhaseLog,
+          shouldAbort,
+          signal: job.registered.signal,
+          onChild: job.registerChild,
+          onRetry: (attempt, reason) => {
+            setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`);
+          },
+          onRename: (original, renamed) => {
+            appendLogLine(`  renamed (name too long): ${original} → ${renamed}`);
+          },
+          beforePhase: async (id, count) => {
+            setStep(id);
+            setProcessingStatus(`${sourceFolder}: ${id} — ${count} files`);
+            return true;
+          },
+          afterPhase: async (id, result) => {
+            setProcessingStatus(
+              `${sourceFolder}: ${id} complete — ${result.converted} delivered`+
+              (result.failed > 0 ? `, ${result.failed} failed` : ""),
+            );
+          },
+        });
+        mergePhase(dr, extraPhases.direct);
+        mergePhase(mr, extraPhases.markitdown);
+        mergePhase(or, extraPhases.ocr);
+
+        const extraVerify = await verifyAndRecoverImport(
+          source,
+          ctx.rawDir,
+          ctx.batches,
+          true,
+          true,
+          onPhaseLog,
+          shouldAbort,
+          ctx.rawDir,
+          sourceFolder,
+        );
+        totalRecovered += extraVerify.recovered;
+        totalStillMissing += extraVerify.stillMissing;
+        applyVerification(extraVerify);
+      }
+      if (shouldAbort()) return;
+
+      // Summary accounting must cover every namespaced source, not only the
+      // primary source scanned while creating the workspace.
+      ctx.copyableCount = progressFiles().length;
+
       // Phase C: Finalize (verification). Keep last-phase progressFiles, bar
       // counters, and phase status so the results panel stays accurate during verify.
       setProcessingFile("");
@@ -1060,68 +1173,36 @@ export function Onboarding() {
             appendLogLine(msg);
           },
           shouldAbort,
+          additionalRecovered: totalRecovered,
         },
       );
       if (shouldAbort()) return;
 
-      if (result.success) {
-        // Import additional source paths
-        let extraCopied = 0,
-          extraMd = 0,
-          extraOcr = 0,
-          extraDirect = 0,
-          extraMdTotal = 0,
-          extraOcrTotal = 0,
-          extraFailed = 0;
-        for (let i = 1; i < resolved.length; i++) {
-          const extra = resolved[i]!;
-          setProcessingStatus(`Importing: ${extra}`);
-          const addFileResult = await addFiles({
-            workspacePath: ctx.workspacePath,
-            sourcePath: extra,
-            sourceIsDir: true,
-            extensions,
-            onProgress: (msg) => appendLogLine(msg),
-            shouldAbort,
-            signal: job.registered.signal,
-            onChild: job.registerChild,
-          });
-          // Fold the extra-source results into the summary totals so a
-          // multi-source import is reported accurately.
-          extraCopied += addFileResult.copied;
-          extraMd += addFileResult.mdConverted;
-          extraOcr += addFileResult.ocrConverted;
-          extraDirect += addFileResult.copied + addFileResult.skipped;
-          extraMdTotal += addFileResult.mdConverted + addFileResult.mdSkipped;
-          extraOcrTotal +=
-            addFileResult.ocrConverted + addFileResult.ocrSkipped;
-          extraFailed +=
-            addFileResult.failed +
-            addFileResult.mdFailed +
-            addFileResult.ocrFailed;
-          if (!addFileResult.success) {
-            appendLogLine(`  ⚠ Partial import for ${extra}`);
-          }
-        }
-        dr.converted += extraCopied;
-        mr.converted += extraMd;
-        or.converted += extraOcr;
-        totalFailed += extraFailed;
+      if (result.verify) {
+        totalRecovered += result.verify.recovered;
+        totalStillMissing += result.verify.stillMissing;
+        applyVerification(result.verify);
+      }
 
-        const stillMissing = result.verify?.stillMissing ?? 0;
-        const recovered = result.verify?.recovered ?? 0;
+      if (result.success) {
+        const counts = countImportProgress(progressFiles());
+        const directTotal = dr.converted + dr.skipped + dr.failed;
+        const markitdownTotal = mr.converted + mr.skipped + mr.failed;
+        const ocrTotal = or.converted + or.skipped + or.failed;
+        const totalFailed = counts.failed;
+        const totalRenamed = dr.renamed + mr.renamed + or.renamed;
         setFailedCount(totalFailed);
-        setStillMissingCount(stillMissing);
+        setStillMissingCount(totalStillMissing);
         const summary =
-          `${dr.converted}/${totalDirect + extraDirect} copied · ${mr.converted}/${totalMd + extraMdTotal} markitdown · ${or.converted}/${totalOcr + extraOcrTotal} ocr` +
+          `${dr.converted + dr.skipped}/${directTotal} copied · ${mr.converted + mr.skipped}/${markitdownTotal} markitdown · ${or.converted + or.skipped}/${ocrTotal} ocr` +
           (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
-          (totalFailed > 0 ? ` · ${totalFailed} failed → _failed_files/` : "") +
-          (recovered > 0 ? ` · ${recovered} recovered` : "") +
-          (stillMissing > 0 ? ` · ${stillMissing} still missing` : "");
+          (totalFailed > 0 ? ` · ${totalFailed} failed` : "") +
+          (totalRecovered > 0 ? ` · ${totalRecovered} recovered` : "") +
+          (totalStillMissing > 0 && totalFailed === 0 ? ` · ${totalStillMissing} still missing` : "");
         setImportSummary(summary);
         setProcessingDone(true);
         setProcessingStatus("All done");
-        if (totalFailed > 0 || stillMissing > 0) {
+        if (totalFailed > 0 || totalStillMissing > 0) {
           persistImportWizardLogLines(logLines(), "onboarding-import");
           job.finish("error", summary);
         } else {
@@ -1134,6 +1215,11 @@ export function Onboarding() {
         });
         setWaitingForGate(true);
       } else {
+        const counts = countImportProgress(progressFiles());
+        setFailedCount(counts.failed);
+        setStillMissingCount(totalStillMissing);
+        setImportSummary("No files were delivered to the workspace.");
+        setProcessingDone(true);
         job.finish("error", "Onboarding import failed");
         setStep("error");
       }
