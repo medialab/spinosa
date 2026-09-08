@@ -18,16 +18,16 @@
     "production": {
       "maxFileLoc": 14972,
       "filesAtOrAbove500Loc": 94,
-      "anyTokens": 267,
-      "unknownTokens": 1336,
-      "files": 1593
+      "anyTokens": 266,
+      "unknownTokens": 1405,
+      "files": 1626
     },
     "test": {
       "maxFileLoc": 4777,
       "filesAtOrAbove500Loc": 67,
-      "anyTokens": 407,
-      "unknownTokens": 580,
-      "files": 622
+      "anyTokens": 409,
+      "unknownTokens": 592,
+      "files": 639
     },
     "generated": {
       "maxFileLoc": 13648,
@@ -44,18 +44,18 @@
       "files": 123
     },
     "script": {
-      "maxFileLoc": 1877,
-      "filesAtOrAbove500Loc": 5,
+      "maxFileLoc": 1899,
+      "filesAtOrAbove500Loc": 6,
       "anyTokens": 7,
-      "unknownTokens": 63,
-      "files": 80
+      "unknownTokens": 68,
+      "files": 88
     },
     "unknown": {
       "maxFileLoc": 3710,
       "filesAtOrAbove500Loc": 4,
       "anyTokens": 1,
       "unknownTokens": 6,
-      "files": 207
+      "files": 209
     }
   }
 }

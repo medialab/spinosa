@@ -56,4 +56,24 @@ describe("workspace metadata and updates", () => {
       await rm(spinosaHome, { recursive: true, force: true })
     }
   })
+
+  test("counts placeholder-only updates once and is idempotent", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "spinosa-placeholder-"))
+    const frameworkRoot = await mkdtemp(path.join(os.tmpdir(), "spinosa-framework-"))
+    try {
+      await mkdir(path.join(workspace, ".spinosa"), { recursive: true })
+      await writeFile(path.join(workspace, ".spinosa", "workspace"), "framework_version: dev\n")
+      await writeFile(path.join(workspace, "AGENTS.md"), "root={{WORKSPACE_PATH}}\n")
+      await mkdir(path.join(frameworkRoot, ".spinosa"), { recursive: true })
+      await writeFile(path.join(frameworkRoot, ".spinosa", "workspace-files.tsv"), "path\trole\tpolicy\n")
+      const first = await updateWorkspace({ workspacePath: workspace, frameworkRoot })
+      expect(first).toMatchObject({ updated: 1, changes: true })
+      expect(await readFile(path.join(workspace, "AGENTS.md"), "utf8")).toBe(`root=${workspace}\n`)
+      const second = await updateWorkspace({ workspacePath: workspace, frameworkRoot })
+      expect(second).toMatchObject({ updated: 0, changes: false })
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+      await rm(frameworkRoot, { recursive: true, force: true })
+    }
+  })
 })

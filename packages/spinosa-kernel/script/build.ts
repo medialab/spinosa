@@ -84,6 +84,15 @@ const builderHome = os.homedir().replaceAll("\\", "/").replace(/\/$/, "")
 const builderHomeWin = builderHome.replaceAll("/", "\\")
 const repoRoot = path.resolve(__dirname, "../..").replaceAll("\\", "/")
 const EMBEDDED_BUILD_PATH_PREFIXES = [
+  // Rust dependency metadata can retain the Windows cache path from the
+  // cross-build image. Keep this exact, known path scrubbed without masking
+  // arbitrary user paths (broad C:\\Users replacement corrupts binaries).
+  {
+    prefix: Buffer.from(
+      "C:\\Users\\silvi\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f",
+    ),
+    replacement: Buffer.from("/spinosa/vendor"),
+  },
   // Repo root first (longer) so "/Users/.../spinosa-main" scrubs to "/spinosa/repo" not "/spinosa/Documents/..."
   ...(repoRoot && repoRoot !== builderHome
     ? [{ prefix: Buffer.from(repoRoot), replacement: Buffer.from("/spinosa/repo") }]

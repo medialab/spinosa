@@ -651,8 +651,9 @@ const layer: Layer.Layer<
 
         yield* events.publish(SessionV1.Event.Deleted, { sessionID, info: session })
         yield* events.remove(sessionID)
-      } catch (error) {
+    } catch (error) {
         yield* Effect.logError("failed to remove session", { sessionID, error })
+        yield* Effect.die(error)
       }
     })
 
