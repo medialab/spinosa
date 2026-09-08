@@ -405,7 +405,10 @@ async function updateWorkspaceUnlocked(options: UpdateOptions): Promise<UpdateRe
     const replaced = content.replaceAll("{{WORKSPACE_PATH}}", workspacePath)
     if (replaced !== content) {
       writeFileSync(filePath, replaced, "utf-8")
-      if (!changedPaths.includes(relPath)) changedPaths.push(relPath)
+      if (!changedPaths.includes(relPath)) {
+        updated++
+        changedPaths.push(relPath)
+      }
     }
   }
 

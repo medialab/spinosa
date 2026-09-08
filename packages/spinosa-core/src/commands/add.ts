@@ -18,7 +18,7 @@ import {
   ocrOutputRelPath,
 } from "../extension/classifier"
 import { ImportBatchManager } from "../import/batch"
-import { injectColdFrontmatter, convertedOutputExists, removeConvertedOutput } from "../import/frontmatter"
+import { injectColdFrontmatter, convertedOutputExists } from "../import/frontmatter"
 import { scanSource } from "../scan/scanner"
 import { fileExt } from "../constants"
 import type { PpuOcrFile } from "../import/ppu-ocr"
@@ -27,6 +27,43 @@ import { MarkItDown } from "markitdown-ts"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled } from "../import/cancellation"
 import { markitdownConvertFile } from "../import/markitdown-convert"
 import { preserveFailedImportFiles, type ClassifiedEntry, type ImportProgressCallback } from "../import/pipeline"
+
+function backupConvertedOutput(outputPath: string): string[] {
+  const paths = [outputPath]
+  if (outputPath.endsWith(".md")) paths.push(`${outputPath.slice(0, -3)}_pages`)
+  const backups: string[] = []
+  for (const source of paths) {
+    if (!existsSync(source)) continue
+    const backup = `${source}.spinosa-backup-${process.pid}-${crypto.randomUUID()}`
+    try {
+      renameSync(source, backup)
+      backups.push(backup)
+    } catch (error) {
+      for (const previous of backups) {
+        const original = previous.replace(/\.spinosa-backup-\d+-[^/]+$/, "")
+        try { renameSync(previous, original) } catch { /* preserve original error */ }
+      }
+      throw error
+    }
+  }
+  return backups
+}
+
+function restoreConvertedOutput(outputPath: string, backups: string[]): boolean {
+  try { rmSync(outputPath, { force: true, recursive: true }) } catch { /* cleanup */ }
+  const pageDir = outputPath.endsWith(".md") ? `${outputPath.slice(0, -3)}_pages` : undefined
+  if (pageDir) try { rmSync(pageDir, { force: true, recursive: true }) } catch { /* cleanup */ }
+  let restored = true
+  for (const backup of backups) {
+    const original = backup.replace(/\.spinosa-backup-\d+-[^/]+$/, "")
+    try { renameSync(backup, original) } catch { restored = false }
+  }
+  return restored
+}
+
+function removeConvertedBackups(backups: string[]): void {
+  for (const backup of backups) try { rmSync(backup, { force: true, recursive: true }) } catch { /* cleanup */ }
+}
 
 export interface AddFilesOptions {
   workspacePath: string
@@ -275,7 +312,8 @@ async function addSingleFile(
         }
       }
 
-      removeConvertedOutput(destFile)
+      const backups = backupConvertedOutput(destFile)
+      let restored = true
 
       try {
         const converter = new MarkItDown()
@@ -286,7 +324,9 @@ async function addSingleFile(
         writeTextAtomic(destFile, text)
         mdConverted = 1
         injectColdFrontmatter(destFile)
+        removeConvertedBackups(backups)
       } catch (error) {
+        restored = restoreConvertedOutput(destFile, backups)
         if (isSpinosaCancellationError(error)) throw error
         mdFailed = 1
       }
@@ -308,7 +348,8 @@ async function addSingleFile(
         }
       }
 
-      removeConvertedOutput(destFile)
+      const backups = backupConvertedOutput(destFile)
+      let restored = true
 
       const tmpDest = destFile + `.spinosa-part-${process.pid}-${crypto.randomUUID()}`
       try {
@@ -319,13 +360,16 @@ async function addSingleFile(
           ocrConverted = 1
           injectColdFrontmatter(destFile)
         } else {
+          restored = restoreConvertedOutput(destFile, backups)
           ocrFailed = 1
         }
       } catch (error) {
+        restored = restoreConvertedOutput(destFile, backups)
         if (isSpinosaCancellationError(error)) throw error
         ocrFailed = 1
       } finally {
         try { rmSync(tmpDest, { force: true }) } catch { /* cleanup */ }
+        if (restored) removeConvertedBackups(backups)
       }
 
       break
