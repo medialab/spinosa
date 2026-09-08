@@ -408,6 +408,9 @@ map_platform() {
     darwin|macos|osx) os="darwin" ;;
     linux) os="linux" ;;
     *)
+      printf '\n  %s Your OS "%s" is not supported.\n' "${Y}⚠${RESET}" "$1" >&2
+      printf '  %s Spinosa currently supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64 and x64.\n' "${DIM}" >&2
+      printf '  %s See https://github.com/medialab/spinosa#requirements for alternatives.\n' "${DIM}" >&2
       printf 'Unsupported OS for binary distribution: %s\n' "$1" >&2
       return 1
       ;;
@@ -417,6 +420,9 @@ map_platform() {
     arm64|aarch64) arch="arm64" ;;
     x86_64|amd64|x64) arch="x64" ;;
     *)
+      printf '\n  %s Your CPU architecture "%s" is not supported.\n' "${Y}⚠${RESET}" "$2" >&2
+      printf '  %s Spinosa currently supports arm64 and x64 (amd64) on macOS and Linux (glibc).\n' "${DIM}" >&2
+      printf '  %s See https://github.com/medialab/spinosa#requirements for alternatives.\n' "${DIM}" >&2
       printf 'Unsupported architecture for binary distribution: %s\n' "$2" >&2
       return 1
       ;;
@@ -463,7 +469,7 @@ detect_platform() {
   local mapped
   refuse_musl_linux
   mapped="$(map_platform "$(uname -s)" "$(uname -m)")" \
-    || die "Unsupported platform: $(uname -s) $(uname -m)"
+    || die "Unsupported platform: $(uname -s) $(uname -m) — Spinosa supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64/x64 only. See https://github.com/medialab/spinosa#requirements"
   PLATFORM="$mapped"
   ASSET_NAME="spinosa-${PLATFORM}"
   info "Platform: ${PLATFORM}"

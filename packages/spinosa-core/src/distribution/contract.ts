@@ -167,12 +167,12 @@ export function resolveProductBinaryTarget(input: {
   let os: "darwin" | "linux"
   if (osRaw === "darwin" || osRaw === "macos" || osRaw === "osx") os = "darwin"
   else if (osRaw === "linux") os = "linux"
-  else throw new Error(`Unsupported OS for binary distribution: ${input.os}`)
+  else throw new Error(`Your OS "${input.os}" is not supported. Spinosa currently supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64 and x64 — Unsupported OS for binary distribution: ${input.os}`)
 
   let arch: "arm64" | "x64"
   if (archRaw === "arm64" || archRaw === "aarch64") arch = "arm64"
   else if (archRaw === "x64" || archRaw === "x86_64" || archRaw === "amd64") arch = "x64"
-  else throw new Error(`Unsupported architecture for binary distribution: ${input.arch}`)
+  else throw new Error(`Your CPU architecture "${input.arch}" is not supported. Spinosa currently supports arm64 and x64 on macOS and Linux (glibc) — Unsupported architecture for binary distribution: ${input.arch}`)
 
   if (os === "linux") {
     const libc = input.libc?.trim().toLowerCase()
@@ -187,7 +187,7 @@ export function resolveProductBinaryTarget(input: {
 
   const target = `${os}-${arch}` as ProductBinaryTarget
   if (!isProductBinaryTarget(target)) {
-    throw new Error(`Unsupported product binary target: ${target}`)
+    throw new Error(`Your platform "${target}" is not supported. Spinosa supports darwin-arm64, darwin-x64, linux-arm64, linux-x64 (glibc) — Unsupported product binary target: ${target}`)
   }
   return target
 }
