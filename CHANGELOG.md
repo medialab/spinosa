@@ -8,6 +8,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.5] — 2026-09-08
+
+### Fixed
+
+- Installer now tells unsupported OS/arch clearly: `Your OS "X" is not supported. Spinosa currently supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64 and x64` instead of a cryptic `Unsupported OS` error (`install.sh`, `distribution/contract.ts`).
+
 ## [1.1.0-beta.4] — 2026-09-08
 
 ### Fixed
