@@ -8,6 +8,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.4] — 2026-09-08
+
+### Fixed
+
+- Failed conversions preserve existing imported output.
+- Session deletion failures now propagate to the HTTP error boundary.
+- Workspace placeholder updates report accurate change counts.
+- Release binaries scrub the known cross-build Cargo metadata path.
+
 ## [1.1.0-beta.3] — 2026-09-02
 
 ### Changed
