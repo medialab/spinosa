@@ -8,6 +8,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.15] — 2026-09-09
+
+### Changed
+
+- Vision `openai`/`anthropic`/`google` OAuth aligned to `/model` `DialogProvider` `provider_auth` — `openai` ChatGPT `luna` no longer prompts `OPENAI_API_KEY` when `provider_next.connected` or `provider` catalog `auth.json` `0o600`; `createVisionLanguageModel` `openrouter` mandatory `others` dummy `sk-test`.
+
+### Fixed
+
+- `OcrModelSelector` `Tesseract (offline)` `Vision model (provider / model)` `Don't OCR` `wizard-ui.tsx:400` grey `panel` blue `primary` `buttonBackground(active)` `●` only concrete `provider/model` `esc` keeps `Tesseract` `●` `didPick` revert `focused`; `Step 9` `Vision ▼` grey `panel` blue `primary` `onChangeVisionModel` overlay not `Stopping process`, `current file` `old model` `next file` `resolveOcrModelId()` `visionCache` per-file live-switch `_idx--`; `queue paused` `onVisionFailure` `Vision gpt-5.6-luna error Could not convert` `pipeline.ts:360` `MarkitdownHooks` `retry` same `COHORT1_EX14_THERESE_PAGE30.jpg` with new model.
+- `SPINOSA_AGENT_FILES` `spinosa-visualizer.md` removed `constants.ts:37` `test:spinosa 319/319` (was `317/319` `73b0f88b`).
+
 ## [1.1.0-beta.14] — 2026-09-09
 
 ### Changed
