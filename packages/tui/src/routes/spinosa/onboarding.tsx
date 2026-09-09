@@ -24,6 +24,7 @@ import { OCR_MODEL_OPTIONS, type OcrModelOption } from "./onboarding-helpers";
 import { useSync } from "../../context/sync";
 import { useSDK } from "../../context/sdk";
 import { useDialog } from "../../ui/dialog";
+import { DialogSelect } from "../../ui/dialog-select";
 import { DialogProvider } from "../../component/dialog-provider";
 import {
   createImportJob,
@@ -247,6 +248,71 @@ const CLI_OPTIONS: CliOption[] = [
   },
 ];
 
+function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: string) => void }) {
+  const sync = useSync()
+  const dialog = useDialog()
+  const [providerId, setProviderId] = createSignal<string | null>(null)
+  const providersWithVision = createMemo(() => {
+    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
+    return providers.filter((p) => Object.values(p.models ?? {}).some((m) => {
+      const input = (m as { capabilities?: { input?: string[] } }).capabilities?.input ?? (m as { input?: string[] }).input
+      return Array.isArray(input) && input.includes("image") && (m as { status?: string }).status !== "deprecated"
+    }))
+  })
+  const modelsForProvider = createMemo(() => {
+    const pid = providerId()
+    if (!pid) return []
+    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string; cost?: { input?: number } }> }> })?.provider?.find((p) => p.id === pid)
+    if (!provider) return []
+    return Object.entries(provider.models ?? {})
+      .filter(([_, info]) => {
+        const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
+        return Array.isArray(input) && input.includes("image") && (info as { status?: string }).status !== "deprecated"
+      })
+      .map(([modelId, info]) => ({
+        providerId: pid,
+        modelId,
+        title: info.name ?? modelId,
+        description: (info as { cost?: { input?: number } }).cost?.input === 0 ? "Free" : undefined,
+      }))
+  })
+  const providerOptions = createMemo(() =>
+    providersWithVision().map((p) => ({
+      title: p.name,
+      value: p.id,
+      description: p.id,
+      category: "Providers with vision",
+      onSelect() {
+        setProviderId(p.id)
+      },
+    }))
+  )
+  const modelOptions = createMemo(() =>
+    modelsForProvider().map((m) => ({
+      title: m.title,
+      value: m.modelId,
+      description: m.description,
+      category: providerId() ?? undefined,
+      onSelect() {
+        props.onPicked(m.providerId, m.modelId)
+      },
+    }))
+  )
+  return (
+    <Show when={providerId() === null} fallback={
+      <DialogSelect
+        title={`Select vision model — ${providerId()}`}
+        options={modelOptions()}
+      />
+    }>
+      <DialogSelect
+        title="Select vision provider"
+        options={providerOptions()}
+      />
+    </Show>
+  )
+}
+
 export function Onboarding() {
   const { theme } = useTheme();
   const route = useRoute();
@@ -317,14 +383,7 @@ export function Onboarding() {
     // Limit to 6 vision options to keep selector short
     return vision.slice(0, 6)
   })
-  const ocrModelOptions = createMemo(() => {
-    const vision = ocrVisionOptionsFromProviders()
-    // Always include tesseract + none, plus dynamic vision (or fallback static free list when offline)
-    const base = OCR_MODEL_OPTIONS.filter((o) => o.kind !== "vision")
-    const staticVision = OCR_MODEL_OPTIONS.filter((o) => o.kind === "vision")
-    const dynamicVision = vision.length > 0 ? vision : staticVision
-    return [...base.slice(0, 1), ...dynamicVision, ...base.slice(1)]
-  })
+  const ocrModelOptions = () => OCR_MODEL_OPTIONS
   const [focusedSource, setFocusedSource] = createSignal(0);
   const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>();
   const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([]);
@@ -902,6 +961,20 @@ export function Onboarding() {
     const opts = ocrModelOptions()
     const chosenOpt = opts[selectedOcrModelIndex()]
     const chosen = chosenOpt?.id ?? "tesseract-local";
+    if (chosen === "vision:provider-picker") {
+      // Open provider/model picker for vision — same catalog as /model, filtered for image input
+      logAction("vision", "Opening provider/model picker for vision");
+      // Use the same provider/model dialog but pre-filtered for vision capability
+      // For now, reuse generic provider dialog then model dialog; after selection, continue
+      dialog.replace(() => <DialogVisionPicker onPicked={(providerId, modelId) => {
+        const id = `${providerId}/${modelId}`
+        setSelectedOcrModel(id)
+        logAction("vision", `Picked vision model ${id}`)
+        dialog.clear()
+        void activeWork.run(startProcessing)
+      }} />)
+      return
+    }
     // If vision model needs API key and provider not yet branched/connected, prompt for key
     if (chosenOpt?.requiresKey) {
       const keyEnv = chosenOpt.requiresKey
@@ -919,9 +992,6 @@ export function Onboarding() {
         }
         // Provider branched but key missing (e.g. env not set) — warn and stay
         appendLogLine(`API key ${keyEnv} missing for ${chosenOpt.label} — set ${keyEnv} in env or choose Tesseract.`)
-        // Allow fallback: still run but pipeline will copy instead of vision; warn user but continue
-        // For strict flow, uncomment next line to stay on vision step:
-        // return
       }
     }
     setSelectedOcrModel(chosen);
