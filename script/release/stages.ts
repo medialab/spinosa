@@ -469,7 +469,7 @@ export async function runVerifyRemote(ctx: StageContext): Promise<void> {
 }
 
 async function assertLiveInstaller(url: string, label: string, version: string): Promise<string> {
-  const response = await fetch(url)
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
   if (!response.ok) throw new Error(`failed to download live ${label} installer (${response.status})`)
   const script = await response.text()
   const pinned = script.match(/^PINNED_VERSION="([^"]+)"/m)?.[1]

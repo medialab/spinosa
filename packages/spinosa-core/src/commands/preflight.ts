@@ -108,6 +108,8 @@ function defaultFrameworkRootForVersion(version: string): string {
       const probe = spawnSync(binary, ["internal", "template", "ensure", "--json"], {
         encoding: "utf-8",
         env: process.env,
+        timeout: 5000,
+        maxBuffer: 1024 * 1024,
       })
       if (probe.status === 0) {
         const parsed = JSON.parse(probe.stdout) as { templateRoot?: string; ok?: boolean }
