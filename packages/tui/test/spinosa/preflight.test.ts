@@ -101,7 +101,7 @@ describe("launch preflight", () => {
     })
 
     expect(await runLaunchPreflight(deps)).toBe("exit")
-    expect(output).toContain("⚠ Could not update missing: workspace is missing")
+    expect(output.join("\n")).toContain("Could not update missing: workspace is missing")
     expect(output.at(-1)).toBe(LAUNCH_STATUS_UPGRADE_DONE)
   })
 })

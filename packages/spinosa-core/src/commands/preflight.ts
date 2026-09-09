@@ -216,7 +216,7 @@ export async function offerWorkspaceUpgrades(
   deps: WorkspaceUpgradeOfferDeps,
 ): Promise<void> {
   if (workspaces.length === 0) return
-  if (!(await deps.confirm(`Upgrade ${workspaces.length} outdated workspace(s) now?`))) return
+  if (!(await deps.confirm(`\x1b[36m?\x1b[0m Upgrade ${workspaces.length} outdated workspace(s) now?`))) return
 
   const frameworkRoot = deps.frameworkRoot(frameworkVersion)
   let failed = 0
@@ -224,18 +224,18 @@ export async function offerWorkspaceUpgrades(
     try {
       const result = await deps.updateWorkspace(workspace, frameworkRoot)
       if (result.success && result.presence) {
-        deps.out(`↷ Skipped ${path.basename(workspace) || workspace}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
-      } else if (result.success) deps.out(`✓ Updated ${path.basename(workspace) || workspace}`)
+        deps.out(`  \x1b[36m●\x1b[0m Skipped ${path.basename(workspace) || workspace}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
+      } else if (result.success) deps.out(`  \x1b[32m●\x1b[0m Updated ${path.basename(workspace) || workspace}`)
       else {
         failed++
-        deps.out(`⚠ Could not update ${path.basename(workspace) || workspace}`)
+        deps.out(`  \x1b[31m●\x1b[0m Could not update ${path.basename(workspace) || workspace}`)
       }
     } catch (error) {
       failed++
-      deps.out(`⚠ Could not update ${path.basename(workspace) || workspace}: ${error instanceof Error ? error.message : String(error)}`)
+      deps.out(`  \x1b[31m●\x1b[0m Could not update ${path.basename(workspace) || workspace}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (failed > 0) deps.out(`⚠ ${failed} workspace update(s) failed; run 'spinosa update <workspace>' to retry.`)
+  if (failed > 0) deps.out(`  \x1b[31m●\x1b[0m ${failed} workspace update(s) failed; run 'spinosa update <workspace>' to retry.`)
 }
 
 function formatStalePaths(freshness: TemplatePackFreshness): string {
@@ -295,11 +295,11 @@ export async function offerStaleTemplatePackUpdates(
 
   deps.out(`Workspace template pack update available for ${stale.length} workspace(s):`)
   for (const entry of stale) {
-    deps.out(`  • ${entry.name} — ${formatStalePaths(entry.freshness)}`)
+    deps.out(`  \x1b[36m●\x1b[0m ${entry.name} — ${formatStalePaths(entry.freshness)}`)
   }
   deps.out("  (updates protocol files, AGENTS.md, and agent skills)")
 
-  if (!(await deps.confirm(`Update ${stale.length} workspace template pack(s) now?`, true))) {
+  if (!(await deps.confirm(`\x1b[36m?\x1b[0m Update ${stale.length} workspace template pack(s) now?`, true))) {
     deps.out("Continuing without updating — you can run Update workspace from Home later.")
     return
   }
@@ -311,12 +311,12 @@ export async function offerStaleTemplatePackUpdates(
       // replace_if_unmodified managed files so probes cannot stay forever-stale.
       const result = await deps.updateWorkspace(entry.path, frameworkRoot, { force: true })
       if (result.success && result.presence) {
-        deps.out(`↷ Skipped ${entry.name}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
+        deps.out(`  \x1b[36m●\x1b[0m Skipped ${entry.name}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
         continue
       }
       if (!result.success) {
         failed++
-        deps.out(`⚠ Could not update ${entry.name}${result.error ? `: ${result.error}` : ""}`)
+        deps.out(`  \x1b[31m●\x1b[0m Could not update ${entry.name}${result.error ? `: ${result.error}` : ""}`)
         continue
       }
 
@@ -324,21 +324,21 @@ export async function offerStaleTemplatePackUpdates(
       if (after.refreshRecommended) {
         failed++
         const detail = formatStalePaths(after)
-        deps.out(`⚠ ${entry.name} still stale after update${detail ? `: ${detail}` : ""}`)
+        deps.out(`  \x1b[31m●\x1b[0m ${entry.name} still stale after update${detail ? `: ${detail}` : ""}`)
         spinosaLogInfo(
           "preflight",
           `template pack still stale after forced update: ${entry.path} (${detail || "version behind"})`,
         )
       } else {
-        deps.out(`✓ Updated ${entry.name} — template pack current`)
+        deps.out(`  \x1b[32m●\x1b[0m Updated ${entry.name} — template pack current`)
         spinosaLogInfo("preflight", `template pack refreshed: ${entry.path}`)
       }
     } catch (error) {
       failed++
-      deps.out(`⚠ Could not update ${entry.name}: ${error instanceof Error ? error.message : String(error)}`)
+      deps.out(`  \x1b[31m●\x1b[0m Could not update ${entry.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (failed > 0) deps.out(`⚠ ${failed} workspace update(s) failed; run 'spinosa update <workspace> --force' to retry.`)
+  if (failed > 0) deps.out(`  \x1b[31m●\x1b[0m ${failed} workspace update(s) failed; run 'spinosa update <workspace> --force' to retry.`)
 }
 
 /**
