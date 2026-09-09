@@ -77,6 +77,7 @@ const AgentCreateCommand = effectCmd({
       const isFullyNonInteractive = cliPath && cliDescription && cliMode && perms !== undefined
 
       if (!isFullyNonInteractive) {
+        UI.println(UI.logo(" "))
         UI.empty()
         prompts.intro("Create agent")
       }

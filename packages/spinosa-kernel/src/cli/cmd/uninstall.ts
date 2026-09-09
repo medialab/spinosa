@@ -33,7 +33,6 @@ export const UninstallCommand = {
       .option("keep-data", { alias: "d", type: "boolean", describe: "keep XDG session data and state", default: false })
       .option("dry-run", { type: "boolean", describe: "show what would be removed", default: false }),
   handler: async (args: UninstallArgs) => {
-    UI.empty()
     UI.println(UI.logo(" "))
     UI.empty()
     prompts.intro("Uninstall Spinosa")
@@ -74,7 +73,7 @@ export const UninstallCommand = {
     )
 
     for (const target of present) {
-      if (target.exists) prompts.log.info(`${target.keep ? "○ keeping" : "✓ removing"} ${target.label}: ${target.path}`)
+      if (target.exists) prompts.log.info(`${target.keep ? "keeping" : "removing"} ${target.label}: ${target.path}`)
     }
 
     if (!present.some((t) => t.exists && !t.keep)) {

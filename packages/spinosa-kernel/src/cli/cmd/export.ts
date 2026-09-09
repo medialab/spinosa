@@ -243,6 +243,7 @@ const run = Effect.fn("Cli.export.body")(function* (args: { sessionID?: string; 
   process.stderr.write(`Exporting session: ${sessionID ?? "latest"}\n`)
 
   if (!sessionID) {
+    UI.println(UI.logo(" "))
     UI.empty()
     prompts.intro("Export session", { output: process.stderr })
 

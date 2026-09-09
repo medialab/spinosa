@@ -205,6 +205,7 @@ export const PluginCommand = effectCmd({
       return
     }
 
+    UI.println(UI.logo(" "))
     UI.empty()
     intro(`Install plugin ${mod}`)
 

@@ -59,7 +59,6 @@ export const UpgradeCommand = {
     allowDowngrade?: boolean
     check?: boolean
   }) => {
-    UI.empty()
     UI.println(UI.logo(" "))
     UI.empty()
     prompts.intro("Spinosa updates")
@@ -68,7 +67,7 @@ export const UpgradeCommand = {
     prompts.log.info(`Current: v${currentVersion}`)
 
     if (args.check) {
-      prompts.log.step("Checking for updates...")
+      prompts.log.info("Checking for updates…")
     }
 
     const result = await upgradeFramework({
@@ -78,7 +77,13 @@ export const UpgradeCommand = {
       reinstall: args.reinstall,
       allowDowngrade: args.allowDowngrade,
       check: args.check,
-      onPhase: (_phase, detail) => prompts.log.step(detail),
+      onPhase: (_phase, detail) => prompts.log.info(detail),
+      confirm: async (question) => {
+        if (args.yes) return true
+        const answer = await prompts.confirm({ message: question, initialValue: true })
+        if (prompts.isCancel(answer)) return false
+        return answer === true
+      },
     })
 
     if (args.check) {

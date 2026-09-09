@@ -28,6 +28,7 @@ export interface UpgradeOptions {
   check?: boolean
   onPhase?: (phase: string, detail: string) => void
   suppressInstallOutput?: boolean
+  confirm?: (question: string) => Promise<boolean>
 }
 
 export interface UpgradeResult {
@@ -299,19 +300,38 @@ export async function upgradeFramework(
     options.onPhase?.("release_notes", "Fetching release notes")
     const releaseData = await fetchReleaseNotes(resolvedVersion)
     if (releaseData) {
-      options.onPhase?.("release_notes", `Release: ${releaseData}`)
+      const [tag, published, body] = releaseData.split("|")
+      const date = (published ?? "").split(" ")[0] ?? published
+      options.onPhase?.("release_notes", `Release: ${tag || `v${resolvedVersion}`} — ${date || "—"}`)
+      if (body) {
+        const compare = body.match(/https:\/\/github\.com\/medialab\/spinosa\/compare\/[^\s)]+/)?.[0]
+        if (compare) options.onPhase?.("release_notes", compare)
+        else {
+          const firstLine = body
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.length > 0 && !l.startsWith("|"))
+          if (firstLine) options.onPhase?.("release_notes", firstLine.slice(0, 120))
+        }
+      }
     } else {
       options.onPhase?.("release_notes", "Could not fetch release notes")
     }
     options.onPhase?.("confirm", "Awaiting confirmation")
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    const answer = await new Promise<string>((resolve) => {
-      rl.question(`Upgrade to v${resolvedVersion}? [Y/n] `, (answer) => {
-        rl.close()
-        resolve(answer.trim().toLowerCase())
+    let confirmed: boolean
+    if (options.confirm) {
+      confirmed = await options.confirm(`Upgrade to v${resolvedVersion}?`)
+    } else {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`Upgrade to v${resolvedVersion}? [Y/n] `, (answer) => {
+          rl.close()
+          resolve(answer.trim().toLowerCase())
+        })
       })
-    })
-    if (answer === "n" || answer === "no") {
+      confirmed = !(answer === "n" || answer === "no")
+    }
+    if (!confirmed) {
       options.onPhase?.("confirm", "Upgrade cancelled")
       return {
         success: false,

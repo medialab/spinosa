@@ -19,7 +19,6 @@ import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { FormatError } from "./cli/error"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
-import { McpCommand } from "./cli/cmd/mcp"
 import { AttachCommand } from "./cli/cmd/attach"
 import { TuiThreadCommand } from "./cli/cmd/tui"
 import { EOL } from "os"
@@ -141,7 +140,6 @@ const cli = yargs(args)
   .command(StatsCommand)
   .command(VersionCommand)
   // Keep but hide from main help (still callable via `spinosa <cmd> --help`): advanced/debug
-  .command({ ...McpCommand, describe: false } as any)
   .command({ ...AttachCommand, describe: false } as any)
   .command({ ...RunCommand, describe: false } as any)
   .command({ ...DebugCommand, describe: false } as any)
