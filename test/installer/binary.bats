@@ -390,6 +390,7 @@ EOF
 }
 
 @test "run_staged_binary_checks passes when version templates and doctor succeed" {
+  VERBOSE=1
   VERSION="1.0.3-beta.9"
   local fake="$BATS_TEST_TMPDIR/fake-spinosa-ok"
   cat >"$fake" <<'EOF'

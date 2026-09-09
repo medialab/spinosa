@@ -143,6 +143,10 @@ MIN_DAYS=""
 YES=0
 PREFIX_MODE=0
 FROM_UPGRADE=0
+VERBOSE="${VERBOSE:-0}"
+if [[ "${SPINOSA_VERBOSE:-0}" == "1" ]]; then
+  VERBOSE=1
+fi
 DEFAULT_SPINOSA_HOME="$HOME/.spinosa"
 SPINOSA_HOME="${SPINOSA_HOME:-$DEFAULT_SPINOSA_HOME}"
 SPINOSA_METADATA_DIR="${SPINOSA_HOME}/metadata"
@@ -177,10 +181,13 @@ else
 fi
 
 info()  { spinosa_log INFO "$1"; printf '  %s %s\n' "${C}●${RESET}" "$1"; }
-ok()    { spinosa_log INFO "$1"; printf '  %s %s %s\n' "${C}●${RESET}" "${G}✓${RESET}" "$1" >&2; }
+vinfo() { [[ "$VERBOSE" == "1" ]] || return 0; info "$1"; }
+ok()    { spinosa_log INFO "$1"; printf '  %s %s\n' "${G}●${RESET}" "$1" >&2; }
+vok()   { [[ "$VERBOSE" == "1" ]] || return 0; ok "$1"; }
 warn()  { spinosa_log WARN "$1"; printf '  %s %s\n' "${Y}●${RESET}" "$1" >&2; }
 note()  { spinosa_log INFO "$1"; printf '    %s\n' "$1"; }
-die()   { spinosa_log ERROR "$1"; printf '\n  %s %s\n\n' "${R}✗${RESET}" "$1" >&2; exit 1; }
+vnote() { [[ "$VERBOSE" == "1" ]] || return 0; note "$1"; }
+die()   { spinosa_log ERROR "$1"; printf '\n  %s %s\n\n' "${R}●${RESET}" "$1" >&2; exit 1; }
 divider() { printf '\n'; }
 
 intro() {
@@ -207,9 +214,9 @@ section() {
   local title="$1"
   spinosa_log INFO "section=${title}"
   if [ -t 2 ]; then
-    printf '\n  %s %s%s%s\n' "${DIM}○${RESET}" "${BOLD}${C}" "$title" "${RESET}"
+    printf '\n  %s %s%s%s\n' "${C}→${RESET}" "${BOLD}${C}" "$title" "${RESET}"
   else
-    printf '\n  %s\n' "$title"
+    printf '\n  → %s\n' "$title"
   fi
 }
 
@@ -442,6 +449,7 @@ while [ $# -gt 0 ]; do
       SPINOSA_BIN_DIR="$2"; shift 2 ;;
     --dev)        die "--dev is not implemented; clone the repository and follow DEVELOPMENT.md" ;;
     --from-upgrade) FROM_UPGRADE=1; shift ;;
+    --verbose)    VERBOSE=1; shift ;;
     --yes|-y)     YES=1; shift ;;
     --)           shift; break ;;
     --help|-h)
@@ -456,6 +464,7 @@ while [ $# -gt 0 ]; do
       echo "  --verify-only     Verify installed binary, do not install"
       echo "  --yes             Skip prompts; auto-upgrade and auto-repair if needed"
       echo "  --no-launch       Compatibility flag; the installer never auto-launches"
+      echo "  --verbose         Show detailed progress (debug)"
       echo ""
       echo "Security:"
       echo "  --min-days N      Reject releases newer than N days old"
@@ -559,7 +568,7 @@ detect_platform() {
     || die "Unsupported platform: $(uname -s) $(uname -m) — Spinosa supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64/x64 only. See https://github.com/medialab/spinosa#requirements"
   PLATFORM="$mapped"
   ASSET_NAME="spinosa-${PLATFORM}"
-  info "Platform: ${PLATFORM}"
+  vinfo "Platform: ${PLATFORM}"
 }
 
 release_asset_base() {
@@ -967,7 +976,7 @@ verify_asset_checksum() {
   local expected_hash
   expected_hash="$(lookup_asset_checksum "$filename" "$checksums_file")"
   if verify_checksum "$file" "$expected_hash"; then
-    ok "${label} checksum verified"
+    vok "${label} checksum verified"
   else
     die "${label} checksum mismatch — aborting for safety"
   fi
@@ -1312,7 +1321,7 @@ check_release_age() {
     die "Release v${version} is only ${days_old} day(s) old. Minimum required: ${min_days} day(s). Wait or lower --min-days."
   fi
 
-  ok "Release age verified: ${days_old} day(s) old (minimum: ${min_days})"
+  vok "Release age verified: ${days_old} day(s) old (minimum: ${min_days})"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1343,7 +1352,7 @@ prompt_upgrade() {
       info "Skipping reinstall prompt (--yes)."
       return 1
     fi
-    printf '  %s %s [y/N]: ' "${C}○${RESET}" "Reinstall?" >&2
+    printf '  %s %s [y/N]: ' "${C}?${RESET}" "Reinstall?" >&2
     local reply
     read_tty_or_die reply
     case "$reply" in
@@ -1562,7 +1571,7 @@ run_staged_binary_checks() {
   if [ "$ver" != "$VERSION" ]; then
     die "Staged binary version mismatch: got ${ver}, expected ${VERSION}"
   fi
-  ok "Staged binary reports version ${ver}"
+  vok "Staged binary reports version ${ver}"
 
   local pack
   pack="$(extract_template_pack_id "$out" || true)"
@@ -1577,10 +1586,10 @@ run_staged_binary_checks() {
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-gate.XXXXXX")"
   if "$binary" internal template ensure --json >"$gate_tmp" 2>&1; then
     spinosa_log INFO "template ensure output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
-    ok "Template ensure succeeded"
+    vok "Template ensure succeeded"
     if "$binary" internal template verify --json >"$gate_tmp" 2>&1; then
       spinosa_log INFO "template verify output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
-      ok "Template verify succeeded"
+      vok "Template verify succeeded"
     else
       spinosa_log ERROR "template verify failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
       rm -f "$gate_tmp"
@@ -1595,7 +1604,7 @@ run_staged_binary_checks() {
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-doctor.XXXXXX")"
   if "$binary" doctor >"$gate_tmp" 2>&1; then
     spinosa_log INFO "doctor output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
-    ok "Doctor passed"
+    vok "Doctor passed"
   else
     spinosa_log ERROR "doctor failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
     rm -f "$gate_tmp"
@@ -1689,7 +1698,7 @@ activate_binary() {
   fi
   BINARY_STAGED=""
   chmod +x "$active"
-  ok "Activated binary at ${active}"
+  vok "Activated binary at ${active}"
 }
 
 verify_active_binary() {
@@ -1712,7 +1721,7 @@ verify_active_binary() {
     restore_binary_backup_if_needed
     die "Active binary version mismatch after activation (got ${ver}). See $(spinosa_log_file)"
   fi
-  ok "Active binary verified (v${ver})"
+  vok "Active binary verified (v${ver})"
 }
 
 install_shims() {
@@ -1751,7 +1760,7 @@ SHIM_EOF
   chmod +x "$shim_tmp"
   mv "$shim_tmp" "$shim"
   SHIM_STAGE_FILE=""
-  ok "Created wrapper script: ${shim}"
+  vok "Created wrapper script: ${shim}"
 }
 
 write_spinosa_env_file() {
@@ -1826,11 +1835,11 @@ activate_spinosa_path_for_session() {
   if [[ -f "${SPINOSA_HOME}/env.sh" ]]; then
     # shellcheck source=/dev/null
     . "${SPINOSA_HOME}/env.sh"
-    ok "Activated Spinosa PATH from ${SPINOSA_HOME}/env.sh"
+    vok "Activated Spinosa PATH from ${SPINOSA_HOME}/env.sh"
   else
     export SPINOSA_BIN_DIR="${SPINOSA_BIN_DIR}"
     export PATH="${SPINOSA_BIN_DIR}:$PATH"
-    ok "Activated Spinosa PATH for this install session"
+    vok "Activated Spinosa PATH for this install session"
   fi
   hash -r 2>/dev/null || true
 }
@@ -1867,7 +1876,7 @@ setup_shell_path() {
   for candidate in "${candidates[@]}"; do
     if spinosa_path_block_present "$candidate" "$path_line"; then
       config_file="$candidate"
-      ok "Spinosa PATH already configured in ${candidate}"
+      vok "Spinosa PATH already configured in ${candidate}"
       break
     fi
   done
@@ -1885,7 +1894,7 @@ setup_shell_path() {
     config_file="$default_config"
     mkdir -p "$(dirname "$config_file")"
     : > "$config_file"
-    ok "Created shell config: ${config_file}"
+    vok "Created shell config: ${config_file}"
   fi
 
   if [[ -w "$config_file" ]]; then
@@ -1894,7 +1903,7 @@ setup_shell_path() {
         printf '\n# Spinosa\n'
         printf '%s' "$path_line"
       } >> "$config_file"
-      ok "Added ${SPINOSA_BIN_DIR} to ${config_file}"
+      vok "Added ${SPINOSA_BIN_DIR} to ${config_file}"
       wrote=1
     fi
     SPINOSA_PATH_CONFIG_FILE="$config_file"
@@ -1942,7 +1951,7 @@ print_path_instructions() {
 
   if "${SPINOSA_BIN_DIR}/spinosa" version >/dev/null 2>&1 \
     || "${SPINOSA_HOME}/bin/spinosa" version >/dev/null 2>&1; then
-    ok "Command 'spinosa' is ready in this install session"
+    vok "Command 'spinosa' is ready in this install session"
   elif command -v spinosa >/dev/null 2>&1; then
     warn "Command 'spinosa' is on PATH but not runnable — run: ${reload_hint}"
   else
@@ -1955,7 +1964,7 @@ print_path_instructions() {
     note "In your terminal, run: ${reload_hint}"
     note "Or open a new terminal window"
   elif [[ -n "${SPINOSA_PATH_CONFIG_FILE:-}" || -f "$env_file" ]]; then
-    note "In new terminals: ${reload_hint}"
+    vnote "In new terminals: ${reload_hint}"
   else
     note "If needed: export PATH=\"${fallback_bin}:\$PATH\""
   fi
@@ -2026,7 +2035,7 @@ main() {
     printf 'argv=%q\n' "$0 $*"
     printf 'version=%s home=%s bin=%s\n' "${VERSION:-}" "${SPINOSA_HOME:-}" "${SPINOSA_BIN_DIR:-}"
   } >> "$early_log" 2>/dev/null || true
-  printf '  %s %s\n' "${C}●${RESET}" "install attempt log: $early_log" >&2
+  vinfo "install attempt log: $early_log"
 
   validate_install_paths
   preflight_tools
@@ -2099,38 +2108,44 @@ main() {
   check_release_age "$VERSION" "$MIN_DAYS"
 
   info "Version: ${VERSION}"
-  info "Install root: ${SPINOSA_HOME}"
-  info "Bin directory: ${SPINOSA_BIN_DIR}"
-  info "Asset: ${ASSET_NAME}"
+  vinfo "Install root: ${SPINOSA_HOME}"
+  vinfo "Bin directory: ${SPINOSA_BIN_DIR}"
+  vinfo "Asset: ${ASSET_NAME}"
   echo ""
 
   should_install "$VERSION" || { rm -rf "$lockdir"; trap - EXIT INT TERM HUP; return 0; }
   mkdir -p "${SPINOSA_HOME}/bin" "$SPINOSA_STAGING_DIR" "$SPINOSA_BIN_DIR"
-  run_timed_step "Check disk space" 15 check_download_disk_space \
-    || warn "Disk space check timed out or failed — install will continue, but ensure ~100MB free; see $(spinosa_log_file)"
 
-  section "Download & verify"
+  [[ "$VERBOSE" == "1" ]] && section "Download & verify"
 
   checksums_file="${SPINOSA_STAGING_DIR}/checksums.txt"
   staged_binary="${SPINOSA_STAGING_DIR}/${ASSET_NAME}"
   BINARY_STAGED="$staged_binary"
   rm -f "$checksums_file" "$staged_binary"
 
-  run_timed_step "Download checksums" 60 \
-    download "$checksums_url" "$checksums_file" \
-    || die "Failed to download checksums.txt from ${checksums_url}"
+  if [[ "$VERBOSE" == "1" ]]; then
+    run_timed_step "Download checksums" 60 \
+      download "$checksums_url" "$checksums_file" \
+      || die "Failed to download checksums.txt from ${checksums_url}"
+  else
+    download "$checksums_url" "$checksums_file" 2>/dev/null || die "Failed to download checksums.txt from ${checksums_url}"
+  fi
   run_timed_step "Download ${ASSET_NAME}" "$DEFAULT_DOWNLOAD_TIMEOUT_SECONDS" \
     download "$asset_url" "$staged_binary" \
     || die "Failed to download ${ASSET_NAME}"
   verify_asset_checksum "$staged_binary" "$ASSET_NAME" "$checksums_file" "${ASSET_NAME}"
   chmod +x "$staged_binary"
 
-  section "Stage checks"
-  run_timed_step "Verify staged binary" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
-    run_staged_binary_checks "$staged_binary" \
-    || die "Staged binary failed verification"
+  if [[ "$VERBOSE" == "1" ]]; then
+    section "Stage checks"
+    run_timed_step "Verify staged binary" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
+      run_staged_binary_checks "$staged_binary" \
+      || die "Staged binary failed verification"
+  else
+    run_staged_binary_checks "$staged_binary" 2>/dev/null || die "Staged binary failed verification"
+  fi
 
-  section "Activate"
+  [[ "$VERBOSE" == "1" ]] && section "Activate"
   activate_binary "$staged_binary"
   verify_active_binary || {
     restore_binary_backup_if_needed
@@ -2142,8 +2157,12 @@ main() {
 
   # Commit metadata only after successful activation + shim.
   write_install_metadata
-  run_timed_step "Migrate workspace launchers" 30 migrate_workspace_launchers \
-    || warn "Workspace launcher migration timed out or failed — some workspaces may need manual repair; see $(spinosa_log_file)"
+  if [[ "$VERBOSE" == "1" ]]; then
+    run_timed_step "Migrate workspace launchers" 30 migrate_workspace_launchers \
+      || warn "Workspace launcher migration timed out or failed — some workspaces may need manual repair; see $(spinosa_log_file)"
+  else
+    migrate_workspace_launchers 2>/dev/null || true
+  fi
 
   INSTALL_COMPLETED=1
   ACTIVATION_STARTED=0
@@ -2155,8 +2174,8 @@ main() {
   rm -f "${SPINOSA_EARLY_LOG:-}" 2>/dev/null || true
 
   if legacy_source_runtime_present; then
-    note "Legacy source runtime remains under ${SPINOSA_HOME}/versions/ (not deleted)."
-    note "Distribution is now binary; dormant source trees can be removed manually later."
+    vnote "Legacy source runtime remains under ${SPINOSA_HOME}/versions/ (not deleted)."
+    vnote "Distribution is now binary; dormant source trees can be removed manually later."
   fi
 
   rm -rf "$lockdir"
@@ -2164,9 +2183,13 @@ main() {
   trap - EXIT INT TERM HUP
 
   if [ "$PREFIX_MODE" -eq 0 ]; then
-    run_timed_step "Configure shell PATH" 15 setup_shell_path \
-      || warn "Shell PATH configuration timed out or failed — add ${SPINOSA_BIN_DIR} to PATH manually; see $(spinosa_log_file)"
-    activate_spinosa_path_for_session
+    if [[ "$VERBOSE" == "1" ]]; then
+      run_timed_step "Configure shell PATH" 15 setup_shell_path \
+        || warn "Shell PATH configuration timed out or failed — add ${SPINOSA_BIN_DIR} to PATH manually; see $(spinosa_log_file)"
+    else
+      setup_shell_path 2>/dev/null || true
+    fi
+    activate_spinosa_path_for_session 2>/dev/null || true
   fi
 
   echo ""
@@ -2178,7 +2201,7 @@ main() {
   fi
 
   spinosa_log INFO "install complete version=${VERSION} home=${SPINOSA_HOME} distribution=binary"
-  note "Install log: $(spinosa_log_file)"
+  info "Install log: $(spinosa_log_file)"
   if [ "$PREFIX_MODE" -eq 1 ]; then
     info "Run Spinosa from: ${SPINOSA_HOME}/bin/spinosa"
   else
