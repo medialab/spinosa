@@ -656,7 +656,10 @@ export function AddFiles() {
     job.start()
     const sharedProg = job.prog
     sharedProg.on((e) => {
-      if (e.relPath) setProcessingFile(e.relPath)
+      if (e.relPath && e.status === "processing") setProcessingFile(e.relPath)
+      else if (e.relPath && (e.status === "done" || e.status === "failed" || e.status === "error")) {
+        if (e.relPath === processingFile()) setProcessingFile("")
+      }
       if (e.status && e.relPath) {
         updateProgressFileStatus(e.relPath, e.status)
       }

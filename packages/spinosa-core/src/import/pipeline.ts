@@ -450,8 +450,12 @@ export async function processMarkitdownInProcess(
         onLog?.(`MarkItDown failed: ${f.rel} — ${errMsg}`)
         if (fileExt(f.src) === "pdf") {
           pdfOcrFallback.push(f)
-          // Status only — numerator advances once when OCR fallback finishes.
-          prog?.file("MarkItDown", processed, total, `${f.rel} → OCR fallback`, "processing")
+          // Do not emit a derived `rel → OCR fallback` progress entry — that
+          // creates a phantom `processing` row (leaked pending) because
+          // `applyImportProgressStatus` keys on exact `rel`. Fallback progress
+          // is reported via the subsequent `emitStart(f.rel)` in the OCR loop;
+          // the derived label is log-only.
+          onLog?.(`  ${f.rel} → OCR fallback queued`)
           await yieldToEL()
         } else {
           failed++
@@ -1282,11 +1286,19 @@ async function runMarkitdownViaChild(
 
   let stdoutCarry = ""
   let stderrBuf = ""
+  // Track rels that reached a terminal state via NDJSON progress so we can
+  // reconcile any lost final `done`/`failed` events caused by stdout truncation.
+  const terminalSeen = new Set<string>()
   const onProgress = (current: number, total: number, relPath: string, status?: string) => {
     const st =
       status === "queued" || status === "processing" || status === "done" || status === "failed" || status === "error"
         ? status
         : undefined
+    if (st === "done" || st === "failed" || st === "error") {
+      // Key matches applyImportProgressStatus stripping (arrow + page suffixes).
+      const key = String(relPath).replace(/\s+→\s+.*$/, "").trim().replace(/\s+\(.*\)$/, "").trim()
+      if (key) terminalSeen.add(key)
+    }
     prog?.file("MarkItDown", current, total, relPath, st)
   }
   child.stdout?.on("data", (chunk: Buffer) => {
@@ -1306,6 +1318,21 @@ async function runMarkitdownViaChild(
     disposeWorkerPayload(workerPayload.tempPath),
   )
   if (stdoutCarry.trim()) consumeMarkitdownWorkerNdjsonLine(stdoutCarry, state, { onLog, onProgress })
+  // Reconcile any files whose terminal progress was lost to truncation:
+  // emit a synthetic terminal event so TUI's `Files (… pending)` does not leak
+  // a stale `›` row (e.g. `survey-results.csv` stuck as processing).
+  if (!aborted) {
+    for (const f of files) {
+      const key = String(f.rel).replace(/\s+→\s+.*$/, "").trim().replace(/\s+\(.*\)$/, "").trim()
+      if (!key || terminalSeen.has(key)) continue
+      const exists = (() => {
+        try { return convertedOutputExists(f.dest) } catch { return false }
+      })()
+      const status = exists ? ("done" as const) : ("failed" as const)
+      // Use total as current so bar can reach 100% even when last event was lost.
+      onProgress(files.length, files.length, f.rel, status)
+    }
+  }
 
   try {
     child.unref()

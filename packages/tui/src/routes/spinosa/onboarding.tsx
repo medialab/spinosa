@@ -903,7 +903,13 @@ export function Onboarding() {
     job.start();
     const sharedProg = job.prog;
     sharedProg.on((e) => {
-      if (e.relPath) setProcessingFile(e.relPath);
+      if (e.relPath && e.status === "processing") setProcessingFile(e.relPath);
+      else if (e.relPath && (e.status === "done" || e.status === "failed" || e.status === "error")) {
+        // Clear stale processing label when file reaches terminal state;
+        // otherwise `fileName` fallback would keep a phantom `›` after phase ends
+        // (e.g. survey-results.csv) while OCR files remain queued.
+        if (e.relPath === processingFile()) setProcessingFile("");
+      }
       if (e.status && e.relPath) {
         updateProgressFileStatus(e.relPath, e.status);
       } else if (e.phase === "setup") {

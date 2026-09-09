@@ -562,6 +562,11 @@ export function ProgressBar(props: {
     if (props.files && props.files.length > 0) {
       const active = props.files.find((f) => f.status === "processing")
       if (active) return displayImportFilePath(active.rel)
+      // No active row in the file queue — don't fall back to stale
+      // `fileName` (last emitted rel, often already done). That would leave
+      // a phantom `›` (e.g. survey-results.csv) after MarkItDown finishes but
+      // OCR files remain queued (`pending` → `complete()` stays false).
+      return ""
     }
     return props.fileName ? displayImportFilePath(props.fileName) : ""
   })

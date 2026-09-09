@@ -189,8 +189,10 @@ export function applyImportProgressStatus(
   status: FileProgressStatus,
 ): ImportFileProgressItem[] {
   if (!relPath) return items
-  // Strip page suffixes like "file.pdf (page 2)" for matching.
-  const key = relPath.replace(/\s+\(.*\)$/, "").trim()
+  // Strip derived suffixes like "file.pdf → OCR fallback" and page suffixes
+  // like "file.pdf (page 2)" so phantom progress rows map to the original file
+  // instead of leaking a new pending entry.
+  const key = relPath.replace(/\s+→\s+.*$/, "").trim().replace(/\s+\(.*\)$/, "").trim()
   // Exact rel match only. Suffix/substring matching conflates distinct rows
   // (e.g. `apple/notes.txt` would also "end with" `pineapple/notes.txt`) and
   // can paint the wrong file done/failed.
