@@ -139,7 +139,7 @@ export function OnboardingView(props: OnboardingViewProps) {
             {step() === "tools" ? " — checking your document tools" : ""}
             {step() === "scan" ? " — scanning your source" : ""}
             {step() === "imports" ? " — selecting file types to import" : ""}
-            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying files into raw/" : step() === "markitdown" ? " — converting documents with MarkItDown" : step() === "ocr" ? " — running OCR on images and PDFs" : step() === "verification" ? " — verifying the import" : ""}
+            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting office docs & text PDFs via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs (images → copy, pending network)" : step() === "verification" ? " — verifying the import" : ""}
             {step() === "provider" ? " — choosing your LLM provider" : ""}
             {step() === "startup" ? " — preparing your startup" : ""}
             {step() === "done" ? " — your workspace is ready" : ""}

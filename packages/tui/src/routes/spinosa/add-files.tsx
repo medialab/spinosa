@@ -705,7 +705,7 @@ export function AddFiles() {
           beforePhase: async (id, count) => {
             if (id === "direct") {
               setStep("direct")
-              setProcessingStatus(`Direct copy — ${count} files`)
+              setProcessingStatus(`Copying text-based files to raw — ${count} files`)
               totalDirect += count
               await delay(500)
               return true
@@ -716,7 +716,7 @@ export function AddFiles() {
               setBusy(true)
               if (shouldAbort()) return false
               setStep("markitdown")
-              setProcessingStatus("MarkItDown conversion...")
+              setProcessingStatus("Converting office docs & text PDFs via MarkItDown...")
               totalMd += count
               await delay(500)
               return true
@@ -726,7 +726,7 @@ export function AddFiles() {
             setBusy(true)
             if (shouldAbort()) return false
             setStep("ocr")
-            setProcessingStatus("OCR...")
+            setProcessingStatus("Running Tesseract on scanned PDFs (images → copy, pending network)...")
             totalOcr += count
             await delay(500)
             return true
@@ -735,20 +735,20 @@ export function AddFiles() {
             if (result.renamed > 0) totalRenamed += result.renamed
             if (id === "direct") {
               dirConverted += result.converted
-              setProcessingStatus(`Direct copy complete — ${result.converted} files`)
+              setProcessingStatus(`Text-based files copied — ${result.converted} files`)
               await delay(500)
             }
             if (id === "markitdown") {
               mdConverted += result.converted
-              setProcessingStatus(`MarkItDown complete — ${result.converted} files`)
+              setProcessingStatus(`Office docs & text PDFs converted — ${result.converted} files`)
               await delay(500)
             }
             if (id === "ocr") {
               ocrConverted += result.converted
               setProcessingStatus(
                 result.failed > 0
-                  ? `OCR complete — ${result.converted} ok, ${result.failed} failed`
-                  : `OCR complete — ${result.converted} files`,
+                  ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed (images kept as copy)`
+                  : `Scanned PDFs via Tesseract — ${result.converted} files (images kept as copy)`,
               )
               // Dwell so failure-first 100% results are readable before done.
               await delay(1500)

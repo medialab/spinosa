@@ -1013,7 +1013,7 @@ export function Onboarding() {
         beforePhase: async (id, count) => {
           if (id === "direct") {
             setStep("direct");
-            setProcessingStatus("Preparing direct copy...");
+            setProcessingStatus(`Copying text-based files to raw — ${count} files`);
             await delay(500);
             return true;
           }
@@ -1023,7 +1023,7 @@ export function Onboarding() {
             if (shouldAbort()) return false;
             setBusy(true);
             setStep("markitdown");
-            setProcessingStatus("Preparing MarkItDown conversion...");
+            setProcessingStatus(`Converting office docs & text PDFs via MarkItDown — ${count} files`);
             await delay(500);
             return true;
           }
@@ -1032,24 +1032,24 @@ export function Onboarding() {
           if (shouldAbort()) return false;
           setBusy(true);
           setStep("ocr");
-          setProcessingStatus("Preparing OCR...");
+          setProcessingStatus(`Running Tesseract on scanned PDFs — ${count} files (images → copy, pending network)`);
           await delay(500);
           return true;
         },
         afterPhase: async (id, result) => {
           if (id === "direct") {
-            setProcessingStatus(`Direct copy complete — ${result.converted} files`);
+            setProcessingStatus(`Text-based files copied — ${result.converted} files`);
             await delay(500);
           }
           if (id === "markitdown") {
-            setProcessingStatus(`MarkItDown complete — ${result.converted} files`);
+            setProcessingStatus(`Office docs & text PDFs converted — ${result.converted} files`);
             await delay(500);
           }
           if (id === "ocr") {
             setProcessingStatus(
               result.failed > 0
-                ? `OCR complete — ${result.converted} ok, ${result.failed} failed`
-                : `OCR complete — ${totalOcr} files`,
+                ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed (images kept as copy)`
+                : `Scanned PDFs via Tesseract — ${result.converted} files (images kept as copy)`,
             );
             // Dwell so failure-first 100% results are readable before verify.
             await delay(1000);
