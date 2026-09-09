@@ -87,6 +87,7 @@ export type OnboardingViewProps = {
   continueFromVision: () => void
   visionError: Accessor<string | undefined>
   onChangeVisionModel: () => void
+  selectedVisionLabel: Accessor<string>
   waitingForGate: Accessor<boolean>
   gateLabel: Accessor<string>
   gateAction: Accessor<() => void>

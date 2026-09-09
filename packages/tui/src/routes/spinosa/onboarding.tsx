@@ -2024,11 +2024,20 @@ export function Onboarding() {
     continueFromVision,
     visionError,
     onChangeVisionModel: () => {
-      // Go back to vision picker — same as Back but from markitdown step
-      logAction("change-vision", `from ${step()} to vision (provider error)`)
+      logAction("change-vision", `from ${step()} to vision (provider error) — will use new model for next image`)
+      // Abort current markitdown so next image uses new model (remaining files re-tried with new vision)
+      stopActiveWork()
       setVisionError(undefined)
       setStep("vision")
     },
+    selectedVisionLabel: createMemo(() => {
+      const opts = ocrModelOptions()
+      const idx = selectedOcrModelIndex()
+      const picked = selectedOcrModel()
+      const opt = opts[idx]
+      if (picked.includes("/") && !opts.some(o => o.id === picked)) return picked
+      return opt?.label ?? picked
+    }),
     waitingForGate,
     gateLabel,
     gateAction,

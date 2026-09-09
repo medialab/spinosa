@@ -534,16 +534,25 @@ export async function processMarkitdownInProcess(
         if (isImage && vision) {
           let lastErr: unknown
           for (let attempt = 0; attempt < 3; attempt++) {
+            throwIfSpinosaCancelled(shouldAbort)
             try {
-              // 45s timeout per attempt so a hanging vision call doesn't block the whole import.
+              // 45s timeout + abort signal so “Stopping process” exits immediately (not after 45s)
+              const abortSignal = hooks?.signal
+              const abortPromise = new Promise<never>((_, rej) => {
+                if (shouldAbort?.()) rej(new SpinosaCancellationError("MarkItDown vision cancelled"))
+                if (abortSignal?.aborted) rej(new SpinosaCancellationError("MarkItDown vision cancelled"))
+                abortSignal?.addEventListener("abort", () => rej(new SpinosaCancellationError("MarkItDown vision cancelled")), { once: true })
+              })
               const withTimeout = Promise.race([
                 callWithVision(),
                 new Promise<never>((_, rej) => setTimeout(() => rej(new Error("vision timeout after 45s")), 45000)),
+                abortPromise,
               ])
               result = await withTimeout
               lastErr = undefined
               break
             } catch (e) {
+              if (isSpinosaCancellationError(e)) throw e
               lastErr = e
               const msg = e instanceof Error ? e.message : String(e)
               if (isAuthError(msg) || !isRetryableVisionError(msg) || attempt === 2) throw e
@@ -555,6 +564,7 @@ export async function processMarkitdownInProcess(
           }
           if (!result && lastErr) throw lastErr
         } else {
+          throwIfSpinosaCancelled(shouldAbort)
           result = await callWithVision()
         }
         throwIfSpinosaCancelled(shouldAbort)
