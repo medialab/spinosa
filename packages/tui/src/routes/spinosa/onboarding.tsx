@@ -452,22 +452,22 @@ export function Onboarding() {
     return vision.slice(0, 6)
   })
   const ocrModelOptions = createMemo(() => {
-    const base = [...OCR_MODEL_OPTIONS]
+    const base = [...OCR_MODEL_OPTIONS] as OcrModelOption[]
     const picked = selectedOcrModel()
-    if (picked.includes("/") && !base.some(o => o.id === picked)) {
+    if (picked.includes("/")) {
       const [prov, ...rest] = picked.split("/")
       const model = rest.join("/")
-      base.splice(1, 0, {
-        id: picked,
+      // Update the Vision button (index 1) to show the chosen model — keep 3 buttons total
+      base[1] = {
+        ...base[1]!,
         label: `Vision: ${picked} ✓`,
-        detail: `Selected vision model — ${prov}/${model} — will transcribe images via MarkItDown`,
+        detail: `Selected — ${prov}/${model} — click to re-choose vision model`,
+        id: "vision:provider-picker",
         kind: "vision",
         modelId: model,
         provider: prov,
         vision: true,
-        cost: "paid",
-        requiresKey: prov === "openrouter" ? "OPENROUTER_API_KEY" : prov === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${prov.toUpperCase()}_API_KEY`,
-      })
+      }
     }
     return base
   })
@@ -1081,19 +1081,17 @@ export function Onboarding() {
           } catch {}
           logAction("vision", `Vision ${id} key saved for ${providerId}`)
         }
-        // Update button to show selection — user then presses Continue (no auto-start)
+        // Update the Vision button to show selection — keep 3 buttons, user then presses Continue
         setSelectedOcrModel(id)
-        const opts = ocrModelOptions()
-        const idx = opts.findIndex(o => o.id === id)
-        if (idx >= 0) setSelectedOcrModelIndex(idx)
+        setSelectedOcrModelIndex(1)
         logAction("vision", `Picked vision model ${id} — press Continue`)
         dialog.clear()
       }} />)
       return
     }
-    // If user already picked a vision provider/model via picker, Continue should use that directly
+    // If vision button selected and a model already picked via picker, Continue uses that
     const alreadyPickedVision = selectedOcrModel().includes("/")
-    if (alreadyPickedVision) {
+    if (alreadyPickedVision && selectedOcrModelIndex() === 1) {
       const pickedId = selectedOcrModel()
       logAction("continue", `Vision → Processing (ocrModel=${pickedId})`)
       void activeWork.run(startProcessing)
@@ -2018,14 +2016,13 @@ export function Onboarding() {
     toolAllReady,
     handleToolAction,
     continueFromImports,
-    ocrModelOptions: ocrModelOptions(),
+    ocrModelOptions,
     selectedOcrModelIndex,
     setSelectedOcrModelIndex,
     continueFromVision,
     visionError,
     onChangeVisionModel: () => {
       logAction("change-vision", `from ${step()} to vision (provider error) — will use new model for next image`)
-      // Abort current markitdown so next image uses new model (remaining files re-tried with new vision)
       stopActiveWork()
       setVisionError(undefined)
       setStep("vision")
