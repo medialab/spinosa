@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { TextareaRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/solid";
 import {
@@ -289,23 +289,22 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
     let raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
     // Fallback to cached models-dev file when provider not branched (no models in sync) — load full catalog for that provider
     if (raw.length === 0) {
-      try {
-        const cachePaths = [
-          `${process.env.HOME}/.cache/spinosa/models.json`,
-          `${process.env.HOME}/.cache/opencode/models.json`,
-        ]
-        for (const cp of cachePaths) {
-          try {
-            const txt = require("node:fs").readFileSync(cp, "utf-8")
-            const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[]; attachment?: boolean; modalities?: { input?: string[] } }> }>
-            const prov = data[pid]
-            if (prov) {
-              raw = Object.entries(prov.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
-              break
-            }
-          } catch {}
-        }
-      } catch {}
+      const cachePaths = [
+        `${process.env.HOME}/.cache/spinosa/models.json`,
+        `${process.env.HOME}/.cache/opencode/models.json`,
+      ]
+      for (const cp of cachePaths) {
+        try {
+          if (!existsSync(cp)) continue
+          const txt = readFileSync(cp, "utf-8")
+          const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[]; attachment?: boolean; modalities?: { input?: string[] } }> }>
+          const prov = data[pid]
+          if (prov) {
+            raw = Object.entries(prov.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
+            break
+          }
+        } catch {}
+      }
     }
     if (raw.length === 0) {
       // Last resort static free vision for openrouter
