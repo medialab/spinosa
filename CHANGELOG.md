@@ -8,6 +8,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.11] — 2026-09-09
+
+### Changed
+
+- Linux TUI now degrades cleanly: `NO_COLOR`/`TERM=linux|dumb` skips palette detection (`context/theme.tsx:171`), `isUnicodeSupported()` gates `┃→|`, `░▒▓█→ .:+#`, `⬥◆⬩⬪→*o.+`, `▁▂…█` ascii wave (`ui/border.ts:15`, `spinner.ts:272`, `visualizer-graph-render.ts:190`, `add-files.tsx:163`), `manage-stale` becomes responsive via `manageStaleResponsiveCols()` `spinosa/manage-stale.ts:35` (80-col no clip).
+- Pipeline: remove `spinosa-visualizer` skill (4 python scripts + mirrors in `workspace-template/{.agents,.claude,.codex,.hermes,.opencode}`) `73b0f88b`, update `workspace-template/AGENTS.md:124` chain to `searcher→[analyst]→[serendippo]→writer`.
+
+### Fixed
+
+- `packages/tui/src/util/presentation.ts:3` dim ` \x1b[90m→\x1b[2m` + `NO_COLOR`/256-color fallback for `wordmark`/`sessionEpilogue`.
+- `packages/spinosa-kernel/src/index.ts:12` suppress benign Linux boot noise `Cannot load "@napi-rs/canvas"`/`ImageData`/`cpuid_info`.
+- `spinosa-visualizer` delete via chips now calls `onWorkspaceDeleted={loadRecentWorkspaces}` `home.tsx:645` — Recent list drops instantly.
+
+### Removed
+
+- `docs/review/audits/linux-installer-repros-2026-09-09.py` (audit repro, kept in `.trash/spinosa-visualizer-backup-20260909-130833`).
+
 ## [1.1.0-beta.10] — 2026-09-09
 
 ### Changed
