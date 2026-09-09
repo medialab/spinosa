@@ -115,7 +115,7 @@ Pass the goal artifact path, all prior artifact paths, and `session_id`. Each ag
 
 Before each dispatch, append a `spinosa-subagent` fenced block and a one-line note to `## Route Decisions` in the goal artifact (see goal-artifact-template).
 
-Advance through pipeline phases sequentially: searcher → [analyst] → [serendippo] → [visualizer] → writer → verifier → evaluator. Pick the initial shape from [[.agents/references/classification.md]]. Use `spinosa-visualizer` when tables, metrics, or numerical evidence need a Unicode chart artifact or inline chart block. Within a phase, the orchestrator may dispatch **multiple instances of the same agent type** in parallel via the Task tool (multiple tool calls in one message). For example, if the goal requires searching three independent topics, spawn three `spinosa-searcher` instances concurrently. Each writes its own artifact (`evidence_packet_{session_id}.md` or suffixed variants listed in the goal artifact).
+Advance through pipeline phases sequentially: searcher → [analyst] → [serendippo] → writer → verifier → evaluator. Pick the initial shape from [[.agents/references/classification.md]]. Within a phase, the orchestrator may dispatch **multiple instances of the same agent type** in parallel via the Task tool (multiple tool calls in one message). For example, if the goal requires searching three independent topics, spawn three `spinosa-searcher` instances concurrently. Each writes its own artifact (`evidence_packet_{session_id}.md` or suffixed variants listed in the goal artifact).
 
 All agents in a phase must complete (OK or blocker) before the next phase begins. Omit phases whose agents are not in the route.
 
@@ -289,7 +289,6 @@ user request.
 | `spinosa-mapper`     | Reads raw files in batch, extracts content-grounded fragments with idempotency, writes extraction packets and navigation maps |
 | `spinosa-serendippo` | Reads prior artifacts and raw files to write hidden-connection reports                                                        |
 | `spinosa-analyst`    | Reads prior artifacts and project context to write contextual analysis packets                                                |
-| `spinosa-visualizer` | Creates Unicode chart artifacts from structured evidence for reports, dashboards, and numerical comparisons                    |
 | `spinosa-writer`     | Produces the user-facing answer report                                                                                        |
 | `spinosa-verifier`   | Truth-checks substantive outputs and corrects claims, quotes, and paths                                                       |
 | `spinosa-evaluator`  | Audits the completed route and decides whether framework evolution is justified                                               |
