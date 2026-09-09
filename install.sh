@@ -2108,7 +2108,7 @@ main() {
 
   check_release_age "$VERSION" "$MIN_DAYS"
 
-  info "Version: ${VERSION}"
+  info "Local version at ${SPINOSA_HOME}/bin/spinosa: ${VERSION}"
   vinfo "Install root: ${SPINOSA_HOME}"
   vinfo "Bin directory: ${SPINOSA_BIN_DIR}"
   vinfo "Asset: ${ASSET_NAME}"
