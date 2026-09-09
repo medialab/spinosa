@@ -326,11 +326,6 @@ export function Home() {
       const hintKey = JSON.stringify({ input: prompt.input, parts: prompt.parts })
       if (lastStartupHintKey !== hintKey) {
         lastStartupHintKey = hintKey
-        toast.show({
-          variant: "info",
-          message: "Your setup brief is ready. Press Enter to run it, or edit it first.",
-          duration: 4000,
-        })
       }
     }
   })
