@@ -33,7 +33,7 @@ type ActionRowItem = {
   danger?: boolean
 }
 
-export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
+export function SpinosaPromptChips(props: { suppressEnter?: boolean; onWorkspaceDeleted?: () => void | Promise<void> }) {
   const { theme } = useTheme()
   const toast = useToast()
   const { navigate } = useRoute()
@@ -171,6 +171,7 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
     if (!confirmed) return
     try {
       await deleteWorkspace(workspacePath)
+      await props.onWorkspaceDeleted?.()
       spinosa.useGenericMode()
       toast.show({ variant: "success", message: "Workspace deleted." })
     } catch (error) {

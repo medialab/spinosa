@@ -642,7 +642,7 @@ export function Home() {
           </Show>
 
           <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0}>
-            <SpinosaPromptChips suppressEnter={recentListVisible()} />
+            <SpinosaPromptChips suppressEnter={recentListVisible()} onWorkspaceDeleted={loadRecentWorkspaces} />
             <Show when={providerConnected() && workspaceReady()}>
               <box>
                 <pluginRuntime.Slot name="home_prompt" mode="replace" ref={bind}>
