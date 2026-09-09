@@ -214,7 +214,7 @@ section() {
   local title="$1"
   spinosa_log INFO "section=${title}"
   if [ -t 2 ]; then
-    printf '\n  %s %s%s%s\n' "${C}→${RESET}" "${BOLD}" "$title" "${RESET}"
+    printf '\n  %s %s%s%s\n' "→" "${BOLD}" "$title" "${RESET}"
   else
     printf '\n  → %s\n' "$title"
   fi
