@@ -8,6 +8,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.9] — 2026-09-09
+
+### Changed
+
+- Flush left — no left border pad (`install.sh:183` `printf '%s %s\n'` `●` at column 0, `→` black `install.sh:217` bold title, `note` flush). `preflight.ts:227` workspace `●` flush.
+- Workspace `Downloads` scan fully removed from installer (`install.sh:2154` `migrate_workspace_launchers` deleted) — normal install no longer touches workspaces, TUI `listRegisteredWorkspaces` still picks up `workspaces.json`.
+- Tidy top-level: `test/`→`tests/installer/`, `tests/`→`tests/pipeline/`, `script/`→`scripts/` `35247715` + `package.json:41` `bats tests/installer` + `knip.json` + `.gitignore:45`.
+
+### Fixed
+
+- Shellcheck `DIM` unused + `printf` `%s` count `install.sh:177,2185` `cdf44a48`.
+- Preflight workspace prompts now dotted `●` green/blue/red + `?` cyan `preflight.ts:219,373` (was `✨`/`↷`/`✓`/`⚠`/`•`) and Title `Checking for updates...` `preflight.ts:39`.
+
 ## [1.1.0-beta.8] — 2026-09-09
 
 ### Changed
