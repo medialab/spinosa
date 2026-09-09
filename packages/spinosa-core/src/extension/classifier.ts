@@ -177,9 +177,27 @@ export async function importRouteForFile(
     case "markitdown":
       if (opts?.markitdownChoice) return "markitdown"
       return undefined
-    case "ocr_convertible":
-      if (opts?.ocrChoice) return "ocr"
-      return undefined
+    case "ocr_convertible": {
+      if (!opts?.ocrChoice) return undefined
+      const ext = fileExt(srcFile)
+      if (ext === "pdf") {
+        // Double-check text layer: scanned → tesseract, text → markitdown (mirrors new flow)
+        try {
+          const hasText = await isTextBasedPdf(srcFile)
+          if (hasText) return opts.markitdownChoice ? "markitdown" : undefined
+        } catch {
+          // fall through to OCR
+        }
+        // scanned PDFs → tesseract OCR (guarded by availability at pipeline time)
+        // Return "ocr" — pipeline will use tesseract if available else skip/fallback
+        return "ocr"
+      }
+      if (extInList(ext, IMAGE_EXTENSIONS)) {
+        // Images: copy-only for now, leave room for network provider
+        return "copy"
+      }
+      return "ocr"
+    }
     case "binary_copyable":
       return "binary_copy"
     default:

@@ -9,278 +9,239 @@ import file_5 from "./template-blobs/00583dd8aba2b52204091200294f1042a2ad32f3739
 import file_6 from "./template-blobs/6201d675b1b4ce0d33b5cc239f871fa9f883bf214296c9587186c107da35ef0f.bin" with { type: "file" };
 import file_7 from "./template-blobs/1dec34ed0bdd14ff4a9a836c50cdad35d3ea84955df17051350655ce7729ec73.bin" with { type: "file" };
 import file_8 from "./template-blobs/6de6082d81ff4ff4274c43f818fc6ccac1843c84ba6cec391b43d49e29ea9eef.bin" with { type: "file" };
-import file_9 from "./template-blobs/9edf0f258e731513127e24163194557c3c4d025a49a1880aa34cce28c1d8c744.bin" with { type: "file" };
-import file_10 from "./template-blobs/ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433.bin" with { type: "file" };
-import file_11 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
-import file_12 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
-import file_13 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
-import file_14 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
-import file_15 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
-import file_16 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
-import file_17 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
-import file_18 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
-import file_19 from "./template-blobs/e0182c18ba24b8711e38399d45d13e9e7decd17979ea5d97549a2f632da92e05.bin" with { type: "file" };
-import file_20 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
-import file_21 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
-import file_22 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
-import file_23 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
-import file_24 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
-import file_25 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
-import file_26 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
-import file_27 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
-import file_28 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
-import file_29 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
-import file_30 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
-import file_31 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
-import file_32 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
-import file_33 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
-import file_34 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
-import file_35 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
-import file_36 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
-import file_37 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
-import file_38 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
-import file_39 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
-import file_40 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
-import file_41 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
-import file_42 from "./template-blobs/d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3.bin" with { type: "file" };
-import file_43 from "./template-blobs/471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b.bin" with { type: "file" };
-import file_44 from "./template-blobs/fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7.bin" with { type: "file" };
-import file_45 from "./template-blobs/a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025.bin" with { type: "file" };
-import file_46 from "./template-blobs/593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a.bin" with { type: "file" };
-import file_47 from "./template-blobs/804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6.bin" with { type: "file" };
-import file_48 from "./template-blobs/6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41.bin" with { type: "file" };
-import file_49 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
-import file_50 from "./template-blobs/1ddcb68955955b9a75901c8426cbdfe00ec0a12a34d7360984660d48418240aa.bin" with { type: "file" };
-import file_51 from "./template-blobs/b70d5067cf93b58ba4bb751f3840215493fd5eda2f4d55fbe87dae7281d0036b.bin" with { type: "file" };
-import file_52 from "./template-blobs/5722437c4c851af6cb2884a7575414344dab05ace2bcf8e2ca14029eea0328dd.bin" with { type: "file" };
-import file_53 from "./template-blobs/c2d5d5c925017e42b2525e9a58a1f144fd85df765619b5e3ff3fc861bdb4d39e.bin" with { type: "file" };
-import file_54 from "./template-blobs/50044626aee74b393a39cfb6b5ccde67379494b445f437db0895fd2efce617d9.bin" with { type: "file" };
-import file_55 from "./template-blobs/b65d05998697d7d78b95e1882cb4ad47ba92d5da5e9c7cb1270f95cbe4983b64.bin" with { type: "file" };
-import file_56 from "./template-blobs/53e296b6d0d5b9c3aa1d10de03bec6041933cda6226c4fad38a4ef7dc320ec62.bin" with { type: "file" };
-import file_57 from "./template-blobs/0923f0966330f4864ecb79b62d82ff286930af46b7aff2346d2aebe91a827767.bin" with { type: "file" };
-import file_58 from "./template-blobs/f8c708a43c1f507271a21a2ef78310c101be2d50a6703205cf478627d59182ee.bin" with { type: "file" };
-import file_59 from "./template-blobs/e419f0a10812cae8c4ad9599029c0b9d3de5aaba9196646a004d7a63aaf8b403.bin" with { type: "file" };
-import file_60 from "./template-blobs/aabb957ec0947aeca8032a9d87d770278996ee5d5bf7375c97b0efa1c93b0f51.bin" with { type: "file" };
-import file_61 from "./template-blobs/ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433.bin" with { type: "file" };
-import file_62 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
-import file_63 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
-import file_64 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
-import file_65 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
-import file_66 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
-import file_67 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
-import file_68 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
-import file_69 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
-import file_70 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
-import file_71 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
-import file_72 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
-import file_73 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
-import file_74 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
-import file_75 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
-import file_76 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
-import file_77 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
-import file_78 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
-import file_79 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
-import file_80 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
-import file_81 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
-import file_82 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
-import file_83 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
-import file_84 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
-import file_85 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
-import file_86 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
-import file_87 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
-import file_88 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
-import file_89 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
-import file_90 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
-import file_91 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
-import file_92 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
-import file_93 from "./template-blobs/d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3.bin" with { type: "file" };
-import file_94 from "./template-blobs/471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b.bin" with { type: "file" };
-import file_95 from "./template-blobs/fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7.bin" with { type: "file" };
-import file_96 from "./template-blobs/a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025.bin" with { type: "file" };
-import file_97 from "./template-blobs/593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a.bin" with { type: "file" };
-import file_98 from "./template-blobs/804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6.bin" with { type: "file" };
-import file_99 from "./template-blobs/6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41.bin" with { type: "file" };
-import file_100 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
-import file_101 from "./template-blobs/10bc9429c289ec264d1a0558ad96ee603da4b12b5d8c9823937cbe8a570f5d14.bin" with { type: "file" };
-import file_102 from "./template-blobs/436e6099efc1ed59dcf09f7a1aff98fc3008c78a144381126115941e91309207.bin" with { type: "file" };
-import file_103 from "./template-blobs/834de0820c82b05ce8b74a484cd31dc7e79b6fba0f97e224213420d760aebbbd.bin" with { type: "file" };
-import file_104 from "./template-blobs/2f844dc82f3888fef8166ea569d30b4cfc6871a16245366eaee51cf22246acdb.bin" with { type: "file" };
-import file_105 from "./template-blobs/d317f8c27a5ee8097ecbbf73715203025220af01c554a20ba677d7558a206293.bin" with { type: "file" };
-import file_106 from "./template-blobs/928921d45187e3026431c4e949e705b835a3afc14abbf29b3f165f5edac74d86.bin" with { type: "file" };
-import file_107 from "./template-blobs/d6d24e485f7f0e4cce9442b02930466c470050b899ffe8079599e446ff5396fa.bin" with { type: "file" };
-import file_108 from "./template-blobs/027c9191e4ba43bcd5c71799453bead073a40329edec144e7a703a437a3f15d3.bin" with { type: "file" };
-import file_109 from "./template-blobs/d4ee879b13ff7f080690807142366e0999787dcf1398c92f9bf95c7d9225d67c.bin" with { type: "file" };
-import file_110 from "./template-blobs/e78ebefcb9974fc58504cce6ee997a980e7e5715991247efa789f87198f9429e.bin" with { type: "file" };
-import file_111 from "./template-blobs/7dedea4a4e75129e99cb3742ec5daa5f1c2b79f22adfabe2d0321cdcc49042d2.bin" with { type: "file" };
-import file_112 from "./template-blobs/3ad0ba10a1872854c4732b3361eb080a37effaa2d738b89ad70de81e1854c6de.bin" with { type: "file" };
-import file_113 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
-import file_114 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
-import file_115 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
-import file_116 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
-import file_117 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
-import file_118 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
-import file_119 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
-import file_120 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
-import file_121 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
-import file_122 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
-import file_123 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
-import file_124 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
-import file_125 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
-import file_126 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
-import file_127 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
-import file_128 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
-import file_129 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
-import file_130 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
-import file_131 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
-import file_132 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
-import file_133 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
-import file_134 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
-import file_135 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
-import file_136 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
-import file_137 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
-import file_138 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
-import file_139 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
-import file_140 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
-import file_141 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
-import file_142 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
-import file_143 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
-import file_144 from "./template-blobs/d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3.bin" with { type: "file" };
-import file_145 from "./template-blobs/471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b.bin" with { type: "file" };
-import file_146 from "./template-blobs/fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7.bin" with { type: "file" };
-import file_147 from "./template-blobs/a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025.bin" with { type: "file" };
-import file_148 from "./template-blobs/593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a.bin" with { type: "file" };
-import file_149 from "./template-blobs/804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6.bin" with { type: "file" };
-import file_150 from "./template-blobs/6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41.bin" with { type: "file" };
-import file_151 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
-import file_152 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
-import file_153 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
-import file_154 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
-import file_155 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
-import file_156 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
-import file_157 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
-import file_158 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
-import file_159 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
-import file_160 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
-import file_161 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
-import file_162 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
-import file_163 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
-import file_164 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
-import file_165 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
-import file_166 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
-import file_167 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
-import file_168 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
-import file_169 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
-import file_170 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
-import file_171 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
-import file_172 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
-import file_173 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
-import file_174 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
-import file_175 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
-import file_176 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
-import file_177 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
-import file_178 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
-import file_179 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
-import file_180 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
-import file_181 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
-import file_182 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
-import file_183 from "./template-blobs/d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3.bin" with { type: "file" };
-import file_184 from "./template-blobs/471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b.bin" with { type: "file" };
-import file_185 from "./template-blobs/fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7.bin" with { type: "file" };
-import file_186 from "./template-blobs/a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025.bin" with { type: "file" };
-import file_187 from "./template-blobs/593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a.bin" with { type: "file" };
-import file_188 from "./template-blobs/804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6.bin" with { type: "file" };
-import file_189 from "./template-blobs/6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41.bin" with { type: "file" };
-import file_190 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
-import file_191 from "./template-blobs/b80b8524c7f4ac244858cf8989c907b67b96ee1b8bdc4540f9fbfe450a566b2a.bin" with { type: "file" };
-import file_192 from "./template-blobs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" with { type: "file" };
-import file_193 from "./template-blobs/7ab52cbfdb3e81ddc5c3afba9be1d06d13320cc3a47c2c9c30de0b016f25e6c6.bin" with { type: "file" };
-import file_194 from "./template-blobs/253ec71def27d718defb5f93d0a5e28848fb69eb8300d35b56a94a5c83940c25.bin" with { type: "file" };
-import file_195 from "./template-blobs/906bbb28e4b35c0a7480ce301ea19b913acbd4390c1e7269949644303266702d.bin" with { type: "file" };
-import file_196 from "./template-blobs/8428321672606c039350aff4d7938ecf280d067f9644fefc2239e893b06bbd8b.bin" with { type: "file" };
-import file_197 from "./template-blobs/c785fc48ab9b338831fcd347ebce3205e0df4d69da16380f18297b6f8874e20d.bin" with { type: "file" };
-import file_198 from "./template-blobs/509806c6266ee311624eb6acf1ad423cbe4c555fb96ac6a7bd87c11aa302e880.bin" with { type: "file" };
-import file_199 from "./template-blobs/902242313889f975cb2fe19373c1d6ed725077a735f8b65d70ea25656f03310b.bin" with { type: "file" };
-import file_200 from "./template-blobs/ad2c95b1186aaea200375e61ed1053f7de4075470d1b14c27c4dbdceb9ec3e00.bin" with { type: "file" };
-import file_201 from "./template-blobs/be7d4b08fb01b58d25dd55605ec0a37778bb486d354438c2924ff42615d84441.bin" with { type: "file" };
-import file_202 from "./template-blobs/d0cefe4938b99f347af05716efe8b031d7225c7077ef9ecd9c20ee867ec4adb9.bin" with { type: "file" };
-import file_203 from "./template-blobs/d4367d54def6d49919425f7112b37ce7518dd17f9c3199e3bd9c6191fad1eb2e.bin" with { type: "file" };
-import file_204 from "./template-blobs/d2f1fc96194087ae6b96c02ebd5ac7c0a5727cf0f8d7918ea0ee12c50026e05c.bin" with { type: "file" };
-import file_205 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
-import file_206 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
-import file_207 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
-import file_208 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
-import file_209 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
-import file_210 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
-import file_211 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
-import file_212 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
-import file_213 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
-import file_214 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
-import file_215 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
-import file_216 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
-import file_217 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
-import file_218 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
-import file_219 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
-import file_220 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
-import file_221 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
-import file_222 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
-import file_223 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
-import file_224 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
-import file_225 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
-import file_226 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
-import file_227 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
-import file_228 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
-import file_229 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
-import file_230 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
-import file_231 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
-import file_232 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
-import file_233 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
-import file_234 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
-import file_235 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
-import file_236 from "./template-blobs/d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3.bin" with { type: "file" };
-import file_237 from "./template-blobs/471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b.bin" with { type: "file" };
-import file_238 from "./template-blobs/fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7.bin" with { type: "file" };
-import file_239 from "./template-blobs/a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025.bin" with { type: "file" };
-import file_240 from "./template-blobs/593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a.bin" with { type: "file" };
-import file_241 from "./template-blobs/804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6.bin" with { type: "file" };
-import file_242 from "./template-blobs/6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41.bin" with { type: "file" };
-import file_243 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
-import file_244 from "./template-blobs/01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b.bin" with { type: "file" };
-import file_245 from "./template-blobs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" with { type: "file" };
-import file_246 from "./template-blobs/431c453b1be47285fe282a80f8e222950a6ba4b63f593bd0b50da10f38dfa9f3.bin" with { type: "file" };
-import file_247 from "./template-blobs/8ebb4935ed91b21354491840c34fcaf0bde15928da5ede702cb5b31b85e25579.bin" with { type: "file" };
-import file_248 from "./template-blobs/0dc4256e0fbc8444c10615db4670f21a1a96c0d72e644542f272555d1c273315.bin" with { type: "file" };
-import file_249 from "./template-blobs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" with { type: "file" };
-import file_250 from "./template-blobs/54cc7712dd3360e1121544ffff86dcfb80231986b9863aefaedc9c29b965ec08.bin" with { type: "file" };
-import file_251 from "./template-blobs/b56a0ffaaad73ebd24d82d4d7820cff1c514df0193985a1f2112c6aa509de650.bin" with { type: "file" };
-import file_252 from "./template-blobs/10c3bd4509954aaa27d5c4c59941010e2391450688fb2343c1a461c36ee29220.bin" with { type: "file" };
-import file_253 from "./template-blobs/2892dad4065a95e30383c9bd7a7ffe3e762f40a7f8a10fa7c22e2db95490a8f6.bin" with { type: "file" };
-import file_254 from "./template-blobs/f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85.bin" with { type: "file" };
-import file_255 from "./template-blobs/586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a.bin" with { type: "file" };
-import file_256 from "./template-blobs/502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4.bin" with { type: "file" };
-import file_257 from "./template-blobs/3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7.bin" with { type: "file" };
-import file_258 from "./template-blobs/69b4b29b9d3f4b2ffca8220c8732511dafb6ba32658e195f6762e191b1fa3041.bin" with { type: "file" };
-import file_259 from "./template-blobs/9b6409915833a95525be5dfa0bca468f8e2fca7b0ea26934bfd78ce4c6abac96.bin" with { type: "file" };
-import file_260 from "./template-blobs/223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6.bin" with { type: "file" };
-import file_261 from "./template-blobs/591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54.bin" with { type: "file" };
-import file_262 from "./template-blobs/496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c.bin" with { type: "file" };
-import file_263 from "./template-blobs/67d7b2211a3449d71ca80954cc23062f02917cebf61d2858768851da2cc6e376.bin" with { type: "file" };
-import file_264 from "./template-blobs/d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c.bin" with { type: "file" };
-import file_265 from "./template-blobs/d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342.bin" with { type: "file" };
-import file_266 from "./template-blobs/0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3.bin" with { type: "file" };
-import file_267 from "./template-blobs/01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b.bin" with { type: "file" };
-import file_268 from "./template-blobs/70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114.bin" with { type: "file" };
-import file_269 from "./template-blobs/ab9164f7ee30c61c0f4eb60fa8332aa8844ed8307ed7ccf35a361a3c49f4d206.bin" with { type: "file" };
-import file_270 from "./template-blobs/9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88.bin" with { type: "file" };
-import file_271 from "./template-blobs/63ab310cdb9203c0b33950f6d95f270d61777289ce8b01374cd0e08975f19037.bin" with { type: "file" };
-import file_272 from "./template-blobs/661251d2245b90f72f7fb0837111239f550931c659101f6b7f59d7477fc5b7ce.bin" with { type: "file" };
-import file_273 from "./template-blobs/4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8.bin" with { type: "file" };
-import file_274 from "./template-blobs/afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf.bin" with { type: "file" };
-import file_275 from "./template-blobs/511aeb589273c14cf34c9267d0c395d891132fbf92fa4ec82e49aeb2b21602c0.bin" with { type: "file" };
-import file_276 from "./template-blobs/a2e855a23f53ba682e6dee9d65019b4717b6330fd77590fac7bd7edf69da0cfb.bin" with { type: "file" };
+import file_9 from "./template-blobs/ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433.bin" with { type: "file" };
+import file_10 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
+import file_11 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
+import file_12 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
+import file_13 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
+import file_14 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
+import file_15 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
+import file_16 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
+import file_17 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
+import file_18 from "./template-blobs/e0182c18ba24b8711e38399d45d13e9e7decd17979ea5d97549a2f632da92e05.bin" with { type: "file" };
+import file_19 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
+import file_20 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
+import file_21 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
+import file_22 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
+import file_23 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
+import file_24 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
+import file_25 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
+import file_26 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
+import file_27 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
+import file_28 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
+import file_29 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
+import file_30 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
+import file_31 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
+import file_32 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
+import file_33 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
+import file_34 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
+import file_35 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
+import file_36 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
+import file_37 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
+import file_38 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
+import file_39 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
+import file_40 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
+import file_41 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
+import file_42 from "./template-blobs/1ddcb68955955b9a75901c8426cbdfe00ec0a12a34d7360984660d48418240aa.bin" with { type: "file" };
+import file_43 from "./template-blobs/b70d5067cf93b58ba4bb751f3840215493fd5eda2f4d55fbe87dae7281d0036b.bin" with { type: "file" };
+import file_44 from "./template-blobs/5722437c4c851af6cb2884a7575414344dab05ace2bcf8e2ca14029eea0328dd.bin" with { type: "file" };
+import file_45 from "./template-blobs/c2d5d5c925017e42b2525e9a58a1f144fd85df765619b5e3ff3fc861bdb4d39e.bin" with { type: "file" };
+import file_46 from "./template-blobs/50044626aee74b393a39cfb6b5ccde67379494b445f437db0895fd2efce617d9.bin" with { type: "file" };
+import file_47 from "./template-blobs/b65d05998697d7d78b95e1882cb4ad47ba92d5da5e9c7cb1270f95cbe4983b64.bin" with { type: "file" };
+import file_48 from "./template-blobs/53e296b6d0d5b9c3aa1d10de03bec6041933cda6226c4fad38a4ef7dc320ec62.bin" with { type: "file" };
+import file_49 from "./template-blobs/0923f0966330f4864ecb79b62d82ff286930af46b7aff2346d2aebe91a827767.bin" with { type: "file" };
+import file_50 from "./template-blobs/f8c708a43c1f507271a21a2ef78310c101be2d50a6703205cf478627d59182ee.bin" with { type: "file" };
+import file_51 from "./template-blobs/e419f0a10812cae8c4ad9599029c0b9d3de5aaba9196646a004d7a63aaf8b403.bin" with { type: "file" };
+import file_52 from "./template-blobs/ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433.bin" with { type: "file" };
+import file_53 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
+import file_54 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
+import file_55 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
+import file_56 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
+import file_57 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
+import file_58 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
+import file_59 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
+import file_60 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
+import file_61 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
+import file_62 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
+import file_63 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
+import file_64 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
+import file_65 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
+import file_66 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
+import file_67 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
+import file_68 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
+import file_69 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
+import file_70 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
+import file_71 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
+import file_72 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
+import file_73 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
+import file_74 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
+import file_75 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
+import file_76 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
+import file_77 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
+import file_78 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
+import file_79 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
+import file_80 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
+import file_81 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
+import file_82 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
+import file_83 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
+import file_84 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
+import file_85 from "./template-blobs/10bc9429c289ec264d1a0558ad96ee603da4b12b5d8c9823937cbe8a570f5d14.bin" with { type: "file" };
+import file_86 from "./template-blobs/436e6099efc1ed59dcf09f7a1aff98fc3008c78a144381126115941e91309207.bin" with { type: "file" };
+import file_87 from "./template-blobs/834de0820c82b05ce8b74a484cd31dc7e79b6fba0f97e224213420d760aebbbd.bin" with { type: "file" };
+import file_88 from "./template-blobs/2f844dc82f3888fef8166ea569d30b4cfc6871a16245366eaee51cf22246acdb.bin" with { type: "file" };
+import file_89 from "./template-blobs/d317f8c27a5ee8097ecbbf73715203025220af01c554a20ba677d7558a206293.bin" with { type: "file" };
+import file_90 from "./template-blobs/928921d45187e3026431c4e949e705b835a3afc14abbf29b3f165f5edac74d86.bin" with { type: "file" };
+import file_91 from "./template-blobs/d6d24e485f7f0e4cce9442b02930466c470050b899ffe8079599e446ff5396fa.bin" with { type: "file" };
+import file_92 from "./template-blobs/027c9191e4ba43bcd5c71799453bead073a40329edec144e7a703a437a3f15d3.bin" with { type: "file" };
+import file_93 from "./template-blobs/d4ee879b13ff7f080690807142366e0999787dcf1398c92f9bf95c7d9225d67c.bin" with { type: "file" };
+import file_94 from "./template-blobs/7dedea4a4e75129e99cb3742ec5daa5f1c2b79f22adfabe2d0321cdcc49042d2.bin" with { type: "file" };
+import file_95 from "./template-blobs/3ad0ba10a1872854c4732b3361eb080a37effaa2d738b89ad70de81e1854c6de.bin" with { type: "file" };
+import file_96 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
+import file_97 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
+import file_98 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
+import file_99 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
+import file_100 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
+import file_101 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
+import file_102 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
+import file_103 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
+import file_104 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
+import file_105 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
+import file_106 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
+import file_107 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
+import file_108 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
+import file_109 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
+import file_110 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
+import file_111 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
+import file_112 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
+import file_113 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
+import file_114 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
+import file_115 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
+import file_116 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
+import file_117 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
+import file_118 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
+import file_119 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
+import file_120 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
+import file_121 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
+import file_122 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
+import file_123 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
+import file_124 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
+import file_125 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
+import file_126 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
+import file_127 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
+import file_128 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
+import file_129 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
+import file_130 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
+import file_131 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
+import file_132 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
+import file_133 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
+import file_134 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
+import file_135 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
+import file_136 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
+import file_137 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
+import file_138 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
+import file_139 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
+import file_140 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
+import file_141 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
+import file_142 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
+import file_143 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
+import file_144 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
+import file_145 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
+import file_146 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
+import file_147 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
+import file_148 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
+import file_149 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
+import file_150 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
+import file_151 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
+import file_152 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
+import file_153 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
+import file_154 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
+import file_155 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
+import file_156 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
+import file_157 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
+import file_158 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
+import file_159 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
+import file_160 from "./template-blobs/b80b8524c7f4ac244858cf8989c907b67b96ee1b8bdc4540f9fbfe450a566b2a.bin" with { type: "file" };
+import file_161 from "./template-blobs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" with { type: "file" };
+import file_162 from "./template-blobs/7ab52cbfdb3e81ddc5c3afba9be1d06d13320cc3a47c2c9c30de0b016f25e6c6.bin" with { type: "file" };
+import file_163 from "./template-blobs/253ec71def27d718defb5f93d0a5e28848fb69eb8300d35b56a94a5c83940c25.bin" with { type: "file" };
+import file_164 from "./template-blobs/906bbb28e4b35c0a7480ce301ea19b913acbd4390c1e7269949644303266702d.bin" with { type: "file" };
+import file_165 from "./template-blobs/8428321672606c039350aff4d7938ecf280d067f9644fefc2239e893b06bbd8b.bin" with { type: "file" };
+import file_166 from "./template-blobs/c785fc48ab9b338831fcd347ebce3205e0df4d69da16380f18297b6f8874e20d.bin" with { type: "file" };
+import file_167 from "./template-blobs/509806c6266ee311624eb6acf1ad423cbe4c555fb96ac6a7bd87c11aa302e880.bin" with { type: "file" };
+import file_168 from "./template-blobs/902242313889f975cb2fe19373c1d6ed725077a735f8b65d70ea25656f03310b.bin" with { type: "file" };
+import file_169 from "./template-blobs/ad2c95b1186aaea200375e61ed1053f7de4075470d1b14c27c4dbdceb9ec3e00.bin" with { type: "file" };
+import file_170 from "./template-blobs/be7d4b08fb01b58d25dd55605ec0a37778bb486d354438c2924ff42615d84441.bin" with { type: "file" };
+import file_171 from "./template-blobs/d0cefe4938b99f347af05716efe8b031d7225c7077ef9ecd9c20ee867ec4adb9.bin" with { type: "file" };
+import file_172 from "./template-blobs/d2f1fc96194087ae6b96c02ebd5ac7c0a5727cf0f8d7918ea0ee12c50026e05c.bin" with { type: "file" };
+import file_173 from "./template-blobs/b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976.bin" with { type: "file" };
+import file_174 from "./template-blobs/a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2.bin" with { type: "file" };
+import file_175 from "./template-blobs/f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1.bin" with { type: "file" };
+import file_176 from "./template-blobs/ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f.bin" with { type: "file" };
+import file_177 from "./template-blobs/ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f.bin" with { type: "file" };
+import file_178 from "./template-blobs/d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15.bin" with { type: "file" };
+import file_179 from "./template-blobs/628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67.bin" with { type: "file" };
+import file_180 from "./template-blobs/66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782.bin" with { type: "file" };
+import file_181 from "./template-blobs/2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189.bin" with { type: "file" };
+import file_182 from "./template-blobs/2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04.bin" with { type: "file" };
+import file_183 from "./template-blobs/78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8.bin" with { type: "file" };
+import file_184 from "./template-blobs/1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c.bin" with { type: "file" };
+import file_185 from "./template-blobs/5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e.bin" with { type: "file" };
+import file_186 from "./template-blobs/9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8.bin" with { type: "file" };
+import file_187 from "./template-blobs/1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339.bin" with { type: "file" };
+import file_188 from "./template-blobs/8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2.bin" with { type: "file" };
+import file_189 from "./template-blobs/0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2.bin" with { type: "file" };
+import file_190 from "./template-blobs/691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142.bin" with { type: "file" };
+import file_191 from "./template-blobs/0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92.bin" with { type: "file" };
+import file_192 from "./template-blobs/868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017.bin" with { type: "file" };
+import file_193 from "./template-blobs/d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df.bin" with { type: "file" };
+import file_194 from "./template-blobs/30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85.bin" with { type: "file" };
+import file_195 from "./template-blobs/d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d.bin" with { type: "file" };
+import file_196 from "./template-blobs/264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b.bin" with { type: "file" };
+import file_197 from "./template-blobs/54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d.bin" with { type: "file" };
+import file_198 from "./template-blobs/d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509.bin" with { type: "file" };
+import file_199 from "./template-blobs/698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9.bin" with { type: "file" };
+import file_200 from "./template-blobs/ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0.bin" with { type: "file" };
+import file_201 from "./template-blobs/214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24.bin" with { type: "file" };
+import file_202 from "./template-blobs/ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e.bin" with { type: "file" };
+import file_203 from "./template-blobs/4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242.bin" with { type: "file" };
+import file_204 from "./template-blobs/61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5.bin" with { type: "file" };
+import file_205 from "./template-blobs/01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b.bin" with { type: "file" };
+import file_206 from "./template-blobs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" with { type: "file" };
+import file_207 from "./template-blobs/431c453b1be47285fe282a80f8e222950a6ba4b63f593bd0b50da10f38dfa9f3.bin" with { type: "file" };
+import file_208 from "./template-blobs/8ebb4935ed91b21354491840c34fcaf0bde15928da5ede702cb5b31b85e25579.bin" with { type: "file" };
+import file_209 from "./template-blobs/0dc4256e0fbc8444c10615db4670f21a1a96c0d72e644542f272555d1c273315.bin" with { type: "file" };
+import file_210 from "./template-blobs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" with { type: "file" };
+import file_211 from "./template-blobs/54cc7712dd3360e1121544ffff86dcfb80231986b9863aefaedc9c29b965ec08.bin" with { type: "file" };
+import file_212 from "./template-blobs/0145c4797666e85a20e83b76cec38c82d7b5413469bdf5337016d5aa74f43b0d.bin" with { type: "file" };
+import file_213 from "./template-blobs/3afc9d19eeb94e1d636a735ee76596f206d8441a15ef1edb1fac77fe3a4b2e01.bin" with { type: "file" };
+import file_214 from "./template-blobs/2892dad4065a95e30383c9bd7a7ffe3e762f40a7f8a10fa7c22e2db95490a8f6.bin" with { type: "file" };
+import file_215 from "./template-blobs/f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85.bin" with { type: "file" };
+import file_216 from "./template-blobs/586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a.bin" with { type: "file" };
+import file_217 from "./template-blobs/502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4.bin" with { type: "file" };
+import file_218 from "./template-blobs/3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7.bin" with { type: "file" };
+import file_219 from "./template-blobs/4b599456bcd3ad6b3c9df896e7cdd9de4c76d12131254dc21d60939f2bd190a3.bin" with { type: "file" };
+import file_220 from "./template-blobs/45d92f480c5b62b6c276f6d60f888df997857fc27600a669782afa2129e281c1.bin" with { type: "file" };
+import file_221 from "./template-blobs/223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6.bin" with { type: "file" };
+import file_222 from "./template-blobs/591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54.bin" with { type: "file" };
+import file_223 from "./template-blobs/496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c.bin" with { type: "file" };
+import file_224 from "./template-blobs/67d7b2211a3449d71ca80954cc23062f02917cebf61d2858768851da2cc6e376.bin" with { type: "file" };
+import file_225 from "./template-blobs/d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c.bin" with { type: "file" };
+import file_226 from "./template-blobs/d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342.bin" with { type: "file" };
+import file_227 from "./template-blobs/0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3.bin" with { type: "file" };
+import file_228 from "./template-blobs/01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b.bin" with { type: "file" };
+import file_229 from "./template-blobs/70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114.bin" with { type: "file" };
+import file_230 from "./template-blobs/6e63f02967e488eb83d66aaa0e5193ccff1a71b38e4c577ab2e9e9d34c6725d0.bin" with { type: "file" };
+import file_231 from "./template-blobs/9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88.bin" with { type: "file" };
+import file_232 from "./template-blobs/63ab310cdb9203c0b33950f6d95f270d61777289ce8b01374cd0e08975f19037.bin" with { type: "file" };
+import file_233 from "./template-blobs/00bb78f35bae7eb451d4f2db2a9bae8c4c21d53ab69e34bb41d043166bb6e1b7.bin" with { type: "file" };
+import file_234 from "./template-blobs/4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8.bin" with { type: "file" };
+import file_235 from "./template-blobs/afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf.bin" with { type: "file" };
+import file_236 from "./template-blobs/5d688e7d86de39c5b6b3267e61748e02e44a2794db6d7be3cce322ac9a6601b1.bin" with { type: "file" };
+import file_237 from "./template-blobs/a2e855a23f53ba682e6dee9d65019b4717b6330fd77590fac7bd7edf69da0cfb.bin" with { type: "file" };
 
 export const templatePack = {
-  version: "1.1.0-beta.10",
-  packId: "eb9883d33e28df5557ace27e8aaad040e1454df9aefef54b6d4b30a2e2ac3def",
+  version: "1.1.0-beta.14",
+  packId: "bd63147a987210774a6ffc279dd7ba740bae8e3f1e36d66873ddea1f87e65610",
   files: [
   { path: ".agents/agents/spinosa-analyst.md", mode: 420, sha256: "1e4e006ad3037dfc523038747011ae9cb6604bd8a138be996f346e74297c0201", contentPath: file_0 },
   { path: ".agents/agents/spinosa-evaluator.md", mode: 420, sha256: "41572a3010fb44a18d59215e76070eecd6bd41ca124f4cb434242980a712754f", contentPath: file_1 },
@@ -291,273 +252,234 @@ export const templatePack = {
   { path: ".agents/agents/spinosa-searcher.md", mode: 420, sha256: "6201d675b1b4ce0d33b5cc239f871fa9f883bf214296c9587186c107da35ef0f", contentPath: file_6 },
   { path: ".agents/agents/spinosa-serendippo.md", mode: 420, sha256: "1dec34ed0bdd14ff4a9a836c50cdad35d3ea84955df17051350655ce7729ec73", contentPath: file_7 },
   { path: ".agents/agents/spinosa-verifier.md", mode: 420, sha256: "6de6082d81ff4ff4274c43f818fc6ccac1843c84ba6cec391b43d49e29ea9eef", contentPath: file_8 },
-  { path: ".agents/agents/spinosa-visualizer.md", mode: 420, sha256: "9edf0f258e731513127e24163194557c3c4d025a49a1880aa34cce28c1d8c744", contentPath: file_9 },
-  { path: ".agents/agents/spinosa-writer.md", mode: 420, sha256: "ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433", contentPath: file_10 },
-  { path: ".agents/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_11 },
-  { path: ".agents/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_12 },
-  { path: ".agents/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_13 },
-  { path: ".agents/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_14 },
-  { path: ".agents/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_15 },
-  { path: ".agents/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_16 },
-  { path: ".agents/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_17 },
-  { path: ".agents/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_18 },
-  { path: ".agents/references/report-template.md", mode: 420, sha256: "e0182c18ba24b8711e38399d45d13e9e7decd17979ea5d97549a2f632da92e05", contentPath: file_19 },
-  { path: ".agents/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_20 },
-  { path: ".agents/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_21 },
-  { path: ".agents/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_22 },
-  { path: ".agents/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_23 },
-  { path: ".agents/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_24 },
-  { path: ".agents/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_25 },
-  { path: ".agents/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_26 },
-  { path: ".agents/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_27 },
-  { path: ".agents/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_28 },
-  { path: ".agents/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_29 },
-  { path: ".agents/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_30 },
-  { path: ".agents/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_31 },
-  { path: ".agents/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_32 },
-  { path: ".agents/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_33 },
-  { path: ".agents/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_34 },
-  { path: ".agents/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_35 },
-  { path: ".agents/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_36 },
-  { path: ".agents/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_37 },
-  { path: ".agents/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_38 },
-  { path: ".agents/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_39 },
-  { path: ".agents/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_40 },
-  { path: ".agents/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_41 },
-  { path: ".agents/skills/spinosa-visualizer/SKILL.md", mode: 420, sha256: "d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3", contentPath: file_42 },
-  { path: ".agents/skills/spinosa-visualizer/scripts/categorical-histogram.py", mode: 420, sha256: "471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b", contentPath: file_43 },
-  { path: ".agents/skills/spinosa-visualizer/scripts/line-chart.py", mode: 420, sha256: "fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7", contentPath: file_44 },
-  { path: ".agents/skills/spinosa-visualizer/scripts/matrix-heatmap.py", mode: 420, sha256: "a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025", contentPath: file_45 },
-  { path: ".agents/skills/spinosa-visualizer/scripts/ridge-plot.py", mode: 420, sha256: "593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a", contentPath: file_46 },
-  { path: ".agents/skills/spinosa-visualizer/scripts/test_data.json", mode: 420, sha256: "804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6", contentPath: file_47 },
-  { path: ".agents/skills/spinosa-visualizer/scripts/vertical-bar.py", mode: 420, sha256: "6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41", contentPath: file_48 },
-  { path: ".agents/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_49 },
-  { path: ".bin/spinosa", mode: 493, sha256: "1ddcb68955955b9a75901c8426cbdfe00ec0a12a34d7360984660d48418240aa", contentPath: file_50 },
-  { path: ".claude/agents/spinosa-analyst.md", mode: 420, sha256: "b70d5067cf93b58ba4bb751f3840215493fd5eda2f4d55fbe87dae7281d0036b", contentPath: file_51 },
-  { path: ".claude/agents/spinosa-evaluator.md", mode: 420, sha256: "5722437c4c851af6cb2884a7575414344dab05ace2bcf8e2ca14029eea0328dd", contentPath: file_52 },
-  { path: ".claude/agents/spinosa-evolver.md", mode: 420, sha256: "c2d5d5c925017e42b2525e9a58a1f144fd85df765619b5e3ff3fc861bdb4d39e", contentPath: file_53 },
-  { path: ".claude/agents/spinosa-janitor.md", mode: 420, sha256: "50044626aee74b393a39cfb6b5ccde67379494b445f437db0895fd2efce617d9", contentPath: file_54 },
-  { path: ".claude/agents/spinosa-mapper.md", mode: 420, sha256: "b65d05998697d7d78b95e1882cb4ad47ba92d5da5e9c7cb1270f95cbe4983b64", contentPath: file_55 },
-  { path: ".claude/agents/spinosa-overseer.md", mode: 420, sha256: "53e296b6d0d5b9c3aa1d10de03bec6041933cda6226c4fad38a4ef7dc320ec62", contentPath: file_56 },
-  { path: ".claude/agents/spinosa-searcher.md", mode: 420, sha256: "0923f0966330f4864ecb79b62d82ff286930af46b7aff2346d2aebe91a827767", contentPath: file_57 },
-  { path: ".claude/agents/spinosa-serendippo.md", mode: 420, sha256: "f8c708a43c1f507271a21a2ef78310c101be2d50a6703205cf478627d59182ee", contentPath: file_58 },
-  { path: ".claude/agents/spinosa-verifier.md", mode: 420, sha256: "e419f0a10812cae8c4ad9599029c0b9d3de5aaba9196646a004d7a63aaf8b403", contentPath: file_59 },
-  { path: ".claude/agents/spinosa-visualizer.md", mode: 420, sha256: "aabb957ec0947aeca8032a9d87d770278996ee5d5bf7375c97b0efa1c93b0f51", contentPath: file_60 },
-  { path: ".claude/agents/spinosa-writer.md", mode: 420, sha256: "ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433", contentPath: file_61 },
-  { path: ".claude/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_62 },
-  { path: ".claude/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_63 },
-  { path: ".claude/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_64 },
-  { path: ".claude/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_65 },
-  { path: ".claude/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_66 },
-  { path: ".claude/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_67 },
-  { path: ".claude/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_68 },
-  { path: ".claude/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_69 },
-  { path: ".claude/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_70 },
-  { path: ".claude/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_71 },
-  { path: ".claude/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_72 },
-  { path: ".claude/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_73 },
-  { path: ".claude/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_74 },
-  { path: ".claude/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_75 },
-  { path: ".claude/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_76 },
-  { path: ".claude/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_77 },
-  { path: ".claude/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_78 },
-  { path: ".claude/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_79 },
-  { path: ".claude/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_80 },
-  { path: ".claude/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_81 },
-  { path: ".claude/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_82 },
-  { path: ".claude/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_83 },
-  { path: ".claude/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_84 },
-  { path: ".claude/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_85 },
-  { path: ".claude/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_86 },
-  { path: ".claude/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_87 },
-  { path: ".claude/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_88 },
-  { path: ".claude/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_89 },
-  { path: ".claude/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_90 },
-  { path: ".claude/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_91 },
-  { path: ".claude/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_92 },
-  { path: ".claude/skills/spinosa-visualizer/SKILL.md", mode: 420, sha256: "d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3", contentPath: file_93 },
-  { path: ".claude/skills/spinosa-visualizer/scripts/categorical-histogram.py", mode: 420, sha256: "471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b", contentPath: file_94 },
-  { path: ".claude/skills/spinosa-visualizer/scripts/line-chart.py", mode: 420, sha256: "fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7", contentPath: file_95 },
-  { path: ".claude/skills/spinosa-visualizer/scripts/matrix-heatmap.py", mode: 420, sha256: "a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025", contentPath: file_96 },
-  { path: ".claude/skills/spinosa-visualizer/scripts/ridge-plot.py", mode: 420, sha256: "593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a", contentPath: file_97 },
-  { path: ".claude/skills/spinosa-visualizer/scripts/test_data.json", mode: 420, sha256: "804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6", contentPath: file_98 },
-  { path: ".claude/skills/spinosa-visualizer/scripts/vertical-bar.py", mode: 420, sha256: "6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41", contentPath: file_99 },
-  { path: ".claude/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_100 },
-  { path: ".codex/agents/spinosa-analyst.toml", mode: 420, sha256: "10bc9429c289ec264d1a0558ad96ee603da4b12b5d8c9823937cbe8a570f5d14", contentPath: file_101 },
-  { path: ".codex/agents/spinosa-evaluator.toml", mode: 420, sha256: "436e6099efc1ed59dcf09f7a1aff98fc3008c78a144381126115941e91309207", contentPath: file_102 },
-  { path: ".codex/agents/spinosa-evolver.toml", mode: 420, sha256: "834de0820c82b05ce8b74a484cd31dc7e79b6fba0f97e224213420d760aebbbd", contentPath: file_103 },
-  { path: ".codex/agents/spinosa-janitor.toml", mode: 420, sha256: "2f844dc82f3888fef8166ea569d30b4cfc6871a16245366eaee51cf22246acdb", contentPath: file_104 },
-  { path: ".codex/agents/spinosa-mapper.toml", mode: 420, sha256: "d317f8c27a5ee8097ecbbf73715203025220af01c554a20ba677d7558a206293", contentPath: file_105 },
-  { path: ".codex/agents/spinosa-overseer.toml", mode: 420, sha256: "928921d45187e3026431c4e949e705b835a3afc14abbf29b3f165f5edac74d86", contentPath: file_106 },
-  { path: ".codex/agents/spinosa-searcher.toml", mode: 420, sha256: "d6d24e485f7f0e4cce9442b02930466c470050b899ffe8079599e446ff5396fa", contentPath: file_107 },
-  { path: ".codex/agents/spinosa-serendippo.toml", mode: 420, sha256: "027c9191e4ba43bcd5c71799453bead073a40329edec144e7a703a437a3f15d3", contentPath: file_108 },
-  { path: ".codex/agents/spinosa-verifier.toml", mode: 420, sha256: "d4ee879b13ff7f080690807142366e0999787dcf1398c92f9bf95c7d9225d67c", contentPath: file_109 },
-  { path: ".codex/agents/spinosa-visualizer.toml", mode: 420, sha256: "e78ebefcb9974fc58504cce6ee997a980e7e5715991247efa789f87198f9429e", contentPath: file_110 },
-  { path: ".codex/agents/spinosa-writer.toml", mode: 420, sha256: "7dedea4a4e75129e99cb3742ec5daa5f1c2b79f22adfabe2d0321cdcc49042d2", contentPath: file_111 },
-  { path: ".codex/config.toml", mode: 420, sha256: "3ad0ba10a1872854c4732b3361eb080a37effaa2d738b89ad70de81e1854c6de", contentPath: file_112 },
-  { path: ".codex/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_113 },
-  { path: ".codex/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_114 },
-  { path: ".codex/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_115 },
-  { path: ".codex/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_116 },
-  { path: ".codex/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_117 },
-  { path: ".codex/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_118 },
-  { path: ".codex/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_119 },
-  { path: ".codex/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_120 },
-  { path: ".codex/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_121 },
-  { path: ".codex/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_122 },
-  { path: ".codex/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_123 },
-  { path: ".codex/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_124 },
-  { path: ".codex/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_125 },
-  { path: ".codex/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_126 },
-  { path: ".codex/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_127 },
-  { path: ".codex/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_128 },
-  { path: ".codex/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_129 },
-  { path: ".codex/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_130 },
-  { path: ".codex/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_131 },
-  { path: ".codex/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_132 },
-  { path: ".codex/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_133 },
-  { path: ".codex/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_134 },
-  { path: ".codex/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_135 },
-  { path: ".codex/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_136 },
-  { path: ".codex/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_137 },
-  { path: ".codex/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_138 },
-  { path: ".codex/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_139 },
-  { path: ".codex/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_140 },
-  { path: ".codex/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_141 },
-  { path: ".codex/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_142 },
-  { path: ".codex/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_143 },
-  { path: ".codex/skills/spinosa-visualizer/SKILL.md", mode: 420, sha256: "d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3", contentPath: file_144 },
-  { path: ".codex/skills/spinosa-visualizer/scripts/categorical-histogram.py", mode: 420, sha256: "471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b", contentPath: file_145 },
-  { path: ".codex/skills/spinosa-visualizer/scripts/line-chart.py", mode: 420, sha256: "fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7", contentPath: file_146 },
-  { path: ".codex/skills/spinosa-visualizer/scripts/matrix-heatmap.py", mode: 420, sha256: "a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025", contentPath: file_147 },
-  { path: ".codex/skills/spinosa-visualizer/scripts/ridge-plot.py", mode: 420, sha256: "593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a", contentPath: file_148 },
-  { path: ".codex/skills/spinosa-visualizer/scripts/test_data.json", mode: 420, sha256: "804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6", contentPath: file_149 },
-  { path: ".codex/skills/spinosa-visualizer/scripts/vertical-bar.py", mode: 420, sha256: "6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41", contentPath: file_150 },
-  { path: ".codex/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_151 },
-  { path: ".hermes/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_152 },
-  { path: ".hermes/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_153 },
-  { path: ".hermes/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_154 },
-  { path: ".hermes/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_155 },
-  { path: ".hermes/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_156 },
-  { path: ".hermes/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_157 },
-  { path: ".hermes/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_158 },
-  { path: ".hermes/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_159 },
-  { path: ".hermes/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_160 },
-  { path: ".hermes/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_161 },
-  { path: ".hermes/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_162 },
-  { path: ".hermes/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_163 },
-  { path: ".hermes/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_164 },
-  { path: ".hermes/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_165 },
-  { path: ".hermes/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_166 },
-  { path: ".hermes/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_167 },
-  { path: ".hermes/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_168 },
-  { path: ".hermes/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_169 },
-  { path: ".hermes/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_170 },
-  { path: ".hermes/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_171 },
-  { path: ".hermes/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_172 },
-  { path: ".hermes/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_173 },
-  { path: ".hermes/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_174 },
-  { path: ".hermes/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_175 },
-  { path: ".hermes/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_176 },
-  { path: ".hermes/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_177 },
-  { path: ".hermes/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_178 },
-  { path: ".hermes/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_179 },
-  { path: ".hermes/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_180 },
-  { path: ".hermes/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_181 },
-  { path: ".hermes/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_182 },
-  { path: ".hermes/skills/spinosa-visualizer/SKILL.md", mode: 420, sha256: "d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3", contentPath: file_183 },
-  { path: ".hermes/skills/spinosa-visualizer/scripts/categorical-histogram.py", mode: 420, sha256: "471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b", contentPath: file_184 },
-  { path: ".hermes/skills/spinosa-visualizer/scripts/line-chart.py", mode: 420, sha256: "fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7", contentPath: file_185 },
-  { path: ".hermes/skills/spinosa-visualizer/scripts/matrix-heatmap.py", mode: 420, sha256: "a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025", contentPath: file_186 },
-  { path: ".hermes/skills/spinosa-visualizer/scripts/ridge-plot.py", mode: 420, sha256: "593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a", contentPath: file_187 },
-  { path: ".hermes/skills/spinosa-visualizer/scripts/test_data.json", mode: 420, sha256: "804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6", contentPath: file_188 },
-  { path: ".hermes/skills/spinosa-visualizer/scripts/vertical-bar.py", mode: 420, sha256: "6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41", contentPath: file_189 },
-  { path: ".hermes/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_190 },
-  { path: ".hermes/workspace.config.yaml", mode: 420, sha256: "b80b8524c7f4ac244858cf8989c907b67b96ee1b8bdc4540f9fbfe450a566b2a", contentPath: file_191 },
-  { path: ".logs/.gitkeep", mode: 420, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", contentPath: file_192 },
-  { path: ".logs/AGENTS.md", mode: 420, sha256: "7ab52cbfdb3e81ddc5c3afba9be1d06d13320cc3a47c2c9c30de0b016f25e6c6", contentPath: file_193 },
-  { path: ".opencode/agents/spinosa-analyst.md", mode: 420, sha256: "253ec71def27d718defb5f93d0a5e28848fb69eb8300d35b56a94a5c83940c25", contentPath: file_194 },
-  { path: ".opencode/agents/spinosa-evaluator.md", mode: 420, sha256: "906bbb28e4b35c0a7480ce301ea19b913acbd4390c1e7269949644303266702d", contentPath: file_195 },
-  { path: ".opencode/agents/spinosa-evolver.md", mode: 420, sha256: "8428321672606c039350aff4d7938ecf280d067f9644fefc2239e893b06bbd8b", contentPath: file_196 },
-  { path: ".opencode/agents/spinosa-janitor.md", mode: 420, sha256: "c785fc48ab9b338831fcd347ebce3205e0df4d69da16380f18297b6f8874e20d", contentPath: file_197 },
-  { path: ".opencode/agents/spinosa-mapper.md", mode: 420, sha256: "509806c6266ee311624eb6acf1ad423cbe4c555fb96ac6a7bd87c11aa302e880", contentPath: file_198 },
-  { path: ".opencode/agents/spinosa-overseer.md", mode: 420, sha256: "902242313889f975cb2fe19373c1d6ed725077a735f8b65d70ea25656f03310b", contentPath: file_199 },
-  { path: ".opencode/agents/spinosa-searcher.md", mode: 420, sha256: "ad2c95b1186aaea200375e61ed1053f7de4075470d1b14c27c4dbdceb9ec3e00", contentPath: file_200 },
-  { path: ".opencode/agents/spinosa-serendippo.md", mode: 420, sha256: "be7d4b08fb01b58d25dd55605ec0a37778bb486d354438c2924ff42615d84441", contentPath: file_201 },
-  { path: ".opencode/agents/spinosa-verifier.md", mode: 420, sha256: "d0cefe4938b99f347af05716efe8b031d7225c7077ef9ecd9c20ee867ec4adb9", contentPath: file_202 },
-  { path: ".opencode/agents/spinosa-visualizer.md", mode: 420, sha256: "d4367d54def6d49919425f7112b37ce7518dd17f9c3199e3bd9c6191fad1eb2e", contentPath: file_203 },
-  { path: ".opencode/agents/spinosa-writer.md", mode: 420, sha256: "d2f1fc96194087ae6b96c02ebd5ac7c0a5727cf0f8d7918ea0ee12c50026e05c", contentPath: file_204 },
-  { path: ".opencode/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_205 },
-  { path: ".opencode/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_206 },
-  { path: ".opencode/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_207 },
-  { path: ".opencode/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_208 },
-  { path: ".opencode/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_209 },
-  { path: ".opencode/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_210 },
-  { path: ".opencode/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_211 },
-  { path: ".opencode/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_212 },
-  { path: ".opencode/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_213 },
-  { path: ".opencode/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_214 },
-  { path: ".opencode/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_215 },
-  { path: ".opencode/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_216 },
-  { path: ".opencode/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_217 },
-  { path: ".opencode/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_218 },
-  { path: ".opencode/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_219 },
-  { path: ".opencode/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_220 },
-  { path: ".opencode/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_221 },
-  { path: ".opencode/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_222 },
-  { path: ".opencode/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_223 },
-  { path: ".opencode/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_224 },
-  { path: ".opencode/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_225 },
-  { path: ".opencode/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_226 },
-  { path: ".opencode/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_227 },
-  { path: ".opencode/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_228 },
-  { path: ".opencode/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_229 },
-  { path: ".opencode/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_230 },
-  { path: ".opencode/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_231 },
-  { path: ".opencode/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_232 },
-  { path: ".opencode/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_233 },
-  { path: ".opencode/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_234 },
-  { path: ".opencode/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_235 },
-  { path: ".opencode/skills/spinosa-visualizer/SKILL.md", mode: 420, sha256: "d4d8848d614659cf9dcb1ade5a7041149c0d10851529794ecf144fcd71aff8d3", contentPath: file_236 },
-  { path: ".opencode/skills/spinosa-visualizer/scripts/categorical-histogram.py", mode: 420, sha256: "471480eb648fd44fc9695383a557594237599aa53887261f3faebd9d1888316b", contentPath: file_237 },
-  { path: ".opencode/skills/spinosa-visualizer/scripts/line-chart.py", mode: 420, sha256: "fa2f2e5227fe3557139ac1b35d0bbb5dec567f888704837fbfb2a1e65222c6c7", contentPath: file_238 },
-  { path: ".opencode/skills/spinosa-visualizer/scripts/matrix-heatmap.py", mode: 420, sha256: "a310dcfcf3ddcde530ea4b482352419ea80d032cc96b977a978dd34fe8afd025", contentPath: file_239 },
-  { path: ".opencode/skills/spinosa-visualizer/scripts/ridge-plot.py", mode: 420, sha256: "593e36e7273ea16399ddf56fb23c4494e641279dff94c6ebc9ca191d244f8b7a", contentPath: file_240 },
-  { path: ".opencode/skills/spinosa-visualizer/scripts/test_data.json", mode: 420, sha256: "804b5e67d0fea05d345369c0621189d8fac14ea1fe9db8d348d0546f56a17db6", contentPath: file_241 },
-  { path: ".opencode/skills/spinosa-visualizer/scripts/vertical-bar.py", mode: 420, sha256: "6c83fb8ea9f856589a4c76eca3975ea019cad14d9cb376db4c21a364bf9b5a41", contentPath: file_242 },
-  { path: ".opencode/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_243 },
-  { path: ".spinosa/archive/.gitkeep", mode: 420, sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b", contentPath: file_244 },
-  { path: ".spinosa/memory/.gitkeep", mode: 420, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", contentPath: file_245 },
-  { path: ".spinosa/memory/AGENTS.md", mode: 420, sha256: "431c453b1be47285fe282a80f8e222950a6ba4b63f593bd0b50da10f38dfa9f3", contentPath: file_246 },
-  { path: ".spinosa/memory/orchestrator-notes.md", mode: 420, sha256: "8ebb4935ed91b21354491840c34fcaf0bde15928da5ede702cb5b31b85e25579", contentPath: file_247 },
-  { path: ".spinosa/workspace-files.tsv", mode: 420, sha256: "0dc4256e0fbc8444c10615db4670f21a1a96c0d72e644542f272555d1c273315", contentPath: file_248 },
-  { path: ".trash/.gitkeep", mode: 420, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", contentPath: file_249 },
-  { path: ".trash/AGENTS.md", mode: 420, sha256: "54cc7712dd3360e1121544ffff86dcfb80231986b9863aefaedc9c29b965ec08", contentPath: file_250 },
-  { path: "AGENTS.md", mode: 420, sha256: "b56a0ffaaad73ebd24d82d4d7820cff1c514df0193985a1f2112c6aa509de650", contentPath: file_251 },
-  { path: "CLAUDE.md", mode: 420, sha256: "10c3bd4509954aaa27d5c4c59941010e2391450688fb2343c1a461c36ee29220", contentPath: file_252 },
-  { path: "README.md", mode: 420, sha256: "2892dad4065a95e30383c9bd7a7ffe3e762f40a7f8a10fa7c22e2db95490a8f6", contentPath: file_253 },
-  { path: "agent_reports/.gitkeep", mode: 420, sha256: "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85", contentPath: file_254 },
-  { path: "agent_reports/AGENTS.md", mode: 420, sha256: "586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a", contentPath: file_255 },
-  { path: "docs/FAQ.md", mode: 420, sha256: "502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4", contentPath: file_256 },
-  { path: "docs/GLOSSARY.md", mode: 420, sha256: "3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7", contentPath: file_257 },
-  { path: "docs/diagrams.md", mode: 420, sha256: "69b4b29b9d3f4b2ffca8220c8732511dafb6ba32658e195f6762e191b1fa3041", contentPath: file_258 },
-  { path: "docs/reference/agents.md", mode: 420, sha256: "9b6409915833a95525be5dfa0bca468f8e2fca7b0ea26934bfd78ce4c6abac96", contentPath: file_259 },
-  { path: "docs/reference/cli.md", mode: 420, sha256: "223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6", contentPath: file_260 },
-  { path: "docs/reference/corpus.md", mode: 420, sha256: "591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54", contentPath: file_261 },
-  { path: "docs/reference/reports.md", mode: 420, sha256: "496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c", contentPath: file_262 },
-  { path: "docs/reference/testsuite.md", mode: 420, sha256: "67d7b2211a3449d71ca80954cc23062f02917cebf61d2858768851da2cc6e376", contentPath: file_263 },
-  { path: "maps/.gitkeep", mode: 420, sha256: "d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c", contentPath: file_264 },
-  { path: "maps/AGENTS.md", mode: 420, sha256: "d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342", contentPath: file_265 },
-  { path: "maps/map_template.md", mode: 420, sha256: "0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3", contentPath: file_266 },
-  { path: "raw/.gitkeep", mode: 420, sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b", contentPath: file_267 },
-  { path: "raw/AGENTS.md", mode: 420, sha256: "70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114", contentPath: file_268 },
-  { path: "startup-prompt.md", mode: 420, sha256: "ab9164f7ee30c61c0f4eb60fa8332aa8844ed8307ed7ccf35a361a3c49f4d206", contentPath: file_269 },
-  { path: "system/AGENTS.md", mode: 420, sha256: "9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88", contentPath: file_270 },
-  { path: "system/configuration.md", mode: 420, sha256: "63ab310cdb9203c0b33950f6d95f270d61777289ce8b01374cd0e08975f19037", contentPath: file_271 },
-  { path: "system/context.md", mode: 420, sha256: "661251d2245b90f72f7fb0837111239f550931c659101f6b7f59d7477fc5b7ce", contentPath: file_272 },
-  { path: "system/dictionary.md", mode: 420, sha256: "4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8", contentPath: file_273 },
-  { path: "system/system_architecture_map.md", mode: 420, sha256: "afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf", contentPath: file_274 },
-  { path: "system/workspace_index.md", mode: 420, sha256: "511aeb589273c14cf34c9267d0c395d891132fbf92fa4ec82e49aeb2b21602c0", contentPath: file_275 },
-  { path: "system/yaml_header_template.md", mode: 420, sha256: "a2e855a23f53ba682e6dee9d65019b4717b6330fd77590fac7bd7edf69da0cfb", contentPath: file_276 },
+  { path: ".agents/agents/spinosa-writer.md", mode: 420, sha256: "ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433", contentPath: file_9 },
+  { path: ".agents/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_10 },
+  { path: ".agents/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_11 },
+  { path: ".agents/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_12 },
+  { path: ".agents/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_13 },
+  { path: ".agents/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_14 },
+  { path: ".agents/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_15 },
+  { path: ".agents/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_16 },
+  { path: ".agents/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_17 },
+  { path: ".agents/references/report-template.md", mode: 420, sha256: "e0182c18ba24b8711e38399d45d13e9e7decd17979ea5d97549a2f632da92e05", contentPath: file_18 },
+  { path: ".agents/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_19 },
+  { path: ".agents/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_20 },
+  { path: ".agents/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_21 },
+  { path: ".agents/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_22 },
+  { path: ".agents/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_23 },
+  { path: ".agents/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_24 },
+  { path: ".agents/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_25 },
+  { path: ".agents/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_26 },
+  { path: ".agents/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_27 },
+  { path: ".agents/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_28 },
+  { path: ".agents/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_29 },
+  { path: ".agents/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_30 },
+  { path: ".agents/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_31 },
+  { path: ".agents/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_32 },
+  { path: ".agents/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_33 },
+  { path: ".agents/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_34 },
+  { path: ".agents/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_35 },
+  { path: ".agents/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_36 },
+  { path: ".agents/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_37 },
+  { path: ".agents/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_38 },
+  { path: ".agents/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_39 },
+  { path: ".agents/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_40 },
+  { path: ".agents/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_41 },
+  { path: ".bin/spinosa", mode: 493, sha256: "1ddcb68955955b9a75901c8426cbdfe00ec0a12a34d7360984660d48418240aa", contentPath: file_42 },
+  { path: ".claude/agents/spinosa-analyst.md", mode: 420, sha256: "b70d5067cf93b58ba4bb751f3840215493fd5eda2f4d55fbe87dae7281d0036b", contentPath: file_43 },
+  { path: ".claude/agents/spinosa-evaluator.md", mode: 420, sha256: "5722437c4c851af6cb2884a7575414344dab05ace2bcf8e2ca14029eea0328dd", contentPath: file_44 },
+  { path: ".claude/agents/spinosa-evolver.md", mode: 420, sha256: "c2d5d5c925017e42b2525e9a58a1f144fd85df765619b5e3ff3fc861bdb4d39e", contentPath: file_45 },
+  { path: ".claude/agents/spinosa-janitor.md", mode: 420, sha256: "50044626aee74b393a39cfb6b5ccde67379494b445f437db0895fd2efce617d9", contentPath: file_46 },
+  { path: ".claude/agents/spinosa-mapper.md", mode: 420, sha256: "b65d05998697d7d78b95e1882cb4ad47ba92d5da5e9c7cb1270f95cbe4983b64", contentPath: file_47 },
+  { path: ".claude/agents/spinosa-overseer.md", mode: 420, sha256: "53e296b6d0d5b9c3aa1d10de03bec6041933cda6226c4fad38a4ef7dc320ec62", contentPath: file_48 },
+  { path: ".claude/agents/spinosa-searcher.md", mode: 420, sha256: "0923f0966330f4864ecb79b62d82ff286930af46b7aff2346d2aebe91a827767", contentPath: file_49 },
+  { path: ".claude/agents/spinosa-serendippo.md", mode: 420, sha256: "f8c708a43c1f507271a21a2ef78310c101be2d50a6703205cf478627d59182ee", contentPath: file_50 },
+  { path: ".claude/agents/spinosa-verifier.md", mode: 420, sha256: "e419f0a10812cae8c4ad9599029c0b9d3de5aaba9196646a004d7a63aaf8b403", contentPath: file_51 },
+  { path: ".claude/agents/spinosa-writer.md", mode: 420, sha256: "ae0b28a11d63ebe7ef782ee4422e458c200645bf5ec859f9d1f79da8fcc64433", contentPath: file_52 },
+  { path: ".claude/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_53 },
+  { path: ".claude/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_54 },
+  { path: ".claude/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_55 },
+  { path: ".claude/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_56 },
+  { path: ".claude/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_57 },
+  { path: ".claude/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_58 },
+  { path: ".claude/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_59 },
+  { path: ".claude/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_60 },
+  { path: ".claude/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_61 },
+  { path: ".claude/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_62 },
+  { path: ".claude/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_63 },
+  { path: ".claude/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_64 },
+  { path: ".claude/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_65 },
+  { path: ".claude/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_66 },
+  { path: ".claude/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_67 },
+  { path: ".claude/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_68 },
+  { path: ".claude/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_69 },
+  { path: ".claude/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_70 },
+  { path: ".claude/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_71 },
+  { path: ".claude/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_72 },
+  { path: ".claude/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_73 },
+  { path: ".claude/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_74 },
+  { path: ".claude/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_75 },
+  { path: ".claude/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_76 },
+  { path: ".claude/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_77 },
+  { path: ".claude/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_78 },
+  { path: ".claude/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_79 },
+  { path: ".claude/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_80 },
+  { path: ".claude/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_81 },
+  { path: ".claude/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_82 },
+  { path: ".claude/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_83 },
+  { path: ".claude/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_84 },
+  { path: ".codex/agents/spinosa-analyst.toml", mode: 420, sha256: "10bc9429c289ec264d1a0558ad96ee603da4b12b5d8c9823937cbe8a570f5d14", contentPath: file_85 },
+  { path: ".codex/agents/spinosa-evaluator.toml", mode: 420, sha256: "436e6099efc1ed59dcf09f7a1aff98fc3008c78a144381126115941e91309207", contentPath: file_86 },
+  { path: ".codex/agents/spinosa-evolver.toml", mode: 420, sha256: "834de0820c82b05ce8b74a484cd31dc7e79b6fba0f97e224213420d760aebbbd", contentPath: file_87 },
+  { path: ".codex/agents/spinosa-janitor.toml", mode: 420, sha256: "2f844dc82f3888fef8166ea569d30b4cfc6871a16245366eaee51cf22246acdb", contentPath: file_88 },
+  { path: ".codex/agents/spinosa-mapper.toml", mode: 420, sha256: "d317f8c27a5ee8097ecbbf73715203025220af01c554a20ba677d7558a206293", contentPath: file_89 },
+  { path: ".codex/agents/spinosa-overseer.toml", mode: 420, sha256: "928921d45187e3026431c4e949e705b835a3afc14abbf29b3f165f5edac74d86", contentPath: file_90 },
+  { path: ".codex/agents/spinosa-searcher.toml", mode: 420, sha256: "d6d24e485f7f0e4cce9442b02930466c470050b899ffe8079599e446ff5396fa", contentPath: file_91 },
+  { path: ".codex/agents/spinosa-serendippo.toml", mode: 420, sha256: "027c9191e4ba43bcd5c71799453bead073a40329edec144e7a703a437a3f15d3", contentPath: file_92 },
+  { path: ".codex/agents/spinosa-verifier.toml", mode: 420, sha256: "d4ee879b13ff7f080690807142366e0999787dcf1398c92f9bf95c7d9225d67c", contentPath: file_93 },
+  { path: ".codex/agents/spinosa-writer.toml", mode: 420, sha256: "7dedea4a4e75129e99cb3742ec5daa5f1c2b79f22adfabe2d0321cdcc49042d2", contentPath: file_94 },
+  { path: ".codex/config.toml", mode: 420, sha256: "3ad0ba10a1872854c4732b3361eb080a37effaa2d738b89ad70de81e1854c6de", contentPath: file_95 },
+  { path: ".codex/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_96 },
+  { path: ".codex/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_97 },
+  { path: ".codex/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_98 },
+  { path: ".codex/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_99 },
+  { path: ".codex/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_100 },
+  { path: ".codex/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_101 },
+  { path: ".codex/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_102 },
+  { path: ".codex/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_103 },
+  { path: ".codex/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_104 },
+  { path: ".codex/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_105 },
+  { path: ".codex/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_106 },
+  { path: ".codex/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_107 },
+  { path: ".codex/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_108 },
+  { path: ".codex/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_109 },
+  { path: ".codex/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_110 },
+  { path: ".codex/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_111 },
+  { path: ".codex/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_112 },
+  { path: ".codex/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_113 },
+  { path: ".codex/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_114 },
+  { path: ".codex/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_115 },
+  { path: ".codex/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_116 },
+  { path: ".codex/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_117 },
+  { path: ".codex/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_118 },
+  { path: ".codex/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_119 },
+  { path: ".codex/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_120 },
+  { path: ".codex/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_121 },
+  { path: ".codex/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_122 },
+  { path: ".codex/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_123 },
+  { path: ".codex/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_124 },
+  { path: ".codex/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_125 },
+  { path: ".codex/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_126 },
+  { path: ".codex/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_127 },
+  { path: ".hermes/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_128 },
+  { path: ".hermes/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_129 },
+  { path: ".hermes/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_130 },
+  { path: ".hermes/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_131 },
+  { path: ".hermes/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_132 },
+  { path: ".hermes/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_133 },
+  { path: ".hermes/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_134 },
+  { path: ".hermes/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_135 },
+  { path: ".hermes/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_136 },
+  { path: ".hermes/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_137 },
+  { path: ".hermes/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_138 },
+  { path: ".hermes/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_139 },
+  { path: ".hermes/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_140 },
+  { path: ".hermes/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_141 },
+  { path: ".hermes/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_142 },
+  { path: ".hermes/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_143 },
+  { path: ".hermes/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_144 },
+  { path: ".hermes/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_145 },
+  { path: ".hermes/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_146 },
+  { path: ".hermes/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_147 },
+  { path: ".hermes/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_148 },
+  { path: ".hermes/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_149 },
+  { path: ".hermes/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_150 },
+  { path: ".hermes/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_151 },
+  { path: ".hermes/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_152 },
+  { path: ".hermes/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_153 },
+  { path: ".hermes/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_154 },
+  { path: ".hermes/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_155 },
+  { path: ".hermes/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_156 },
+  { path: ".hermes/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_157 },
+  { path: ".hermes/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_158 },
+  { path: ".hermes/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_159 },
+  { path: ".hermes/workspace.config.yaml", mode: 420, sha256: "b80b8524c7f4ac244858cf8989c907b67b96ee1b8bdc4540f9fbfe450a566b2a", contentPath: file_160 },
+  { path: ".logs/.gitkeep", mode: 420, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", contentPath: file_161 },
+  { path: ".logs/AGENTS.md", mode: 420, sha256: "7ab52cbfdb3e81ddc5c3afba9be1d06d13320cc3a47c2c9c30de0b016f25e6c6", contentPath: file_162 },
+  { path: ".opencode/agents/spinosa-analyst.md", mode: 420, sha256: "253ec71def27d718defb5f93d0a5e28848fb69eb8300d35b56a94a5c83940c25", contentPath: file_163 },
+  { path: ".opencode/agents/spinosa-evaluator.md", mode: 420, sha256: "906bbb28e4b35c0a7480ce301ea19b913acbd4390c1e7269949644303266702d", contentPath: file_164 },
+  { path: ".opencode/agents/spinosa-evolver.md", mode: 420, sha256: "8428321672606c039350aff4d7938ecf280d067f9644fefc2239e893b06bbd8b", contentPath: file_165 },
+  { path: ".opencode/agents/spinosa-janitor.md", mode: 420, sha256: "c785fc48ab9b338831fcd347ebce3205e0df4d69da16380f18297b6f8874e20d", contentPath: file_166 },
+  { path: ".opencode/agents/spinosa-mapper.md", mode: 420, sha256: "509806c6266ee311624eb6acf1ad423cbe4c555fb96ac6a7bd87c11aa302e880", contentPath: file_167 },
+  { path: ".opencode/agents/spinosa-overseer.md", mode: 420, sha256: "902242313889f975cb2fe19373c1d6ed725077a735f8b65d70ea25656f03310b", contentPath: file_168 },
+  { path: ".opencode/agents/spinosa-searcher.md", mode: 420, sha256: "ad2c95b1186aaea200375e61ed1053f7de4075470d1b14c27c4dbdceb9ec3e00", contentPath: file_169 },
+  { path: ".opencode/agents/spinosa-serendippo.md", mode: 420, sha256: "be7d4b08fb01b58d25dd55605ec0a37778bb486d354438c2924ff42615d84441", contentPath: file_170 },
+  { path: ".opencode/agents/spinosa-verifier.md", mode: 420, sha256: "d0cefe4938b99f347af05716efe8b031d7225c7077ef9ecd9c20ee867ec4adb9", contentPath: file_171 },
+  { path: ".opencode/agents/spinosa-writer.md", mode: 420, sha256: "d2f1fc96194087ae6b96c02ebd5ac7c0a5727cf0f8d7918ea0ee12c50026e05c", contentPath: file_172 },
+  { path: ".opencode/references/analysis-questions.md", mode: 420, sha256: "b0730a2e8e01730e771acbe1859c0489331bf19cdc7aca4f89f613cea8e62976", contentPath: file_173 },
+  { path: ".opencode/references/analysis-template.md", mode: 420, sha256: "a25563c8812a53632750ae75b2f26ce5f5c5f3233d014d90e80b6522cb73e4c2", contentPath: file_174 },
+  { path: ".opencode/references/artifact-naming.md", mode: 420, sha256: "f5b10b3ed00368d85870d45417b9675d52724ce5deae331e6d2c4823c24059a1", contentPath: file_175 },
+  { path: ".opencode/references/audit-template.md", mode: 420, sha256: "ca12f96fa0d0ebbbe579f9d55dd143e21a69431c22558421d545bb5a6105822f", contentPath: file_176 },
+  { path: ".opencode/references/chart-rendering.md", mode: 420, sha256: "ef17d8fb77fb5cb0026601aa1bbdf49326bfb27c044dbb2c9d19f0658c7e4c7f", contentPath: file_177 },
+  { path: ".opencode/references/classification.md", mode: 420, sha256: "d0ce78f44d1fa202d56e57497b5ac2605e7b6b94446f9ec69628363477888d15", contentPath: file_178 },
+  { path: ".opencode/references/goal-artifact-template.md", mode: 420, sha256: "628159322999ad05ec832bb712df33a1dba115d0597132facafc74db7f7e1b67", contentPath: file_179 },
+  { path: ".opencode/references/provenance-footer-template.md", mode: 420, sha256: "66574b8c75c0523713d9fea52db1e48c010bb9bc4161eb3a2019b4e0b8155782", contentPath: file_180 },
+  { path: ".opencode/references/report-template.md", mode: 420, sha256: "2561c941e3698d13ea643d7fbb9a6f30e5b775efd90a59cd4fb70ed0099e7189", contentPath: file_181 },
+  { path: ".opencode/references/skills.md", mode: 420, sha256: "2f0f5a36b29c38d8094ed1ea469292de86440e99e6310f3e2da6d38cc5556d04", contentPath: file_182 },
+  { path: ".opencode/references/status-definitions.md", mode: 420, sha256: "78e7a9bf0719b0801d2f7784db1ce99cd06198ad4dae377858d40bacda961cd8", contentPath: file_183 },
+  { path: ".opencode/references/verbatim-format.md", mode: 420, sha256: "1d65c9bfbfd33d775ec5323423ee491c18b14aa94de06dc67cedc6426a331a1c", contentPath: file_184 },
+  { path: ".opencode/skills/agent-interception/SKILL.md", mode: 420, sha256: "5acc755cea974ab8476bcf72afaeb626da32d02667e4e480623b15286f49875e", contentPath: file_185 },
+  { path: ".opencode/skills/agent-interception/references/evidence-report-template.md", mode: 420, sha256: "9466055795e24331612ab3b8615c90741b63e4e60f75fe53370785d1ee8062e8", contentPath: file_186 },
+  { path: ".opencode/skills/agent-interception/references/file-read-analysis.md", mode: 420, sha256: "1a881f45ab4fc1d00658451f9a5ffd1b48173a317a3867a043cce936811b0339", contentPath: file_187 },
+  { path: ".opencode/skills/agent-interception/references/index.md", mode: 420, sha256: "8602c5c78d5b7aceb210e68e180febe7a70433ad06f01960023d44cbf145daa2", contentPath: file_188 },
+  { path: ".opencode/skills/agent-interception/references/log-parsing.md", mode: 420, sha256: "0c7f46597a3d3aa880efd20a6d38a5724c6b09c08674b73dec162310bf9916e2", contentPath: file_189 },
+  { path: ".opencode/skills/agent-interception/references/operation-classification.md", mode: 420, sha256: "691f18f3f119fdf002193b8b538162d6f0b8f11f2b5be81ae72775639e111142", contentPath: file_190 },
+  { path: ".opencode/skills/agent-interception/references/source-discovery.md", mode: 420, sha256: "0befdc965eb1c9045aca4de50354fdd26d6aec96c109a5ef68e2595732235f92", contentPath: file_191 },
+  { path: ".opencode/skills/agent-interception/scripts/analyze-events.sh", mode: 493, sha256: "868d181f1a0451c121c8328feeac60b2f81618bae88876e99338a842d432e017", contentPath: file_192 },
+  { path: ".opencode/skills/agent-interception/scripts/extract-codex.sh", mode: 493, sha256: "d70b5412a82ad01bb8179a7b5e248f3c2c35c98d91711fe8f66436d365f081df", contentPath: file_193 },
+  { path: ".opencode/skills/agent-interception/scripts/extract-opencode.sh", mode: 493, sha256: "30db4dd346e230cbbe2ca3ef2eac9dd23c7bbe46dac9b86da86b479bd98ede85", contentPath: file_194 },
+  { path: ".opencode/skills/spinosa-analyst/SKILL.md", mode: 420, sha256: "d057d352e9bf6b851c4e34cf9d6fda9967ab84e892a0777a76ce7e7fedaab35d", contentPath: file_195 },
+  { path: ".opencode/skills/spinosa-evaluator/SKILL.md", mode: 420, sha256: "264011605ca73d1602baa5deabbc6f71ea655cd697e67f7cfd095ca0cc4c3c6b", contentPath: file_196 },
+  { path: ".opencode/skills/spinosa-evolver/SKILL.md", mode: 420, sha256: "54c2d183e9eb84d8a7ff275d254214c0cae46a0426018a851bcf05814e8ca01d", contentPath: file_197 },
+  { path: ".opencode/skills/spinosa-janitor/SKILL.md", mode: 420, sha256: "d90882f660cd6c6569cf8ee6e31d9d47f148761330ae538881b49c6d99820509", contentPath: file_198 },
+  { path: ".opencode/skills/spinosa-mapper/SKILL.md", mode: 420, sha256: "698a310991c6f3bfa3d7d84530b098afdc90cd97409b82feec975953836096f9", contentPath: file_199 },
+  { path: ".opencode/skills/spinosa-overseer/SKILL.md", mode: 420, sha256: "ae2599da89a559b78aa56200f38dc41c8d89aa69f56749d3d800d66d5717f9d0", contentPath: file_200 },
+  { path: ".opencode/skills/spinosa-searcher/SKILL.md", mode: 420, sha256: "214904d435f9600b3b38feff1ad19552f865ea80c49ec7ca6861a3d4b5b8fd24", contentPath: file_201 },
+  { path: ".opencode/skills/spinosa-serendippo/SKILL.md", mode: 420, sha256: "ed4527525c213be7053895f428b0bff3fff34da6e23af0700e9a324543e2f23e", contentPath: file_202 },
+  { path: ".opencode/skills/spinosa-verifier/SKILL.md", mode: 420, sha256: "4d52e16e2bd5bd6fdee367ff78ccd8873421c57e802622ee0299798fa7061242", contentPath: file_203 },
+  { path: ".opencode/skills/spinosa-writer/SKILL.md", mode: 420, sha256: "61540577ff0ca81f954b2d4ef5bcc7f3c9c3dd30ca68e7fc2a40e45bac7b88f5", contentPath: file_204 },
+  { path: ".spinosa/archive/.gitkeep", mode: 420, sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b", contentPath: file_205 },
+  { path: ".spinosa/memory/.gitkeep", mode: 420, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", contentPath: file_206 },
+  { path: ".spinosa/memory/AGENTS.md", mode: 420, sha256: "431c453b1be47285fe282a80f8e222950a6ba4b63f593bd0b50da10f38dfa9f3", contentPath: file_207 },
+  { path: ".spinosa/memory/orchestrator-notes.md", mode: 420, sha256: "8ebb4935ed91b21354491840c34fcaf0bde15928da5ede702cb5b31b85e25579", contentPath: file_208 },
+  { path: ".spinosa/workspace-files.tsv", mode: 420, sha256: "0dc4256e0fbc8444c10615db4670f21a1a96c0d72e644542f272555d1c273315", contentPath: file_209 },
+  { path: ".trash/.gitkeep", mode: 420, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", contentPath: file_210 },
+  { path: ".trash/AGENTS.md", mode: 420, sha256: "54cc7712dd3360e1121544ffff86dcfb80231986b9863aefaedc9c29b965ec08", contentPath: file_211 },
+  { path: "AGENTS.md", mode: 420, sha256: "0145c4797666e85a20e83b76cec38c82d7b5413469bdf5337016d5aa74f43b0d", contentPath: file_212 },
+  { path: "CLAUDE.md", mode: 420, sha256: "3afc9d19eeb94e1d636a735ee76596f206d8441a15ef1edb1fac77fe3a4b2e01", contentPath: file_213 },
+  { path: "README.md", mode: 420, sha256: "2892dad4065a95e30383c9bd7a7ffe3e762f40a7f8a10fa7c22e2db95490a8f6", contentPath: file_214 },
+  { path: "agent_reports/.gitkeep", mode: 420, sha256: "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85", contentPath: file_215 },
+  { path: "agent_reports/AGENTS.md", mode: 420, sha256: "586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a", contentPath: file_216 },
+  { path: "docs/FAQ.md", mode: 420, sha256: "502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4", contentPath: file_217 },
+  { path: "docs/GLOSSARY.md", mode: 420, sha256: "3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7", contentPath: file_218 },
+  { path: "docs/diagrams.md", mode: 420, sha256: "4b599456bcd3ad6b3c9df896e7cdd9de4c76d12131254dc21d60939f2bd190a3", contentPath: file_219 },
+  { path: "docs/reference/agents.md", mode: 420, sha256: "45d92f480c5b62b6c276f6d60f888df997857fc27600a669782afa2129e281c1", contentPath: file_220 },
+  { path: "docs/reference/cli.md", mode: 420, sha256: "223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6", contentPath: file_221 },
+  { path: "docs/reference/corpus.md", mode: 420, sha256: "591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54", contentPath: file_222 },
+  { path: "docs/reference/reports.md", mode: 420, sha256: "496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c", contentPath: file_223 },
+  { path: "docs/reference/testsuite.md", mode: 420, sha256: "67d7b2211a3449d71ca80954cc23062f02917cebf61d2858768851da2cc6e376", contentPath: file_224 },
+  { path: "maps/.gitkeep", mode: 420, sha256: "d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c", contentPath: file_225 },
+  { path: "maps/AGENTS.md", mode: 420, sha256: "d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342", contentPath: file_226 },
+  { path: "maps/map_template.md", mode: 420, sha256: "0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3", contentPath: file_227 },
+  { path: "raw/.gitkeep", mode: 420, sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b", contentPath: file_228 },
+  { path: "raw/AGENTS.md", mode: 420, sha256: "70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114", contentPath: file_229 },
+  { path: "startup-prompt.md", mode: 420, sha256: "6e63f02967e488eb83d66aaa0e5193ccff1a71b38e4c577ab2e9e9d34c6725d0", contentPath: file_230 },
+  { path: "system/AGENTS.md", mode: 420, sha256: "9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88", contentPath: file_231 },
+  { path: "system/configuration.md", mode: 420, sha256: "63ab310cdb9203c0b33950f6d95f270d61777289ce8b01374cd0e08975f19037", contentPath: file_232 },
+  { path: "system/context.md", mode: 420, sha256: "00bb78f35bae7eb451d4f2db2a9bae8c4c21d53ab69e34bb41d043166bb6e1b7", contentPath: file_233 },
+  { path: "system/dictionary.md", mode: 420, sha256: "4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8", contentPath: file_234 },
+  { path: "system/system_architecture_map.md", mode: 420, sha256: "afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf", contentPath: file_235 },
+  { path: "system/workspace_index.md", mode: 420, sha256: "5d688e7d86de39c5b6b3267e61748e02e44a2794db6d7be3cce322ac9a6601b1", contentPath: file_236 },
+  { path: "system/yaml_header_template.md", mode: 420, sha256: "a2e855a23f53ba682e6dee9d65019b4717b6330fd77590fac7bd7edf69da0cfb", contentPath: file_237 },
   ],
 } as const

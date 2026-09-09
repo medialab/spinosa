@@ -25,6 +25,7 @@ export type ImportRoute =
   | "markitdown"
   | "ocr"
   | "binary_copy"
+  | "copy"
 
 export type ImportBatch = { ext: string; count: number; bytes: number }
 

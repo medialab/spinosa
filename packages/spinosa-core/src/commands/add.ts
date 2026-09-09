@@ -20,7 +20,7 @@ import {
 import { ImportBatchManager } from "../import/batch"
 import { injectColdFrontmatter, convertedOutputExists } from "../import/frontmatter"
 import { scanSource } from "../scan/scanner"
-import { fileExt } from "../constants"
+import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
 import type { PpuOcrFile } from "../import/ppu-ocr"
 import { spinosaLogInfo } from "../utils/log"
 import { MarkItDown } from "markitdown-ts"
@@ -334,10 +334,29 @@ async function addSingleFile(
     }
 
     case "ocr_convertible": {
+      const ext = fileExt(srcFile).toLowerCase()
+      // Images: copy-only, pending network OCR
+      if (extInList(ext, IMAGE_EXTENSIONS)) {
+        const destFile = path.join(rawDir, path.basename(srcFile))
+        failedDest = destFile
+        mkdirSync(path.dirname(destFile), { recursive: true })
+        if (existsSync(destFile)) {
+          if (!overwrite) { skipped = 1; break }
+          rmSync(destFile, { force: true })
+        }
+        if (safeCopy(srcFile, destFile)) {
+          copied = 1
+        } else {
+          failed = 1
+        }
+        break
+      }
+      // PDFs: tesseract for scanned, MarkItDown for text-layer
       const fileName = path.basename(srcFile)
       const stem = fileName.replace(/\.[^.]+$/, "")
       const destName = `${stem}__${fileExt(fileName)}.md`
       const destFile = path.join(rawDir, destName)
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -350,18 +369,53 @@ async function addSingleFile(
 
       const backups = backupConvertedOutput(destFile)
       let restored = true
-
       const tmpDest = destFile + `.spinosa-part-${process.pid}-${crypto.randomUUID()}`
+
+      // Check if PDF has text layer → use MarkItDown/pdfjs instead of OCR
       try {
-        const { runPpuOcrBatch } = await import("../import/ppu-ocr")
-        await runPpuOcrBatch([{ src: srcFile, rel: fileName, dest: tmpDest }], { shouldAbort })
-        if (convertedOutputExists(tmpDest)) {
-          renameSync(tmpDest, destFile)
-          ocrConverted = 1
-          injectColdFrontmatter(destFile)
+        const { isTextBasedPdf } = await import("../extension/pdf")
+        const hasText = await isTextBasedPdf(srcFile)
+        if (hasText) {
+          try {
+            const converter = new MarkItDown()
+            const result = await markitdownConvertFile(converter, srcFile)
+            throwIfSpinosaCancelled(shouldAbort)
+            const text = result?.markdown ?? ""
+            if (!text.trim()) throw new Error("MarkItDown returned no content")
+            writeTextAtomic(destFile, text)
+            mdConverted = 1
+            injectColdFrontmatter(destFile)
+            removeConvertedBackups(backups)
+            break
+          } catch {
+            // fall through to OCR on failure
+          }
+        }
+      } catch { /* ignore text check */ }
+
+      try {
+        const { tesseractAvailable, ocrPdfViaTesseract } = await import("../import/tesseract-ocr")
+        if (tesseractAvailable()) {
+          await ocrPdfViaTesseract(srcFile, tmpDest, fileName, { shouldAbort })
+          if (convertedOutputExists(tmpDest)) {
+            renameSync(tmpDest, destFile)
+            ocrConverted = 1
+            injectColdFrontmatter(destFile)
+          } else {
+            restored = restoreConvertedOutput(destFile, backups)
+            ocrFailed = 1
+          }
         } else {
-          restored = restoreConvertedOutput(destFile, backups)
-          ocrFailed = 1
+          const { runPpuOcrBatch } = await import("../import/ppu-ocr")
+          await runPpuOcrBatch([{ src: srcFile, rel: fileName, dest: tmpDest }], { shouldAbort })
+          if (convertedOutputExists(tmpDest)) {
+            renameSync(tmpDest, destFile)
+            ocrConverted = 1
+            injectColdFrontmatter(destFile)
+          } else {
+            restored = restoreConvertedOutput(destFile, backups)
+            ocrFailed = 1
+          }
         }
       } catch (error) {
         restored = restoreConvertedOutput(destFile, backups)

@@ -333,7 +333,7 @@ async function writeOnboardingSummary(summary: OnboardingSummary): Promise<void>
   } = summary
 
   const ocrMode = scanCounts.ocrConvertible > 0
-    ? (copyResult.ocrConverted > 0 ? "ppu_ocr_converted" : "ppu_ocr_available")
+    ? (copyResult.ocrConverted > 0 ? "tesseract_converted" : toolStatus.ocr ? "tesseract_available" : "tesseract_not_available")
     : "not_applicable"
 
   const markitdownMode = scanCounts.markitdown > 0
@@ -358,7 +358,7 @@ updated: ${today()}
 - Text-based files to rename to Markdown: ${scanCounts.markdown}
 - Office docs/HTML/EPUB/text PDFs via MarkItDown: ${scanCounts.markitdown}
 - Native-readable files to copy unchanged: ${scanCounts.native}
-- Scanned PDFs and images available for OCR: ${scanCounts.ocrConvertible}
+- OCR candidates (scanned PDFs → tesseract 300dpi ita+eng+fra, images → copy pending network): ${scanCounts.ocrConvertible}
 - Videos (optional): ${scanCounts.video}
 - Audio (optional): ${scanCounts.audio}
 - Unsupported or unknown files: ${scanCounts.unknown}
@@ -367,11 +367,11 @@ updated: ${today()}
 ## Workspace Import Result
 - Selected import candidates: ${copyResult.total}
 - Files imported into workspace: ${copyResult.imported}
-- Files copied directly into workspace: ${copyResult.copied}
+- Files copied directly (incl. images pending network OCR): ${copyResult.copied}
 - Files skipped during direct copy: ${copyResult.skipped}
 - MarkItDown converted: ${copyResult.mdConverted}
 - MarkItDown mode: ${markitdownMode}
-- OCR (ppu-paddle-ocr) converted: ${copyResult.ocrConverted}
+- OCR (tesseract ita+eng+fra) converted: ${copyResult.ocrConverted}
 - OCR mode: ${ocrMode}
 
 ## Handoff

@@ -6,7 +6,7 @@ import { MarkItDown } from "markitdown-ts"
 
 import stripAnsi from "strip-ansi"
 import { markitdownConvertFile } from "./markitdown-convert"
-import { fileExt } from "../constants"
+import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
 import {
   shouldSkipSourceFile,
   findSourceFiles,
@@ -25,7 +25,7 @@ import type { ImportBatchManager } from "./batch"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled, SpinosaCancellationError } from "./cancellation"
 import type { PpuOcrFile, PpuOcrBatchResult } from "./ppu-ocr"
 import { ProgressEmitter, type FileProgressStatus } from "../progress/progress"
-import { ocrAvailable } from "../tools/detection"
+import { ocrAvailable, tesseractAvailable } from "../tools/detection"
 import { ocrUnsupportedReason } from "../tools/ocr-support"
 import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
 import { decodeWorkerPayload, disposeWorkerPayload, encodeWorkerPayload } from "./worker-payload"
@@ -68,7 +68,7 @@ interface CopyOptions {
   subfolder?: string
   onProgress?: ImportProgressCallback
   onLog?: (line: string) => void
-  onClassified?: (classified: { directFiles: ClassifiedEntry[]; markitdownFiles: ClassifiedEntry[]; ocrFiles: ClassifiedEntry[]; logsDir: string }) => void
+  onClassified?: (classified: { directFiles: ClassifiedEntry[]; markitdownFiles: ClassifiedEntry[]; ocrFiles: ClassifiedEntry[]; copyFiles?: ClassifiedEntry[]; logsDir: string }) => void
   onPhaseChange?: (phase: string, message: string) => void
   shouldAbort?: () => boolean
   /** AbortSignal for immediate child cancel (preferred over shouldAbort polling). */
@@ -105,6 +105,7 @@ export async function scanAndClassifySource(
   directFiles: ClassifiedEntry[]
   markitdownFiles: ClassifiedEntry[]
   ocrFiles: ClassifiedEntry[]
+  copyFiles: ClassifiedEntry[]
   logsDir: string
 } | null> {
   const allFiles: string[] = []
@@ -153,6 +154,7 @@ export async function scanAndClassifySource(
   const directFiles: ClassifiedEntry[] = []
   const markitdownFiles: ClassifiedEntry[] = []
   const ocrFiles: ClassifiedEntry[] = []
+  const copyFiles: ClassifiedEntry[] = []
 
   const filtered = (...klasses: FileClass[]) =>
     entries.filter(e => klasses.includes(e.klass) && isExtSelected(e.ext, batchManager))
@@ -173,10 +175,15 @@ export async function scanAndClassifySource(
     markitdownFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
   }
   for (const e of filtered("ocr_convertible")) {
-    ocrFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, ocrOutputRelPath(e.relPath)) })
+    if (extInList(e.ext, IMAGE_EXTENSIONS)) {
+      // Images: copy-only, pending network OCR (no .md conversion)
+      copyFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, e.relPath) })
+    } else {
+      ocrFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, ocrOutputRelPath(e.relPath)) })
+    }
   }
 
-  return { directFiles, markitdownFiles, ocrFiles, logsDir }
+  return { directFiles, markitdownFiles, ocrFiles, copyFiles, logsDir }
 }
 
 // ── Phase runners (receive pre-classified file lists) ────────────────────
@@ -270,6 +277,44 @@ export async function processDirectCopy(
   }
   failed = retryBucket.length
   return { converted, skipped, failed, renamed, recoverable }
+}
+
+export async function processImageCopy(
+  files: ClassifiedEntry[],
+  prog?: ProgressEmitter,
+  onLog?: (msg: string) => void,
+  overwrite?: boolean,
+  shouldAbort?: () => boolean,
+): Promise<PhaseResult> {
+  let converted = 0; let skipped = 0; let failed = 0
+  const recoverable: { src: string; dest: string }[] = []
+  let processed = 0
+  const total = files.length
+  for (const entry of files) {
+    throwIfSpinosaCancelled(shouldAbort)
+    prog?.file("copy", processed, total, entry.rel, "processing")
+    await new Promise<void>((r) => setTimeout(r, 0))
+    if (existsSync(entry.dest) && !overwrite) {
+      skipped++
+      prog?.file("copy", ++processed, total, entry.rel, "done")
+      onLog?.(`  ${entry.rel} → already exists, skipped (pending network OCR)`)
+      continue
+    }
+    const ok = await safeCopyAsync(entry.src, entry.dest, {
+      onRetry: (attempt, reason) => onLog?.(`  ${entry.rel} → retry ${attempt} (${reason})`),
+    })
+    if (ok) {
+      converted++
+      recoverable.push({ src: entry.src, dest: entry.dest })
+      prog?.file("copy", ++processed, total, entry.rel, "done")
+      onLog?.(`  ${entry.rel} → copied for network OCR (pending)`)
+    } else {
+      failed++
+      prog?.file("copy", ++processed, total, entry.rel, "failed")
+      onLog?.(`  ${entry.rel} → copy failed`)
+    }
+  }
+  return { converted, skipped, failed, renamed: 0, recoverable }
 }
 
 export type MarkitdownHooks = {
@@ -564,14 +609,115 @@ export async function processOcr(
     appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
       ts: isoNow(), status: "skip", source: ps.rel,
       output: ocrOutputRelPath(ps.rel),
-      engine: "ppu-paddle-ocr", pages: "", duration_s: 0,
+      engine: tesseractAvailable() ? "tesseract" : "ppu-paddle-ocr", pages: "", duration_s: 0,
     })
     prog?.file("OCR", ++processed, total, ps.rel, "done")
   }
 
+  // Primary path: tesseract for scanned PDFs (ita+eng+fra, 300dpi). PPU is fallback for one release.
+  if (tesseractAvailable() && toProcess.length > 0) {
+    const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
+    const { isTextBasedPdf } = await import("../extension/pdf")
+    for (const file of toProcess) {
+      throwIfSpinosaCancelled(shouldAbort)
+      const start = Date.now()
+      prog?.file("OCR", processed, total, file.rel, "processing")
+      await yieldToEL()
+      const ext = fileExt(file.src).toLowerCase()
+      // Images should have been split to copyFiles; if any slip through, treat as copy-fail not OCR
+      if (extInList(ext, IMAGE_EXTENSIONS)) {
+        const err = "image files are copy-only (pending network OCR), not tesseract"
+        failed++
+        appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+          ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
+        })
+        onLog?.(`  ${file.rel} → ${err}`)
+        prog?.file("OCR", ++processed, total, file.rel, "failed")
+        continue
+      }
+      if (ext !== "pdf") {
+        const err = `unsupported OCR extension: ${ext}`
+        failed++
+        appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+          ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
+        })
+        onLog?.(`  ${file.rel} → ${err}`)
+        prog?.file("OCR", ++processed, total, file.rel, "failed")
+        continue
+      }
+      try {
+        // Text-layer PDFs → MarkItDown-style text extraction (no OCR)
+        let hasText = false
+        try { hasText = await isTextBasedPdf(file.src) } catch { hasText = false }
+        if (hasText) {
+          // Reuse convertTextPdf logic via dynamic import to keep text layer
+          const { pdfExtractPageTexts } = await import("../extension/pdf-js")
+          const pageTexts = await pdfExtractPageTexts(file.src)
+          throwIfSpinosaCancelled(shouldAbort)
+          const title = path.basename(file.rel, path.extname(file.rel))
+          const pages = pageTexts.length
+          if (pages === 1) {
+            mkdirSync(path.dirname(file.dest), { recursive: true })
+            writeTextAtomicSafe(file.dest, `# ${title}\n\n${pageTexts[0]!.text.trim() || "[No text extracted]"}\n`)
+            injectColdFrontmatter(file.dest)
+          } else {
+            const pageDir = file.dest.endsWith(".md") ? file.dest.slice(0, -3) : `${file.dest}_pages`
+            rmSync(pageDir, { recursive: true, force: true })
+            mkdirSync(pageDir, { recursive: true })
+            for (const { page, text } of pageTexts) {
+              const pageFile = path.join(pageDir, `page-${String(page).padStart(3, "0")}.md`)
+              writeTextAtomicSafe(pageFile, ["---", `source_document: "${path.basename(file.rel).replace(/"/g, '\\"')}"`, `page: ${page}`, `page_count: ${pages}`, "---", "", `# ${title} - Page ${page}`, "", text.trim() || "[No text extracted on this page]", ""].join("\n"))
+              injectColdFrontmatter(pageFile)
+            }
+            mkdirSync(path.dirname(file.dest), { recursive: true })
+            writeTextAtomicSafe(file.dest, `# ${title}\n\n${pageTexts.map(({ page }) => `- [Page ${page}](${path.basename(file.dest.slice(0, -3))}/page-${String(page).padStart(3, "0")}.md)`).join("\n")}\n`)
+            injectColdFrontmatter(file.dest)
+          }
+          converted++
+          recoverable.push({ src: file.src, dest: file.dest })
+          appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+            ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "pdf-js", pages: String(pages), duration_s: (Date.now() - start) / 1000,
+          })
+          onLog?.(`  ${file.rel} → text-layer PDF extracted via pdf.js (${pages} pages)`)
+          prog?.file("OCR", ++processed, total, file.rel, "done")
+          continue
+        }
+      } catch (err) {
+        if (isSpinosaCancellationError(err)) throw err
+        // fall through to tesseract
+      }
+      try {
+        const result = await ocrPdfViaTesseract(file.src, file.dest, file.rel, { shouldAbort, onLog })
+        throwIfSpinosaCancelled(shouldAbort)
+        if (convertedOutputExists(file.dest)) {
+          converted++
+          recoverable.push({ src: file.src, dest: file.dest })
+          appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+            ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: String(result.pages), duration_s: (Date.now() - start) / 1000,
+          })
+          onLog?.(`  ${file.rel} → tesseract OCR succeeded (${result.pages} pages)`)
+          prog?.file("OCR", ++processed, total, file.rel, "done")
+        } else {
+          throw new Error("tesseract produced no output")
+        }
+      } catch (err) {
+        if (isSpinosaCancellationError(err)) throw err
+        const msg = err instanceof Error ? err.message : String(err)
+        failed++
+        appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+          ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: msg,
+        })
+        onLog?.(`  ${file.rel} → tesseract failed: ${msg}`)
+        prog?.file("OCR", ++processed, total, file.rel, "failed")
+      }
+    }
+    prog?.file("OCR", processed, total, "", "done")
+    return { converted, skipped, failed, renamed: 0, recoverable }
+  }
+
   if (toProcess.length > 0 && !ocrAvailable()) {
-    const reason = ocrUnsupportedReason() ?? "OCR engine unavailable"
-    onLog?.(`PPU PaddleOCR unavailable: ${reason}`)
+    const reason = ocrUnsupportedReason() ?? "OCR engine unavailable (tesseract missing and ppu-paddle-ocr not available)"
+    onLog?.(`OCR unavailable: ${reason}`)
     for (const file of toProcess) {
       throwIfSpinosaCancelled(shouldAbort)
       failed++
@@ -1249,6 +1395,7 @@ function expectedImportDestRel(
     case "native_copy":
     case "media_copy":
     case "binary_copy":
+    case "copy":
       return rel
     case "markitdown":
       return markitdownOutputRelPath(rel)
@@ -1413,6 +1560,7 @@ export async function verifyAndRecoverImport(
     if (!route) continue
 
     const routePhase = route === "markitdown" ? "markitdown" : route === "ocr" ? "ocr" : "direct"
+    // "copy" (image_pending) shares direct phase for verify filtering
     if (phase && phase !== "all" && routePhase !== phase) continue
 
     const sourceRel = safeRelBySource.get(srcFile) ?? srcFile.replace(sourcePath, "").replace(/^\//, "")
@@ -1433,12 +1581,14 @@ export async function verifyAndRecoverImport(
       case "markdown_rename":
       case "native_copy":
       case "media_copy":
-      case "binary_copy": {
+      case "binary_copy":
+      case "copy": {
         mkdirSync(path.dirname(destFile), { recursive: true })
         if (await safeCopyAsync(srcFile, destFile)) {
           throwIfSpinosaCancelled(shouldAbort)
           if (destFile.endsWith(".md")) injectColdFrontmatter(destFile)
-          onLog?.(`    Recovered (direct copy): ${relPath}`)
+          if (route === "copy") onLog?.(`    Recovered (copy for network OCR): ${relPath}`)
+          else onLog?.(`    Recovered (direct copy): ${relPath}`)
           ok = true
         }
         break
@@ -1462,15 +1612,52 @@ export async function verifyAndRecoverImport(
         break
       }
       case "ocr": {
-        let ppuConverted = 0
+        let ocrConverted = 0
         let ocrError: string | undefined
-        if (ocrAvailable()) {
+        if (tesseractAvailable()) {
+          try {
+            const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
+            const { isTextBasedPdf } = await import("../extension/pdf")
+            let hasText = false
+            try { hasText = await isTextBasedPdf(srcFile) } catch { hasText = false }
+            if (hasText) {
+              const { pdfExtractPageTexts } = await import("../extension/pdf-js")
+              const pageTexts = await pdfExtractPageTexts(srcFile)
+              throwIfSpinosaCancelled(shouldAbort)
+              const title = path.basename(relPath, path.extname(relPath))
+              mkdirSync(path.dirname(destFile), { recursive: true })
+              if (pageTexts.length === 1) {
+                writeTextAtomicSafe(destFile, `# ${title}\n\n${pageTexts[0]!.text.trim() || "[No text extracted]"}\n`)
+              } else {
+                const pageDir = destFile.endsWith(".md") ? destFile.slice(0, -3) : `${destFile}_pages`
+                rmSync(pageDir, { recursive: true, force: true })
+                mkdirSync(pageDir, { recursive: true })
+                for (const { page, text } of pageTexts) {
+                  const pageFile = path.join(pageDir, `page-${String(page).padStart(3, "0")}.md`)
+                  writeTextAtomicSafe(pageFile, ["---", `source_document: "${path.basename(relPath).replace(/"/g, '\\"')}"`, `page: ${page}`, `page_count: ${pageTexts.length}`, "---", "", `# ${title} - Page ${page}`, "", text.trim() || "[No text extracted on this page]", ""].join("\n"))
+                  injectColdFrontmatter(pageFile)
+                }
+                writeTextAtomicSafe(destFile, `# ${title}\n\n${pageTexts.map(({ page }) => `- [Page ${page}](${path.basename(destFile.slice(0, -3))}/page-${String(page).padStart(3, "0")}.md)`).join("\n")}\n`)
+              }
+              injectColdFrontmatter(destFile)
+              ocrConverted = 1
+            } else {
+              await ocrPdfViaTesseract(srcFile, destFile, relPath, { shouldAbort, onLog })
+              if (convertedOutputExists(destFile)) ocrConverted = 1
+              else ocrError = "tesseract produced no convertible markdown"
+            }
+          } catch (err) {
+            if (isSpinosaCancellationError(err)) throw err
+            ocrError = err instanceof Error ? err.message : String(err)
+            onLog?.(`    tesseract failed: ${ocrError}`)
+          }
+        } else if (ocrAvailable()) {
           try {
             const ppuResult = await runOcrWorker([{ src: srcFile, rel: relPath, dest: destFile }], { onLog, shouldAbort })
-            ppuConverted = ppuResult.converted
-            if (ppuConverted <= 0 || !convertedOutputExists(destFile)) {
+            ocrConverted = ppuResult.converted
+            if (ocrConverted <= 0 || !convertedOutputExists(destFile)) {
               ocrError = ppuResult.errors?.[0] ?? "OCR produced no convertible markdown"
-              ppuConverted = 0
+              ocrConverted = 0
             }
           } catch (err) {
             if (isSpinosaCancellationError(err)) throw err
@@ -1480,7 +1667,7 @@ export async function verifyAndRecoverImport(
         } else {
           ocrError = ocrUnsupportedReason() ?? "OCR engine unavailable"
         }
-        if (ppuConverted > 0 && convertedOutputExists(destFile)) {
+        if (ocrConverted > 0 && convertedOutputExists(destFile)) {
           injectColdFrontmatter(destFile)
           onLog?.(`    Recovered (ocr retry): ${relPath}`)
           ok = true
@@ -1575,6 +1762,7 @@ export async function copySource(
     directFiles: classified.directFiles,
     markitdownFiles: classified.markitdownFiles,
     ocrFiles: classified.ocrFiles,
+    copyFiles: (classified as unknown as { copyFiles: ClassifiedEntry[] }).copyFiles ?? [],
     logsDir: classified.logsDir,
   })
 
@@ -1587,8 +1775,10 @@ export async function copySource(
     return rp === "all" || rp === p
   }
 
+  const copyFiles = (classified as unknown as { copyFiles: ClassifiedEntry[] }).copyFiles ?? []
   const attemptedFiles = [
     ...(runPhase("direct") ? classified.directFiles : []),
+    ...(runPhase("direct") ? copyFiles : []),
     ...(runPhase("markitdown") && options?.markitdownChoice ? classified.markitdownFiles : []),
     ...(runPhase("ocr") && options?.ocrChoice ? classified.ocrFiles : []),
   ]
@@ -1600,6 +1790,15 @@ export async function copySource(
     options?.onPhaseChange?.("direct", `Copying ${classified.directFiles.length} files...`)
     const dr = await processDirectCopy(classified.directFiles, prog, options?.onLog, options?.overwrite, options?.shouldAbort)
     res.copied += dr.converted; res.skipped += dr.skipped; res.failed += dr.failed
+  }
+
+  if (copyFiles.length > 0) {
+    // Images: copy-only, pending network OCR
+    if (runPhase("direct")) {
+      options?.onPhaseChange?.("direct", `Copying ${copyFiles.length} images (pending network OCR)...`)
+    }
+    const cr = await processImageCopy(copyFiles, prog, options?.onLog, options?.overwrite, options?.shouldAbort)
+    res.copied += cr.converted; res.skipped += cr.skipped; res.failed += cr.failed
   }
 
   if (runPhase("markitdown") && classified.markitdownFiles.length > 0 && options?.markitdownChoice) {

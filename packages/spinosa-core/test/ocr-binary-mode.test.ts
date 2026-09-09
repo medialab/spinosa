@@ -175,9 +175,10 @@ describe("verifyAndRecoverImport OCR fallback", () => {
     mkdirSync(path.join(home, "logs"), { recursive: true })
     const prevHome = process.env.SPINOSA_HOME
     process.env.SPINOSA_HOME = home
-    const srcFile = path.join(source, "scans", "SCAN_0149.JPG")
-    // Minimal JPEG SOI so classifier treats it as an image; OCR is unavailable/mocked away via ocrChoice.
-    writeFileSync(srcFile, Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+    // Use a scanned PDF (not image) — images are now copy-only pending network, so OCR failure
+    // is exercised via a PDF that will go through tesseract and fail (invalid PDF bytes)
+    const srcFile = path.join(source, "scans", "SCAN_0149.pdf")
+    writeFileSync(srcFile, Buffer.from("%PDF-1.4\n% invalid scanned pdf without text layer\n"))
 
     const logs: string[] = []
     try {
@@ -190,12 +191,12 @@ describe("verifyAndRecoverImport OCR fallback", () => {
         (msg) => logs.push(msg),
       )
 
-      const poisoned = path.join(dest, "scans", "SCAN_0149__jpg.md")
+      const poisoned = path.join(dest, "scans", "SCAN_0149__pdf.md")
       expect(convertedOutputExists(poisoned)).toBe(false)
       // File may be absent, or if somehow written must not count as success.
       try {
-        const head = readFileSync(poisoned).subarray(0, 3)
-        expect(head[0] === 0xff && head[1] === 0xd8).toBe(false)
+        const head = readFileSync(poisoned).subarray(0, 4)
+        expect(head.toString()).not.toBe("%PDF")
       } catch {
         // absent is the expected outcome
       }
@@ -204,6 +205,31 @@ describe("verifyAndRecoverImport OCR fallback", () => {
     } finally {
       if (prevHome === undefined) delete process.env.SPINOSA_HOME
       else process.env.SPINOSA_HOME = prevHome
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("image copy is pending network OCR (copy-only, not OCR)", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "spinosa-ocr-recover-"))
+    const source = path.join(root, "origin")
+    const dest = path.join(root, "raw")
+    mkdirSync(path.join(source, "scans"), { recursive: true })
+    mkdirSync(dest, { recursive: true })
+    const srcFile = path.join(source, "scans", "SCAN_0150.JPG")
+    writeFileSync(srcFile, Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+    const logs: string[] = []
+    try {
+      const result = await verifyAndRecoverImport(source, dest, undefined, false, true, (msg) => logs.push(msg))
+      // Images now follow copy route, not OCR: expected dest is binary, not __jpg.md
+      const copyDest = path.join(dest, "scans", "SCAN_0150.JPG")
+      const poisoned = path.join(dest, "scans", "SCAN_0150__jpg.md")
+      expect(convertedOutputExists(poisoned)).toBe(false)
+      expect(result.stillMissing).toBe(0)
+      expect(result.recovered).toBeGreaterThanOrEqual(1)
+      // copy should exist
+      const { existsSync } = await import("node:fs")
+      expect(existsSync(copyDest)).toBe(true)
+    } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })

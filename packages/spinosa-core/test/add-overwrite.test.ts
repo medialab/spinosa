@@ -7,13 +7,14 @@ import { addFiles } from "../src/commands/add"
 mock.module("../src/import/ppu-ocr", () => ({ runPpuOcrBatch: async () => undefined }))
 
 test("OCR no-output preserves existing converted outputs", async () => {
+  // Use a scanned PDF for OCR failure — images are now copy-only (not OCR)
   const root = mkdtempSync(path.join(tmpdir(), "spinosa-add-"))
-  const source = path.join(root, "input.png")
+  const source = path.join(root, "input.pdf")
   const output = path.join(root, "raw")
-  const dest = path.join(output, "input__png.md")
-  const pages = path.join(output, "input__png_pages")
+  const dest = path.join(output, "input__pdf.md")
+  const pages = path.join(output, "input__pdf_pages")
   mkdirSync(pages, { recursive: true })
-  writeFileSync(source, "not a real image")
+  writeFileSync(source, Buffer.from("%PDF-1.4\n% invalid scanned pdf\n"))
   writeFileSync(dest, "old")
   writeFileSync(path.join(pages, "page-001.md"), "old page")
   try {
@@ -22,6 +23,22 @@ test("OCR no-output preserves existing converted outputs", async () => {
     expect(readFileSync(dest, "utf8")).toBe("old")
     expect(readFileSync(path.join(pages, "page-001.md"), "utf8")).toBe("old page")
   } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test("image copy-only preserves existing and counts as copied", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "spinosa-add-"))
+  const source = path.join(root, "input.png")
+  const output = path.join(root, "raw")
+  const dest = path.join(output, "input.png")
+  mkdirSync(output, { recursive: true })
+  writeFileSync(source, Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+  writeFileSync(dest, "old image")
+  // Without overwrite, image copy should be skipped, not ocrFailed
+  const result = await addFiles({ workspacePath: root, sourcePath: source, sourceIsDir: false, overwrite: false })
+  expect(result.skipped).toBe(1)
+  expect(result.ocrFailed).toBe(0)
+  expect(readFileSync(dest, "utf8")).toBe("old image")
+  rmSync(root, { recursive: true, force: true })
 })
 
 describe("single-file converted overwrite", () => {
