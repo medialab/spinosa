@@ -8,6 +8,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.7] — 2026-09-09
+
+### Changed
+
+- Unified terminal dialogues to `│ ●` + wave `▁▂▃▄▅▆▇█` across all `.sh` (`install.sh`, `script/lima-linux-soak.sh`, `script/patch-local-install.sh`, `script/lint-shell.sh`) and `spinosa upgrade` (`packages/spinosa-kernel/src/cli/cmd/upgrade.ts` now `@clack/prompts` only, no `→`/`✦`/`⚠`).
+
+### Fixed
+
+- `spinosa upgrade` no longer warns `Warning: "version" is a reserved word` (`yargs.version(false)` `packages/spinosa-kernel/src/cli/cmd/upgrade.ts:22`).
+- Shell UI now compatible with macOS Bash 3.2 and Linux Bash 5.3, TTY + piped + `NO_COLOR=1` (`install.sh:171`).
+
 ## [1.1.0-beta.6] — 2026-09-09
 
 ### Fixed
