@@ -2117,20 +2117,16 @@ main() {
   should_install "$VERSION" || { rm -rf "$lockdir"; trap - EXIT INT TERM HUP; return 0; }
   mkdir -p "${SPINOSA_HOME}/bin" "$SPINOSA_STAGING_DIR" "$SPINOSA_BIN_DIR"
 
-  [[ "$VERBOSE" == "1" ]] && section "Download & verify"
+  section "Download & verify"
 
   checksums_file="${SPINOSA_STAGING_DIR}/checksums.txt"
   staged_binary="${SPINOSA_STAGING_DIR}/${ASSET_NAME}"
   BINARY_STAGED="$staged_binary"
   rm -f "$checksums_file" "$staged_binary"
 
-  if [[ "$VERBOSE" == "1" ]]; then
-    run_timed_step "Download checksums" 60 \
-      download "$checksums_url" "$checksums_file" \
-      || die "Failed to download checksums.txt from ${checksums_url}"
-  else
-    download "$checksums_url" "$checksums_file" 2>/dev/null || die "Failed to download checksums.txt from ${checksums_url}"
-  fi
+  run_timed_step "Download checksums" 60 \
+    download "$checksums_url" "$checksums_file" \
+    || die "Failed to download checksums.txt from ${checksums_url}"
   run_timed_step "Download ${ASSET_NAME}" "$DEFAULT_DOWNLOAD_TIMEOUT_SECONDS" \
     download "$asset_url" "$staged_binary" \
     || die "Failed to download ${ASSET_NAME}"
