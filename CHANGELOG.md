@@ -8,6 +8,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.8] — 2026-09-09
+
+### Changed
+
+- Installer now quiet by default: `--verbose`/`SPINOSA_VERBOSE=1` gates `Platform`, `Install root`, `checksum`/`template`/`doctor`/`activate`/`shim`/`PATH` details (`install.sh:145` `vinfo`/`vok`/`vnote`); `Download` + `Verifying package` + `Installing` waves always visible, `Download & verify` section always shown. Removed disk-space probe and workspace `Downloads` scan that triggered macOS privacy prompt (`install.sh:994` `check_download_disk_space` dropped, `migrate_workspace_launchers` removed from install).
+- Terminal style B/W except dots: `●` green `ok` / cyan `info` / red `die` `install.sh:183`; banner and section titles monochrome (`→` black, title bold `install.sh:217`), section arrows black, wave `▁▂▃▄▅▆▇█` plus ` Verifying package`/` Installing` fixes silent hold after download.
+
+### Fixed
+
+- `Install log: ~/.spinosa/logs/spinosa.log` now clickable `file://` OSC 8 hyperlink on macOS Terminal `install.sh:2201`; `In new terminals: source …` now verbose-only `install.sh:1967`; `Install log` has `●` dot.
+- Prompts `Repair`/`Upgrade`/`Downgrade`/`Install`/`Reinstall` now `?` cyan `install.sh:641` (was `○`); `Local version at ~/.spinosa/bin/spinosa: X.Y.Z` `install.sh:2111`; `✨ Spinosa installed successfully! ✨` bold with single blank line `install.sh:2191`.
+
 ## [1.1.0-beta.7] — 2026-09-09
 
 ### Changed
