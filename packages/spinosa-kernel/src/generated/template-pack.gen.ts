@@ -220,7 +220,7 @@ import file_216 from "./template-blobs/586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e5
 import file_217 from "./template-blobs/502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4.bin" with { type: "file" };
 import file_218 from "./template-blobs/3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7.bin" with { type: "file" };
 import file_219 from "./template-blobs/4b599456bcd3ad6b3c9df896e7cdd9de4c76d12131254dc21d60939f2bd190a3.bin" with { type: "file" };
-import file_220 from "./template-blobs/38c12253e6774b409c56e67489295152ef8c4bf8c3ac4dc4f727bb29dbc8e586.bin" with { type: "file" };
+import file_220 from "./template-blobs/90efdc614b385b482c7d4b9277620cae79c23270c2c4d7885bb359c65295526f.bin" with { type: "file" };
 import file_221 from "./template-blobs/223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6.bin" with { type: "file" };
 import file_222 from "./template-blobs/591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54.bin" with { type: "file" };
 import file_223 from "./template-blobs/496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c.bin" with { type: "file" };
@@ -241,7 +241,7 @@ import file_237 from "./template-blobs/a2e855a23f53ba682e6dee9d65019b4717b6330fd
 
 export const templatePack = {
   version: "1.1.0-beta.14",
-  packId: "c29433ca9c0d22a5f9aae17bd2842e41e449a739db4ff883748fd99d1b3df2a5",
+  packId: "700c8893f35e9f68495de892e0ca130f851f1494856cd988d0ab5cac6095e3b8",
   files: [
   { path: ".agents/agents/spinosa-analyst.md", mode: 420, sha256: "1e4e006ad3037dfc523038747011ae9cb6604bd8a138be996f346e74297c0201", contentPath: file_0 },
   { path: ".agents/agents/spinosa-evaluator.md", mode: 420, sha256: "41572a3010fb44a18d59215e76070eecd6bd41ca124f4cb434242980a712754f", contentPath: file_1 },
@@ -463,7 +463,7 @@ export const templatePack = {
   { path: "docs/FAQ.md", mode: 420, sha256: "502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4", contentPath: file_217 },
   { path: "docs/GLOSSARY.md", mode: 420, sha256: "3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7", contentPath: file_218 },
   { path: "docs/diagrams.md", mode: 420, sha256: "4b599456bcd3ad6b3c9df896e7cdd9de4c76d12131254dc21d60939f2bd190a3", contentPath: file_219 },
-  { path: "docs/reference/agents.md", mode: 420, sha256: "38c12253e6774b409c56e67489295152ef8c4bf8c3ac4dc4f727bb29dbc8e586", contentPath: file_220 },
+  { path: "docs/reference/agents.md", mode: 420, sha256: "90efdc614b385b482c7d4b9277620cae79c23270c2c4d7885bb359c65295526f", contentPath: file_220 },
   { path: "docs/reference/cli.md", mode: 420, sha256: "223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6", contentPath: file_221 },
   { path: "docs/reference/corpus.md", mode: 420, sha256: "591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54", contentPath: file_222 },
   { path: "docs/reference/reports.md", mode: 420, sha256: "496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c", contentPath: file_223 },

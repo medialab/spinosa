@@ -386,6 +386,69 @@ function scrollSelectedImportOptionIntoView(scroll: ScrollBoxRenderable | undefi
   }
 }
 
+export type OcrModelOption = {
+  id: string
+  label: string
+  detail: string
+  kind: "tesseract" | "vision" | "none"
+  vision: boolean
+  cost?: string
+  requiresKey?: string
+}
+
+export function OcrModelSelector(props: {
+  theme: Theme
+  options: OcrModelOption[]
+  selectedIndex: number
+  viewportHeight: number
+  onSelectIndex: (index: number) => void
+  onSelect: (index: number) => void
+}) {
+  let scroll: ScrollBoxRenderable | undefined
+  createEffect(() => {
+    const idx = props.selectedIndex
+    queueMicrotask(() => scrollSelectedImportOptionIntoView(scroll, idx + 1))
+  })
+  return (
+    <box flexDirection="column" gap={1} paddingTop={1}>
+      <scrollbox
+        ref={(element: ScrollBoxRenderable) => (scroll = element)}
+        maxHeight={scanOptionListMaxHeight(props.viewportHeight)}
+        scrollbarOptions={{ visible: false }}
+      >
+        <For each={props.options}>
+          {(item, index) => {
+            const active = createMemo(() => props.selectedIndex === index())
+            const selected = createMemo(() => props.selectedIndex === index())
+            return (
+              <box
+                paddingLeft={1}
+                paddingRight={1}
+                paddingTop={1}
+                paddingBottom={1}
+                backgroundColor={buttonBackground(props.theme, active())}
+                onMouseOver={() => props.onSelectIndex(index())}
+                onMouseDown={() => deferPress(() => props.onSelect(index()))}
+              >
+                <box flexDirection="row" gap={1} alignItems="center">
+                  <text fg={buttonText(props.theme, active(), props.theme.primary)} width={2}>
+                    {selected() ? "●" : "○"}
+                  </text>
+                  <box flexDirection="column" flexGrow={1}>
+                    <text fg={buttonText(props.theme, active(), props.theme.text)}>{item.label}</text>
+                    <text fg={buttonText(props.theme, active(), props.theme.textMuted)}>{item.detail}</text>
+                  </box>
+                </box>
+              </box>
+            )
+          }}
+        </For>
+      </scrollbox>
+      <text fg={props.theme.textMuted}>↑↓ move · enter select · chosen engine handles images & scanned PDFs via MarkItDown vision</text>
+    </box>
+  )
+}
+
 export function ImportOptionsSelector(props: {
   theme: Theme
   options: ImportOption[]

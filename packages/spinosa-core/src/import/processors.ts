@@ -23,6 +23,7 @@ export type ImportProcessorContext = {
   onRetry?: (attempt: number, reason: string) => void
   onRename?: (original: string, renamed: string) => void
   overwrite?: boolean
+  ocrModelId?: string
 }
 
 export type ImportProcessor = {
@@ -61,6 +62,7 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
       processMarkitdown(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
         onChild: ctx.onChild,
         signal: ctx.signal,
+        ocrModelId: ctx.ocrModelId,
       }),
   },
   ocr: {

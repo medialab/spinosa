@@ -76,6 +76,7 @@ interface CopyOptions {
   signal?: AbortSignal
   /** Register MarkItDown/OCR worker children so CLI cancel can kill them. */
   onChild?: (child: ChildProcess) => void
+  ocrModelId?: string
 }
 
 
@@ -102,6 +103,7 @@ export async function scanAndClassifySource(
   batchManager?: ImportBatchManager,
   subfolder?: string,
   shouldAbort?: () => boolean,
+  ocrModelId?: string,
 ): Promise<{
   directFiles: ClassifiedEntry[]
   markitdownFiles: ClassifiedEntry[]
@@ -177,7 +179,20 @@ export async function scanAndClassifySource(
   }
   for (const e of filtered("ocr_convertible")) {
     if (extInList(e.ext, IMAGE_EXTENSIONS)) {
-      // Images: copy-only, pending network OCR (no .md conversion)
+      // Images: with vision model → MarkItDown vision (transcribe via LLM);
+      // otherwise copy-only (pending network OCR).
+      if (ocrModelId) {
+        const { findOcrModel } = await import("./vision-models")
+        const m = findOcrModel(ocrModelId)
+        if (m?.kind === "vision") {
+          markitdownFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
+          continue
+        }
+        if (m?.kind === "none") {
+          // Explicit no-OCR: skip image entirely (neither copy nor transcribe)
+          continue
+        }
+      }
       copyFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, e.relPath) })
     } else {
       ocrFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, ocrOutputRelPath(e.relPath)) })
@@ -326,6 +341,8 @@ export type MarkitdownHooks = {
   ocrDetached?: boolean
   /** Force in-process (worker entry / tests). Default: spawn NDJSON child like OCR. */
   inProcess?: boolean
+  /** Selected OCR/vision model id (e.g. tesseract-local, openrouter/qwen2.5-vl:free). When vision, images flow via MarkItDown llmModel. */
+  ocrModelId?: string
 }
 
 /** In-process MarkItDown phase (used by the NDJSON child worker). */
@@ -381,6 +398,18 @@ export async function processMarkitdownInProcess(
   const mdLog = path.join(logsDir, "markitdown-processed.ndjson")
   if (remainingMd.length > 0) {
     const converter = new MarkItDown()
+    // Vision model for images (and optionally scanned PDFs) via MarkItDown llmModel.
+    // Created once per phase; falls back to undefined (EXIF-only / copy) when no key.
+    let vision: { model: unknown; prompt: string; modelId: string } | undefined
+    if (hooks?.ocrModelId) {
+      const { findOcrModel, OCR_VISION_PROMPT, createVisionLanguageModel } = await import("./vision-models")
+      const opt = findOcrModel(hooks.ocrModelId)
+      if (opt?.kind === "vision") {
+        const created = await createVisionLanguageModel(hooks.ocrModelId)
+        if (created?.model) vision = { model: created.model, prompt: OCR_VISION_PROMPT, modelId: created.modelId }
+        else onLog?.(`Vision model ${hooks.ocrModelId} unavailable (missing ${opt.requiresKey}) — images will be skipped`)
+      }
+    }
     // Formats markitdown-ts doesn't handle — convert inline
     const INLINE_FORMATS = new Set(["json", "csv", "xml"])
     for (const f of remainingMd) {
@@ -425,11 +454,48 @@ export async function processMarkitdownInProcess(
       }
 
       await emitStart(f.rel)
-      onLog?.(`  ${f.rel} → markitdown-ts ...`)
+      const isImage = extInList(ext, IMAGE_EXTENSIONS)
+      if (isImage && !vision) {
+        // Image routed to MarkItDown due to vision selection but no valid
+        // LanguageModel (missing key / offline) — keep original as fallback copy
+        // to `raw/<rel>` (not `__jpg.md`) so workspace isn't left gaps.
+        const fallbackDest = path.join(path.dirname(f.dest), path.basename(f.src))
+        try { mkdirSync(path.dirname(fallbackDest), { recursive: true }) } catch {}
+        const ok = await safeCopyAsync(f.src, fallbackDest)
+        if (ok) {
+          converted++
+          recoverable.push({ src: f.src, dest: fallbackDest })
+          appendNdjson(mdLog, {
+            ts: isoNow(), status: "ok", source: f.rel,
+            output: path.basename(fallbackDest),
+            engine: "image-copy-fallback", pages: "",
+            duration_s: 0,
+          })
+          onLog?.(`  ${f.rel} → image copy fallback (vision key missing)`)
+          await emitDone(f.rel)
+        } else {
+          failed++
+          appendNdjson(mdLog, {
+            ts: isoNow(), status: "fail", source: f.rel,
+            output: markitdownOutputRelPath(f.rel),
+            engine: "image-copy-fallback", pages: "",
+            duration_s: 0,
+            error: "copy fallback failed",
+          })
+          onLog?.(`  ${f.rel} → image copy fallback failed`)
+          await emitDone(f.rel, "failed")
+        }
+        continue
+      }
+      onLog?.(`  ${f.rel} → markitdown-ts${isImage && vision ? ` (vision:${vision.modelId})` : ""} ...`)
       const startTime = Date.now()
       try {
         mkdirSync(path.dirname(f.dest), { recursive: true })
-        const result = await markitdownConvertFile(converter, f.src)
+        const result = await markitdownConvertFile(
+          converter,
+          f.src,
+          isImage && vision ? { llmModel: vision.model, llmPrompt: vision.prompt } : undefined,
+        )
         throwIfSpinosaCancelled(shouldAbort)
         const text = result?.markdown ?? ""
         if (!text.trim()) throw new Error("MarkItDown returned no content")
@@ -589,7 +655,15 @@ export async function processMarkitdown(
   shouldAbort?: () => boolean,
   hooks?: MarkitdownHooks,
 ): Promise<PhaseResult> {
-  if (hooks?.inProcess || process.env.SPINOSA_IMPORT_IN_PROCESS === "1") {
+  // Vision LLMs need network + API key and cannot be serialized to the NDJSON
+  // child via a plain JSON payload (LanguageModel is not serializable). Run
+  // vision phases in-process so the model can be created in the same process.
+  const needsInProcess = (() => {
+    if (!hooks?.ocrModelId) return false
+    // Lazy sync check without async import — treat known vision ids as in-process.
+    return hooks.ocrModelId.startsWith("openrouter/") || hooks.ocrModelId.includes(":free")
+  })()
+  if (hooks?.inProcess || needsInProcess || process.env.SPINOSA_IMPORT_IN_PROCESS === "1") {
     return processMarkitdownInProcess(files, logsDir, prog, onLog, shouldAbort, {
       ...hooks,
       inProcess: true,
@@ -1816,7 +1890,7 @@ export async function copySource(
   }
 
   throwIfSpinosaCancelled(options?.shouldAbort)
-  const classified = await scanAndClassifySource(sourcePath, destDir, options?.batchManager, options?.subfolder, options?.shouldAbort)
+  const classified = await scanAndClassifySource(sourcePath, destDir, options?.batchManager, options?.subfolder, options?.shouldAbort, options?.ocrModelId)
   if (!classified) {
     options?.onLog?.(`Failed to scan source: ${sourcePath}`)
     return res
@@ -1866,10 +1940,12 @@ export async function copySource(
   }
 
   if (runPhase("markitdown") && classified.markitdownFiles.length > 0 && options?.markitdownChoice) {
-    options?.onPhaseChange?.("markitdown", `Converting ${classified.markitdownFiles.length} files with MarkItDown...`)
+    const visionHint = options?.ocrModelId && options.ocrModelId.startsWith("openrouter/") ? ` (vision: ${options.ocrModelId})` : ""
+    options?.onPhaseChange?.("markitdown", `Converting ${classified.markitdownFiles.length} files with MarkItDown${visionHint}...`)
       const mr = await processMarkitdown(classified.markitdownFiles, classified.logsDir, prog, options?.onLog, options?.shouldAbort, {
         onChild: options?.onChild,
         signal: options?.signal,
+        ocrModelId: options?.ocrModelId,
       })
     res.mdConverted += mr.converted; res.mdSkipped += mr.skipped; res.mdFailed += mr.failed
   }

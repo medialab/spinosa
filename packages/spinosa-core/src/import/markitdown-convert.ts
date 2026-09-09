@@ -12,13 +12,27 @@ type MarkItDownResult = Awaited<ReturnType<MarkItDown["convert"]>>
  * we also prefer buffer conversion so a mismatched xlsx module instance cannot
  * resurface as "The .xlsx are not supported."
  */
+export type MarkItDownVisionOpts = {
+  /** Vercel AI SDK LanguageModel (e.g. openai("gpt-4o-mini") or openrouter via createOpenAI). */
+  llmModel?: unknown
+  llmPrompt?: string
+}
+
 export async function markitdownConvertFile(
   converter: MarkItDown,
   src: string,
+  vision?: MarkItDownVisionOpts,
 ): Promise<MarkItDownResult> {
   ensureSheetJsFs()
+  const visionOpts =
+    vision?.llmModel
+      ? { llmModel: vision.llmModel as never, llmPrompt: vision.llmPrompt }
+      : undefined
   if (path.extname(src).toLowerCase() === ".xlsx") {
-    return converter.convertBuffer(readFileSync(src), { file_extension: ".xlsx" })
+    return converter.convertBuffer(readFileSync(src), {
+      file_extension: ".xlsx",
+      ...(visionOpts ? visionOpts : {}),
+    } as never)
   }
-  return converter.convert(src)
+  return converter.convert(src, visionOpts as never)
 }

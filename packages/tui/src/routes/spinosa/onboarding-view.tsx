@@ -6,7 +6,9 @@ import { buttonBackground, buttonText } from "../../util/button"
 import {
   deferPress,
   ImportOptionsSelector,
+  OcrModelSelector,
   type ImportOption,
+  type OcrModelOption,
   LogScrollbox,
   LogoSummary,
   ProgressBar,
@@ -87,6 +89,10 @@ export function OnboardingView(props: OnboardingViewProps) {
     toolAllReady,
     handleToolAction,
     continueFromImports,
+    ocrModelOptions,
+    selectedOcrModelIndex,
+    setSelectedOcrModelIndex,
+    continueFromVision,
     waitingForGate,
     gateLabel,
     gateAction,
@@ -139,6 +145,7 @@ export function OnboardingView(props: OnboardingViewProps) {
             {step() === "tools" ? " — checking your document tools" : ""}
             {step() === "scan" ? " — scanning your source" : ""}
             {step() === "imports" ? " — selecting file types to import" : ""}
+            {step() === "vision" ? " — selecting OCR engine for images & scanned PDFs" : ""}
             {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting office docs & text PDFs via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs (images → copy, pending network)" : step() === "verification" ? " — verifying the import" : ""}
             {step() === "provider" ? " — choosing your LLM provider" : ""}
             {step() === "startup" ? " — preparing your startup" : ""}
@@ -345,6 +352,21 @@ export function OnboardingView(props: OnboardingViewProps) {
                   <text fg={theme.textMuted}>↑↓ move · space toggle · a toggle all · enter continue</text>
                 </Show>
               </Show>
+              <Show when={step() === "vision"}>
+                <text fg={theme.text}>Select OCR engine for images & scanned PDFs</text>
+                <text fg={theme.textMuted}>MarkItDown will use the chosen model to transcribe images into Markdown. Tesseract runs locally; vision models need network + API key.</text>
+                <OcrModelSelector
+                  theme={theme}
+                  options={props.ocrModelOptions}
+                  selectedIndex={props.selectedOcrModelIndex()}
+                  viewportHeight={dimensions().height}
+                  onSelectIndex={props.setSelectedOcrModelIndex}
+                  onSelect={(idx) => {
+                    props.setSelectedOcrModelIndex(idx);
+                    props.continueFromVision();
+                  }}
+                />
+              </Show>
               <Show when={step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr"}>
                 <Show when={!processingDone()}>
                   <ProgressBar
@@ -419,7 +441,15 @@ export function OnboardingView(props: OnboardingViewProps) {
                   onPress={() => void continueFromImports()}
                 />
               </Show>
-              <Show when={step() !== "tools" && step() !== "scan" && waitingForGate()}>
+              <Show when={step() === "vision"}>
+                <WizardActionButton
+                  theme={theme}
+                  label="Continue"
+                  primary
+                  onPress={() => void continueFromVision()}
+                />
+              </Show>
+              <Show when={step() !== "tools" && step() !== "scan" && step() !== "vision" && waitingForGate()}>
                 <WizardGateButton theme={theme} label={gateLabel()} action={() => gateAction()()} />
               </Show>
             </WizardActionRow>

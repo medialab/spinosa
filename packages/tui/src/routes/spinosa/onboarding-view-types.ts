@@ -1,10 +1,10 @@
 import type { TextareaRenderable } from "@opentui/core"
 import type { Accessor, Setter } from "solid-js"
 import type { Theme } from "../../context/theme"
-import type { ImportOption } from "./wizard-ui"
+import type { ImportOption, OcrModelOption } from "./wizard-ui"
 import type { ImportFileProgressItem } from "../../spinosa/import-progress-ui"
 
-export type WizardStep = "path" | "name" | "tools" | "scan" | "imports" | "setup" | "direct" | "markitdown" | "ocr" | "verification" | "provider" | "startup" | "done" | "error"
+export type WizardStep = "path" | "name" | "tools" | "scan" | "imports" | "vision" | "setup" | "direct" | "markitdown" | "ocr" | "verification" | "provider" | "startup" | "done" | "error"
 export type ToolCheckResult = {
   label: string
   status: "checking" | "available" | "missing" | "unsupported"
@@ -81,6 +81,10 @@ export type OnboardingViewProps = {
   toolAllReady: Accessor<boolean>
   handleToolAction: () => void
   continueFromImports: () => void
+  ocrModelOptions: OcrModelOption[]
+  selectedOcrModelIndex: Accessor<number>
+  setSelectedOcrModelIndex: Setter<number>
+  continueFromVision: () => void
   waitingForGate: Accessor<boolean>
   gateLabel: Accessor<string>
   gateAction: Accessor<() => void>

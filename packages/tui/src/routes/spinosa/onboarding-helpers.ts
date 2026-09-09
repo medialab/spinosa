@@ -199,3 +199,64 @@ export function mergeImportOptions(
   }
   return target;
 }
+
+export type OcrModelOption = {
+  id: string
+  label: string
+  detail: string
+  kind: "tesseract" | "vision" | "none"
+  modelId?: string
+  provider?: string
+  vision: boolean
+  cost?: "free" | "paid" | "offline"
+  requiresKey?: string
+}
+
+export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
+  {
+    id: "tesseract-local",
+    label: "Tesseract (offline)",
+    detail: "Scanned PDFs via pdftoppm + tesseract (ita+eng+fra, 300dpi) · images copied",
+    kind: "tesseract",
+    vision: false,
+    cost: "offline",
+  },
+  {
+    id: "openrouter/qwen2.5-vl-32b:free",
+    label: "Qwen 2.5 VL 32B (free)",
+    detail: "OpenRouter free · vision · images + scanned PDFs via LLM · needs OPENROUTER_API_KEY",
+    kind: "vision",
+    modelId: "qwen/qwen2.5-vl-32b-instruct:free",
+    provider: "openrouter",
+    vision: true,
+    cost: "free",
+    requiresKey: "OPENROUTER_API_KEY",
+  },
+  {
+    id: "openrouter/gemini-flash-1.5-8b:free",
+    label: "Gemini Flash 1.5 8B (free)",
+    detail: "OpenRouter free · vision · images + scanned PDFs via LLM · needs OPENROUTER_API_KEY",
+    kind: "vision",
+    modelId: "google/gemini-flash-1.5-8b:free",
+    provider: "openrouter",
+    vision: true,
+    cost: "free",
+    requiresKey: "OPENROUTER_API_KEY",
+  },
+  {
+    id: "none",
+    label: "No OCR (copy only)",
+    detail: "Images copied as-is · scanned PDFs skipped",
+    kind: "none",
+    vision: false,
+    cost: "offline",
+  },
+]
+
+export function defaultOcrModelId(): string {
+  return "tesseract-local"
+}
+
+export function findOcrModel(id: string): OcrModelOption | undefined {
+  return OCR_MODEL_OPTIONS.find((o) => o.id === id)
+}

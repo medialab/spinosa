@@ -160,7 +160,7 @@ export async function scanClassifySourceFile(filePath: string): Promise<FileClas
 
 export async function importRouteForFile(
   srcFile: string,
-  opts?: { markitdownChoice?: boolean; ocrChoice?: boolean },
+  opts?: { markitdownChoice?: boolean; ocrChoice?: boolean; ocrModelId?: string },
 ): Promise<ImportRoute | undefined> {
   const klass = await classifySourceFile(srcFile)
 
@@ -179,7 +179,13 @@ export async function importRouteForFile(
       if (!opts?.ocrChoice) return undefined
       const ext = fileExt(srcFile)
       if (extInList(ext, IMAGE_EXTENSIONS)) {
-        // Images: copy-only for now, leave room for network provider
+        // Images: with vision model → MarkItDown vision, otherwise copy-only
+        if (opts?.ocrModelId) {
+          const { findOcrModel } = await import("../import/vision-models")
+          const m = findOcrModel(opts.ocrModelId)
+          if (m?.kind === "vision") return "markitdown"
+          if (m?.kind === "none") return undefined
+        }
         return "copy"
       }
       return "ocr"

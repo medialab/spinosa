@@ -20,6 +20,7 @@ import {
   createWorkspace,
   resolveWorkspacePath,
 } from "@spinosa/core/commands/create";
+import { OCR_MODEL_OPTIONS } from "./onboarding-helpers";
 import { useSDK } from "../../context/sdk";
 import {
   createImportJob,
@@ -144,6 +145,7 @@ type WizardStep =
   | "tools"
   | "scan"
   | "imports"
+  | "vision"
   | "setup"
   | "direct"
   | "markitdown"
@@ -280,6 +282,8 @@ export function Onboarding() {
   const [importOptions, setImportOptions] = createSignal<ImportOption[]>([]);
   const [selectedImport, setSelectedImport] = createSignal(0);
   const [selectedCli, setSelectedCli] = createSignal(0);
+  const [selectedOcrModel, setSelectedOcrModel] = createSignal("tesseract-local");
+  const [selectedOcrModelIndex, setSelectedOcrModelIndex] = createSignal(0);
   const [focusedSource, setFocusedSource] = createSignal(0);
   const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>();
   const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([]);
@@ -388,20 +392,21 @@ export function Onboarding() {
       .map((item) => item.ext),
   );
 
-  const totalSteps = 11;
+  const totalSteps = 12;
   const stepIndex = createMemo(() => {
     if (step() === "path") return 1;
     if (step() === "name") return 2;
     if (step() === "tools") return 3;
     if (step() === "scan") return 4;
     if (step() === "imports") return 5;
-    if (step() === "setup") return 6;
-    if (step() === "direct") return 7;
-    if (step() === "markitdown") return 8;
-    if (step() === "ocr") return 9;
-    if (step() === "verification") return 10;
-    if (step() === "provider") return 11;
-    if (step() === "startup") return 11;
+    if (step() === "vision") return 6;
+    if (step() === "setup") return 7;
+    if (step() === "direct") return 8;
+    if (step() === "markitdown") return 9;
+    if (step() === "ocr") return 10;
+    if (step() === "verification") return 11;
+    if (step() === "provider") return 12;
+    if (step() === "startup") return 12;
     if (step() === "done") return totalSteps;
     return totalSteps;
   });
@@ -593,6 +598,11 @@ export function Onboarding() {
       setStep("path");
       return;
     }
+    if (from === "vision") {
+      logAction("back", `from ${from} to scan`);
+      setStep("scan");
+      return;
+    }
     if (
       from === "setup" ||
       from === "direct" ||
@@ -600,8 +610,8 @@ export function Onboarding() {
       from === "ocr" ||
       from === "verification"
     ) {
-      logAction("back", `from ${from} to scan`);
-      setStep("scan");
+      logAction("back", `from ${from} to vision`);
+      setStep("vision");
       return;
     }
     if (from === "provider") {
@@ -837,10 +847,20 @@ export function Onboarding() {
       setStep("error");
       return;
     }
+    // Show OCR model selector as a pop-up step before setup.
+    // This is the lacing point for vision MarkItDown: selected model flows into
+    // scanAndClassify + processMarkitdown (llmModel) with tesseract fallback.
     logAction(
       "continue",
-      `Imports → Processing (${selectedExtensions().length} types: ${selectedExtensions().join(",")})`,
+      `Imports → Vision (${selectedExtensions().length} types: ${selectedExtensions().join(",")})`,
     );
+    setStep("vision");
+  };
+
+  const continueFromVision = () => {
+    const chosen = OCR_MODEL_OPTIONS[selectedOcrModelIndex()]?.id ?? "tesseract-local";
+    setSelectedOcrModel(chosen);
+    logAction("continue", `Vision → Processing (ocrModel=${chosen})`);
     void activeWork.run(startProcessing);
   };
 
@@ -987,6 +1007,7 @@ export function Onboarding() {
         ctx.batches,
         undefined,
         shouldAbort,
+        selectedOcrModel(),
       );
       if (!classified) {
         setStep("error");
@@ -1010,6 +1031,7 @@ export function Onboarding() {
         shouldAbort,
         signal: job.registered.signal,
         onChild: job.registerChild,
+        ocrModelId: selectedOcrModel(),
         onRetry: (attempt, reason) => {
           setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`);
         },
@@ -1537,6 +1559,25 @@ export function Onboarding() {
         }
       }
 
+      if (step() === "vision") {
+        const len = OCR_MODEL_OPTIONS.length;
+        if (event.name === "up" || event.name === "k") {
+          setSelectedOcrModelIndex((v) => Math.max(0, v - 1));
+          consume();
+          return;
+        }
+        if (event.name === "down" || event.name === "j") {
+          setSelectedOcrModelIndex((v) => Math.min(len - 1, v + 1));
+          consume();
+          return;
+        }
+        if (event.name === "return") {
+          continueFromVision();
+          consume();
+          return;
+        }
+      }
+
       if (
         shouldActivateWizardToolAction({
           step: step(),
@@ -1692,6 +1733,10 @@ export function Onboarding() {
     toolAllReady,
     handleToolAction,
     continueFromImports,
+    ocrModelOptions: OCR_MODEL_OPTIONS,
+    selectedOcrModelIndex,
+    setSelectedOcrModelIndex,
+    continueFromVision,
     waitingForGate,
     gateLabel,
     gateAction,
