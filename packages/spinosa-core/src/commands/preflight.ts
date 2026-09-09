@@ -222,7 +222,7 @@ export async function offerWorkspaceUpgrades(
   let failed = 0
   for (const workspace of workspaces) {
     try {
-      const result = await deps.updateWorkspace(workspace, frameworkRoot)
+      const result = await deps.updateWorkspace(workspace, frameworkRoot, { force: true })
       if (result.success && result.presence) {
         deps.out(`\x1b[36m●\x1b[0m Skipped ${path.basename(workspace) || workspace}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
       } else if (result.success) deps.out(`\x1b[32m●\x1b[0m Updated ${path.basename(workspace) || workspace}`)
