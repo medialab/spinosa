@@ -8,7 +8,7 @@
 
 	const origin = $derived($page.url.origin);
 
-	let beta = $state(true);
+	let beta = $state(false);
 	const CMD = $derived(beta ? devInstallCmd() : stableInstallCmd());
 
 	const words = [

@@ -8,7 +8,7 @@
 	import docFooterImg from '$lib/assets/docs_footer.png';
 
 	let { children } = $props();
-	let beta = $state(true);
+	let beta = $state(false);
 
 	const docTitle = $derived($page.data?.doc?.title ?? '');
 	const docDesc = $derived($page.data?.doc?.description ?? '');
