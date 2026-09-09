@@ -8,6 +8,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.13] — 2026-09-09
+
+### Changed
+
+- `workspace-template/startup-prompt.md:1` trimmed to mapping/indexing only — `serendippo`/`verifier`/`evaluator` removed, `Phase 5` skipped, `Phase 6` → `Validate (mapping-only)` (map checks only, retrieval optional), `Phase 7` keeps `extraction_*.md` in place, `Gate` no longer requires startup report.
+
 ## [1.1.0-beta.12] — 2026-09-09
 
 ### Changed
