@@ -174,7 +174,7 @@ ENV_BACKUP=""
 # ══════════════════════════════════════════════════════════════════════════════
 
 if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
-  G=$'\033[32m' Y=$'\033[33m' R=$'\033[31m' C=$'\033[36m'
+  G=$'\033[32m' Y=$'\033[31m' R=$'\033[31m' C=$'\033[36m'
   DIM=$'\033[2m' BOLD=$'\033[1m' RESET=$'\033[0m'
 else
   G='' Y='' R='' C='' DIM='' BOLD='' RESET=''
@@ -203,7 +203,7 @@ outro() {
   local msg="$1"
   spinosa_log INFO "outro=${msg}"
   if [ -t 2 ]; then
-    printf '  %s %s\n' "${G}◆${RESET}" "$msg" >&2
+    printf '  %s %s\n' "${G}●${RESET}" "$msg" >&2
     printf '\n' >&2
   else
     printf '%s\n' "$msg" >&2
@@ -214,7 +214,7 @@ section() {
   local title="$1"
   spinosa_log INFO "section=${title}"
   if [ -t 2 ]; then
-    printf '\n  %s %s%s%s\n' "${C}→${RESET}" "${BOLD}${C}" "$title" "${RESET}"
+    printf '\n  %s %s\n' "${C}→${RESET}" "$title"
   else
     printf '\n  → %s\n' "$title"
   fi
@@ -281,7 +281,7 @@ _render_wave() {
     elapsed=$(( $(date +%s) - started_at ))
     wave="$(wave_string "$tick")"
     bar="$wave"
-    printf '\r\033[2K  %s %s [%s] %ss/%ss' "${DIM}○${RESET}" "$label" "$bar" "$elapsed" "$timeout_seconds" >&2
+    printf '\r\033[2K  %s %s [%s] %ss/%ss' "${C}●${RESET}" "$label" "$bar" "$elapsed" "$timeout_seconds" >&2
     tick=$((tick + 1))
     sleep 0.2
   done
@@ -296,7 +296,7 @@ step_begin() {
     _render_wave "$STEP_LABEL" "$timeout_seconds" "$STEP_STARTED_AT" &
     STEP_RENDER_PID=$!
   else
-    printf '  %s %s (timeout %ss)\n' "${DIM}○${RESET}" "$STEP_LABEL" "$timeout_seconds" >&2
+    printf '  %s %s (timeout %ss)\n' "${C}●${RESET}" "$STEP_LABEL" "$timeout_seconds" >&2
   fi
 }
 
@@ -314,7 +314,7 @@ step_end() {
     printf '  %s %s (%ss)\n' "${G}●${RESET}" "$message" "$elapsed" >&2
     spinosa_log INFO "step=ok label=${STEP_LABEL} elapsed=${elapsed}s"
   else
-    printf '  %s %s (%ss)\n' "${R}✗${RESET}" "$message" "$elapsed" >&2
+    printf '  %s %s (%ss)\n' "${R}●${RESET}" "$message" "$elapsed" >&2
     spinosa_log ERROR "step=fail label=${STEP_LABEL} elapsed=${elapsed}s status=${status}"
   fi
   STEP_STARTED_AT=0
@@ -638,7 +638,7 @@ prompt_install_repair() {
     info "Repairing automatically (--yes)..."
     return 0
   fi
-  printf '  %s %s [Y/n]: ' "${C}○${RESET}" "Repair now?" >&2
+  printf '  %s %s [Y/n]: ' "${C}?${RESET}" "Repair now?" >&2
   local reply
   if ! read_from_tty reply; then
     printf '\n' >&2
@@ -1377,7 +1377,7 @@ prompt_upgrade() {
       info "Auto-upgrading (--yes)."
       return 0
     fi
-    printf '  %s %s [Y/n]: ' "${C}○${RESET}" "Upgrade?" >&2
+    printf '  %s %s [Y/n]: ' "${C}?${RESET}" "Upgrade?" >&2
     local reply
     read_tty_or_die reply
     reply="${reply:-Y}"
@@ -1403,7 +1403,7 @@ prompt_upgrade() {
       info "Skipping downgrade (--yes)."
       return 1
     fi
-    printf '  %s %s [y/N]: ' "${C}○${RESET}" "Downgrade?" >&2
+    printf '  %s %s [y/N]: ' "${C}?${RESET}" "Downgrade?" >&2
     local reply
     read_tty_or_die reply
     case "$reply" in
@@ -1418,7 +1418,7 @@ confirm_install() {
   if [ "$YES" -eq 1 ]; then
     return 0
   fi
-  printf '  %s %s [Y/n]: ' "${C}○${RESET}" "Install Spinosa v${version}?" >&2
+  printf '  %s %s [Y/n]: ' "${C}?${RESET}" "Install Spinosa v${version}?" >&2
   local reply
   read_tty_or_die reply
   reply="${reply:-Y}"
@@ -1972,13 +1972,13 @@ print_path_instructions() {
 
 print_banner() {
   printf '\n\n\n'
-  printf '  %s\n' "${G}███████╗██████╗ ██╗███╗   ██╗ ██████╗ ███████╗ █████╗ ${RESET}"
-  printf '  %s\n' "${G}██╔════╝██╔══██╗██║████╗  ██║██╔═══██╗██╔════╝██╔══██╗${RESET}"
-  printf '  %s\n' "${G}███████╗██████╔╝██║██╔██╗ ██║██║   ██║███████╗███████║${RESET}"
-  printf '  %s\n' "${G}╚════██║██╔═══╝ ██║██║╚██╗██║██║   ██║╚════██║██╔══██║${RESET}"
-  printf '  %s\n' "${G}███████║██║     ██║██║ ╚████║╚██████╔╝███████║██║  ██║${RESET}"
-  printf '  %s\n' "${G}╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝${RESET}"
-  printf '  %s%sBinary Installer%s\n\n' "${BOLD}" "${G}" "${RESET}"
+  printf '  %s\n' '███████╗██████╗ ██╗███╗   ██╗ ██████╗ ███████╗ █████╗'
+  printf '  %s\n' '██╔════╝██╔══██╗██║████╗  ██║██╔═══██╗██╔════╝██╔══██╗'
+  printf '  %s\n' '███████╗██████╔╝██║██╔██╗ ██║██║   ██║███████╗███████║'
+  printf '  %s\n' '╚════██║██╔═══╝ ██║██║╚██╗██║██║   ██║╚════██║██╔══██║'
+  printf '  %s\n' '███████║██║     ██║██║ ╚████║╚██████╔╝███████║██║  ██║'
+  printf '  %s\n' '╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝'
+  printf '  %s\n\n' 'Binary Installer'
 }
 
 handle_verify_only() {
@@ -2197,7 +2197,7 @@ main() {
     ok "Spinosa installed successfully!"
   else
     divider
-    printf '\n  %s%sSpinosa installed successfully!%s\n\n' "${BOLD}" "${G}" "${RESET}"
+    printf '\n  Spinosa installed successfully!\n\n'
   fi
 
   spinosa_log INFO "install complete version=${VERSION} home=${SPINOSA_HOME} distribution=binary"
