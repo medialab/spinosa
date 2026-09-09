@@ -173,12 +173,11 @@ function buildPreflightRows(workspacePath: string, toolStatus: ToolStatus): Onbo
   const ocrStatus = toolStatus.ocr ? "available" : toolStatus.ocrUnsupportedReason ? "unsupported" : "missing"
   const ocrTone = toolStatus.ocr ? "success" : toolStatus.ocrUnsupportedReason ? "muted" : "error"
   rows.push({
-    label: "Tesseract OCR (scanned PDFs: ita+eng+fra 300dpi)",
+    label: "Tesseract OCR",
     status: ocrStatus,
-    detail: toolStatus.ocrUnsupportedReason ?? (toolStatus.ocr ? "pdftoppm + tesseract ita/eng/fra" : "install tesseract + poppler + tessdata"),
+    detail: toolStatus.ocrUnsupportedReason ?? (toolStatus.ocr ? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm)" : "Install tesseract + poppler + tessdata ita/eng/fra"),
     tone: ocrTone,
   })
-  rows.push({ label: "Images", status: "copy-only", detail: "pending network OCR", tone: "muted" })
   rows.push({ label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", tone: toolStatus.markitdown ? "success" : "error" })
   rows.push({ label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", tone: toolStatus.pdfjs ? "success" : "error" })
   return rows

@@ -450,8 +450,7 @@ export function AddFiles() {
   const runToolCheck = async () => {
     logStep("tools", "Checking document processing tools")
     const checks: ToolCheckResult[] = [
-      { label: "Tesseract OCR", status: "checking", detail: "scanned PDFs: ita+eng+fra 300dpi" },
-      { label: "Images", status: "checking", detail: "copy-only, pending network OCR" },
+      { label: "Tesseract OCR", status: "checking", detail: "Scanned PDFs (ita+eng+fra, 300dpi)" },
       { label: "MarkItDown", status: "checking", detail: "Office docs, EPUB, HTML, text PDFs" },
       { label: "PDF.js", status: "checking", detail: "PDF text extraction and page rendering" },
     ]
@@ -466,10 +465,9 @@ export function AddFiles() {
       : toolStatus.ocrUnsupportedReason
         ? "unsupported"
         : "missing"
-    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs: ita+eng+fra 300dpi (tesseract, fallback ppu)"
+    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm)"
     const results: ToolCheckResult[] = [
       { label: "Tesseract OCR", status: ocrStatus, detail: ocrDetail },
-      { label: "Images", status: "available", detail: "copy-only, pending network OCR" },
       { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
       { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
     ]
@@ -536,10 +534,9 @@ export function AddFiles() {
         : toolStatus.ocrUnsupportedReason
           ? "unsupported"
           : "missing"
-      const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs: ita+eng+fra 300dpi (tesseract, fallback ppu)"
+      const ocrDetail = toolStatus.ocrUnsupportedReason ?? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm)"
       const results: ToolCheckResult[] = [
         { label: "Tesseract OCR", status: ocrStatus, detail: ocrDetail },
-        { label: "Images", status: "available", detail: "copy-only, pending network OCR" },
         { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
         { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
       ]
@@ -560,6 +557,8 @@ export function AddFiles() {
   // ── Scan ──────────────────────────────────────────────────────────────────
   let pendingPaths: string[] | undefined
   const startScan = async () => {
+    abortProcessing = false
+    workflow.bump()
     const resolved = pendingPaths
     if (!resolved || resolved.length === 0) { logError("startScan", "No pending paths"); setStep("error"); return }
     setSourceIsCloud(resolved.some((p) => isCloudStoragePath(p)))

@@ -119,12 +119,7 @@ export function initialToolChecks(): ToolCheckResult[] {
     {
       label: "Tesseract OCR",
       status: "checking",
-      detail: "scanned PDFs: ita+eng+fra 300dpi (pdftoppm + tesseract)",
-    },
-    {
-      label: "Images",
-      status: "checking",
-      detail: "copy-only, pending network OCR",
+      detail: "Scanned PDFs (ita+eng+fra, 300dpi)",
     },
     {
       label: "MarkItDown",
@@ -157,12 +152,7 @@ export function toolCheckResults(
         : status.ocrUnsupportedReason
           ? "unsupported"
           : "missing",
-      detail: status.ocrUnsupportedReason ?? "scanned PDFs: ita+eng+fra 300dpi via pdftoppm + tesseract (fallback ppu-paddle-ocr)",
-    },
-    {
-      label: "Images",
-      status: "available",
-      detail: "copy-only, pending network OCR",
+      detail: status.ocrUnsupportedReason ?? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm + tesseract)",
     },
     {
       label: "MarkItDown",

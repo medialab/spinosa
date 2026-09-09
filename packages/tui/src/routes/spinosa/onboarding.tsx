@@ -708,12 +708,7 @@ export function Onboarding() {
     {
       label: "Tesseract OCR",
       status: "checking",
-      detail: "scanned PDFs: ita+eng+fra 300dpi (pdftoppm + tesseract)",
-    },
-    {
-      label: "Images",
-      status: "checking",
-      detail: "copy-only, pending network OCR",
+      detail: "Scanned PDFs (ita+eng+fra, 300dpi)",
     },
     {
       label: "MarkItDown",
@@ -773,8 +768,10 @@ export function Onboarding() {
     }
   };
 
-  const startScan = () =>
-    scanOnboardingSources({
+  const startScan = () => {
+    abortProcessing = false
+    workflow.bump()
+    return scanOnboardingSources({
       pendingPaths,
       workspaceName,
       defaultWorkspaceName,
@@ -795,7 +792,8 @@ export function Onboarding() {
       setPreview,
       setImportOptions,
       shouldAbort: () => abortProcessing,
-    });
+    })
+  }
 
   const continueFromPath = async () => {
     if (busy()) return;
