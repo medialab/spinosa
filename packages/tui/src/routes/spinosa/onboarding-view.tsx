@@ -293,7 +293,7 @@ export function OnboardingView(props: OnboardingViewProps) {
               />
             </WizardActionRow>
           </Show>
-          <Show when={step() === "tools" || step() === "scan" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification"}>
+          <Show when={step() === "tools" || step() === "scan" || step() === "vision" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification"}>
             <WizardPanel theme={theme}>
               <Show when={step() === "tools"}>
                 <text fg={theme.textMuted}>Document processing tools</text>
