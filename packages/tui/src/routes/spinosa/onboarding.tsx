@@ -706,9 +706,14 @@ export function Onboarding() {
 
   const generateToolCheckLines = (): ToolCheckResult[] => [
     {
-      label: "PPU PaddleOCR",
+      label: "Tesseract OCR",
       status: "checking",
-      detail: "scanned PDFs and images",
+      detail: "scanned PDFs: ita+eng+fra 300dpi (pdftoppm + tesseract)",
+    },
+    {
+      label: "Images",
+      status: "checking",
+      detail: "copy-only, pending network OCR",
     },
     {
       label: "MarkItDown",

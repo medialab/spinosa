@@ -117,9 +117,14 @@ export function waveRow(frame: number, width: number): string {
 export function initialToolChecks(): ToolCheckResult[] {
   return [
     {
-      label: "PPU PaddleOCR",
+      label: "Tesseract OCR",
       status: "checking",
-      detail: "scanned PDFs and images",
+      detail: "scanned PDFs: ita+eng+fra 300dpi (pdftoppm + tesseract)",
+    },
+    {
+      label: "Images",
+      status: "checking",
+      detail: "copy-only, pending network OCR",
     },
     {
       label: "MarkItDown",
@@ -146,13 +151,18 @@ export function toolCheckResults(
 ): ToolCheckResult[] {
   return [
     {
-      label: "PPU PaddleOCR",
+      label: "Tesseract OCR",
       status: status.ocr
         ? "available"
         : status.ocrUnsupportedReason
           ? "unsupported"
           : "missing",
-      detail: status.ocrUnsupportedReason ?? "scanned PDFs and images",
+      detail: status.ocrUnsupportedReason ?? "scanned PDFs: ita+eng+fra 300dpi via pdftoppm + tesseract (fallback ppu-paddle-ocr)",
+    },
+    {
+      label: "Images",
+      status: "available",
+      detail: "copy-only, pending network OCR",
     },
     {
       label: "MarkItDown",
