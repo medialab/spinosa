@@ -175,9 +175,9 @@ ENV_BACKUP=""
 
 if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
   G=$'\033[32m' Y=$'\033[31m' R=$'\033[31m' C=$'\033[36m'
-  DIM=$'\033[2m' BOLD=$'\033[1m' RESET=$'\033[0m'
+  BOLD=$'\033[1m' RESET=$'\033[0m'
 else
-  G='' Y='' R='' C='' DIM='' BOLD='' RESET=''
+  G='' Y='' R='' C='' BOLD='' RESET=''
 fi
 
 info()  { spinosa_log INFO "$1"; printf '  %s %s\n' "${C}●${RESET}" "$1"; }
@@ -2182,7 +2182,7 @@ main() {
 
   echo ""
   if [[ "$FROM_UPGRADE" -eq 1 ]]; then
-    printf '  %s %s%s%s\n' "${G}●${RESET}" "${BOLD}✨ Spinosa installed successfully! ✨${RESET}" >&2
+    printf '  %s %s\n' "${G}●${RESET}" "${BOLD}✨ Spinosa installed successfully! ✨${RESET}" >&2
   else
     printf '  %s%s%s\n\n' "${BOLD}" "✨ Spinosa installed successfully! ✨" "${RESET}"
   fi
