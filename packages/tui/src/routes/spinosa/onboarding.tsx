@@ -1,5 +1,6 @@
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { TextareaRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/solid";
 import {
@@ -287,37 +288,7 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
     if (!pid) return []
     const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }> })?.provider?.find((p) => p.id === pid)
     let raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
-    // Fallback to cached models-dev file when provider not branched (no models in sync) — load full catalog for that provider
-    if (raw.length === 0) {
-      const cachePaths = [
-        `${process.env.HOME}/.cache/spinosa/models.json`,
-        `${process.env.HOME}/.cache/opencode/models.json`,
-      ]
-      for (const cp of cachePaths) {
-        try {
-          if (!existsSync(cp)) continue
-          const txt = readFileSync(cp, "utf-8")
-          const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }>
-          const prov = data[pid]
-          if (prov) {
-            raw = Object.entries(prov.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
-            break
-          }
-        } catch {}
-      }
-    }
-    if (raw.length === 0) {
-      // Last resort static free vision for openrouter
-      if (pid === "openrouter") {
-        return [
-          { providerId: pid, modelId: "qwen/qwen2.5-vl-32b-instruct:free", title: "Qwen 2.5 VL 32B (free)", description: "Vision · Free" },
-          { providerId: pid, modelId: "google/gemini-flash-1.5-8b:free", title: "Gemini Flash 1.5 8B (free)", description: "Vision · Free" },
-        ]
-      }
-      return []
-    }
-    // Show only vision models — input image (attach image), not output image generation. `attachment` is file attach support, but modalities.input is canonical.
-    return raw.map(([modelId, info]) => {
+    const mapToVision = (entries: typeof raw) => entries.map(([modelId, info]) => {
       const input = (info as { capabilities?: { input?: string[] }; modalities?: { input?: string[] } }).capabilities?.input ?? (info as { modalities?: { input?: string[] } }).modalities?.input ?? (info as { input?: string[] }).input
       const isVision = Array.isArray(input) && input.includes("image")
       return {
@@ -327,8 +298,40 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
         description: (info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision",
         isVision,
       }
-    }).filter((m) => m.isVision)
-      .map(({ providerId, modelId, title, description }) => ({ providerId, modelId, title, description }))
+    }).filter((m) => m.isVision).map(({ providerId, modelId, title, description }) => ({ providerId, modelId, title, description }))
+    let vision = mapToVision(raw)
+    // Fallback to cached models-dev file when sync has no vision (not branched or text-only) — load full catalog for that provider
+    if (vision.length === 0) {
+      const home = process.env.HOME ?? homedir()
+      const cachePaths = [
+        `${home}/.cache/spinosa/models.json`,
+        `${home}/.cache/opencode/models.json`,
+      ]
+      for (const cp of cachePaths) {
+        try {
+          if (!existsSync(cp)) continue
+          const txt = readFileSync(cp, "utf-8")
+          const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }>
+          const prov = data[pid]
+          if (prov) {
+            raw = Object.entries(prov.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
+            vision = mapToVision(raw)
+            if (vision.length > 0) break
+          }
+        } catch {}
+      }
+    }
+    if (vision.length === 0) {
+      // Last resort static free vision for openrouter
+      if (pid === "openrouter") {
+        return [
+          { providerId: pid, modelId: "qwen/qwen2.5-vl-32b-instruct:free", title: "Qwen 2.5 VL 32B (free)", description: "Vision · Free" },
+          { providerId: pid, modelId: "google/gemini-flash-1.5-8b:free", title: "Gemini Flash 1.5 8B (free)", description: "Vision · Free" },
+        ]
+      }
+      return []
+    }
+    return vision
   })
   const providerOptions = createMemo(() => {
     const vision = providersWithVision()
