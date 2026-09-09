@@ -181,10 +181,22 @@ export async function importRouteForFile(
       if (extInList(ext, IMAGE_EXTENSIONS)) {
         // Images: with vision model → MarkItDown vision, otherwise copy-only
         if (opts?.ocrModelId) {
-          const { findOcrModel } = await import("../import/vision-models")
-          const m = findOcrModel(opts.ocrModelId)
-          if (m?.kind === "vision") return "markitdown"
-          if (m?.kind === "none") return undefined
+          if (opts.ocrModelId === "none") return undefined
+          if (opts.ocrModelId === "tesseract-local") return "copy"
+          // Dynamic provider/model ids (e.g. openrouter/qwen/...) are vision if they contain "/"
+          if (opts.ocrModelId.includes("/")) {
+            // Check static registry first, otherwise treat as vision
+            try {
+              const { findOcrModel } = await import("../import/vision-models")
+              const m = findOcrModel(opts.ocrModelId)
+              if (m) {
+                if (m.kind === "vision") return "markitdown"
+                if (m.kind === "none") return undefined
+                return "copy"
+              }
+            } catch {}
+            return "markitdown"
+          }
         }
         return "copy"
       }

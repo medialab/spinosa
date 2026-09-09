@@ -20,7 +20,8 @@ import {
   createWorkspace,
   resolveWorkspacePath,
 } from "@spinosa/core/commands/create";
-import { OCR_MODEL_OPTIONS } from "./onboarding-helpers";
+import { OCR_MODEL_OPTIONS, type OcrModelOption } from "./onboarding-helpers";
+import { useSync } from "../../context/sync";
 import { useSDK } from "../../context/sdk";
 import {
   createImportJob,
@@ -284,6 +285,45 @@ export function Onboarding() {
   const [selectedCli, setSelectedCli] = createSignal(0);
   const [selectedOcrModel, setSelectedOcrModel] = createSignal("tesseract-local");
   const [selectedOcrModelIndex, setSelectedOcrModelIndex] = createSignal(0);
+  const sync = useSync();
+  // Dynamic vision options: tesseract + none + provider vision models from catalog (input includes "image")
+  const ocrVisionOptionsFromProviders = createMemo(() => {
+    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string; cost?: { input?: number }; release_date?: string }> }> })?.provider ?? []
+    const vision: OcrModelOption[] = []
+    for (const p of providers) {
+      for (const [modelId, info] of Object.entries(p.models ?? {})) {
+        if ((info as { status?: string }).status === "deprecated") continue
+        const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
+        const isVision = Array.isArray(input) && input.includes("image")
+        if (!isVision) continue
+        // Prefer free openrouter vision models, but show all vision models (user may have key for paid)
+        const isFree = (info as { cost?: { input?: number } }).cost?.input === 0
+        vision.push({
+          id: `${p.id}/${modelId}`,
+          label: `${p.name} · ${info.name ?? modelId}${isFree ? " (free)" : ""}`,
+          detail: `Vision · ${p.id}/${modelId}${isFree ? " · free" : ""}`,
+          kind: "vision",
+          modelId,
+          provider: p.id,
+          vision: true,
+          cost: isFree ? "free" : "paid",
+          requiresKey: p.id === "openrouter" ? "OPENROUTER_API_KEY" : undefined,
+        })
+      }
+    }
+    // Sort free first, then by provider/name
+    vision.sort((a, b) => (a.cost === "free" && b.cost !== "free" ? -1 : a.cost !== "free" && b.cost === "free" ? 1 : a.label.localeCompare(b.label)))
+    // Limit to 6 vision options to keep selector short
+    return vision.slice(0, 6)
+  })
+  const ocrModelOptions = createMemo(() => {
+    const vision = ocrVisionOptionsFromProviders()
+    // Always include tesseract + none, plus dynamic vision (or fallback static free list when offline)
+    const base = OCR_MODEL_OPTIONS.filter((o) => o.kind !== "vision")
+    const staticVision = OCR_MODEL_OPTIONS.filter((o) => o.kind === "vision")
+    const dynamicVision = vision.length > 0 ? vision : staticVision
+    return [...base.slice(0, 1), ...dynamicVision, ...base.slice(1)]
+  })
   const [focusedSource, setFocusedSource] = createSignal(0);
   const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>();
   const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([]);
@@ -858,7 +898,8 @@ export function Onboarding() {
   };
 
   const continueFromVision = () => {
-    const chosen = OCR_MODEL_OPTIONS[selectedOcrModelIndex()]?.id ?? "tesseract-local";
+    const opts = ocrModelOptions()
+    const chosen = opts[selectedOcrModelIndex()]?.id ?? "tesseract-local";
     setSelectedOcrModel(chosen);
     logAction("continue", `Vision → Processing (ocrModel=${chosen})`);
     void activeWork.run(startProcessing);
@@ -1733,7 +1774,7 @@ export function Onboarding() {
     toolAllReady,
     handleToolAction,
     continueFromImports,
-    ocrModelOptions: OCR_MODEL_OPTIONS,
+    ocrModelOptions: ocrModelOptions(),
     selectedOcrModelIndex,
     setSelectedOcrModelIndex,
     continueFromVision,

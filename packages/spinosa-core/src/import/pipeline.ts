@@ -182,15 +182,29 @@ export async function scanAndClassifySource(
       // Images: with vision model → MarkItDown vision (transcribe via LLM);
       // otherwise copy-only (pending network OCR).
       if (ocrModelId) {
-        const { findOcrModel } = await import("./vision-models")
-        const m = findOcrModel(ocrModelId)
-        if (m?.kind === "vision") {
-          markitdownFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
-          continue
-        }
-        if (m?.kind === "none") {
-          // Explicit no-OCR: skip image entirely (neither copy nor transcribe)
-          continue
+        if (ocrModelId === "none") continue
+        if (ocrModelId === "tesseract-local") {
+          // fall through to copy
+        } else if (ocrModelId.includes("/")) {
+          // Dynamic provider/model (e.g. openrouter/... or anthropic/...) — treat as vision
+          let isVision = true
+          try {
+            const { findOcrModel } = await import("./vision-models")
+            const m = findOcrModel(ocrModelId)
+            if (m) isVision = m.kind === "vision"
+          } catch {}
+          if (isVision) {
+            markitdownFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
+            continue
+          }
+        } else {
+          const { findOcrModel } = await import("./vision-models")
+          const m = findOcrModel(ocrModelId)
+          if (m?.kind === "vision") {
+            markitdownFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
+            continue
+          }
+          if (m?.kind === "none") continue
         }
       }
       copyFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, e.relPath) })
@@ -401,13 +415,17 @@ export async function processMarkitdownInProcess(
     // Vision model for images (and optionally scanned PDFs) via MarkItDown llmModel.
     // Created once per phase; falls back to undefined (EXIF-only / copy) when no key.
     let vision: { model: unknown; prompt: string; modelId: string } | undefined
-    if (hooks?.ocrModelId) {
+    if (hooks?.ocrModelId && hooks.ocrModelId !== "tesseract-local" && hooks.ocrModelId !== "none") {
       const { findOcrModel, OCR_VISION_PROMPT, createVisionLanguageModel } = await import("./vision-models")
       const opt = findOcrModel(hooks.ocrModelId)
-      if (opt?.kind === "vision") {
+      const isVision = opt ? opt.kind === "vision" : hooks.ocrModelId.includes("/")
+      if (isVision) {
         const created = await createVisionLanguageModel(hooks.ocrModelId)
         if (created?.model) vision = { model: created.model, prompt: OCR_VISION_PROMPT, modelId: created.modelId }
-        else onLog?.(`Vision model ${hooks.ocrModelId} unavailable (missing ${opt.requiresKey}) — images will be skipped`)
+        else {
+          const need = opt?.requiresKey ?? (hooks.ocrModelId.includes("openrouter") ? "OPENROUTER_API_KEY" : "provider key")
+          onLog?.(`Vision model ${hooks.ocrModelId} unavailable (missing ${need}) — images will be skipped/copied`)
+        }
       }
     }
     // Formats markitdown-ts doesn't handle — convert inline

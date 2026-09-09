@@ -107,26 +107,45 @@ export function requiresKeyForModel(id: string): string | undefined {
  * Create a Vercel AI SDK `LanguageModel` for the selected vision option.
  * Lazy-imports `@ai-sdk/openai` so workspaces using Tesseract don't need the dep.
  * For OpenRouter we reuse the OpenAI compatible provider with custom baseURL.
+ * Supports both curated `OCR_MODEL_OPTIONS` ids and dynamic `provider/model`
+ * ids from the catalog (e.g. `anthropic/claude-3.5-sonnet`, `openrouter/qwen/...`).
  *
  * Returns `undefined` when model is not vision or key is missing (caller should fallback).
  */
 export async function createVisionLanguageModel(
   ocrModelId: string,
 ): Promise<undefined | { model: unknown; modelId: string; provider: string }> {
+  if (ocrModelId === "tesseract-local" || ocrModelId === "none") return undefined
   const opt = findOcrModel(ocrModelId)
-  if (!opt || opt.kind !== "vision" || !opt.modelId) return undefined
-  const key = opt.requiresKey ? process.env[opt.requiresKey] : undefined
-  if (opt.requiresKey && !key) return undefined
+  let modelId: string | undefined = opt?.modelId
+  let provider: string | undefined = opt?.provider
+  let requiresKey: string | undefined = opt?.requiresKey
+  // Dynamic provider/model ids (e.g. `openrouter/qwen/...`, `anthropic/claude-...`)
+  if (!modelId && ocrModelId.includes("/")) {
+    const slash = ocrModelId.indexOf("/")
+    provider = ocrModelId.slice(0, slash)
+    modelId = ocrModelId.slice(slash + 1)
+    // Vision is implied for any provider/model picked via the vision selector
+    if (!modelId) return undefined
+    // Derive key name: OPENROUTER_API_KEY, ANTHROPIC_API_KEY, etc.
+    requiresKey = provider === "openrouter" ? "OPENROUTER_API_KEY" : `${provider.toUpperCase()}_API_KEY`
+    // Also respect opt for curated entries
+    if (opt?.requiresKey) requiresKey = opt.requiresKey
+  }
+  if (!modelId) return undefined
+  const key = requiresKey ? process.env[requiresKey] : undefined
+  // For curated free openrouter models, key is required; for dynamic, also require if provider needs it
+  if (requiresKey && !key) return undefined
   // Lazy import — keeps Tesseract-only workspaces from needing `ai`/`@ai-sdk/openai`.
   try {
     const { createOpenAI } = await import("@ai-sdk/openai")
-    const baseURL = opt.provider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined
+    const baseURL = provider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined
     const openai = createOpenAI({
       apiKey: key ?? "sk-test",
       ...(baseURL ? { baseURL } : {}),
     })
-    const model = openai(opt.modelId!)
-    return { model, modelId: opt.modelId!, provider: opt.provider ?? "openai" }
+    const model = openai(modelId)
+    return { model, modelId, provider: provider ?? "openai" }
   } catch {
     return undefined
   }
