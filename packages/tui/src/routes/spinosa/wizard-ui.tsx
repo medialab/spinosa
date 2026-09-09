@@ -421,26 +421,25 @@ export function OcrModelSelector(props: {
           {(item, index) => {
             const active = createMemo(() => props.selectedIndex === index())
             const selected = createMemo(() => props.selectedIndex === index())
-            const isVisionSelected = createMemo(() => active() && item.kind === "vision")
             return (
               <box
                 paddingLeft={1}
                 paddingRight={1}
                 paddingTop={1}
                 paddingBottom={1}
-                backgroundColor={isVisionSelected() ? props.theme.primary : buttonBackground(props.theme, active())}
-                border={isVisionSelected() ? ["left"] : []}
-                borderColor={isVisionSelected() ? props.theme.primary : undefined}
+                backgroundColor={active() ? props.theme.primary : buttonBackground(props.theme, false)}
+                border={active() ? ["left"] : []}
+                borderColor={active() ? props.theme.primary : undefined}
                 onMouseOver={() => props.onSelectIndex(index())}
                 onMouseDown={() => deferPress(() => props.onSelect(index()))}
               >
                 <box flexDirection="row" gap={1} alignItems="center">
-                  <text fg={isVisionSelected() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, active(), props.theme.primary)} width={2}>
+                  <text fg={active() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, false, props.theme.primary)} width={2}>
                     {selected() ? "●" : "○"}
                   </text>
                   <box flexDirection="column" flexGrow={1}>
-                    <text fg={isVisionSelected() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, active(), props.theme.text)}>{item.label}</text>
-                    <text fg={isVisionSelected() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, active(), props.theme.textMuted)}>{item.detail}</text>
+                    <text fg={active() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, false, props.theme.text)}>{item.label}</text>
+                    <text fg={active() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, false, props.theme.textMuted)}>{item.detail}</text>
                   </box>
                 </box>
               </box>
