@@ -15,9 +15,17 @@ STAGE_ONLY=0
 SMOKE=0
 SKIP_COPY=0
 
-die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
-info() { printf '→ %s\n' "$*"; }
-ok() { printf '✓ %s\n' "$*"; }
+if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
+  G=$'\033[32m' Y=$'\033[33m' R=$'\033[31m' C=$'\033[36m'
+  DIM=$'\033[2m' BOLD=$'\033[1m' RESET=$'\033[0m'
+else
+  G='' Y='' R='' C='' DIM='' BOLD='' RESET=''
+fi
+
+die() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${R}✗${RESET}" "$*" >&2; exit 1; }
+info() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${C}●${RESET}" "$*"; }
+ok() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${G}◆${RESET}" "$*" >&2; }
+warn() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${Y}●${RESET}" "$*" >&2; }
 
 usage() {
   cat <<'EOF'
@@ -109,7 +117,7 @@ EOF
       hashed+=("$name")
       chmod 755 "$DIST/$name" || true
     else
-      printf 'warn: missing %s (ok for partial soak trees)\n' "$name" >&2
+      warn "missing $name (ok for partial soak trees)"
     fi
   done
 

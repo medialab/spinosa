@@ -20,6 +20,7 @@ export const UpgradeCommand = {
   describe: "check for and install Spinosa updates",
   builder: (yargs: Argv) =>
     yargs
+      .version(false)
       .positional("target", {
         describe: "target version (alias: --version)",
         type: "string",

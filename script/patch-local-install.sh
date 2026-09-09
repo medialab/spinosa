@@ -24,11 +24,23 @@ if [[ -z "${SPINOSA_BIN_DIR:-}" && -f "${SPINOSA_HOME}/env.sh" ]]; then
   )"
 fi
 SPINOSA_BIN_DIR="${SPINOSA_BIN_DIR:-$HOME/.local/bin}"
+
+if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
+  G=$'\033[32m' Y=$'\033[33m' R=$'\033[31m' C=$'\033[36m'
+  DIM=$'\033[2m' BOLD=$'\033[1m' RESET=$'\033[0m'
+else
+  G='' Y='' R='' C='' DIM='' BOLD='' RESET=''
+fi
+_info() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${C}●${RESET}" "$*"; }
+_ok() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${G}◆${RESET}" "$*" >&2; }
+_warn() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${Y}●${RESET}" "$*" >&2; }
+_die() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${R}✗${RESET}" "$*" >&2; exit 1; }
+
 BUN="${SPINOSA_HOME}/bin/bun"
 if [[ ! -x "$BUN" ]]; then
   BUN="$(command -v bun)"
 fi
-[[ -n "$BUN" && -x "$BUN" ]] || { echo "Error: bun not found" >&2; exit 1; }
+[[ -n "$BUN" && -x "$BUN" ]] || { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${R}✗${RESET}" "bun not found" >&2; exit 1; }
 
 # True when this SPINOSA_HOME is a binary product install that must not be
 # overwritten by the source forwarder this script installs.
@@ -63,8 +75,8 @@ EOF
   exit 1
 fi
 
-echo "→ Patching ${SPINOSA_HOME} with local repo v${VERSION}"
-echo "  Shim dir: ${SPINOSA_BIN_DIR}"
+_info "Patching ${SPINOSA_HOME} with local repo v${VERSION}"
+printf '  %s    %s\n' "${DIM}│${RESET}" "Shim dir: ${SPINOSA_BIN_DIR}"
 
 mkdir -p "${SPINOSA_HOME}/versions" "${SPINOSA_HOME}/bin" "${SPINOSA_HOME}/metadata" "${SPINOSA_BIN_DIR}"
 rsync -a --delete \
@@ -94,7 +106,7 @@ link_workspace_packages() {
   done
 }
 
-echo "→ Installing dependencies in ${TARGET}"
+_info "Installing dependencies in ${TARGET}"
 (cd "$TARGET" && "$BUN" install --no-summary)
 link_workspace_packages "$TARGET"
 
@@ -102,12 +114,12 @@ printf '%s %s\n' "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${TARGET}/.spino
 
 bun "$ROOT/script/patch-local-install-metadata.ts" "$VERSION"
 
-echo "→ Verifying patched runtime"
+_info "Verifying patched runtime"
 SPINOSA_HOME="$SPINOSA_HOME" SPINOSA_TEMPLATE_ROOT="$TARGET" \
   "$BUN" run "${TARGET}/packages/spinosa-kernel/src/index.ts" version
 
-echo "✓ Patched ${SPINOSA_HOME} to local v${VERSION}"
-echo "  Shim: ${SPINOSA_BIN_DIR}/spinosa"
-echo "  Run: spinosa version"
-echo "  Run: spinosa upgrade --check"
-echo "  If command not found: source ${SPINOSA_HOME}/env.sh  (or open a new shell)"
+_ok "Patched ${SPINOSA_HOME} to local v${VERSION}"
+printf '  %s    %s\n' "${DIM}│${RESET}" "Shim: ${SPINOSA_BIN_DIR}/spinosa"
+printf '  %s    %s\n' "${DIM}│${RESET}" "Run: spinosa version"
+printf '  %s    %s\n' "${DIM}│${RESET}" "Run: spinosa upgrade --check"
+printf '  %s    %s\n' "${DIM}│${RESET}" "If command not found: source ${SPINOSA_HOME}/env.sh  (or open a new shell)"
