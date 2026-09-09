@@ -271,9 +271,9 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
     return Array.from(merged.values())
   })
   const providersWithVision = createMemo(() => {
-    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
+    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
     const vision = providers.filter((p) => Object.values(p.models ?? {}).some((m) => {
-      const input = (m as { capabilities?: { input?: string[] } }).capabilities?.input ?? (m as { input?: string[] }).input
+      const input = (m as { capabilities?: { input?: string[] }; modalities?: { input?: string[] } }).capabilities?.input ?? (m as { modalities?: { input?: string[] } }).modalities?.input ?? (m as { input?: string[] }).input
       return Array.isArray(input) && input.includes("image") && (m as { status?: string }).status !== "deprecated"
     }))
     if (vision.length > 0) return vision
@@ -285,7 +285,7 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
   const modelsForProvider = createMemo(() => {
     const pid = providerId()
     if (!pid) return []
-    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }> })?.provider?.find((p) => p.id === pid)
+    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }> })?.provider?.find((p) => p.id === pid)
     let raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
     // Fallback to cached models-dev file when provider not branched (no models in sync) — load full catalog for that provider
     if (raw.length === 0) {
@@ -297,7 +297,7 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
         try {
           if (!existsSync(cp)) continue
           const txt = readFileSync(cp, "utf-8")
-          const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[]; attachment?: boolean; modalities?: { input?: string[] } }> }>
+          const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }>
           const prov = data[pid]
           if (prov) {
             raw = Object.entries(prov.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
