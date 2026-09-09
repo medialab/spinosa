@@ -9,6 +9,7 @@ import { decodeWorkerPayload } from "./worker-payload"
 export interface MarkitdownWorkerInput {
   files: ClassifiedEntry[]
   logsDir: string
+  ocrModelId?: string
 }
 
 export function sendMarkitdownWorkerMessage(type: string, payload: Record<string, unknown> = {}): void {
@@ -57,7 +58,7 @@ function installHardExitHandlers(): void {
 /** Shared MarkItDown worker entry for `bun run markitdown-worker.ts` and `spinosa internal markitdown-worker`. */
 export async function runMarkitdownWorkerMain(input: MarkitdownWorkerInput): Promise<PhaseResult> {
   installHardExitHandlers()
-  const { files, logsDir } = input
+  const { files, logsDir, ocrModelId } = input
   const prog = new ProgressEmitter()
   prog.on((e) =>
     sendMarkitdownWorkerMessage("progress", {
@@ -79,6 +80,7 @@ export async function runMarkitdownWorkerMain(input: MarkitdownWorkerInput): Pro
       inProcess: true,
       // Nested OCR must share this process group so parent cancel kills both.
       ocrDetached: false,
+      ...(ocrModelId ? { ocrModelId } : {}),
     },
   )
 

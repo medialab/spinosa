@@ -415,6 +415,7 @@ export async function processMarkitdownInProcess(
     // Vision model for images (and optionally scanned PDFs) via MarkItDown llmModel.
     // Created once per phase; falls back to undefined (EXIF-only / copy) when no key.
     let vision: { model: unknown; prompt: string; modelId: string } | undefined
+    let visionMissingNeed: string | undefined
     if (hooks?.ocrModelId && hooks.ocrModelId !== "tesseract-local" && hooks.ocrModelId !== "none") {
       const { findOcrModel, OCR_VISION_PROMPT, createVisionLanguageModel } = await import("./vision-models")
       const opt = findOcrModel(hooks.ocrModelId)
@@ -423,8 +424,16 @@ export async function processMarkitdownInProcess(
         const created = await createVisionLanguageModel(hooks.ocrModelId)
         if (created?.model) vision = { model: created.model, prompt: OCR_VISION_PROMPT, modelId: created.modelId }
         else {
-          const need = opt?.requiresKey ?? (hooks.ocrModelId.includes("openrouter") ? "OPENROUTER_API_KEY" : "provider key")
-          onLog?.(`Vision model ${hooks.ocrModelId} unavailable (missing ${need}) — images will be skipped/copied`)
+          // Derive key like vision-models.ts does for dynamic provider/model ids
+          let need = opt?.requiresKey
+          if (!need && hooks.ocrModelId.includes("/")) {
+            const prov = hooks.ocrModelId.slice(0, hooks.ocrModelId.indexOf("/"))
+            need = prov === "openrouter" ? "OPENROUTER_API_KEY" : `${prov.toUpperCase()}_API_KEY`
+          }
+          need ??= "provider key"
+          visionMissingNeed = need
+          onLog?.(`Vision model ${hooks.ocrModelId} unavailable (missing ${need}) — images will be copied as-is (no transcription)`)
+          spinosaLogWarn("markitdown", `vision unavailable ${hooks.ocrModelId} missing ${need}`)
         }
       }
     }
@@ -477,9 +486,11 @@ export async function processMarkitdownInProcess(
         // Image routed to MarkItDown due to vision selection but no valid
         // LanguageModel (missing key / offline) — keep original as fallback copy
         // to `raw/<rel>` (not `__jpg.md`) so workspace isn't left gaps.
+        // Log missing-key clearly per-file so `markitdown-processed.ndjson` shows why.
         const fallbackDest = path.join(path.dirname(f.dest), path.basename(f.src))
         try { mkdirSync(path.dirname(fallbackDest), { recursive: true }) } catch {}
         const ok = await safeCopyAsync(f.src, fallbackDest)
+        const missingHint = hooks?.ocrModelId && visionMissingNeed ? `vision ${hooks.ocrModelId} missing ${visionMissingNeed}` : "vision key missing"
         if (ok) {
           converted++
           recoverable.push({ src: f.src, dest: fallbackDest })
@@ -488,8 +499,9 @@ export async function processMarkitdownInProcess(
             output: path.basename(fallbackDest),
             engine: "image-copy-fallback", pages: "",
             duration_s: 0,
+            error: missingHint,
           })
-          onLog?.(`  ${f.rel} → image copy fallback (vision key missing)`)
+          onLog?.(`  ${f.rel} → image copy fallback (${missingHint})`)
           await emitDone(f.rel)
         } else {
           failed++
@@ -498,9 +510,9 @@ export async function processMarkitdownInProcess(
             output: markitdownOutputRelPath(f.rel),
             engine: "image-copy-fallback", pages: "",
             duration_s: 0,
-            error: "copy fallback failed",
+            error: `copy fallback failed (${missingHint})`,
           })
-          onLog?.(`  ${f.rel} → image copy fallback failed`)
+          onLog?.(`  ${f.rel} → image copy fallback failed (${missingHint})`)
           await emitDone(f.rel, "failed")
         }
         continue
@@ -525,8 +537,9 @@ export async function processMarkitdownInProcess(
         appendNdjson(mdLog, {
           ts: isoNow(), status: "ok", source: f.rel,
           output: markitdownOutputRelPath(f.rel),
-          engine: "markitdown-ts", pages: "",
+          engine: isImage && vision ? `markitdown-ts (vision:${vision.modelId})` : "markitdown-ts", pages: "",
           duration_s: (Date.now() - startTime) / 1000,
+          ...(isImage && vision ? { model: vision.modelId } : {}),
         })
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
@@ -552,9 +565,10 @@ export async function processMarkitdownInProcess(
           appendNdjson(mdLog, {
             ts: isoNow(), status: "fail", source: f.rel,
             output: markitdownOutputRelPath(f.rel),
-            engine: "markitdown-ts", pages: "",
+            engine: isImage && vision ? `markitdown-ts (vision:${vision.modelId})` : "markitdown-ts", pages: "",
             duration_s: (Date.now() - startTime) / 1000,
-            error: errMsg,
+            error: errMsg + (isImage && vision ? ` [vision:${vision.modelId}]` : ""),
+            ...(isImage && vision ? { model: vision.modelId } : {}),
           })
         }
       }
@@ -680,11 +694,17 @@ export async function processMarkitdown(
 ): Promise<PhaseResult> {
   // Vision LLMs need network + API key and cannot be serialized to the NDJSON
   // child via a plain JSON payload (LanguageModel is not serializable). Run
-  // vision phases in-process so the model can be created in the same process.
+  // any vision phase in-process so the model can be created in the same process.
+  // Luna (`openai/gpt-5.6-luna`) was silently falling back to image-copy via child.
   const needsInProcess = (() => {
     if (!hooks?.ocrModelId) return false
-    // Lazy sync check without async import — treat known vision ids as in-process.
-    return hooks.ocrModelId.startsWith("openrouter/") || hooks.ocrModelId.includes(":free")
+    const id = hooks.ocrModelId
+    if (id === "tesseract-local" || id === "none") return false
+    // Any provider/model (`openai/...`, `anthropic/...`, `openrouter/...`) is vision when routed via onboarding picker.
+    // Treat as in-process so `createVisionLanguageModel` can run and log missing-key clearly.
+    if (id.includes("/")) return true
+    // Curated vision ids (future) — fallback to none if not vision.
+    return false
   })()
   if (hooks?.inProcess || needsInProcess || process.env.SPINOSA_IMPORT_IN_PROCESS === "1") {
     return processMarkitdownInProcess(files, logsDir, prog, onLog, shouldAbort, {
@@ -1357,7 +1377,7 @@ async function runMarkitdownViaChild(
 ): Promise<PhaseResult> {
   throwIfSpinosaCancelled(shouldAbort)
   const mode = resolveMarkitdownWorkerMode()
-  const workerPayload = encodeWorkerPayload({ files, logsDir })
+  const workerPayload = encodeWorkerPayload({ files, logsDir, ocrModelId: hooks?.ocrModelId })
   const child =
     mode === "binary-cli"
       ? spawn(productBinaryExecutable(), ["internal", "markitdown-worker", workerPayload.arg], {
