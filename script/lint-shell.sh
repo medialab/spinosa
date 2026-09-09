@@ -15,10 +15,10 @@ else
 fi
 
 if ! command -v shellcheck >/dev/null 2>&1; then
-  printf '  %s  %s %s\n' "${DIM}│${RESET}" "${R}✗${RESET}" "shellcheck is required for release validation but was not found" >&2
-  printf '  %s    %s\n' "${DIM}│${RESET}" "Install with: brew install shellcheck" >&2
+  printf '  %s %s\n' "${R}✗${RESET}" "shellcheck is required for release validation but was not found" >&2
+  printf '    %s\n' "Install with: brew install shellcheck" >&2
   exit 1
 fi
 
 shellcheck "${TARGETS[@]}"
-printf '  %s  %s %s\n' "${DIM}│${RESET}" "${G}◆${RESET}" "shellcheck passed" >&2
+printf '  %s %s\n' "${G}◆${RESET}" "shellcheck passed" >&2

@@ -31,16 +31,16 @@ if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
 else
   G='' Y='' R='' C='' DIM='' BOLD='' RESET=''
 fi
-_info() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${C}●${RESET}" "$*"; }
-_ok() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${G}◆${RESET}" "$*" >&2; }
-_warn() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${Y}●${RESET}" "$*" >&2; }
-_die() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${R}✗${RESET}" "$*" >&2; exit 1; }
+_info() { printf '  %s %s\n' "${C}●${RESET}" "$*"; }
+_ok() { printf '  %s %s\n' "${G}◆${RESET}" "$*" >&2; }
+_warn() { printf '  %s %s\n' "${Y}●${RESET}" "$*" >&2; }
+_die() { printf '  %s %s\n' "${R}✗${RESET}" "$*" >&2; exit 1; }
 
 BUN="${SPINOSA_HOME}/bin/bun"
 if [[ ! -x "$BUN" ]]; then
   BUN="$(command -v bun)"
 fi
-[[ -n "$BUN" && -x "$BUN" ]] || { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${R}✗${RESET}" "bun not found" >&2; exit 1; }
+[[ -n "$BUN" && -x "$BUN" ]] || { printf '  %s %s\n' "${R}✗${RESET}" "bun not found" >&2; exit 1; }
 
 # True when this SPINOSA_HOME is a binary product install that must not be
 # overwritten by the source forwarder this script installs.
@@ -76,7 +76,7 @@ EOF
 fi
 
 _info "Patching ${SPINOSA_HOME} with local repo v${VERSION}"
-printf '  %s    %s\n' "${DIM}│${RESET}" "Shim dir: ${SPINOSA_BIN_DIR}"
+printf '    %s\n' "Shim dir: ${SPINOSA_BIN_DIR}"
 
 mkdir -p "${SPINOSA_HOME}/versions" "${SPINOSA_HOME}/bin" "${SPINOSA_HOME}/metadata" "${SPINOSA_BIN_DIR}"
 rsync -a --delete \
@@ -119,7 +119,7 @@ SPINOSA_HOME="$SPINOSA_HOME" SPINOSA_TEMPLATE_ROOT="$TARGET" \
   "$BUN" run "${TARGET}/packages/spinosa-kernel/src/index.ts" version
 
 _ok "Patched ${SPINOSA_HOME} to local v${VERSION}"
-printf '  %s    %s\n' "${DIM}│${RESET}" "Shim: ${SPINOSA_BIN_DIR}/spinosa"
-printf '  %s    %s\n' "${DIM}│${RESET}" "Run: spinosa version"
-printf '  %s    %s\n' "${DIM}│${RESET}" "Run: spinosa upgrade --check"
-printf '  %s    %s\n' "${DIM}│${RESET}" "If command not found: source ${SPINOSA_HOME}/env.sh  (or open a new shell)"
+printf '    %s\n' "Shim: ${SPINOSA_BIN_DIR}/spinosa"
+printf '    %s\n' "Run: spinosa version"
+printf '    %s\n' "Run: spinosa upgrade --check"
+printf '    %s\n' "If command not found: source ${SPINOSA_HOME}/env.sh  (or open a new shell)"

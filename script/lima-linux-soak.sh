@@ -22,10 +22,10 @@ else
   G='' Y='' R='' C='' DIM='' BOLD='' RESET=''
 fi
 
-die() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${R}✗${RESET}" "$*" >&2; exit 1; }
-info() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${C}●${RESET}" "$*"; }
-ok() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${G}◆${RESET}" "$*" >&2; }
-warn() { printf '  %s  %s %s\n' "${DIM}│${RESET}" "${Y}●${RESET}" "$*" >&2; }
+die() { printf '  %s %s\n' "${R}✗${RESET}" "$*" >&2; exit 1; }
+info() { printf '  %s %s\n' "${C}●${RESET}" "$*"; }
+ok() { printf '  %s %s\n' "${G}◆${RESET}" "$*" >&2; }
+warn() { printf '  %s %s\n' "${Y}●${RESET}" "$*" >&2; }
 
 usage() {
   cat <<'EOF'
