@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { mkdtemp, readFile } from "node:fs/promises"
 import * as path from "node:path"
 import { tmpdir } from "node:os"
@@ -108,10 +108,24 @@ function cleanOcrBody(body: string): string {
   return cleaned || "[No text detected]"
 }
 
+export class TesseractLowConfidenceError extends Error {
+  constructor(
+    message: string,
+    public readonly avgConf: number,
+    public readonly lowPct: number,
+    public readonly textLen: number,
+  ) {
+    super(message)
+    this.name = "TesseractLowConfidenceError"
+  }
+}
+
 export interface TesseractOcrResult {
   mdPath: string
   pages: number
   text: string
+  avgConf: number
+  lowPct: number
 }
 
 export async function ocrPdfViaTesseract(
@@ -142,6 +156,9 @@ export async function ocrPdfViaTesseract(
       .sort()
     if (pngs.length === 0) throw new Error("pdftoppm produced no pages")
     const pageTexts: string[] = []
+    const pageConfs: number[] = []
+    const pageLowCounts: number[] = []
+    const pageWordCounts: number[] = []
     for (let i = 0; i < pngs.length; i++) {
       throwIfSpinosaCancelled(options?.shouldAbort)
       const png = path.join(tmpDir, pngs[i]!)
@@ -164,8 +181,85 @@ export async function ocrPdfViaTesseract(
         options?.onLog?.(`  ${relPath} page ${i + 1} tesseract exit ${tessExit}: ${errText.slice(0, 200)}`)
       }
       pageTexts.push(cleanOcrBody(pageText))
+      // Confidence via TSV (second pass, cheap for 300dpi single page)
+      try {
+        const tsvProc = Bun.spawn(
+          ["tesseract", png, "stdout", "-l", "ita+eng+fra", "--psm", "6", "tsv"],
+          { stdout: "pipe", stderr: "pipe" },
+        )
+        const tsvText = await new Response(tsvProc.stdout as unknown as ReadableStream).text()
+        await tsvProc.exited
+        const lines = tsvText.split("\n").slice(1) // skip header
+        let sum = 0, n = 0, low = 0
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const cols = line.split("\t")
+          const conf = Number(cols[10])
+          const text = cols[11] ?? ""
+          if (Number.isNaN(conf) || conf < 0) continue
+          if (!text.trim()) continue
+          sum += conf
+          n++
+          if (conf < 30) low++
+        }
+        if (n > 0) {
+          pageConfs.push(sum / n)
+          pageLowCounts.push(low)
+          pageWordCounts.push(n)
+        } else {
+          pageConfs.push(0)
+          pageLowCounts.push(0)
+          pageWordCounts.push(0)
+        }
+      } catch {
+        pageConfs.push(0)
+        pageLowCounts.push(0)
+        pageWordCounts.push(0)
+      }
       // Yield to event loop so TUI can paint
       await new Promise<void>((r) => setTimeout(r, 0))
+    }
+    // Per-page low confidence → garbaged placeholder (instead of whole-file discard)
+    const totalWords = pageWordCounts.reduce((a, b) => a + b, 0)
+    const avgConf = totalWords > 0 ? pageConfs.reduce((a, c, i) => a + c * pageWordCounts[i]!, 0) / totalWords : 0
+    const totalLow = pageLowCounts.reduce((a, b) => a + b, 0)
+    const lowPct = totalWords > 0 ? (totalLow / totalWords) * 100 : 100
+    // Keep page PNGs for garbaged pages so further agents (network OCR) can work on them
+    const pageImageDests: (string | null)[] = []
+    for (let i = 0; i < pageTexts.length; i++) {
+      const n = pageWordCounts[i] ?? 0
+      const avg = pageConfs[i] ?? 0
+      const low = pageLowCounts[i] ?? 0
+      const lowPctPage = n > 0 ? (low / n) * 100 : 100
+      const len = (pageTexts[i] ?? "").trim().length
+      const isLow = n === 0 || avg < 60 || lowPctPage > 25 || len < 30
+      if (isLow) {
+        options?.onLog?.(`  ${relPath} page ${i + 1} low confidence (avg ${avg.toFixed(1)}, low ${lowPctPage.toFixed(1)}%, len ${len}) → [Garbaged] + keep image`)
+        // Mark page as garbaged in markdown, keep image for network OCR
+        const pngSrc = path.join(tmpDir, pngs[i]!)
+        // Image dest: for single page → destFile.png, for multi → pageDir/page-001.png
+        let imgDest: string | null = null
+        if (pageTexts.length === 1) {
+          imgDest = destFile.replace(/\.md$/, ".png")
+        } else {
+          const pageDir = destFile.endsWith(".md") ? destFile.slice(0, -3) : `${destFile}_pages`
+          imgDest = path.join(pageDir, `page-${String(i + 1).padStart(3, "0")}.png`)
+        }
+        try {
+          if (pngSrc && imgDest) {
+            mkdirSync(path.dirname(imgDest), { recursive: true })
+            const data = readFileSync(pngSrc)
+            writeFileSync(imgDest, data)
+            pageImageDests[i] = imgDest
+          }
+        } catch {}
+        const imgRel = imgDest ? path.basename(imgDest) : `page-${String(i + 1).padStart(3, "0")}.png`
+        // For single page, img is sibling of md; for multi, it's in pageDir
+        const imgLink = pageTexts.length === 1 ? `./${path.basename(imgDest!)}` : `${path.basename(path.dirname(imgDest!))}/${imgRel}`
+        pageTexts[i] = `[Garbaged — low confidence, original kept as image pending network OCR]\n\n![Page ${i + 1} original](${imgLink})`
+      } else {
+        pageImageDests[i] = null
+      }
     }
 
     let combined: string
@@ -214,7 +308,7 @@ export async function ocrPdfViaTesseract(
       }
     }
 
-    return { mdPath: destFile, pages: pngs.length, text: combined }
+    return { mdPath: destFile, pages: pngs.length, text: combined, avgConf, lowPct }
   } finally {
     try {
       rmSync(tmpDir, { recursive: true, force: true })
