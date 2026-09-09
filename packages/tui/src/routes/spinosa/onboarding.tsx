@@ -249,66 +249,51 @@ const CLI_OPTIONS: CliOption[] = [
 ];
 
 function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: string) => void }) {
+  // Reuse the same data + filtering + sorting as normal /model (DialogModel) so vision labeling is identical.
   const sync = useSync()
-  const dialog = useDialog()
   const [providerId, setProviderId] = createSignal<string | null>(null)
+  // All providers as shown in /model (DialogModel uses sync.data.provider sorted)
   const allProviders = createMemo(() => {
-    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
-    // Also consider provider_next for not-yet-connected providers
+    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, unknown> }> })?.provider ?? []
     const next = (sync.data as unknown as { provider_next?: { all?: Array<{ id: string; name: string }> } })?.provider_next?.all ?? []
     const merged = new Map<string, { id: string; name: string; models: Record<string, unknown> }>()
     for (const p of providers) merged.set(p.id, { id: p.id, name: p.name, models: p.models ?? {} as Record<string, unknown> })
     for (const p of next) if (!merged.has(p.id)) merged.set(p.id, { id: p.id, name: p.name, models: {} as Record<string, unknown> })
+    if (merged.size === 0) {
+      // Fallback when catalog not yet loaded — ensure dialog never empty
+      return [
+        { id: "openrouter", name: "OpenRouter", models: {} as Record<string, unknown> },
+        { id: "openai", name: "OpenAI", models: {} as Record<string, unknown> },
+        { id: "anthropic", name: "Anthropic", models: {} as Record<string, unknown> },
+        { id: "google", name: "Google", models: {} as Record<string, unknown> },
+      ]
+    }
     return Array.from(merged.values())
   })
-  const providersWithVision = createMemo(() => {
-    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
-    const vision = providers.filter((p) => Object.values(p.models ?? {}).some((m) => {
-      const input = (m as { capabilities?: { input?: string[] } }).capabilities?.input ?? (m as { input?: string[] }).input
-      return Array.isArray(input) && input.includes("image") && (m as { status?: string }).status !== "deprecated"
-    }))
-    // Fallback to all providers with any models (or popular) when no vision flagged — keeps dialog usable and avoids "No results found"
-    if (vision.length > 0) return vision
-    return providers.filter((p) => Object.keys(p.models ?? {}).length > 0)
-  })
+  const providersWithVision = createMemo(() => allProviders())
   const modelsForProvider = createMemo(() => {
     const pid = providerId()
     if (!pid) return []
-    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string; cost?: { input?: number } }> }> })?.provider?.find((p) => p.id === pid)
-    const rawModels = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
-    // Static fallback when provider has no models in catalog (not branched or not loaded)
-    const entries = rawModels.length > 0 ? rawModels : (pid === "openrouter" ? [
+    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[] }> }> })?.provider?.find((p) => p.id === pid)
+    const raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
+    // Reuse DialogModel's model sorting + vision labeling; if provider has no models in catalog (not branched), show popular free vision models as fallback
+    const entries = raw.length > 0 ? raw : (pid === "openrouter" ? [
       ["qwen/qwen2.5-vl-32b-instruct:free", { name: "Qwen 2.5 VL 32B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
       ["google/gemini-flash-1.5-8b:free", { name: "Gemini Flash 1.5 8B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
-      ["qwen/qwen2.5-vl-72b-instruct:free", { name: "Qwen 2.5 VL 72B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
-    ] as Array<[string, unknown]> : pid === "openai" ? [
-      ["gpt-4o", { name: "GPT-4o", capabilities: { input: ["text", "image"] } }],
-      ["gpt-4o-mini", { name: "GPT-4o mini", capabilities: { input: ["text", "image"] } }],
-    ] as Array<[string, unknown]> : pid === "anthropic" ? [
-      ["claude-3-5-sonnet-20241022", { name: "Claude 3.5 Sonnet", capabilities: { input: ["text", "image"] } }],
-    ] as Array<[string, unknown]> : pid === "google" ? [
-      ["gemini-1.5-flash", { name: "Gemini 1.5 Flash", capabilities: { input: ["text", "image"] } }],
     ] as Array<[string, unknown]> : [])
-    const all = entries.map(([modelId, info]) => {
-        const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
-        const isVision = Array.isArray(input) && input.includes("image")
-        return {
-          providerId: pid,
-          modelId,
-          title: (info as { name?: string }).name ?? modelId,
-          description: isVision ? ((info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision") : "Text only",
-          isVision,
-          cost: (info as { cost?: { input?: number } }).cost,
-        }
-      })
-    // Vision first, free first
-    all.sort((a, b) => (a.isVision === b.isVision ? 0 : a.isVision ? -1 : 1))
-    return all.map(({ providerId, modelId, title, description }) => ({
-      providerId,
-      modelId,
-      title,
-      description,
-    }))
+    if (entries.length === 0) return []
+    return entries.map(([modelId, info]) => {
+      const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
+      const isVision = Array.isArray(input) && input.includes("image")
+      return {
+        providerId: pid,
+        modelId,
+        title: (info as { name?: string }).name ?? modelId,
+        description: isVision ? ((info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision") : "Text only",
+        isVision,
+      }
+    }).sort((a, b) => (a.isVision === b.isVision ? 0 : a.isVision ? -1 : 1))
+      .map(({ providerId, modelId, title, description }) => ({ providerId, modelId, title, description }))
   })
   const providerOptions = createMemo(() => {
     const vision = providersWithVision()
