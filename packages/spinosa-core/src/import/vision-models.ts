@@ -181,8 +181,13 @@ export async function createVisionLanguageModel(
   }
   if (!modelId) return undefined
   const key = requiresKey ? resolveProviderKey(requiresKey) : undefined
-  // For curated free openrouter models, key is required; for dynamic, also require if provider needs it
-  if (requiresKey && !key) return undefined
+  // For openrouter, API key is mandatory; for other providers (openai/anthropic/google) allow OAuth
+  // (isConnected or provider already in catalog) — don't block vision when key is missing, let provider handle OAuth
+  if (requiresKey && !key) {
+    if (provider === "openrouter") return undefined
+    // For direct providers, allow dummy key — backend may have OAuth token (e.g. openai ChatGPT, anthropic)
+    // If neither API key nor OAuth is configured, createVision will still try with dummy and fail with clear 401, surfaced in step 9
+  }
   // Lazy import — keeps Tesseract-only workspaces from needing `ai`/`@ai-sdk/openai`.
   // For production: openrouter proxies any provider; direct anthropic/google also work via OpenRouter.
   // Direct anthropic/google SDKs can be added later (@ai-sdk/anthropic, @ai-sdk/google) — fallback to openai-compatible for now.

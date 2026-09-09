@@ -34,7 +34,8 @@ export type RunImportWorkflowOptions = {
   onRetry?: (attempt: number, reason: string) => void
   onRename?: (original: string, renamed: string) => void
   overwrite?: boolean
-  ocrModelId?: string
+  ocrModelId?: string | (() => string)
+  onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
   /**
    * Called before each non-empty phase. Return false to skip the phase
    * (e.g. user declined a gate). Throw / abort via shouldAbort for cancel.
@@ -84,6 +85,7 @@ export async function runImportWorkflow(
       onRename: options.onRename,
       overwrite: options.overwrite,
       ocrModelId: options.ocrModelId,
+      onVisionFailure: options.onVisionFailure,
     })
     results[id] = result
     await options.afterPhase?.(id, result)

@@ -3,7 +3,6 @@ import { For, Show, type Accessor, type Setter } from "solid-js"
 import { STARTUP_PROGRESS_THRESHOLD_MS } from "@spinosa/core/commands/startup"
 import { CenteredColumn } from "../../component/centered-column"
 import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
-import { selectedForeground } from "../../context/theme"
 import {
   deferPress,
   ImportOptionsSelector,
@@ -146,14 +145,17 @@ export function OnboardingView(props: OnboardingViewProps) {
                 paddingRight={2}
                 paddingTop={1}
                 paddingBottom={1}
-                backgroundColor={theme.primary}
+                backgroundColor={buttonBackground(theme, hoveredButton() === "vision-model")}
                 border={["left"]}
-                borderColor={theme.primary}
-                onMouseOver={() => setHoveredButton("vision-model")}
+                borderColor={buttonBorder(theme, hoveredButton() === "vision-model", theme.border)}
+                onMouseOver={() => {
+                  blurSourceInputs()
+                  setHoveredButton("vision-model")
+                }}
                 onMouseOut={() => setHoveredButton(null)}
                 onMouseDown={() => deferPress(props.onChangeVisionModel)}
               >
-                <text fg={selectedForeground(theme, theme.primary)}>{props.selectedVisionLabel()} ▼</text>
+                <text fg={buttonText(theme, hoveredButton() === "vision-model", theme.primary)}>{props.selectedVisionLabel()} ▼</text>
               </box>
             </Show>
           </box>
@@ -377,11 +379,12 @@ export function OnboardingView(props: OnboardingViewProps) {
                   theme={theme}
                   options={props.ocrModelOptions()}
                   selectedIndex={props.selectedOcrModelIndex()}
+                  selectedId={props.selectedOcrModel()}
                   viewportHeight={dimensions().height}
                   onSelectIndex={props.setSelectedOcrModelIndex}
                   onSelect={(idx) => {
-                    props.setSelectedOcrModelIndex(idx);
-                    if (idx === 1) props.continueFromVision();
+                    if (idx === 1) props.openVisionPicker()
+                    else props.selectOcrOption(idx)
                   }}
                 />
               </Show>
@@ -398,12 +401,15 @@ export function OnboardingView(props: OnboardingViewProps) {
                     viewportHeight={dimensions().height}
                   />
                 </Show>
-                {/* Reserved space for provider vision errors in Step 9 */}
+                {/* Reserved space for provider vision errors in Step 9 — pauses queue for retry */}
                 <Show when={step() === "markitdown"}>
                   <box minHeight={3} flexDirection="column" gap={1} paddingTop={1}>
                     <Show when={props.visionError()} fallback={<text fg={theme.textMuted}> </text>}>
                       <box flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel} border={["left"]} borderColor={theme.error}>
                         <text fg={theme.error} wrapMode="word">{props.visionError()}</text>
+                        <Show when={props.visionPaused()}>
+                          <text fg={theme.warning} wrapMode="word">Queue paused — pick a new model above to retry this file, or Back to abort.</text>
+                        </Show>
                         <WizardActionButton theme={theme} label="Change vision model" primary onPress={props.onChangeVisionModel} />
                       </box>
                     </Show>

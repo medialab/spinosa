@@ -354,8 +354,10 @@ export type MarkitdownHooks = {
   ocrDetached?: boolean
   /** Force in-process (worker entry / tests). Default: spawn NDJSON child like OCR. */
   inProcess?: boolean
-  /** Selected OCR/vision model id (e.g. tesseract-local, openrouter/qwen2.5-vl:free). When vision, images flow via MarkItDown llmModel. */
-  ocrModelId?: string
+  /** Selected OCR/vision model id (e.g. tesseract-local, openrouter/qwen2.5-vl:free). When vision, images flow via MarkItDown llmModel. Can be a getter for live switching. */
+  ocrModelId?: string | (() => string)
+  /** Called when vision transcription fails for an image — allows TUI to pause queue and let user pick new model (retry) or skip. */
+  onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
 }
 
 /** In-process MarkItDown phase (used by the NDJSON child worker). */
@@ -411,34 +413,54 @@ export async function processMarkitdownInProcess(
   const mdLog = path.join(logsDir, "markitdown-processed.ndjson")
   if (remainingMd.length > 0) {
     const converter = new MarkItDown()
-    // Vision model for images (and optionally scanned PDFs) via MarkItDown llmModel.
-    // Created once per phase; falls back to undefined (EXIF-only / copy) when no key.
-    let vision: { model: unknown; prompt: string; modelId: string } | undefined
-    let visionMissingNeed: string | undefined
-    if (hooks?.ocrModelId && hooks.ocrModelId !== "tesseract-local" && hooks.ocrModelId !== "none") {
+    // Vision model for images — supports live switching: if the user picks a new vision
+    // model mid-phase via the header dropdown, the next file uses the new model (old file keeps old).
+    const resolveOcrModelId = () => {
+      const v = hooks?.ocrModelId
+      return typeof v === "function" ? v() : v
+    }
+    const visionCache = new Map<string, { model: unknown; prompt: string; modelId: string } | undefined>()
+    const missingCache = new Map<string, string | undefined>()
+    const getVisionForId = async (id: string | undefined) => {
+      if (!id || id === "tesseract-local" || id === "none") return { vision: undefined as { model: unknown; prompt: string; modelId: string } | undefined, need: undefined as string | undefined }
+      if (visionCache.has(id) || missingCache.has(id)) return { vision: visionCache.get(id), need: missingCache.get(id) }
       const { findOcrModel, OCR_VISION_PROMPT, createVisionLanguageModel } = await import("./vision-models")
-      const opt = findOcrModel(hooks.ocrModelId)
-      const isVision = opt ? opt.kind === "vision" : hooks.ocrModelId.includes("/")
-      if (isVision) {
-        const created = await createVisionLanguageModel(hooks.ocrModelId)
-        if (created?.model) vision = { model: created.model, prompt: OCR_VISION_PROMPT, modelId: created.modelId }
-        else {
-          // Derive key like vision-models.ts does for dynamic provider/model ids
-          let need = opt?.requiresKey
-          if (!need && hooks.ocrModelId.includes("/")) {
-            const prov = hooks.ocrModelId.slice(0, hooks.ocrModelId.indexOf("/"))
-            need = prov === "openrouter" ? "OPENROUTER_API_KEY" : `${prov.toUpperCase()}_API_KEY`
-          }
-          need ??= "provider key"
-          visionMissingNeed = need
-          onLog?.(`Vision model ${hooks.ocrModelId} unavailable (missing ${need}) — images will be copied as-is (no transcription)`)
-          spinosaLogWarn("markitdown", `vision unavailable ${hooks.ocrModelId} missing ${need}`)
-        }
+      const opt = findOcrModel(id)
+      const isVision = opt ? opt.kind === "vision" : id.includes("/")
+      if (!isVision) {
+        visionCache.set(id, undefined)
+        missingCache.set(id, undefined)
+        return { vision: undefined, need: undefined }
       }
+      const created = await createVisionLanguageModel(id)
+      if (created?.model) {
+        const v = { model: created.model, prompt: OCR_VISION_PROMPT, modelId: created.modelId }
+        visionCache.set(id, v)
+        missingCache.set(id, undefined)
+        return { vision: v, need: undefined }
+      } else {
+        let need = opt?.requiresKey
+        if (!need && id.includes("/")) {
+          const prov = id.slice(0, id.indexOf("/"))
+          need = prov === "openrouter" ? "OPENROUTER_API_KEY" : `${prov.toUpperCase()}_API_KEY`
+        }
+        need ??= "provider key"
+        visionCache.set(id, undefined)
+        missingCache.set(id, need)
+        onLog?.(`Vision model ${id} unavailable (missing ${need}) — images will be copied as-is (no transcription)`)
+        spinosaLogWarn("markitdown", `vision unavailable ${id} missing ${need}`)
+        return { vision: undefined, need }
+      }
+    }
+    // Pre-warm cache for initial id so first image doesn't pay import cost in loop
+    const initialId = resolveOcrModelId()
+    if (initialId && initialId !== "tesseract-local" && initialId !== "none") {
+      await getVisionForId(initialId)
     }
     // Formats markitdown-ts doesn't handle — convert inline
     const INLINE_FORMATS = new Set(["json", "csv", "xml"])
-    for (const f of remainingMd) {
+    for (let _idx = 0; _idx < remainingMd.length; _idx++) {
+      const f = remainingMd[_idx]!
       throwIfSpinosaCancelled(shouldAbort)
       const ext = fileExt(f.src).toLowerCase()
 
@@ -481,6 +503,9 @@ export async function processMarkitdownInProcess(
 
       await emitStart(f.rel)
       const isImage = extInList(ext, IMAGE_EXTENSIONS)
+      // Live-switch: resolve current vision per file so header dropdown pick applies at next file
+      const currentId = resolveOcrModelId()
+      const { vision, need: visionMissingNeed } = await getVisionForId(currentId)
       if (isImage && !vision) {
         // Image routed to MarkItDown due to vision selection but no valid
         // LanguageModel (missing key / offline) — keep original as fallback copy
@@ -489,7 +514,7 @@ export async function processMarkitdownInProcess(
         const fallbackDest = path.join(path.dirname(f.dest), path.basename(f.src))
         try { mkdirSync(path.dirname(fallbackDest), { recursive: true }) } catch {}
         const ok = await safeCopyAsync(f.src, fallbackDest)
-        const missingHint = hooks?.ocrModelId && visionMissingNeed ? `vision ${hooks.ocrModelId} missing ${visionMissingNeed}` : "vision key missing"
+        const missingHint = currentId && visionMissingNeed ? `vision ${currentId} missing ${visionMissingNeed}` : "vision key missing"
         if (ok) {
           converted++
           recoverable.push({ src: f.src, dest: fallbackDest })
@@ -590,6 +615,24 @@ export async function processMarkitdownInProcess(
         if (isImage && vision) {
           // Vision transcription failed — surface provider/model error clearly
           onLog?.(`  Vision ${vision.modelId} error for ${f.rel} — ${errMsg} — Back to change model or pick Tesseract/copy`)
+          if (hooks?.onVisionFailure) {
+            try {
+              const action = await hooks.onVisionFailure(f.rel, vision.modelId, errMsg)
+              if (action === "retry") {
+                const newId = resolveOcrModelId()
+                const nv = await getVisionForId(newId)
+                if (nv.vision) {
+                  _idx--
+                  onLog?.(`  Retrying ${f.rel} with new vision model ${nv.vision.modelId}…`)
+                  continue
+                }
+              } else if (action === "abort") {
+                throw new SpinosaCancellationError("Vision failure abort requested")
+              }
+            } catch (e) {
+              if (isSpinosaCancellationError(e)) throw e
+            }
+          }
         }
         if (fileExt(f.src) === "pdf") {
           pdfOcrFallback.push(f)
@@ -721,8 +764,9 @@ export async function processMarkitdown(
   // any vision phase in-process so the model can be created in the same process.
   // Luna (`openai/gpt-5.6-luna`) was silently falling back to image-copy via child.
   const needsInProcess = (() => {
-    if (!hooks?.ocrModelId) return false
-    const id = hooks.ocrModelId
+    const raw = hooks?.ocrModelId
+    const id = typeof raw === "function" ? raw() : raw
+    if (!id) return false
     if (id === "tesseract-local" || id === "none") return false
     // Any provider/model (`openai/...`, `anthropic/...`, `openrouter/...`) is vision when routed via onboarding picker.
     // Treat as in-process so `createVisionLanguageModel` can run and log missing-key clearly.

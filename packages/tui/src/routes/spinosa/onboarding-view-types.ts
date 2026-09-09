@@ -84,8 +84,12 @@ export type OnboardingViewProps = {
   ocrModelOptions: Accessor<OcrModelOption[]>
   selectedOcrModelIndex: Accessor<number>
   setSelectedOcrModelIndex: Setter<number>
+  selectedOcrModel: Accessor<string>
+  selectOcrOption: (index: number) => void
+  openVisionPicker: () => void
   continueFromVision: () => void
   visionError: Accessor<string | undefined>
+  visionPaused: Accessor<boolean>
   onChangeVisionModel: () => void
   selectedVisionLabel: Accessor<string>
   waitingForGate: Accessor<boolean>

@@ -3,7 +3,6 @@ import { ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { Theme } from "../../context/theme"
 import { SplitBorder } from "../../ui/border"
 import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
-import { selectedForeground } from "../../context/theme"
 import { Locale } from "../../util/locale"
 import type { ImportScanPreview, NewWorkspacePreview } from "../../spinosa/onboarding-preview"
 import type { DialogContext } from "../../ui/dialog"
@@ -401,6 +400,7 @@ export function OcrModelSelector(props: {
   theme: Theme
   options: OcrModelOption[]
   selectedIndex: number
+  selectedId: string
   viewportHeight: number
   onSelectIndex: (index: number) => void
   onSelect: (index: number) => void
@@ -410,6 +410,11 @@ export function OcrModelSelector(props: {
     const idx = props.selectedIndex
     queueMicrotask(() => scrollSelectedImportOptionIntoView(scroll, idx + 1))
   })
+  const isChosen = (item: OcrModelOption, chosenId: string) => {
+    if (item.id === chosenId) return true
+    if (item.id === "vision:provider-picker" && chosenId.includes("/")) return true
+    return false
+  }
   return (
     <box flexDirection="column" gap={1} paddingTop={1}>
       <scrollbox
@@ -420,25 +425,24 @@ export function OcrModelSelector(props: {
         <For each={props.options}>
           {(item, index) => {
             const active = createMemo(() => props.selectedIndex === index())
-            const selected = createMemo(() => props.selectedIndex === index())
+            const chosen = createMemo(() => isChosen(item, props.selectedId))
             return (
               <box
                 paddingLeft={1}
                 paddingRight={1}
                 paddingTop={1}
                 paddingBottom={1}
-                backgroundColor={active() ? props.theme.primary : buttonBackground(props.theme, false)}
-                border={active() ? ["left"] : []}
-                borderColor={active() ? props.theme.primary : undefined}
+                backgroundColor={buttonBackground(props.theme, active())}
+                onMouseOver={() => props.onSelectIndex(index())}
                 onMouseDown={() => deferPress(() => props.onSelect(index()))}
               >
                 <box flexDirection="row" gap={1} alignItems="center">
-                  <text fg={active() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, false, props.theme.primary)} width={2}>
-                    {selected() ? "●" : "○"}
+                  <text fg={buttonText(props.theme, active(), props.theme.primary)} width={2}>
+                    {chosen() ? "●" : "○"}
                   </text>
                   <box flexDirection="column" flexGrow={1}>
-                    <text fg={active() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, false, props.theme.text)}>{item.label}</text>
-                    <text fg={active() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, false, props.theme.textMuted)}>{item.detail}</text>
+                    <text fg={buttonText(props.theme, active(), props.theme.text)}>{item.label}</text>
+                    <text fg={buttonText(props.theme, active(), props.theme.textMuted)}>{item.detail}</text>
                   </box>
                 </box>
               </box>
@@ -446,7 +450,7 @@ export function OcrModelSelector(props: {
           }}
         </For>
       </scrollbox>
-      <text fg={props.theme.textMuted}>↑↓ move · enter select · Tesseract: local PDFs (images copied) · Vision: MarkItDown LLM (needs key) · None: copy only</text>
+      <text fg={props.theme.textMuted}>↑↓ move · space select · enter continue · Tesseract: local PDFs (images copied) · Vision: MarkItDown LLM (needs key) · None: copy only</text>
     </box>
   )
 }

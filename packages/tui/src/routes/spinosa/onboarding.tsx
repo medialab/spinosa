@@ -461,7 +461,7 @@ export function Onboarding() {
       base[1] = {
         ...base[1]!,
         label: `Vision: ${picked} ✓`,
-        detail: `Selected — ${prov}/${model} — click to re-choose vision model`,
+        detail: `Selected — ${prov}/${model} — press space to select, Continue to re-choose vision model`,
         id: "vision:provider-picker",
         kind: "vision",
         modelId: model,
@@ -471,6 +471,263 @@ export function Onboarding() {
     }
     return base
   })
+
+  // Selector UX: focused index (hover/keyboard) vs chosen id (●). Mirrors ImportOptionsSelector pattern.
+  const selectOcrOption = (index: number) => {
+    const opts = ocrModelOptions()
+    const opt = opts[index]
+    if (!opt) return
+    setSelectedOcrModelIndex(index)
+    // Vision row click is handled by openVisionPicker — don't just set placeholder here
+    if (opt.id === "vision:provider-picker") return
+    setSelectedOcrModel(opt.id)
+  }
+
+  // Vision picker: clickable middle button (and reclick) — opens provider/model dialog, then user presses Continue
+  // Aligns with /model auth: supports OAuth (openai ChatGPT, anthropic) + API key (openrouter, etc.)
+  // Only marks vision as selected (●) when a concrete provider/model is actually picked — esc keeps previous choice
+  const openVisionPicker = () => {
+    const prevChosenId = selectedOcrModel()
+    const prevFocused = selectedOcrModelIndex()
+    let didPick = false
+    logAction("vision", "Opening provider/model picker for vision")
+    dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
+      const id = `${providerId}/${modelId}`
+      const requiresKey = providerId === "openrouter" ? "OPENROUTER_API_KEY" : providerId === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${providerId.toUpperCase()}_API_KEY`
+      const hasEnvKey = Boolean(process.env[requiresKey] ?? (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY" ? process.env.GEMINI_API_KEY : undefined))
+      const isProviderAvailable = sync.data.provider.some((p) => p.id === providerId)
+      const isConnected = sync.data.provider_next.connected.includes(providerId)
+      const providerAuth = (sync.data as unknown as { provider_auth?: Record<string, Array<{ type: string }>> }).provider_auth?.[providerId]
+      const hasOauth = providerAuth?.some((m) => m.type === "oauth")
+      // Already configured via env, stored API key (provider available), or OAuth — no prompt needed (matches /model)
+      if (!hasEnvKey && !isProviderAvailable && !isConnected) {
+        if (hasOauth) {
+          const pendingId = id
+          const methods = providerAuth as Array<{ type: string; label: string; prompts?: Array<{ key: string; message: string; placeholder?: string; type?: string; options?: Array<{ label: string; value: string; hint?: string }>; when?: { key: string; op: string; value: string } }> }>
+          let methodIndex: number | null = 0
+          if (methods.length > 1) {
+            methodIndex = await new Promise<number | null>((resolve) => {
+              dialog.replace(
+                () => (
+                  <DialogSelect
+                    title="Select auth method"
+                    options={methods.map((x, idx) => ({ title: x.label, value: idx }))}
+                    onSelect={(option) => resolve(option.value as number)}
+                  />
+                ),
+                () => resolve(null),
+              )
+            })
+            if (methodIndex == null) {
+              logAction("vision", `Vision ${pendingId} auth method selection cancelled — keeping ${prevChosenId}`)
+              const opts = ocrModelOptions()
+              const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
+              if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
+              else setSelectedOcrModelIndex(prevFocused)
+              return
+            }
+          }
+          const method = methods[methodIndex!]
+          if (method.type === "oauth") {
+            let inputs: Record<string, string> | undefined
+            const prompts = (method as any).prompts as Array<any> | undefined
+            if (prompts?.length) {
+              inputs = {}
+              for (const prompt of prompts) {
+                if (prompt.when) {
+                  const v = inputs[prompt.when.key]
+                  if (v === undefined) continue
+                  const matches = prompt.when.op === "eq" ? v === prompt.when.value : v !== prompt.when.value
+                  if (!matches) continue
+                }
+                if (prompt.type === "select") {
+                  const val = await new Promise<string | null>((resolve) => {
+                    dialog.replace(
+                      () => (
+                        <DialogSelect
+                          title={prompt.message}
+                          options={prompt.options.map((x: any) => ({ title: x.label, value: x.value, description: x.hint }))}
+                          onSelect={(option) => resolve(option.value as string)}
+                        />
+                      ),
+                      () => resolve(null),
+                    )
+                  })
+                  if (val == null) {
+                    logAction("vision", `Vision ${pendingId} oauth prompts cancelled`)
+                    const opts = ocrModelOptions()
+                    const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
+                    if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
+                    return
+                  }
+                  inputs[prompt.key] = val
+                  continue
+                }
+                const val = await new Promise<string | null>((resolve) => {
+                  dialog.replace(
+                    () => (
+                      <DialogPrompt title={prompt.message} placeholder={prompt.placeholder} onConfirm={(v) => resolve(v)} />
+                    ),
+                    () => resolve(null),
+                  )
+                })
+                if (val == null) {
+                  logAction("vision", `Vision ${pendingId} oauth prompts cancelled`)
+                  const opts = ocrModelOptions()
+                  const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
+                  if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
+                  return
+                }
+                inputs[prompt.key] = val
+              }
+            }
+            const result = await sdk.client.provider.oauth.authorize({ providerID: providerId, method: methodIndex!, inputs })
+            if ((result as any).error) {
+              logAction("vision", `Vision ${pendingId} oauth failed: ${JSON.stringify((result as any).error)}`)
+              dialog.clear()
+              return
+            }
+            const data = (result as any).data as { method: string; url: string; instructions: string } | undefined
+            if (data?.method === "code") {
+              dialog.replace(() => (
+                <DialogPrompt
+                  title={method.label}
+                  placeholder="Authorization code"
+                  onConfirm={async (value) => {
+                    const { error } = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex!, code: value })
+                    if (!error) {
+                      await sync.refreshProviders()
+                      didPick = true
+                      setSelectedOcrModel(pendingId)
+                      setSelectedOcrModelIndex(1)
+                      logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change (auto after OAuth)`)
+                    } else {
+                      logAction("vision", `Vision ${pendingId} oauth code invalid`)
+                    }
+                    dialog.clear()
+                  }}
+                  description={() => (
+                    <box gap={1}>
+                      <text fg={theme.textMuted}>{data.instructions}</text>
+                      <text fg={theme.primary}>{data.url}</text>
+                    </box>
+                  )}
+                />
+              ))
+              return
+            }
+            if (data?.method === "auto") {
+              dialog.replace(() => (
+                <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+                  <box flexDirection="row" justifyContent="space-between">
+                    <text fg={theme.text} attributes={TextAttributes.BOLD}>{method.label}</text>
+                    <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>esc</text>
+                  </box>
+                  <box gap={1}>
+                    <text fg={theme.primary}>{data.url}</text>
+                    <text fg={theme.textMuted}>{data.instructions}</text>
+                  </box>
+                  <text fg={theme.textMuted}>Waiting for authorization...</text>
+                </box>
+              ))
+              void (async () => {
+                const cb = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex! })
+                if ((cb as any).error) {
+                  logAction("vision", `Vision ${pendingId} oauth auto failed`)
+                  dialog.clear()
+                  return
+                }
+                await sync.refreshProviders()
+                didPick = true
+                setSelectedOcrModel(pendingId)
+                setSelectedOcrModelIndex(1)
+                logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change (auto after OAuth)`)
+                dialog.clear()
+              })()
+              return
+            }
+            // Fallback: treat as connected
+            await sync.refreshProviders()
+            didPick = true
+            setSelectedOcrModel(pendingId)
+            setSelectedOcrModelIndex(1)
+            logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change (auto after OAuth)`)
+            dialog.clear()
+            return
+          } else {
+            // API key method for OAuth-capable provider — prompt for key
+            logAction("vision", `Vision ${pendingId} needs ${requiresKey} — prompting`)
+            const key = await new Promise<string | null>((resolve) => {
+              dialog.replace(
+                () => (
+                  <DialogPrompt
+                    title={`${providerId} API key`}
+                    placeholder="Paste API key"
+                    onConfirm={(v) => resolve(v)}
+                  />
+                ),
+                () => resolve(null),
+              )
+            })
+            if (!key) {
+              logAction("vision", `Vision ${pendingId} cancelled — no key entered`)
+              dialog.clear()
+              return
+            }
+            process.env[requiresKey] = key
+            if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
+            try {
+              await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
+              await sync.refreshProviders()
+            } catch {}
+            logAction("vision", `Vision ${pendingId} key saved for ${providerId}`)
+            didPick = true
+            setSelectedOcrModel(pendingId)
+            setSelectedOcrModelIndex(1)
+            logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change`)
+            dialog.clear()
+            return
+          }
+        }
+        // API-key-only provider (openrouter) — prompt for key
+        logAction("vision", `Vision ${id} needs ${requiresKey} — prompting`)
+        const key = await new Promise<string | null>((resolve) => {
+          dialog.replace(() => (
+            <DialogPrompt
+              title={`${providerId} API key`}
+              placeholder="Paste API key"
+              onConfirm={(v) => resolve(v)}
+            />
+          ), () => resolve(null))
+        })
+        if (!key) {
+          logAction("vision", `Vision ${id} cancelled — no key entered`)
+          dialog.clear()
+          return
+        }
+        process.env[requiresKey] = key
+        if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
+        try {
+          await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
+          await sync.refreshProviders()
+        } catch {}
+        logAction("vision", `Vision ${id} key saved for ${providerId}`)
+      }
+      didPick = true
+      setSelectedOcrModel(id)
+      setSelectedOcrModelIndex(1)
+      logAction("vision", `Picked vision model ${id} — press Continue or reclick to change`)
+      dialog.clear()
+    }} />, () => {
+      if (!didPick) {
+        const opts = ocrModelOptions()
+        const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
+        if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
+        else setSelectedOcrModelIndex(prevFocused)
+        logAction("vision", `Vision picker cancelled — keeping ${prevChosenId}`)
+      }
+    })
+  }
   const [focusedSource, setFocusedSource] = createSignal(0);
   const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>();
   const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([]);
@@ -488,6 +745,8 @@ export function Onboarding() {
   const [stillMissingCount, setStillMissingCount] = createSignal(0);
   const [processingFile, setProcessingFile] = createSignal("");
   const [visionError, setVisionError] = createSignal<string | undefined>(undefined);
+  const [visionPaused, setVisionPaused] = createSignal(false);
+  let visionFailedResolve: ((action: "retry" | "skip" | "abort") => void) | undefined;
   const [progressFiles, setProgressFiles] = createSignal<
     ImportFileProgressItem[]
   >([]);
@@ -1046,54 +1305,26 @@ export function Onboarding() {
   };
 
   const continueFromVision = () => {
+    const chosenId = selectedOcrModel()
     const opts = ocrModelOptions()
-    const chosenOpt = opts[selectedOcrModelIndex()]
-    const chosen = chosenOpt?.id ?? "tesseract-local";
+    // Chosen is the ●-selected id (not the keyboard focus). Vision picker holds placeholder id
+    // "vision:provider-picker" until a concrete provider/model is picked (chosenId includes "/").
+    let chosenOpt: OcrModelOption | undefined
+    if (chosenId.includes("/")) {
+      chosenOpt = opts.find((o) => o.id === "vision:provider-picker")
+    } else {
+      chosenOpt = opts.find((o) => o.id === chosenId) ?? opts[selectedOcrModelIndex()]
+    }
+    const chosen = chosenId
+
     if (chosen === "vision:provider-picker") {
-      // Open provider/model picker for vision — same catalog as /model, filtered for image input
-      logAction("vision", "Opening provider/model picker for vision");
-      dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
-        const id = `${providerId}/${modelId}`
-        const requiresKey = providerId === "openrouter" ? "OPENROUTER_API_KEY" : providerId === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${providerId.toUpperCase()}_API_KEY`
-        const hasEnvKey = Boolean(process.env[requiresKey] ?? (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY" ? process.env.GEMINI_API_KEY : undefined))
-        const isConnected = sync.data.provider_next.connected.includes(providerId)
-        if (!hasEnvKey && !isConnected) {
-          logAction("vision", `Vision ${id} needs ${requiresKey} — prompting`)
-          const key = await new Promise<string | null>((resolve) => {
-            dialog.replace(() => (
-              <DialogPrompt
-                title={`${providerId} API key`}
-                placeholder="Paste API key"
-                onConfirm={(v) => resolve(v)}
-              />
-            ), () => resolve(null))
-          })
-          if (!key) {
-            logAction("vision", `Vision ${id} cancelled — no key entered`)
-            dialog.clear()
-            return
-          }
-          process.env[requiresKey] = key
-          if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
-          try {
-            await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
-            await sync.refreshProviders()
-          } catch {}
-          logAction("vision", `Vision ${id} key saved for ${providerId}`)
-        }
-        // Update the Vision button to show selection — keep 3 buttons, user then presses Continue
-        setSelectedOcrModel(id)
-        setSelectedOcrModelIndex(1)
-        logAction("vision", `Picked vision model ${id} — press Continue`)
-        dialog.clear()
-      }} />)
+      // No concrete model yet — clicking Continue on vision placeholder opens picker (same as clicking the row)
+      openVisionPicker()
       return
     }
-    // If vision button selected and a model already picked via picker, Continue uses that
-    const alreadyPickedVision = selectedOcrModel().includes("/")
-    if (alreadyPickedVision && selectedOcrModelIndex() === 1) {
-      const pickedId = selectedOcrModel()
-      logAction("continue", `Vision → Processing (ocrModel=${pickedId})`)
+    // Concrete vision model already picked (e.g. "openai/gpt-..." or "openrouter/...:free")
+    if (chosen.includes("/")) {
+      logAction("continue", `Vision → Processing (ocrModel=${chosen})`)
       void activeWork.run(startProcessing)
       return
     }
@@ -1293,7 +1524,32 @@ export function Onboarding() {
         shouldAbort,
         signal: job.registered.signal,
         onChild: job.registerChild,
-        ocrModelId: selectedOcrModel(),
+        ocrModelId: () => selectedOcrModel(),
+        onVisionFailure: async (rel, modelId, error) => {
+          setVisionError(`Vision ${modelId} error for ${rel} — ${error.slice(0,120)} — queue paused — Change model to retry this file or Back to abort`)
+          setVisionPaused(true)
+          const action = await new Promise<"retry" | "skip" | "abort">((resolve) => {
+            visionFailedResolve = resolve
+            const checkAbort = setInterval(() => {
+              if (shouldAbort()) {
+                clearInterval(checkAbort)
+                visionFailedResolve = undefined
+                resolve("abort")
+              }
+            }, 200)
+            // Wrap resolve to clear interval
+            const orig = resolve
+            visionFailedResolve = (a) => {
+              clearInterval(checkAbort)
+              visionFailedResolve = undefined
+              orig(a)
+            }
+          })
+          setVisionPaused(false)
+          // Keep error visible until retry succeeds or user changes model
+          if (action === "retry") setVisionError(undefined)
+          return action
+        },
         onRetry: (attempt, reason) => {
           setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`);
         },
@@ -1434,6 +1690,30 @@ export function Onboarding() {
           shouldAbort,
           signal: job.registered.signal,
           onChild: job.registerChild,
+          ocrModelId: () => selectedOcrModel(),
+          onVisionFailure: async (rel, modelId, error) => {
+            setVisionError(`Vision ${modelId} error for ${rel} — ${error.slice(0,120)} — queue paused — Change model to retry this file or Back to abort`)
+            setVisionPaused(true)
+            const action = await new Promise<"retry" | "skip" | "abort">((resolve) => {
+              visionFailedResolve = resolve
+              const checkAbort = setInterval(() => {
+                if (shouldAbort()) {
+                  clearInterval(checkAbort)
+                  visionFailedResolve = undefined
+                  resolve("abort")
+                }
+              }, 200)
+              const orig = resolve
+              visionFailedResolve = (a) => {
+                clearInterval(checkAbort)
+                visionFailedResolve = undefined
+                orig(a)
+              }
+            })
+            setVisionPaused(false)
+            if (action === "retry") setVisionError(undefined)
+            return action
+          },
           onRetry: (attempt, reason) => {
             setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`);
           },
@@ -1843,7 +2123,7 @@ export function Onboarding() {
       }
 
       if (step() === "vision") {
-        const len = OCR_MODEL_OPTIONS.length;
+        const len = ocrModelOptions().length;
         if (event.name === "up" || event.name === "k") {
           setSelectedOcrModelIndex((v) => Math.max(0, v - 1));
           consume();
@@ -1854,7 +2134,26 @@ export function Onboarding() {
           consume();
           return;
         }
+        if (event.name === "space") {
+          const idx = selectedOcrModelIndex()
+          if (idx === 1) {
+            openVisionPicker()
+          } else {
+            selectOcrOption(idx)
+          }
+          consume();
+          return;
+        }
         if (event.name === "return") {
+          // Return is Continue — if focus differs from chosen, adopt focus first (radio arrow semantics)
+          const opts = ocrModelOptions();
+          const focusedOpt = opts[selectedOcrModelIndex()];
+          const chosenId = selectedOcrModel();
+          const isChosenVision = chosenId.includes("/");
+          const focusedIsPicker = focusedOpt?.id === "vision:provider-picker";
+          if (focusedOpt && focusedOpt.id !== chosenId && !(focusedIsPicker && isChosenVision)) {
+            selectOcrOption(selectedOcrModelIndex());
+          }
           continueFromVision();
           consume();
           return;
@@ -2019,13 +2318,246 @@ export function Onboarding() {
     ocrModelOptions,
     selectedOcrModelIndex,
     setSelectedOcrModelIndex,
+    selectedOcrModel,
+    selectOcrOption,
+    openVisionPicker,
     continueFromVision,
     visionError,
+    visionPaused,
     onChangeVisionModel: () => {
-      logAction("change-vision", `from ${step()} to vision (provider error) — will use new model for next image`)
-      stopActiveWork()
-      setVisionError(undefined)
-      setStep("vision")
+      logAction("change-vision", `from ${step()} picker opened — current task continues with ${selectedOcrModel()}, next file will use new model`)
+      // Don't abort — keep current markitdown file running with old model; dialog is overlay on step 9
+      dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
+        const id = `${providerId}/${modelId}`
+        const requiresKey = providerId === "openrouter" ? "OPENROUTER_API_KEY" : providerId === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${providerId.toUpperCase()}_API_KEY`
+        const hasEnvKey = Boolean(process.env[requiresKey] ?? (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY" ? process.env.GEMINI_API_KEY : undefined))
+        const isProviderAvailable = sync.data.provider.some((p) => p.id === providerId)
+        const isConnected = sync.data.provider_next.connected.includes(providerId)
+        const providerAuth = (sync.data as unknown as { provider_auth?: Record<string, Array<{ type: string }>> }).provider_auth?.[providerId]
+        const hasOauth = providerAuth?.some((m) => m.type === "oauth")
+        if (!hasEnvKey && !isProviderAvailable && !isConnected) {
+          if (hasOauth) {
+            const pendingId = id
+            const methods = providerAuth as Array<{ type: string; label: string; prompts?: Array<{ key: string; message: string; placeholder?: string; type?: string; options?: Array<{ label: string; value: string; hint?: string }>; when?: { key: string; op: string; value: string } }> }>
+            let methodIndex: number | null = 0
+            if (methods.length > 1) {
+              methodIndex = await new Promise<number | null>((resolve) => {
+                dialog.replace(
+                  () => (
+                    <DialogSelect
+                      title="Select auth method"
+                      options={methods.map((x, idx) => ({ title: x.label, value: idx }))}
+                      onSelect={(option) => resolve(option.value as number)}
+                    />
+                  ),
+                  () => resolve(null),
+                )
+              })
+              if (methodIndex == null) {
+                logAction("vision", `Vision ${pendingId} auth method selection cancelled`)
+                return
+              }
+            }
+            const method = methods[methodIndex!]
+            if (method.type === "oauth") {
+              let inputs: Record<string, string> | undefined
+              const prompts = (method as any).prompts as Array<any> | undefined
+              if (prompts?.length) {
+                inputs = {}
+                for (const prompt of prompts) {
+                  if (prompt.when) {
+                    const v = inputs[prompt.when.key]
+                    if (v === undefined) continue
+                    const matches = prompt.when.op === "eq" ? v === prompt.when.value : v !== prompt.when.value
+                    if (!matches) continue
+                  }
+                  if (prompt.type === "select") {
+                    const val = await new Promise<string | null>((resolve) => {
+                      dialog.replace(
+                        () => (
+                          <DialogSelect
+                            title={prompt.message}
+                            options={prompt.options.map((x: any) => ({ title: x.label, value: x.value, description: x.hint }))}
+                            onSelect={(option) => resolve(option.value as string)}
+                          />
+                        ),
+                        () => resolve(null),
+                      )
+                    })
+                    if (val == null) return
+                    inputs[prompt.key] = val
+                    continue
+                  }
+                  const val = await new Promise<string | null>((resolve) => {
+                    dialog.replace(
+                      () => (
+                        <DialogPrompt title={prompt.message} placeholder={prompt.placeholder} onConfirm={(v) => resolve(v)} />
+                      ),
+                      () => resolve(null),
+                    )
+                  })
+                  if (val == null) return
+                  inputs[prompt.key] = val
+                }
+              }
+              const result = await sdk.client.provider.oauth.authorize({ providerID: providerId, method: methodIndex!, inputs })
+              if ((result as any).error) {
+                logAction("vision", `Vision ${pendingId} oauth failed: ${JSON.stringify((result as any).error)}`)
+                dialog.clear()
+                return
+              }
+              const data = (result as any).data as { method: string; url: string; instructions: string } | undefined
+              if (data?.method === "code") {
+                dialog.replace(() => (
+                  <DialogPrompt
+                    title={method.label}
+                    placeholder="Authorization code"
+                    onConfirm={async (value) => {
+                      const { error } = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex!, code: value })
+                      if (!error) {
+                        await sync.refreshProviders()
+                        setSelectedOcrModel(pendingId)
+                        setSelectedOcrModelIndex(1)
+                        setVisionError(undefined)
+                        logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
+                        if (visionPaused() && visionFailedResolve) {
+                          const r = visionFailedResolve
+                          visionFailedResolve = undefined
+                          r("retry")
+                        }
+                      }
+                      dialog.clear()
+                    }}
+                    description={() => (
+                      <box gap={1}>
+                        <text fg={theme.textMuted}>{data.instructions}</text>
+                        <text fg={theme.primary}>{data.url}</text>
+                      </box>
+                    )}
+                  />
+                ))
+                return
+              }
+              if (data?.method === "auto") {
+                dialog.replace(() => (
+                  <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+                    <box flexDirection="row" justifyContent="space-between">
+                      <text fg={theme.text} attributes={TextAttributes.BOLD}>{method.label}</text>
+                      <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>esc</text>
+                    </box>
+                    <box gap={1}>
+                      <text fg={theme.primary}>{data.url}</text>
+                      <text fg={theme.textMuted}>{data.instructions}</text>
+                    </box>
+                    <text fg={theme.textMuted}>Waiting for authorization...</text>
+                  </box>
+                ))
+                void (async () => {
+                  const cb = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex! })
+                  if ((cb as any).error) {
+                    logAction("vision", `Vision ${pendingId} oauth auto failed`)
+                    dialog.clear()
+                    return
+                  }
+                  await sync.refreshProviders()
+                  setSelectedOcrModel(pendingId)
+                  setSelectedOcrModelIndex(1)
+                  setVisionError(undefined)
+                  logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
+                  if (visionPaused() && visionFailedResolve) {
+                    const r = visionFailedResolve
+                    visionFailedResolve = undefined
+                    r("retry")
+                  }
+                  dialog.clear()
+                })()
+                return
+              }
+              await sync.refreshProviders()
+              setSelectedOcrModel(pendingId)
+              setSelectedOcrModelIndex(1)
+              setVisionError(undefined)
+              logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
+              if (visionPaused() && visionFailedResolve) {
+                const r = visionFailedResolve
+                visionFailedResolve = undefined
+                r("retry")
+              }
+              dialog.clear()
+              return
+            } else {
+              logAction("vision", `Vision ${pendingId} needs ${requiresKey} — prompting`)
+              const key = await new Promise<string | null>((resolve) => {
+                dialog.replace(
+                  () => (
+                    <DialogPrompt
+                      title={`${providerId} API key`}
+                      placeholder="Paste API key"
+                      onConfirm={(v) => resolve(v)}
+                    />
+                  ),
+                  () => resolve(null),
+                )
+              })
+              if (!key) {
+                logAction("vision", `Vision ${pendingId} cancelled — no key entered`)
+                dialog.clear()
+                return
+              }
+              process.env[requiresKey] = key
+              if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
+              try {
+                await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
+                await sync.refreshProviders()
+              } catch {}
+              logAction("vision", `Vision ${pendingId} key saved for ${providerId}`)
+              setSelectedOcrModel(pendingId)
+              setSelectedOcrModelIndex(1)
+              setVisionError(undefined)
+              logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
+              if (visionPaused() && visionFailedResolve) {
+                const r = visionFailedResolve
+                visionFailedResolve = undefined
+                r("retry")
+              }
+              dialog.clear()
+              return
+            }
+          }
+          logAction("vision", `Vision ${id} needs ${requiresKey} — prompting`)
+          const key = await new Promise<string | null>((resolve) => {
+            dialog.replace(() => (
+              <DialogPrompt
+                title={`${providerId} API key`}
+                placeholder="Paste API key"
+                onConfirm={(v) => resolve(v)}
+              />
+            ), () => resolve(null))
+          })
+          if (!key) {
+            logAction("vision", `Vision ${id} cancelled — no key entered`)
+            dialog.clear()
+            return
+          }
+          process.env[requiresKey] = key
+          if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
+          try {
+            await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
+            await sync.refreshProviders()
+          } catch {}
+          logAction("vision", `Vision ${id} key saved for ${providerId}`)
+        }
+        setSelectedOcrModel(id)
+        setSelectedOcrModelIndex(1)
+        setVisionError(undefined)
+        logAction("vision", `Picked vision model ${id} — will apply at next file (current continues with old model)`)
+        if (visionPaused() && visionFailedResolve) {
+          const r = visionFailedResolve
+          visionFailedResolve = undefined
+          r("retry")
+        }
+        dialog.clear()
+      }} />)
     },
     selectedVisionLabel: createMemo(() => {
       const opts = ocrModelOptions()

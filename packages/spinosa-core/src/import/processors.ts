@@ -23,7 +23,8 @@ export type ImportProcessorContext = {
   onRetry?: (attempt: number, reason: string) => void
   onRename?: (original: string, renamed: string) => void
   overwrite?: boolean
-  ocrModelId?: string
+  ocrModelId?: string | (() => string)
+  onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
 }
 
 export type ImportProcessor = {
@@ -63,6 +64,7 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
         onChild: ctx.onChild,
         signal: ctx.signal,
         ocrModelId: ctx.ocrModelId,
+        onVisionFailure: ctx.onVisionFailure,
       }),
   },
   ocr: {
