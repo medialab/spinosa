@@ -8,6 +8,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.6] — 2026-09-09
+
+### Fixed
+
+- Linux installer hang: bounded `flush_pending_input` no longer drains `stdin` pipe with non-consuming `read -t 0`; interactive prompts now return on Linux Bash 5.3 (`install.sh`).
+- Version probes now time out in 5s and fall back to metadata, so a hanging active binary no longer blocks repair before download (`install.sh`, `packages/spinosa-core/src/commands/upgrade.ts`, `preflight.ts`, `packages/spinosa-kernel/src/cli/cmd/upgrade.ts`).
+- Channel version fetch keeps abort deadline through body read (`packages/spinosa-core/src/system/channels.ts`); outer installer now runs async with 15min pgid supervision and streamed phase output (`packages/spinosa-core/src/commands/upgrade.ts`).
+- Bootstrap now publishes `curl --connect-timeout 30 --max-time 600 --retry 3 -o /tmp/spinosa-install.sh && bash` instead of `| bash` (`README.md`, `website/src/lib/install-urls.ts`, `install.sh`).
+- Release smoke gate fails when `install.sh` fails — no binary-copy fallback (`script/smoke-install.ts`, `script/release/stages.ts`).
+- Workspace launcher classifier now reads only regular files with bounded `head` and per-workspace log; disk, migrate, and shell PATH steps are timed (`install.sh`).
+- Early attempt log captured to `/tmp/spinosa-install-*.log` and merged into `~/.spinosa/logs/spinosa.log`; template/doctor diagnostics preserved instead of `>/dev/null` (`install.sh`).
+- Process-group termination with TERM→KILL grace and owner-checked lock cleanup (`install.sh`); TUI reinstall now 900s, pgid-aware, stderr-surfaced, and tools step cancelable (`packages/tui/src/spinosa/reinstall.ts`, `add-files.tsx`, `onboarding.tsx`).
+- Legacy `v0.5/v0.6` `metadata/install.yaml` and `v0.7/v0.8` completion stamps are now recognized as owned, not reclaimable debris (`install.sh`); metadata migration now warns instead of silently ignoring.
+- Binary rollback now restores shim, `config.yaml`, and `env.sh` alongside the binary with verification (`install.sh`).
+- Upgrade failure hint now derives from the effective channel and shows the bounded bootstrap command (`packages/spinosa-kernel/src/cli/cmd/upgrade.ts`).
+
 ## [1.1.0-beta.5] — 2026-09-08
 
 ### Fixed
