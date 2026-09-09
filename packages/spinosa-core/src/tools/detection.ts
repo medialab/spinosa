@@ -108,16 +108,8 @@ export function networkImageAvailable(): boolean {
 
 export function ocrAvailable(): boolean {
   if (_ocrAvailable !== undefined) return _ocrAvailable
-  // Primary: tesseract for scanned PDFs. Keep ppu-paddle-ocr as one-release fallback when tesseract is absent.
-  if (tesseractAvailable()) {
-    _ocrAvailable = true
-    return _ocrAvailable
-  }
-  if (!isOcrPlatformSupported()) {
-    _ocrAvailable = false
-    return _ocrAvailable
-  }
-  _ocrAvailable = moduleAvailable("ppu-paddle-ocr", true)
+  // Tesseract is the only OCR engine (ppu-paddle-ocr/onnx removed)
+  _ocrAvailable = tesseractAvailable()
   return _ocrAvailable
 }
 

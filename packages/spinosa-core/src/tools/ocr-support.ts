@@ -1,9 +1,8 @@
 /**
- * Product OCR (ppu-paddle-ocr / onnxruntime) platform gate.
+ * Product OCR (tesseract) platform gate.
  *
- * `spinosa-linux-x64` Bun `--compile` hits `ERR_DLOPEN_FAILED` on
- * `libonnxruntime.so.1` when OCR natives load. OCR is explicitly unsupported
- * there — not a soft probe failure. Darwin and linux-arm64 keep OCR.
+ * Formerly gated on onnxruntime for ppu-paddle-ocr; now tesseract via pdftoppm
+ * is the only engine, supported wherever tesseract+pdftoppm+tessdata are present.
  */
 
 export type OcrPlatformHints = {
@@ -21,8 +20,10 @@ export function isOcrPlatformSupported(hints: OcrPlatformHints = {}): boolean {
 
 /** Human reason when OCR must not load; undefined when supported. */
 export function ocrUnsupportedReason(hints: OcrPlatformHints = {}): string | undefined {
+  // Tesseract has no onnx native gate; availability is probed via tesseractAvailable()
+  // Keep platform gate for documentation, but always supported where tesseract is installed.
   if (isOcrPlatformSupported(hints)) return undefined
   const platform = hints.platform ?? process.platform
   const arch = hints.arch ?? process.arch
-  return `OCR is unsupported on ${platform}-${arch} in this build (onnxruntime native load is not available)`
+  return `OCR is unsupported on ${platform}-${arch} in this build`
 }

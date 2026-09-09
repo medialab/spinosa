@@ -266,7 +266,7 @@ export async function ocrPdfViaTesseract(
     if (pageTexts.length === 1) {
       combined = `# ${title}\n\n${pageTexts[0]}\n`
     } else {
-      // For multi-page, write single md with page separators and also split pages like ppu does?
+      // For multi-page, write single md with page separators
       // Spec says concat → single md; we keep simple concat with separators
       const pagesWithHeader = pageTexts
         .map((t, idx) => `## Page ${idx + 1}\n\n${t}`)
@@ -277,8 +277,7 @@ export async function ocrPdfViaTesseract(
     writeTextAtomicSafe(destFile, combined)
     injectColdFrontmatter(destFile)
 
-    // Also write split pages for consistency with ppu output (optional, not required by spec)
-    // Keep single-file behavior primary; split dir is extra navigability
+    // Also write split pages (optional, extra navigability)
     if (pageTexts.length > 1) {
       const pageDir = destFile.endsWith(".md") ? destFile.slice(0, -3) : `${destFile}_pages`
       try {
@@ -301,7 +300,6 @@ export async function ocrPdfViaTesseract(
           writeTextAtomicSafe(pageFile, pageContent)
           injectColdFrontmatter(pageFile)
         }
-        // Replace root with index linking to pages (like ppu do) while preserving OCR text?
         // Keep root as concatenated text; page dir remains for deep links
       } catch {
         // ignore split page failures

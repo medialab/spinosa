@@ -4,7 +4,6 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { MarkItDown } from "@spinosa/markitdown"
 import { addFiles } from "../src/commands/add"
-mock.module("../src/import/ppu-ocr", () => ({ runPpuOcrBatch: async () => undefined }))
 
 test("OCR no-output preserves existing converted outputs", async () => {
   // Use a scanned PDF for OCR failure — images are now copy-only (not OCR)

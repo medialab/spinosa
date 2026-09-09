@@ -255,13 +255,10 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       files["src/generated/template-pack.gen.ts"] = options.templatePackModule
     }
 
-    // Fail closed: write onnx embed to disk only (template-blobs pattern).
-    // A Bun.build `files` virtual module cannot resolve sibling `with { type: "file" }`
-    // imports, so companion .so/.dylib never embed when injected only via `files`.
-    // linux-x64 ships without OCR/onnx (product gate) — keep the empty stub.
-    // Light build: SPINOSA_WITH_ONNX=0 skips 38M onnxruntime libs + ppu model (160M binary), keeps canvas for pdfjs
-    const wantOnnx = process.env.SPINOSA_WITH_ONNX !== "0" && process.env.SPINOSA_WITH_ONNX !== "false"
-    const embedOcr = isOcrEmbeddedTarget({ os: item.os, arch: item.arch }) && wantOnnx
+    // OCR is now tesseract (system binary, not onnx). No onnx embed needed.
+    // Keep stub for compatibility; ppu-paddle-ocr/onnx removed.
+    const wantOnnx = false
+    const embedOcr = false
     let onnxEmbed: Awaited<ReturnType<typeof materializeOnnxNativeEmbed>> | null = null
     if (embedOcr) {
       onnxEmbed = await materializeOnnxNativeEmbed({

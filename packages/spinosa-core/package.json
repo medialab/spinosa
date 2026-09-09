@@ -26,7 +26,6 @@
     "@ai-sdk/openai": "^2.0.0",
     "markitdown-ts": "0.0.10",
     "pdfjs-dist": "4.9.155",
-    "ppu-paddle-ocr": "6.0.0",
     "semver": "catalog:",
     "strip-ansi": "7.1.2",
     "unzipper": "^0.12.3",

@@ -21,7 +21,6 @@ import { ImportBatchManager } from "../import/batch"
 import { injectColdFrontmatter, convertedOutputExists } from "../import/frontmatter"
 import { scanSource } from "../scan/scanner"
 import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
-import type { PpuOcrFile } from "../import/ppu-ocr"
 import { spinosaLogInfo } from "../utils/log"
 import { MarkItDown } from "@spinosa/markitdown"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled } from "../import/cancellation"
@@ -408,16 +407,8 @@ async function addSingleFile(
             ocrFailed = 1
           }
         } else {
-          const { runPpuOcrBatch } = await import("../import/ppu-ocr")
-          await runPpuOcrBatch([{ src: srcFile, rel: fileName, dest: tmpDest }], { shouldAbort })
-          if (convertedOutputExists(tmpDest)) {
-            renameSync(tmpDest, destFile)
-            ocrConverted = 1
-            injectColdFrontmatter(destFile)
-          } else {
-            restored = restoreConvertedOutput(destFile, backups)
-            ocrFailed = 1
-          }
+          restored = restoreConvertedOutput(destFile, backups)
+          ocrFailed = 1
         }
       } catch (error) {
         restored = restoreConvertedOutput(destFile, backups)

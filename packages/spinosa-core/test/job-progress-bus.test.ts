@@ -7,7 +7,7 @@ import {
   type JobEvent,
 } from "../src/progress/job-event"
 import { ProgressEmitter } from "../src/progress/progress"
-import { consumeOcrWorkerNdjsonLine } from "../src/import/pipeline"
+import { consumeMarkitdownWorkerNdjsonLine } from "../src/import/pipeline"
 
 describe("job progress bus bridge", () => {
   test("ProgressEmitter dual-publishes job.progress when jobId + onJobEvent are set", () => {
@@ -30,65 +30,41 @@ describe("job progress bus bridge", () => {
     ])
   })
 
-  test("OCR NDJSON file-start/progress drive job.progress via ProgressEmitter bridge", () => {
+  test("MarkItDown NDJSON progress/log/done drive job.progress via ProgressEmitter bridge", () => {
     const events: JobEvent[] = []
-    const jobId = createJobId("ocr")
+    const jobId = createJobId("markitdown")
     const prog = new ProgressEmitter({
       jobId,
       onJobEvent: (e) => events.push(e),
     })
-    emitJobStarted((e) => events.push(e), jobId, "import", "OCR batch")
+    emitJobStarted((e) => events.push(e), jobId, "import", "MarkItDown batch")
 
     const state = {
-      workerConverted: 0,
-      workerSkipped: 0,
+      converted: 0,
+      skipped: 0,
+      failed: 0,
+      renamed: 0,
+      recoverable: [] as Array<{ src: string; dest: string }>,
       errors: [] as string[],
-      fileResults: [] as Array<{ rel: string; ok: boolean; error?: string }>,
-      finishedRels: [] as string[],
-      inFlightRel: undefined as string | undefined,
     }
-    // Mirror processOcr: progress/page events are label-only (numerator = completed).
     let processed = 0
     const total = 1
-    const opts = {
-      onFileStart: (rel: string) => prog.file("OCR", processed, total, rel, "processing"),
-      onPageProgress: (_c: number, _t: number, rel: string, page: string) =>
-        prog.file("OCR", processed, total, page ? `${rel} (${page})` : rel),
-      onProgress: (_c: number, _t: number, rel: string) =>
-        prog.file("OCR", processed, total, rel),
-      onFile: (fr: { rel: string; ok: boolean }) => {
-        prog.file("OCR", ++processed, total, fr.rel, fr.ok ? "done" : "failed")
-      },
-    }
+    const onProgress = (c: number, t: number, rel: string) => prog.file("MarkItDown", c, t, rel, c === t ? "done" : "processing")
 
     for (const line of [
-      `{"type":"file-start","relPath":"scan.pdf"}`,
-      `{"type":"pageProgress","current":1,"total":1,"relPath":"scan.pdf","page":"1/2"}`,
-      `{"type":"file","relPath":"scan.pdf","ok":true}`,
-      `{"type":"progress","current":1,"total":1,"relPath":"scan.pdf"}`,
-      `{"type":"done","converted":1,"skipped":0}`,
+      `{"type":"progress","current":0,"total":1,"relPath":"doc.pdf","status":"processing"}`,
+      `{"type":"log","message":"test log"}`,
+      `{"type":"progress","current":1,"total":1,"relPath":"doc.pdf","status":"done"}`,
+      `{"type":"done","converted":1,"skipped":0,"failed":0,"renamed":0,"recoverable":[]}`,
     ]) {
-      consumeOcrWorkerNdjsonLine(line, state, opts)
+      consumeMarkitdownWorkerNdjsonLine(line, state, { onLog: () => {}, onProgress })
     }
 
     emitJobFinished((e) => events.push(e), jobId, "completed", "1 file")
 
     expect(events[0]?.type).toBe("job.started")
-    expect(events.some((e) => e.type === "job.progress" && e.properties.relPath === "scan.pdf")).toBe(true)
-    expect(events.some((e) => e.type === "job.progress" && e.properties.relPath === "scan.pdf (1/2)")).toBe(true)
-    // After file done, a late worker progress event must not bump past completed count
-    // or overwrite the terminal status with processing.
-    const progressEvents = events.filter((e) => e.type === "job.progress")
-    expect(progressEvents.every((e) => e.type === "job.progress" && e.properties.current <= 1)).toBe(true)
-    const fileProgress = progressEvents.filter((e) => e.properties.relPath === "scan.pdf")
-    expect(fileProgress.some((e) => e.properties.status === "done")).toBe(true)
-    expect(fileProgress.at(-1)?.properties.status).not.toBe("processing")
-    expect(processed).toBe(1)
-    expect(events.at(-1)).toMatchObject({
-      type: "job.finished",
-      properties: { jobId, status: "completed", summary: "1 file" },
-    })
-    expect(state.finishedRels).toEqual(["scan.pdf"])
+    expect(events.some((e) => e.type === "job.progress" && e.properties.relPath === "doc.pdf")).toBe(true)
+    expect(state.converted).toBe(1)
   })
 
   test("cancel emits job.cancelled", () => {

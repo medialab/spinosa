@@ -842,7 +842,7 @@ preferred_llm_cli: "${preferredCli}"
 
 ## Notes
 - This file was initialized by \`spinosa new\`.
-- The CLI collected: source folder and preferred LLM CLI. It seeded the initial workspace label from the source folder name. It imported accepted files into raw/. Office documents, structured data, and text-based PDFs were converted to Markdown. Scanned PDFs and images were processed via PPU PaddleOCR. Selected audio and video files were copied unchanged. AGENTS.md control files were skipped.
+- The CLI collected: source folder and preferred LLM CLI. It seeded the initial workspace label from the source folder name. It imported accepted files into raw/. Office documents, structured data, and text-based PDFs were converted to Markdown. Scanned PDFs were processed via Tesseract (ita+eng+fra 300dpi); images via vision LLM when selected, otherwise copied. Selected audio and video files were copied unchanged. AGENTS.md control files were skipped.
 - After onboarding, normal source-grounded work starts from raw/.
 - During startup, project description and helpful artifact URLs are optional. If absent, the LLM CLI agent records them as not provided, keeps external_sources_allowed at its default \`no\`, and infers working scope from the raw corpus.
 - When setup_status reaches workspace_started, the startup workflow has built the master dictionary, generated YAML headers, created multi-level navigation maps in maps/, and passed validation.

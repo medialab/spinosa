@@ -5,7 +5,6 @@ describe("OCR platform gate", () => {
   test("linux-x64 is explicitly unsupported", () => {
     expect(isOcrPlatformSupported({ platform: "linux", arch: "x64" })).toBe(false)
     expect(ocrUnsupportedReason({ platform: "linux", arch: "x64" })).toMatch(/unsupported on linux-x64/i)
-    expect(ocrUnsupportedReason({ platform: "linux", arch: "x64" })).toMatch(/onnxruntime/i)
   })
 
   test("darwin and linux-arm64 remain supported", () => {
