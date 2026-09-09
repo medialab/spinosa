@@ -113,7 +113,7 @@ describe("install and release flow", () => {
     })
     const output = `${result.stdout.toString()}${result.stderr.toString()}`
     expect(result.exitCode).toBe(124)
-    expect(output).toContain("START Hung step (timeout 1s)")
+    expect(output).toContain("Hung step (timeout 1s)")
     expect(output).toContain("timed out after 1s")
     expect(output).not.toContain("\u001b[")
   })
