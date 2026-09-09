@@ -451,7 +451,26 @@ export function Onboarding() {
     // Limit to 6 vision options to keep selector short
     return vision.slice(0, 6)
   })
-  const ocrModelOptions = () => OCR_MODEL_OPTIONS
+  const ocrModelOptions = createMemo(() => {
+    const base = [...OCR_MODEL_OPTIONS]
+    const picked = selectedOcrModel()
+    if (picked.includes("/") && !base.some(o => o.id === picked)) {
+      const [prov, ...rest] = picked.split("/")
+      const model = rest.join("/")
+      base.splice(1, 0, {
+        id: picked,
+        label: `Vision: ${picked} ✓`,
+        detail: `Selected vision model — ${prov}/${model} — will transcribe images via MarkItDown`,
+        kind: "vision",
+        modelId: model,
+        provider: prov,
+        vision: true,
+        cost: "paid",
+        requiresKey: prov === "openrouter" ? "OPENROUTER_API_KEY" : prov === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${prov.toUpperCase()}_API_KEY`,
+      })
+    }
+    return base
+  })
   const [focusedSource, setFocusedSource] = createSignal(0);
   const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>();
   const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([]);
@@ -1038,7 +1057,6 @@ export function Onboarding() {
         const hasEnvKey = Boolean(process.env[requiresKey] ?? (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY" ? process.env.GEMINI_API_KEY : undefined))
         const isConnected = sync.data.provider_next.connected.includes(providerId)
         if (!hasEnvKey && !isConnected) {
-          // Seamless: prompt for key inline, persist via auth.set + set env for immediate use — no exit needed
           logAction("vision", `Vision ${id} needs ${requiresKey} — prompting`)
           const key = await new Promise<string | null>((resolve) => {
             dialog.replace(() => (
@@ -1054,7 +1072,6 @@ export function Onboarding() {
             dialog.clear()
             return
           }
-          // Set for current process so pipeline finds it immediately
           process.env[requiresKey] = key
           if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
           try {
@@ -1063,11 +1080,22 @@ export function Onboarding() {
           } catch {}
           logAction("vision", `Vision ${id} key saved for ${providerId}`)
         }
+        // Update button to show selection — user then presses Continue (no auto-start)
         setSelectedOcrModel(id)
-        logAction("vision", `Picked vision model ${id}`)
+        const opts = ocrModelOptions()
+        const idx = opts.findIndex(o => o.id === id)
+        if (idx >= 0) setSelectedOcrModelIndex(idx)
+        logAction("vision", `Picked vision model ${id} — press Continue`)
         dialog.clear()
-        void activeWork.run(startProcessing)
       }} />)
+      return
+    }
+    // If user already picked a vision provider/model via picker, Continue should use that directly
+    const alreadyPickedVision = selectedOcrModel().includes("/")
+    if (alreadyPickedVision) {
+      const pickedId = selectedOcrModel()
+      logAction("continue", `Vision → Processing (ocrModel=${pickedId})`)
+      void activeWork.run(startProcessing)
       return
     }
     // If vision model needs API key and provider not yet branched/connected, prompt for key
