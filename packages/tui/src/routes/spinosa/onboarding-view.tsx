@@ -381,7 +381,7 @@ export function OnboardingView(props: OnboardingViewProps) {
                   onSelectIndex={props.setSelectedOcrModelIndex}
                   onSelect={(idx) => {
                     props.setSelectedOcrModelIndex(idx);
-                    props.continueFromVision();
+                    if (idx === 1) props.continueFromVision();
                   }}
                 />
               </Show>
