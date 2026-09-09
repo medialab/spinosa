@@ -4,12 +4,12 @@
 	import { base } from '$app/paths';
 	import BgCanvas from '$lib/BgCanvas.svelte';
 	import github from '$lib/assets/github.png';
-	import { devInstallCmd } from '$lib/install-urls';
+	import { devInstallCmd, stableInstallCmd } from '$lib/install-urls';
 
 	const origin = $derived($page.url.origin);
 
-	/** Beta rolling tag — current development channel while product is in beta. */
-	const CMD = devInstallCmd();
+	let beta = $state(true);
+	const CMD = $derived(beta ? devInstallCmd() : stableInstallCmd());
 
 	const words = [
 		'understands',
@@ -54,7 +54,10 @@
 		name="description"
 		content="Spinosa turns your research documents into a workspace you can chat with. Ask questions in plain language, get verified answers with source citations."
 	/>
-	<meta name="keywords" content="research, LLM, AI agents, document analysis, local AI, knowledge management, evidence verification" />
+	<meta
+		name="keywords"
+		content="research, LLM, AI agents, document analysis, local AI, knowledge management, evidence verification"
+	/>
 
 	<meta property="og:title" content="Spinosa — Chat with your research documents" />
 	<meta property="og:site_name" content="Spinosa" />
@@ -71,7 +74,10 @@
 
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content="Spinosa — Chat with your research documents" />
-	<meta name="twitter:description" content="Spinosa turns your documents into a searchable local workspace. Ask questions, get verified answers with source citations." />
+	<meta
+		name="twitter:description"
+		content="Spinosa turns your documents into a searchable local workspace. Ask questions, get verified answers with source citations."
+	/>
 	<meta name="twitter:image" content="{origin}{base}/og-image.jpg" />
 
 	<link rel="canonical" href="{origin}{base}/" />
@@ -132,10 +138,10 @@
 			</div>
 			<div class="mt-2 inline-block bg-white px-1 py-0.5">
 				<a
-				href={base + '/docs/welcome'}
-				class="text-[0.8rem] text-sun-cured-terracotta hover:opacity-70 transition-opacity"
-			>
-				Read the docs →
+					href={base + '/docs/welcome'}
+					class="text-[0.8rem] text-sun-cured-terracotta hover:opacity-70 transition-opacity"
+				>
+					Read the docs →
 				</a>
 			</div>
 		</div>
@@ -182,64 +188,87 @@
 
 		<section class="relative z-10 hidden min-h-screen items-end justify-start px-10 pb-10 md:flex">
 			<div
-				class="relative flex flex-wrap items-center justify-start gap-[5px]"
+				class="flex flex-col gap-3"
 				class:animate-fade-in={entered}
 				style="animation-delay: 0.2s; {entered ? '' : 'opacity: 0'}"
-				onmouseenter={() => (bashHovered = true)}
-				onmouseleave={() => (bashHovered = false)}
 			>
-				<div
-					class="flex items-center max-w-full overflow-x-auto rounded-[6px] border border-warm-limestone bg-washed-clay/98 px-4 py-[13px] cursor-pointer transition-[background-color] duration-200 ease-out hover:bg-warm-limestone"
-					onclick={handleCopy}
-					role="button"
-					tabindex="0"
-					onkeydown={(e) => e.key === 'Enter' && handleCopy()}
+				<label
+					class="flex items-center gap-2 text-[0.7rem] tracking-wide text-basalt/60 cursor-pointer select-none w-fit"
 				>
-					<code
-						class="block whitespace-nowrap text-[0.8rem] leading-6 text-basalt underline-offset-2 hover:underline decoration-basalt/30"
+					<span class={!beta ? 'text-basalt' : ''}>stable</span>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={beta}
+						aria-label="Toggle beta channel"
+						onclick={() => (beta = !beta)}
+						class="relative inline-flex h-[18px] w-[32px] shrink-0 items-center rounded-full border border-warm-limestone bg-washed-clay transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basalt/20"
 					>
-						{CMD}
-					</code>
-				</div>
-				<button
-					onclick={handleCopy}
-					class="relative flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-warm-limestone bg-washed-clay/98 px-[15px] py-[13px] text-basalt transition-[background-color] duration-200 ease-out hover:bg-warm-limestone focus-visible:bg-warm-limestone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basalt/20 focus-visible:ring-offset-2"
-					aria-label={showToast ? 'Copied' : 'Copy command'}
+						<span
+							class="pointer-events-none block h-[12px] w-[12px] rounded-full bg-basalt transition-transform duration-200"
+							style="transform: translateX({beta ? '14px' : '2px'})"
+						></span>
+					</button>
+					<span class={beta ? 'text-basalt' : ''}>beta</span>
+				</label>
+				<div
+					class="relative flex flex-wrap items-center justify-start gap-[5px]"
+					onmouseenter={() => (bashHovered = true)}
+					onmouseleave={() => (bashHovered = false)}
 				>
-					{#if showToast}
-						<div
-							class="absolute left-full ml-2 top-0 whitespace-nowrap rounded-[6px] bg-basalt px-3 py-2 text-[0.75rem] text-white shadow-lg animate-toast-in"
+					<div
+						class="flex items-center max-w-full overflow-x-auto rounded-[6px] border border-warm-limestone bg-washed-clay/98 px-4 py-[13px] cursor-pointer transition-[background-color] duration-200 ease-out hover:bg-warm-limestone"
+						onclick={handleCopy}
+						role="button"
+						tabindex="0"
+						onkeydown={(e) => e.key === 'Enter' && handleCopy()}
+					>
+						<code
+							class="block whitespace-nowrap text-[0.8rem] leading-6 text-basalt underline-offset-2 hover:underline decoration-basalt/30"
 						>
-							text copied, paste in your terminal!
-						</div>
-					{/if}
-					{#if showToast}
-						<svg
-							class="h-6 w-6"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<polyline points="20 6 9 17 4 12" />
-						</svg>
-					{:else}
-						<svg
-							class="h-6 w-6"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-							<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-						</svg>
-					{/if}
-				</button>
+							{CMD}
+						</code>
+					</div>
+					<button
+						onclick={handleCopy}
+						class="relative flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-warm-limestone bg-washed-clay/98 px-[15px] py-[13px] text-basalt transition-[background-color] duration-200 ease-out hover:bg-warm-limestone focus-visible:bg-warm-limestone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basalt/20 focus-visible:ring-offset-2"
+						aria-label={showToast ? 'Copied' : 'Copy command'}
+					>
+						{#if showToast}
+							<div
+								class="absolute left-full ml-2 top-0 whitespace-nowrap rounded-[6px] bg-basalt px-3 py-2 text-[0.75rem] text-white shadow-lg animate-toast-in"
+							>
+								text copied, paste in your terminal!
+							</div>
+						{/if}
+						{#if showToast}
+							<svg
+								class="h-6 w-6"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<polyline points="20 6 9 17 4 12" />
+							</svg>
+						{:else}
+							<svg
+								class="h-6 w-6"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+								<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+							</svg>
+						{/if}
+					</button>
+				</div>
 			</div>
 		</section>
 	</section>
