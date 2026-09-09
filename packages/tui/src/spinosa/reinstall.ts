@@ -6,7 +6,7 @@ import { readBundledFrameworkVersion } from "./service"
 import { tuiLog } from "./log"
 import type { CliRunResult } from "./types"
 
-const REINSTALL_TIMEOUT_MS = 120_000
+const REINSTALL_TIMEOUT_MS = 900_000
 
 export type ReinstallInput = {
   channel?: string
@@ -56,16 +56,14 @@ export async function runReinstall(
     let timedOut = false
     let stdout = ""
     let stderr = ""
+    let settled = false
 
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill("SIGTERM")
-      resolve({
-        exitCode: 124,
-        stdout,
-        stderr: "Reinstall timed out after 120s.",
-      })
-    }, REINSTALL_TIMEOUT_MS)
+    const finish = (result: CliRunResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
 
     const child = spawn(
       "bash",
@@ -78,8 +76,43 @@ export async function runReinstall(
         "--no-launch",
         "--no-bundled-tools",
       ],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      { stdio: ["ignore", "pipe", "pipe"], detached: true },
     )
+
+    const killTree = (signal: NodeJS.Signals) => {
+      try {
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, signal)
+          } catch {
+            child.kill(signal)
+          }
+        } else {
+          child.kill(signal)
+        }
+      } catch {}
+    }
+
+    const timer = setTimeout(() => {
+      timedOut = true
+      const msg = `Reinstall timed out after ${REINSTALL_TIMEOUT_MS / 1000}s.`
+      stderr += `\n${msg}\n`
+      input?.onStderr?.(`${msg}\n`)
+      tuiLog(`reinstall timeout after ${REINSTALL_TIMEOUT_MS}ms`)
+      killTree("SIGTERM")
+      const grace = setTimeout(() => {
+        if (!settled) {
+          killTree("SIGKILL")
+        }
+      }, 3000)
+      if (typeof (grace as unknown as { unref?: () => void }).unref === "function") {
+        ;(grace as unknown as { unref: () => void }).unref!()
+      }
+      // Do not resolve immediately — wait for close/error to ensure tree reaped
+    }, REINSTALL_TIMEOUT_MS)
+    if (typeof (timer as unknown as { unref?: () => void }).unref === "function") {
+      ;(timer as unknown as { unref: () => void }).unref!()
+    }
 
     child.stdout.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf-8")
@@ -95,19 +128,26 @@ export async function runReinstall(
     })
 
     const done = (code: number | null) => {
+      if (settled) return
       clearTimeout(timer)
-      if (timedOut) return
+      if (timedOut) {
+        finish({ exitCode: 124, stdout, stderr })
+        return
+      }
       if (code === 0) {
         input?.onStdout?.("Reinstall complete.\n")
-        resolve({ exitCode: 0, stdout, stderr })
+        finish({ exitCode: 0, stdout, stderr })
       } else {
-        resolve({ exitCode: code ?? 1, stdout, stderr })
+        const errMsg = code !== null ? `Reinstall failed with exit ${code}` : "Reinstall failed"
+        if (stderr.trim().length === 0) {
+          input?.onStderr?.(`${errMsg}\n`)
+        }
+        finish({ exitCode: code ?? 1, stdout, stderr: stderr || errMsg })
       }
     }
     child.on("close", (code) => done(code))
     child.on("error", (err) => {
-      clearTimeout(timer)
-      resolve({ exitCode: 1, stdout, stderr: err.message })
+      finish({ exitCode: 1, stdout, stderr: stderr || err.message })
     })
   })
 }

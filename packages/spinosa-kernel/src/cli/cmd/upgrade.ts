@@ -9,9 +9,11 @@ import { upgradeFramework, readEffectiveInstalledVersion } from "@spinosa/core/c
 import { offerWorkspaceUpgrades } from "@spinosa/core/commands/preflight"
 import { updateWorkspace } from "@spinosa/core/commands/update"
 import { isUpgrade } from "@spinosa/core/utils/version"
-import { installUrlForChannel, type ReleaseChannel } from "@spinosa/core/system/channels"
-
-const REINSTALL_URL = installUrlForChannel("beta")
+import {
+  installUrlForChannel,
+  spinosaReleaseChannel,
+  type ReleaseChannel,
+} from "@spinosa/core/system/channels"
 
 export const UpgradeCommand = {
   command: "upgrade [target]",
@@ -100,7 +102,11 @@ export const UpgradeCommand = {
     if (!result.success) {
       prompts.log.error("Upgrade failed.")
       if (result.error) prompts.log.error(result.error)
-      prompts.log.error(`Try reinstalling from ${REINSTALL_URL}`)
+      const effectiveChannel = (args.channel as ReleaseChannel | undefined) ?? (await spinosaReleaseChannel())
+      const reinstallUrl = installUrlForChannel(effectiveChannel)
+      const bootstrap = `curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 2 ${reinstallUrl} -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh`
+      prompts.log.error(`Try reinstalling from ${reinstallUrl}`)
+      prompts.log.error(`Or run: ${bootstrap}`)
       prompts.outro("Upgrade failed.")
       return
     }

@@ -178,21 +178,14 @@ async function smokeDist(dist: string): Promise<void> {
       return
     }
 
-    console.warn(
-      `installer exit ${install.exitCode}; installed binary missing under ${installedBin}.`,
+    const stdoutTail = install.stdout ? String(install.stdout).slice(-2000) : ""
+    const stderrTail = install.stderr ? String(install.stderr).slice(-2000) : ""
+    if (stdoutTail) console.error(`installer stdout tail:\n${stdoutTail}`)
+    if (stderrTail) console.error(`installer stderr tail:\n${stderrTail}`)
+
+    throw new Error(
+      `installer smoke failed: install.sh exited ${install.exitCode} and installed binary missing under ${installedBin} — gate must fail without binary-copy fallback`,
     )
-
-    if (!hasHostBinary) {
-      console.warn("✓ smoke passed (installer failed + no host binary — deep checks skipped)")
-      return
-    }
-
-    // Fallback: stage host binary as a local install would, then version/doctor.
-    mkdirSync(path.dirname(installedBin), { recursive: true })
-    copyFileSync(hostBinary, installedBin)
-    chmodSync(installedBin, 0o755)
-    await smokeBinary(installedBin, "staged host binary (installer fallback)")
-    console.log("✓ smoke passed via binary fallback after installer failure")
   } finally {
     stop()
   }

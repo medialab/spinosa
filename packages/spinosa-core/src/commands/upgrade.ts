@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import * as readline from "node:readline"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { homedir, tmpdir as osTmpdir } from "node:os"
 import path from "node:path"
@@ -97,8 +97,12 @@ export function installedUpgradeVersion(version: string, home = spinosaHome()): 
     })()
     if (fromMeta === version) return fromMeta
 
-    const probe = spawnSync(binaryPath, ["version", "--json"], { encoding: "utf-8" })
-    if (probe.status === 0) {
+    const probe = spawnSync(binaryPath, ["version", "--json"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    })
+    if (probe.status === 0 && !probe.error) {
       try {
         const parsed = JSON.parse(probe.stdout) as { version?: string; data?: { version?: string } }
         const reported = parsed.version ?? parsed.data?.version ?? ""
@@ -128,8 +132,12 @@ export function readEffectiveInstalledVersion(): string {
     })()
     if (fromMeta) return fromMeta
 
-    const probe = spawnSync(binaryPath, ["version", "--json"], { encoding: "utf-8" })
-    if (probe.status === 0) {
+    const probe = spawnSync(binaryPath, ["version", "--json"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    })
+    if (probe.status === 0 && !probe.error) {
       try {
         const parsed = JSON.parse(probe.stdout) as { version?: string; data?: { version?: string } }
         const reported = parsed.version ?? parsed.data?.version ?? ""
@@ -376,23 +384,17 @@ export async function upgradeFramework(
   if (options.yes) upgradeArgs.push("--yes")
   if (options.reinstall) upgradeArgs.push("--reinstall")
 
-  const result = spawnSync("bash", [installerPath, ...upgradeArgs], {
-    stdio: options.suppressInstallOutput ? ["ignore", "pipe", "pipe"] : "inherit",
-  })
-  if (result.status !== 0) {
+  const installerResult = await runInstallerWithTimeout(
+    installerPath,
+    upgradeArgs,
+    options,
+  )
+  if (installerResult.status !== 0) {
     rmSync(tmpdir, { recursive: true, force: true })
-    // With stdio "inherit", stderr is null; with "pipe" it is Buffer. Avoid
-    // typeof narrowing that collapses to `never` under the union spawn options.
-    const rawStderr = result.stderr as Buffer | string | null | undefined
-    const stderr =
-      rawStderr == null
-        ? ""
-        : Buffer.isBuffer(rawStderr)
-          ? rawStderr.toString("utf8").trim()
-          : String(rawStderr).trim()
-    const detail = stderr
-      || (result.error ? result.error.message : "")
-      || `installer exited with status ${result.status ?? "unknown"}`
+    const detail =
+      installerResult.stderr.trim() ||
+      installerResult.error?.message ||
+      `installer exited with status ${installerResult.status ?? "unknown"}${installerResult.timedOut ? " (timed out)" : ""}`
     return {
       success: false,
       previousVersion: effectiveInstalled || undefined,
@@ -450,6 +452,84 @@ export async function upgradeFramework(
     newVersion: resolvedVersion,
     workspaceUpgradesNeeded: needsUpdate,
   }
+}
+
+const INSTALLER_TIMEOUT_MS = 900_000
+
+async function runInstallerWithTimeout(
+  installerPath: string,
+  upgradeArgs: string[],
+  options: UpgradeOptions,
+): Promise<{ status: number | null; stderr: string; error?: Error; timedOut?: boolean }> {
+  return new Promise((resolve) => {
+    const suppress = !!options.suppressInstallOutput
+    let stderr = ""
+    let timedOut = false
+    const child = spawn("bash", [installerPath, ...upgradeArgs], {
+      stdio: suppress ? ["ignore", "pipe", "pipe"] : "inherit",
+      detached: true,
+    })
+
+    let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+      timedOut = true
+      try {
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, "SIGTERM")
+          } catch {
+            child.kill("SIGTERM")
+          }
+        } else {
+          child.kill("SIGTERM")
+        }
+      } catch {}
+      const killTimer = setTimeout(() => {
+        try {
+          if (child.pid) {
+            try {
+              process.kill(-child.pid, "SIGKILL")
+            } catch {
+              child.kill("SIGKILL")
+            }
+          } else {
+            child.kill("SIGKILL")
+          }
+        } catch {}
+      }, 3000)
+      // Ensure killTimer doesn't keep process alive
+      if (killTimer && typeof (killTimer as unknown as { unref?: () => void }).unref === "function") {
+        ;(killTimer as unknown as { unref: () => void }).unref!()
+      }
+    }, INSTALLER_TIMEOUT_MS)
+    if (timer && typeof (timer as unknown as { unref?: () => void }).unref === "function") {
+      ;(timer as unknown as { unref: () => void }).unref!()
+    }
+
+    if (suppress && child.stderr) {
+      child.stderr.on("data", (chunk: Buffer) => {
+        const text = chunk.toString("utf-8")
+        stderr += text
+        options.onPhase?.("install_output", text)
+      })
+    }
+    if (suppress && child.stdout) {
+      child.stdout.on("data", (chunk: Buffer) => {
+        options.onPhase?.("install_output", chunk.toString("utf-8"))
+      })
+    }
+
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer)
+      resolve({ status: 1, stderr, error: err, timedOut })
+    })
+    child.on("close", (code) => {
+      if (timer) clearTimeout(timer)
+      if (timedOut && stderr.trim().length === 0) {
+        stderr = `Installer timed out after ${INSTALLER_TIMEOUT_MS / 1000}s`
+      }
+      resolve({ status: code, stderr, timedOut })
+    })
+  })
 }
 export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   spinosaLogInfo("upgrade", "checkUpgradeAvailable start")

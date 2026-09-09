@@ -148,18 +148,17 @@ export async function setAutoUpgrade(enabled: boolean): Promise<void> {
 export async function resolvePinnedVersionFromInstaller(url: string): Promise<string | undefined> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  let response: Response
   try {
-    response = await fetch(url, { signal: controller.signal })
+    const response = await fetch(url, { signal: controller.signal })
+    if (!response.ok) return undefined
+    const script = await response.text()
+    const version = parseInstallPinnedVersion(script)
+    return version ?? undefined
   } catch {
     return undefined
   } finally {
     clearTimeout(timer)
   }
-  if (!response.ok) return undefined
-  const script = await response.text()
-  const version = parseInstallPinnedVersion(script)
-  return version ?? undefined
 }
 
 export async function resolveLatestStableVersion(): Promise<string | undefined> {

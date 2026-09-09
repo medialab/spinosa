@@ -170,6 +170,7 @@ type SourcePathEntry = {
 };
 
 const CANCELABLE_STEPS = [
+  "tools",
   "setup",
   "direct",
   "markitdown",
@@ -748,12 +749,19 @@ export function Onboarding() {
         "repair-tools",
         `${checks.filter((t) => t.status === "missing").length} tools missing`,
       );
-      void runToolRepair().catch((err) => {
-        logError("runToolRepair", err);
-        appendLogLine(
-          `Tool repair failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      void activeWork.run(async () => {
+        setBusy(true)
+        try {
+          await runToolRepair()
+        } catch (err) {
+          logError("runToolRepair", err);
+          appendLogLine(
+            `Tool repair failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        } finally {
+          setBusy(false)
+        }
+      })
     } else if (toolsReady) {
       logAction("start-scan", "All tools ready");
       void startScan();

@@ -16,7 +16,7 @@ if [ -z "${BASH_VERSION-}" ]; then
     echo "" >&2
     echo "  This installer must be run under bash." >&2
     echo "  Please use one of the following:" >&2
-    echo "    curl -fsSL https://github.com/medialab/spinosa/releases/download/stable/install.sh | bash" >&2
+    echo "    curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 https://github.com/medialab/spinosa/releases/download/stable/install.sh -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh" >&2
     echo "    bash <(curl -fsSL https://github.com/medialab/spinosa/releases/download/stable/install.sh)" >&2
     echo "    curl -fsSL ... -o install.sh && bash install.sh" >&2
     echo "" >&2
@@ -90,17 +90,39 @@ _spinosa_install_err_trap() {
   exit "$exit_code"
 }
 
+_spinosa_cleanup_lock() {
+  if [ -n "${INSTALL_LOCKDIR:-}" ] && [ -f "${INSTALL_LOCKDIR}/pid" ]; then
+    local _lp
+    _lp="$(cat "${INSTALL_LOCKDIR}/pid" 2>/dev/null || true)"
+    if [ "$_lp" = "$$" ]; then
+      rm -rf "${INSTALL_LOCKDIR}" 2>/dev/null || true
+    fi
+  elif [ -n "${INSTALL_LOCKDIR:-}" ] && [ -z "$(ls -A "${INSTALL_LOCKDIR}" 2>/dev/null || true)" ]; then
+    rmdir "${INSTALL_LOCKDIR}" 2>/dev/null || true
+  fi
+}
+
 _spinosa_install_signal() {
   local exit_code="${1:-130}"
   trap - INT TERM HUP
   if [ -n "${STEP_COMMAND_PID:-}" ]; then
-    terminate_process_tree "$STEP_COMMAND_PID"
+    kill_process_tree_graceful "$STEP_COMMAND_PID"
+    # Wait with deadline — do not hang indefinitely if descendants ignore signals
+    local waited=0
+    while kill -0 "$STEP_COMMAND_PID" 2>/dev/null && [ "$waited" -lt 10 ]; do
+      sleep 0.2
+      waited=$((waited + 1))
+    done
     wait "$STEP_COMMAND_PID" 2>/dev/null || true
     STEP_COMMAND_PID=""
   fi
   [ -n "${STEP_OUTPUT_FILE:-}" ] && rm -f "$STEP_OUTPUT_FILE" 2>/dev/null || true
   STEP_OUTPUT_FILE=""
   step_end "$exit_code" "${STEP_LABEL:-Install} cancelled" 2>/dev/null || true
+  _spinosa_cleanup_lock
+  if [ -n "${SPINOSA_EARLY_LOG:-}" ] && [ -f "$SPINOSA_EARLY_LOG" ]; then
+    rm -f "$SPINOSA_EARLY_LOG" 2>/dev/null || true
+  fi
   exit "$exit_code"
 }
 
@@ -138,6 +160,9 @@ SHIM_STAGE_FILE=""
 SPINOSA_ENV_FILE=""
 SPINOSA_PATH_CONFIG_FILE=""
 ACTIVATION_STARTED=0
+SHIM_BACKUP=""
+CONFIG_BACKUP=""
+ENV_BACKUP=""
 
 # ══════════════════════════════════════════════════════════════════════════════
 # UI HELPERS
@@ -182,10 +207,21 @@ read_from_tty() {
 }
 
 flush_pending_input() {
-  local _discard
-  while IFS= read -r -t 0 _discard 2>/dev/null; do :; done
+  # Safe bounded drain of pending typeahead on /dev/tty only.
+  # The previous implementation drained the script's stdin pipe with
+  # `read -t 0` which never consumes input and spins forever on
+  # Linux Bash 5.x when stdin is a pipe at EOF. Never drain the
+  # installer's script input stream; only discard a bounded amount
+  # of pending data from the controlling terminal with a consuming read.
   if [ -r /dev/tty ]; then
-    while IFS= read -r -t 0 _discard </dev/tty 2>/dev/null; do :; done
+    local _discard
+    local _count=0
+    while [ "$_count" -lt 5 ]; do
+      if ! IFS= read -r -t 0.05 _discard </dev/tty 2>/dev/null; then
+        break
+      fi
+      _count=$((_count + 1))
+    done
   fi
 }
 
@@ -260,19 +296,45 @@ step_end() {
 }
 
 terminate_process_tree() {
-  local pid="$1" child
-  while IFS= read -r child; do
-    child="${child//[[:space:]]/}"
-    [ -n "$child" ] || continue
-    terminate_process_tree "$child"
-  done < <(
+  local pid="$1" sig="${2:-TERM}" child
+  # Collect children before signalling parent to avoid race
+  local children
+  children="$(
     if command -v pgrep >/dev/null 2>&1; then
       pgrep -P "$pid" 2>/dev/null || true
     else
       ps -eo pid=,ppid= 2>/dev/null | awk -v parent="$pid" '$2 == parent { print $1 }'
     fi
-  )
-  kill -TERM "$pid" 2>/dev/null || true
+  )"
+  for child in $children; do
+    child="${child//[[:space:]]/}"
+    [ -n "$child" ] || continue
+    terminate_process_tree "$child" "$sig"
+  done
+  kill "-${sig}" "$pid" 2>/dev/null || kill "-${sig}" "-$pid" 2>/dev/null || kill -"${sig}" "$pid" 2>/dev/null || true
+}
+
+kill_process_tree_graceful() {
+  local pid="$1"
+  terminate_process_tree "$pid" TERM
+  sleep 2
+  if kill -0 "$pid" 2>/dev/null; then
+    terminate_process_tree "$pid" KILL
+    sleep 0.5
+  fi
+  # Reap any remaining descendants
+  local remaining
+  remaining="$(
+    if command -v pgrep >/dev/null 2>&1; then
+      pgrep -P "$pid" 2>/dev/null || true
+    else
+      ps -eo pid=,ppid= 2>/dev/null | awk -v parent="$pid" '$2 == parent { print $1 }'
+    fi
+  )"
+  for child in $remaining; do
+    kill -KILL "$child" 2>/dev/null || true
+  done
+  kill -KILL "$pid" 2>/dev/null || true
 }
 
 run_timed_step() {
@@ -284,18 +346,28 @@ run_timed_step() {
   STEP_OUTPUT_FILE="$output_file"
   step_begin "$label" "$timeout_seconds"
   started="$(date +%s)"
+  # Stream child output to log live while also capturing for final tail
   (trap - ERR; "$@") >"$output_file" 2>&1 &
   pid=$!
   STEP_COMMAND_PID="$pid"
+  # Live tee: tail output file to log in background (best-effort)
+  local tee_pid=""
+  if command -v tail >/dev/null 2>&1; then
+    tail -F "$output_file" 2>/dev/null | while IFS= read -r line; do spinosa_log INFO "${label}: ${line}"; done &
+    tee_pid=$!
+  fi
   while kill -0 "$pid" 2>/dev/null; do
     if (( $(date +%s) - started >= timeout_seconds )); then
-      terminate_process_tree "$pid"
-      sleep 1
-      kill -KILL "$pid" 2>/dev/null || true
+      kill_process_tree_graceful "$pid"
       wait "$pid" 2>/dev/null || true
+      [ -n "$tee_pid" ] && kill "$tee_pid" 2>/dev/null || true
+      wait "$tee_pid" 2>/dev/null || true
       STEP_COMMAND_PID=""
       step_end 124 "${label} timed out after ${timeout_seconds}s"
+      # Ensure full output is logged even if live tee missed tail
       while IFS= read -r line; do spinosa_log ERROR "$line"; done < "$output_file"
+      tail -n 20 "$output_file" >&2 || true
+      spinosa_log ERROR "${label} timed out after ${timeout_seconds}s — last 20 lines preserved above"
       rm -f "$output_file"
       STEP_OUTPUT_FILE=""
       return 124
@@ -303,6 +375,8 @@ run_timed_step() {
     sleep 0.2
   done
   wait "$pid" || status=$?
+  [ -n "$tee_pid" ] && kill "$tee_pid" 2>/dev/null || true
+  wait "$tee_pid" 2>/dev/null || true
   STEP_COMMAND_PID=""
   while IFS= read -r line; do spinosa_log INFO "${label}: ${line}"; done < "$output_file"
   if [ "$status" -ne 0 ]; then
@@ -561,10 +635,44 @@ prompt_install_repair() {
   esac
 }
 
+is_legacy_spinosa_home() {
+  local home="$1"
+  # v0.5/v0.6: metadata/install.yaml with install record
+  if [ -f "${home}/metadata/install.yaml" ] && grep -q 'last_installed_version' "${home}/metadata/install.yaml" 2>/dev/null; then
+    return 0
+  fi
+  # v0.7/v0.8: completion stamp under versions tree
+  if [ -d "${home}/versions" ]; then
+    local _entry
+    for _entry in "${home}/versions"/*; do
+      [ -e "$_entry" ] || continue
+      [ -f "${_entry}/.spinosa-install-complete" ] && return 0
+    done
+  fi
+  # v0.8 config without spinosa:true but with last_installed_version
+  if [ -f "${home}/metadata/config.yaml" ] && grep -q 'last_installed_version' "${home}/metadata/config.yaml" 2>/dev/null; then
+    if ! grep -q '^spinosa: true$' "${home}/metadata/config.yaml" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  # Root-level legacy metadata (pre-metadata dir migration)
+  if [ -f "${home}/config.yaml" ] && grep -q 'last_installed_version' "${home}/config.yaml" 2>/dev/null; then
+    return 0
+  fi
+  if [ -f "${home}/install.yaml" ] && grep -q 'last_installed_version' "${home}/install.yaml" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
 is_reclaimable_spinosa_home() {
   local home="$1"
   local entry base
   [ -d "$home" ] || return 1
+  # Legacy installs must never be treated as disposable debris
+  if is_legacy_spinosa_home "$home"; then
+    return 1
+  fi
   if grep -q '^spinosa: true$' "${home}/metadata/config.yaml" 2>/dev/null \
     || [ -f "${home}/metadata/workspaces.json" ] \
     || [ -f "${home}/workspace_cache.txt" ]; then
@@ -609,7 +717,8 @@ spinosa_home_is_owned() {
   local home="${1:-$SPINOSA_HOME}"
   grep -q '^spinosa: true$' "${home}/metadata/config.yaml" 2>/dev/null \
     || [ -f "${home}/metadata/workspaces.json" ] \
-    || [ -f "${home}/workspace_cache.txt" ]
+    || [ -f "${home}/workspace_cache.txt" ] \
+    || is_legacy_spinosa_home "$home"
 }
 
 legacy_source_runtime_present() {
@@ -912,7 +1021,19 @@ init_global_metadata() {
     legacy="${SPINOSA_HOME}/${name}"
     current="${SPINOSA_METADATA_DIR}/${name}"
     if [ -f "$legacy" ] && [ ! -f "$current" ]; then
-      mv "$legacy" "$current" 2>/dev/null || cp "$legacy" "$current" 2>/dev/null || true
+      if mv "$legacy" "$current" 2>/dev/null; then
+        spinosa_log INFO "migrated ${legacy} to ${current} via mv"
+      elif cp "$legacy" "$current" 2>/dev/null; then
+        spinosa_log INFO "migrated ${legacy} to ${current} via cp"
+        rm -f "$legacy" 2>/dev/null || true
+      else
+        warn "Failed to migrate ${legacy} to ${current} — original preserved; manual review may be needed"
+        spinosa_log WARN "metadata migration failed legacy=${legacy} current=${current}"
+        # Do not remove legacy; leave it for manual recovery and do not treat as fatal yet.
+      fi
+      if [ ! -f "$current" ]; then
+        spinosa_log ERROR "metadata migration left no current file at ${current}"
+      fi
     fi
   done
 }
@@ -939,6 +1060,13 @@ config_delete_key() {
 
 write_install_metadata() {
   mkdir -p "$SPINOSA_METADATA_DIR"
+  # Backup config for rollback before mutating
+  CONFIG_BACKUP=""
+  local config="${SPINOSA_METADATA_DIR}/config.yaml"
+  if [ -f "$config" ]; then
+    CONFIG_BACKUP="${SPINOSA_STAGING_DIR}/config.backup.$$"
+    cp "$config" "$CONFIG_BACKUP" 2>/dev/null || CONFIG_BACKUP=""
+  fi
   local install_tmp="${SPINOSA_METADATA_DIR}/install.yaml.tmp.$$"
   cat > "$install_tmp" << EOF
 # Install state — machine-generated
@@ -946,9 +1074,11 @@ install_root: "${SPINOSA_HOME}"
 bin_dir: "${SPINOSA_BIN_DIR}"
 distribution: binary
 EOF
-  mv "$install_tmp" "${SPINOSA_METADATA_DIR}/install.yaml"
+  if ! mv "$install_tmp" "${SPINOSA_METADATA_DIR}/install.yaml"; then
+    restore_binary_backup_if_needed
+    die "Failed to write install.yaml"
+  fi
 
-  local config="${SPINOSA_METADATA_DIR}/config.yaml"
   if [ ! -f "$config" ]; then
     local config_tmp="${config}.tmp.$$"
     cat > "$config_tmp" << CONFIG_EOF
@@ -1055,6 +1185,32 @@ extract_template_pack_id() {
   [ -n "$pack" ] && printf '%s\n' "$pack"
 }
 
+probe_spinosa_version_output() {
+  local binary="$1"
+  local out_file pid waited
+  out_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe.XXXXXX")"
+  (
+    "$binary" version --json 2>/dev/null || "$binary" version 2>/dev/null || true
+  ) >"$out_file" 2>&1 &
+  pid=$!
+  waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge 25 ]; then
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 1
+      kill -KILL "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      rm -f "$out_file"
+      return 1
+    fi
+    sleep 0.2
+    waited=$((waited + 1))
+  done
+  wait "$pid" 2>/dev/null || true
+  cat "$out_file" 2>/dev/null || true
+  rm -f "$out_file"
+}
+
 get_installed_version() {
   local meta_ver=""
   meta_ver="$(read_last_installed_version 2>/dev/null || true)"
@@ -1064,11 +1220,14 @@ get_installed_version() {
   fi
   if [ -x "${SPINOSA_HOME}/bin/spinosa" ]; then
     local out ver
-    out="$("${SPINOSA_HOME}/bin/spinosa" version --json 2>/dev/null || "${SPINOSA_HOME}/bin/spinosa" version 2>/dev/null || true)"
-    if ver="$(parse_version_output "$out")"; then
-      printf '%s\n' "$ver"
-      return 0
+    if out="$(probe_spinosa_version_output "${SPINOSA_HOME}/bin/spinosa" 2>/dev/null || true)"; then
+      if [ -n "$out" ] && ver="$(parse_version_output "$out")"; then
+        printf '%s\n' "$ver"
+        return 0
+      fi
     fi
+    # Probe timed out or failed — treat as unhealthy, fall through to metadata
+    spinosa_log WARN "version probe timed out or failed for ${SPINOSA_HOME}/bin/spinosa"
   fi
   if [ -n "$meta_ver" ]; then
     printf '%s\n' "$meta_ver"
@@ -1293,7 +1452,13 @@ classify_workspace_launcher() {
     printf '%s\n' "missing"
     return 0
   fi
-  if ! body="$(cat "$launcher" 2>/dev/null)"; then
+  # Only read regular files with bounded size; FIFOs, sockets, directories or
+  # unreadable files must not block the installer.
+  if [ ! -f "$launcher" ]; then
+    printf '%s\n' "unreadable"
+    return 0
+  fi
+  if ! body="$(head -c 16384 "$launcher" 2>/dev/null)"; then
     printf '%s\n' "unreadable"
     return 0
   fi
@@ -1338,6 +1503,7 @@ migrate_workspace_launchers() {
 
   while IFS= read -r workspace; do
     [ -n "$workspace" ] || continue
+    info "Checking workspace: ${workspace}"
     launcher="${workspace}/.bin/spinosa"
     status="$(classify_workspace_launcher "$launcher")"
     case "$status" in
@@ -1353,7 +1519,7 @@ migrate_workspace_launchers() {
         ;;
       modified|unreadable)
         preserved=$((preserved + 1))
-        warn "Preserved modified workspace launcher: ${launcher}"
+        warn "Preserved modified workspace launcher: ${launcher} (status: ${status})"
         ;;
     esac
   done < <(list_registered_workspace_paths)
@@ -1370,16 +1536,14 @@ run_staged_binary_checks() {
 
   [ -x "$binary" ] || die "Staged binary is not executable: ${binary}"
 
-  out="$("$binary" version --json 2>/dev/null || true)"
-  if [ -n "$out" ]; then
-    if ver="$(parse_version_output "$out")"; then
+  if out="$(probe_spinosa_version_output "$binary" 2>/dev/null || true)"; then
+    if [ -n "$out" ] && ver="$(parse_version_output "$out")"; then
       version_ok=1
     fi
   fi
   if [ "$version_ok" -eq 0 ]; then
-    out="$("$binary" version 2>/dev/null || true)"
-    ver="$(parse_version_output "$out")" || die "Staged binary failed version check"
-    version_ok=1
+    # Fallback already included in probe (tries both --json and plain); if still not ok, fail
+    [ -n "${ver:-}" ] || die "Staged binary failed version check"
   fi
 
   if [ "$ver" != "$VERSION" ]; then
@@ -1395,37 +1559,98 @@ run_staged_binary_checks() {
 
   # Activation gates (binary-distribution-contract): template ensure/verify + doctor
   # must pass before the staged binary is activated. Fail closed — never soft-continue.
-  if "$binary" internal template ensure --json >/dev/null 2>&1; then
+  # Preserve diagnostics in the log instead of discarding to /dev/null.
+  local gate_tmp
+  gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-gate.XXXXXX")"
+  if "$binary" internal template ensure --json >"$gate_tmp" 2>&1; then
+    spinosa_log INFO "template ensure output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
     ok "Template ensure succeeded"
-    if "$binary" internal template verify --json >/dev/null 2>&1; then
+    if "$binary" internal template verify --json >"$gate_tmp" 2>&1; then
+      spinosa_log INFO "template verify output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
       ok "Template verify succeeded"
     else
+      spinosa_log ERROR "template verify failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+      rm -f "$gate_tmp"
       die "Template verify failed — refusing to activate staged binary"
     fi
   else
+    spinosa_log ERROR "template ensure failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+    rm -f "$gate_tmp"
     die "Template ensure failed — refusing to activate staged binary"
   fi
-
-  if ! "$binary" doctor >/dev/null 2>&1; then
+  rm -f "$gate_tmp"
+  gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-doctor.XXXXXX")"
+  if "$binary" doctor >"$gate_tmp" 2>&1; then
+    spinosa_log INFO "doctor output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+    ok "Doctor passed"
+  else
+    spinosa_log ERROR "doctor failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+    rm -f "$gate_tmp"
     die "Doctor reported issues — refusing to activate staged binary"
   fi
-  ok "Doctor passed"
+  rm -f "$gate_tmp"
 }
 
 restore_binary_backup_if_needed() {
   [ "${ACTIVATION_STARTED:-0}" -eq 1 ] || return 0
   [ "${INSTALL_COMPLETED:-0}" -eq 0 ] || return 0
   local active="${SPINOSA_HOME}/bin/spinosa"
+  local shim="${SPINOSA_BIN_DIR}/spinosa"
+  local config="${SPINOSA_METADATA_DIR}/config.yaml"
+  local env_file="${SPINOSA_HOME}/env.sh"
+  local restored=0
   if [ -n "${BINARY_BACKUP:-}" ] && [ -e "$BINARY_BACKUP" ]; then
     spinosa_log WARN "restoring previous binary from ${BINARY_BACKUP}"
-    rm -f "$active" 2>/dev/null || true
-    mv "$BINARY_BACKUP" "$active" 2>/dev/null || true
-    chmod +x "$active" 2>/dev/null || true
+    if rm -f "$active" 2>/dev/null && mv "$BINARY_BACKUP" "$active" 2>/dev/null; then
+      chmod +x "$active" 2>/dev/null || true
+      restored=1
+    else
+      spinosa_log ERROR "failed to restore binary backup from ${BINARY_BACKUP}"
+    fi
     BINARY_BACKUP=""
   fi
   if [ -n "${BINARY_STAGED:-}" ] && [ -e "$BINARY_STAGED" ]; then
     rm -f "$BINARY_STAGED" 2>/dev/null || true
     BINARY_STAGED=""
+  fi
+  if [ -n "${SHIM_BACKUP:-}" ] && [ -e "$SHIM_BACKUP" ]; then
+    spinosa_log WARN "restoring previous shim from ${SHIM_BACKUP}"
+    if ! mv "$SHIM_BACKUP" "$shim" 2>/dev/null; then
+      spinosa_log ERROR "failed to restore shim backup from ${SHIM_BACKUP}"
+    fi
+    SHIM_BACKUP=""
+  elif [ -n "${SHIM_BACKUP:-}" ] && [ ! -e "$shim" ]; then
+    # Backup was empty file marker for non-existent shim — remove newly created shim
+    rm -f "$shim" 2>/dev/null || true
+    SHIM_BACKUP=""
+  fi
+  if [ -n "${CONFIG_BACKUP:-}" ] && [ -e "$CONFIG_BACKUP" ]; then
+    spinosa_log WARN "restoring previous config from ${CONFIG_BACKUP}"
+    if ! mv "$CONFIG_BACKUP" "$config" 2>/dev/null; then
+      spinosa_log ERROR "failed to restore config backup from ${CONFIG_BACKUP}"
+    fi
+    CONFIG_BACKUP=""
+  fi
+  if [ -n "${ENV_BACKUP:-}" ] && [ -e "$ENV_BACKUP" ]; then
+    spinosa_log WARN "restoring previous env.sh from ${ENV_BACKUP}"
+    if ! mv "$ENV_BACKUP" "$env_file" 2>/dev/null; then
+      spinosa_log ERROR "failed to restore env backup from ${ENV_BACKUP}"
+    fi
+    ENV_BACKUP=""
+  fi
+  # Verify restoration consistency
+  if [ "$restored" -eq 1 ]; then
+    local out ver
+    if out="$(probe_spinosa_version_output "$active" 2>/dev/null || true)" && ver="$(parse_version_output "$out" 2>/dev/null || true)" && [ -n "$ver" ]; then
+      spinosa_log INFO "restored binary verifies as v${ver}"
+    else
+      spinosa_log WARN "restored binary failed to verify — manual repair may be needed"
+    fi
+  fi
+  # Clean up any remaining staged shim file
+  if [ -n "${SHIM_STAGE_FILE:-}" ] && [ -e "$SHIM_STAGE_FILE" ]; then
+    rm -f "$SHIM_STAGE_FILE" 2>/dev/null || true
+    SHIM_STAGE_FILE=""
   fi
 }
 
@@ -1458,7 +1683,14 @@ verify_active_binary() {
   local active="${SPINOSA_HOME}/bin/spinosa"
   local out ver
   [ -x "$active" ] || die "Active binary missing or not executable after activation"
-  out="$("$active" version --json 2>/dev/null || "$active" version 2>/dev/null || true)"
+  if ! out="$(probe_spinosa_version_output "$active" 2>/dev/null || true)"; then
+    restore_binary_backup_if_needed
+    die "Active binary failed version verification after activation (probe timed out). See $(spinosa_log_file)"
+  fi
+  if [ -z "$out" ]; then
+    restore_binary_backup_if_needed
+    die "Active binary failed version verification after activation (no output). See $(spinosa_log_file)"
+  fi
   ver="$(parse_version_output "$out")" || {
     restore_binary_backup_if_needed
     die "Active binary failed version verification after activation. See $(spinosa_log_file)"
@@ -1481,6 +1713,15 @@ install_shims() {
     die "Refusing to overwrite non-Spinosa command: ${shim}. Move it or choose --bin-dir."
   fi
   mkdir -p "$SPINOSA_BIN_DIR"
+  # Backup shim for transactional rollback before mutating
+  SHIM_BACKUP=""
+  if [ -e "$shim" ]; then
+    SHIM_BACKUP="${SPINOSA_STAGING_DIR}/shim.backup.$$"
+    cp "$shim" "$SHIM_BACKUP" 2>/dev/null || SHIM_BACKUP=""
+  else
+    SHIM_BACKUP="${SPINOSA_STAGING_DIR}/shim.backup.$$"
+    : > "$SHIM_BACKUP" 2>/dev/null || SHIM_BACKUP=""
+  fi
   local shim_tmp="${shim}.tmp.$$"
   SHIM_STAGE_FILE="$shim_tmp"
   cat > "$shim_tmp" <<'SHIM_EOF'
@@ -1503,6 +1744,12 @@ SHIM_EOF
 write_spinosa_env_file() {
   SPINOSA_ENV_FILE="${SPINOSA_HOME}/env.sh"
   mkdir -p "$SPINOSA_HOME"
+  # Backup env.sh for rollback
+  ENV_BACKUP=""
+  if [ -f "$SPINOSA_ENV_FILE" ]; then
+    ENV_BACKUP="${SPINOSA_STAGING_DIR}/env.backup.$$"
+    cp "$SPINOSA_ENV_FILE" "$ENV_BACKUP" 2>/dev/null || ENV_BACKUP=""
+  fi
   local env_tmp="${SPINOSA_ENV_FILE}.tmp.$$"
   cat > "$env_tmp" << EOF
 # Spinosa CLI environment — managed by install.sh
@@ -1510,7 +1757,10 @@ export SPINOSA_HOME="${SPINOSA_HOME}"
 export SPINOSA_BIN_DIR="${SPINOSA_BIN_DIR}"
 export PATH="${SPINOSA_BIN_DIR}:\$PATH"
 EOF
-  mv "$env_tmp" "$SPINOSA_ENV_FILE"
+  if ! mv "$env_tmp" "$SPINOSA_ENV_FILE"; then
+    restore_binary_backup_if_needed
+    die "Failed to write env.sh"
+  fi
 }
 
 shell_path_default_config() {
@@ -1752,6 +2002,18 @@ main() {
   SPINOSA_LOG_DISABLED=1
   SPINOSA_METADATA_DIR="${SPINOSA_HOME}/metadata"
   SPINOSA_STAGING_DIR="${SPINOSA_HOME}/.staging"
+  # Early attempt log before home validation/lock — ensures a hang before
+  # persistent logging is still diagnosable. Display path immediately.
+  local early_log="${TMPDIR:-/tmp}/spinosa-install-$$.log"
+  SPINOSA_EARLY_LOG="$early_log"
+  {
+    printf '\n---\n'
+    printf '%s early component=install pid=%s ppid=%s shell=%s cwd=%s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$PPID" "${BASH_VERSION:-sh}" "$PWD"
+    printf 'argv=%q\n' "$0 $*"
+    printf 'version=%s home=%s bin=%s\n' "${VERSION:-}" "${SPINOSA_HOME:-}" "${SPINOSA_BIN_DIR:-}"
+  } >> "$early_log" 2>/dev/null || true
+  printf '  → install attempt log: %s\n' "$early_log" >&2
 
   validate_install_paths
   preflight_tools
@@ -1805,13 +2067,18 @@ main() {
     fi
   fi
   printf '%s\n' "$$" > "${lockdir}/pid"
-  trap 'restore_binary_backup_if_needed; rm -rf "${INSTALL_LOCKDIR:-}"; if [ -n "${SHIM_STAGE_FILE:-}" ]; then rm -f "$SHIM_STAGE_FILE"; fi' EXIT
+  trap 'restore_binary_backup_if_needed; _spinosa_cleanup_lock; if [ -n "${SHIM_STAGE_FILE:-}" ]; then rm -f "$SHIM_STAGE_FILE"; fi; if [ -n "${SPINOSA_EARLY_LOG:-}" ] && [ -f "$SPINOSA_EARLY_LOG" ]; then rm -f "$SPINOSA_EARLY_LOG"; fi' EXIT
   trap '_spinosa_install_signal 130' INT TERM HUP
 
   init_global_metadata
 
   SPINOSA_LOG_DISABLED=0
   spinosa_log_init "install.sh" "$0" "$@"
+  # Merge early attempt log into persistent log
+  if [ -n "${SPINOSA_EARLY_LOG:-}" ] && [ -f "$SPINOSA_EARLY_LOG" ]; then
+    cat "$SPINOSA_EARLY_LOG" >> "$(spinosa_log_file)" 2>/dev/null || true
+    spinosa_log INFO "merged early log from ${SPINOSA_EARLY_LOG}"
+  fi
   spinosa_log INFO "version=${VERSION} home=${SPINOSA_HOME} bin=${SPINOSA_BIN_DIR} platform=${PLATFORM} distribution=binary"
 
   check_release_age "$VERSION" "$MIN_DAYS"
@@ -1824,7 +2091,8 @@ main() {
 
   should_install "$VERSION" || { rm -rf "$lockdir"; trap - EXIT INT TERM HUP; return 0; }
   mkdir -p "${SPINOSA_HOME}/bin" "$SPINOSA_STAGING_DIR" "$SPINOSA_BIN_DIR"
-  check_download_disk_space
+  run_timed_step "Check disk space" 15 check_download_disk_space \
+    || warn "Disk space check timed out or failed — install will continue, but ensure ~100MB free; see $(spinosa_log_file)"
 
   section "Download & verify"
 
@@ -1859,15 +2127,17 @@ main() {
 
   # Commit metadata only after successful activation + shim.
   write_install_metadata
-  migrate_workspace_launchers
+  run_timed_step "Migrate workspace launchers" 30 migrate_workspace_launchers \
+    || warn "Workspace launcher migration timed out or failed — some workspaces may need manual repair; see $(spinosa_log_file)"
 
   INSTALL_COMPLETED=1
   ACTIVATION_STARTED=0
-  if [ -n "${BINARY_BACKUP:-}" ] && [ -e "$BINARY_BACKUP" ]; then
-    rm -f "$BINARY_BACKUP"
-    BINARY_BACKUP=""
-  fi
+  for _bk in "${BINARY_BACKUP:-}" "${SHIM_BACKUP:-}" "${CONFIG_BACKUP:-}" "${ENV_BACKUP:-}"; do
+    [ -n "$_bk" ] && [ -e "$_bk" ] && rm -f "$_bk" 2>/dev/null || true
+  done
+  BINARY_BACKUP=""; SHIM_BACKUP=""; CONFIG_BACKUP=""; ENV_BACKUP=""
   rm -f "$checksums_file"
+  rm -f "${SPINOSA_EARLY_LOG:-}" 2>/dev/null || true
 
   if legacy_source_runtime_present; then
     note "Legacy source runtime remains under ${SPINOSA_HOME}/versions/ (not deleted)."
@@ -1879,9 +2149,8 @@ main() {
   trap - EXIT INT TERM HUP
 
   if [ "$PREFIX_MODE" -eq 0 ]; then
-    step_begin "Configure shell PATH" 15
-    setup_shell_path
-    step_end 0 "Configure shell PATH"
+    run_timed_step "Configure shell PATH" 15 setup_shell_path \
+      || warn "Shell PATH configuration timed out or failed — add ${SPINOSA_BIN_DIR} to PATH manually; see $(spinosa_log_file)"
     activate_spinosa_path_for_session
   fi
 

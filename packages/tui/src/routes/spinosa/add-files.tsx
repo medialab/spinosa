@@ -84,7 +84,7 @@ type SourcePathEntry = {
   id: number
 }
 
-const CANCELABLE_STEPS = ["direct", "markitdown", "ocr"] as const
+const CANCELABLE_STEPS = ["tools", "direct", "markitdown", "ocr"] as const
 
 let nextSourceId = 1
 
@@ -471,7 +471,14 @@ export function AddFiles() {
     const toolsReady = checks.every((t) => t.status === "available" || t.status === "unsupported")
     if (needsRepair) {
       logAction("repair-tools", `${checks.filter(t => t.status === "missing").length} tools missing`)
-      void runToolRepair()
+      void activeWork.run(async () => {
+        setBusy(true)
+        try {
+          await runToolRepair()
+        } finally {
+          setBusy(false)
+        }
+      })
     } else if (toolsReady) {
       logAction("start-scan", "All tools ready")
       startScan().catch((err) => {
@@ -488,37 +495,52 @@ export function AddFiles() {
     logAction("repair", "Tools missing — repairing")
     setToolChecks((prev) => prev.map((t) => t.status === "missing" ? { ...t, status: "checking" as const } : t))
     spinOn()
-    await delay(80)
-    const bv = await readBundledFrameworkVersion()
-    const channel = bv && isPrereleaseFrameworkVersion(bv) ? "beta" : "stable"
-    await runReinstall({
-      channel,
-      onStdout: (chunk) => {
-        const clean = stripAnsi(chunk)
-        if (clean) appendLogLine(clean)
-      },
-      onStderr: (chunk) => {
-        const clean = stripAnsi(chunk)
-        if (clean) appendLogLine(clean)
-      },
-    })
-    await delay(200)
-    const toolStatus = await detectDocumentTools()
-    const ocrStatus = toolStatus.ocr
-      ? "available"
-      : toolStatus.ocrUnsupportedReason
-        ? "unsupported"
-        : "missing"
-    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs and images"
-    const results: ToolCheckResult[] = [
-      { label: "PPU PaddleOCR", status: ocrStatus, detail: ocrDetail },
-      { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
-    ]
-    setToolChecks(results)
-    for (const r of results) logTool(r.label, r.status, r.detail)
-    appendLogLine("Tool repair complete.")
-    spinOff()
+    try {
+      await delay(80)
+      const bv = await readBundledFrameworkVersion()
+      const channel = bv && isPrereleaseFrameworkVersion(bv) ? "beta" : "stable"
+      const reinstallResult = await runReinstall({
+        channel,
+        onStdout: (chunk) => {
+          const clean = stripAnsi(chunk)
+          if (clean) appendLogLine(clean)
+        },
+        onStderr: (chunk) => {
+          const clean = stripAnsi(chunk)
+          if (clean) appendLogLine(clean)
+        },
+      })
+      if (reinstallResult.exitCode !== 0) {
+        const detail = reinstallResult.stderr?.trim() || `exit ${reinstallResult.exitCode}`
+        logError("runToolRepair", `Reinstall failed: ${detail}`)
+        appendLogLine(`Tool repair failed: ${detail}`)
+      }
+      await delay(200)
+      const toolStatus = await detectDocumentTools()
+      const ocrStatus = toolStatus.ocr
+        ? "available"
+        : toolStatus.ocrUnsupportedReason
+          ? "unsupported"
+          : "missing"
+      const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs and images"
+      const results: ToolCheckResult[] = [
+        { label: "PPU PaddleOCR", status: ocrStatus, detail: ocrDetail },
+        { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
+        { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
+      ]
+      setToolChecks(results)
+      for (const r of results) logTool(r.label, r.status, r.detail)
+      if (reinstallResult.exitCode === 0) {
+        appendLogLine("Tool repair complete.")
+      } else {
+        appendLogLine(`Tool repair finished with errors (exit ${reinstallResult.exitCode}) — retry or check logs.`)
+      }
+    } catch (err) {
+      logError("runToolRepair", err)
+      appendLogLine(`Tool repair failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      spinOff()
+    }
   }
   // ── Scan ──────────────────────────────────────────────────────────────────
   let pendingPaths: string[] | undefined
