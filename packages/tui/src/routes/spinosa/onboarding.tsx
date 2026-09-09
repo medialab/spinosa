@@ -23,6 +23,8 @@ import {
 import { OCR_MODEL_OPTIONS, type OcrModelOption } from "./onboarding-helpers";
 import { useSync } from "../../context/sync";
 import { useSDK } from "../../context/sdk";
+import { useDialog } from "../../ui/dialog";
+import { DialogProvider } from "../../component/dialog-provider";
 import {
   createImportJob,
   type ImportJobHandle,
@@ -57,7 +59,6 @@ import {
   persistImportWizardLogLines,
 } from "../../spinosa/log";
 import { useExit } from "../../context/exit";
-import { useDialog } from "../../ui/dialog";
 import { readStartupPrompt, writePreferredCli } from "../../spinosa/service";
 import { writeWorkspaceStatus } from "@spinosa/core/workspace/meta";
 import {
@@ -899,7 +900,30 @@ export function Onboarding() {
 
   const continueFromVision = () => {
     const opts = ocrModelOptions()
-    const chosen = opts[selectedOcrModelIndex()]?.id ?? "tesseract-local";
+    const chosenOpt = opts[selectedOcrModelIndex()]
+    const chosen = chosenOpt?.id ?? "tesseract-local";
+    // If vision model needs API key and provider not yet branched/connected, prompt for key
+    if (chosenOpt?.requiresKey) {
+      const keyEnv = chosenOpt.requiresKey
+      const hasKey = Boolean(process.env[keyEnv])
+      // Check if provider is already in catalog (branched)
+      const providerBranched = sync.data.provider.some((p) => p.id === chosenOpt.provider)
+      if (!hasKey) {
+        if (!providerBranched) {
+          // Open provider connect dialog — same as /model → Connect provider
+          logAction("vision", `Provider ${chosenOpt.provider} not branched — opening connect dialog`);
+          // Keep vision selection but let user connect first
+          dialog.replace(() => <DialogProvider />)
+          appendLogLine(`Connect ${chosenOpt.provider} to use ${chosenOpt.label} — set ${keyEnv} or pick Tesseract.`)
+          return
+        }
+        // Provider branched but key missing (e.g. env not set) — warn and stay
+        appendLogLine(`API key ${keyEnv} missing for ${chosenOpt.label} — set ${keyEnv} in env or choose Tesseract.`)
+        // Allow fallback: still run but pipeline will copy instead of vision; warn user but continue
+        // For strict flow, uncomment next line to stay on vision step:
+        // return
+      }
+    }
     setSelectedOcrModel(chosen);
     logAction("continue", `Vision → Processing (ocrModel=${chosen})`);
     void activeWork.run(startProcessing);
