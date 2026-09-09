@@ -20,8 +20,7 @@ export const MARKITDOWN_EXTENSIONS = [
 ]
 
 export const IMAGE_EXTENSIONS = [
-  "jpg", "jpeg", "png", "gif", "webp",
-  "heic", "heif", "tif", "tiff", "bmp", "svg",
+  "jpg", "jpeg", "png", "webp",
 ]
 
 export const AUDIO_VIDEO_EXTENSIONS = [

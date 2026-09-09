@@ -8,7 +8,7 @@ import { generateText } from "ai"
 import * as fs from "node:fs"
 
 const SPINOSA_IMAGE_EXTS = new Set([
-  ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tiff", ".tif", ".bmp", ".svg", ".gif",
+  ".jpg", ".jpeg", ".png", ".webp",
 ])
 const SPINOSA_OCR_PROMPT = `Transcribe all visible text accurately.
 Preserve headings, paragraphs, lists, and tables in Markdown.

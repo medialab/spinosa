@@ -517,7 +517,9 @@ export async function processMarkitdownInProcess(
         }
         continue
       }
+      if (isImage && vision) onLog?.(`  ${f.rel} → compressing image for vision…`)
       onLog?.(`  ${f.rel} → markitdown-ts${isImage && vision ? ` (vision:${vision.modelId})` : ""} ...`)
+      if (isImage && vision) onLog?.(`  ${f.rel} → waiting for vision model ${vision.modelId}…`)
       const startTime = Date.now()
       try {
         mkdirSync(path.dirname(f.dest), { recursive: true })
