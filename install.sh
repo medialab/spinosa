@@ -2202,7 +2202,13 @@ main() {
   fi
 
   spinosa_log INFO "install complete version=${VERSION} home=${SPINOSA_HOME} distribution=binary"
-  info "Install log: $(spinosa_log_file)"
+  local log_file
+  log_file="$(spinosa_log_file)"
+  if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
+    printf '  %s Install log: \033]8;;file://%s\033\\%s\033]8;;\033\\\n' "${C}●${RESET}" "$log_file" "$log_file"
+  else
+    info "Install log: $log_file"
+  fi
   if [ "$PREFIX_MODE" -eq 1 ]; then
     info "Run Spinosa from: ${SPINOSA_HOME}/bin/spinosa"
   else
