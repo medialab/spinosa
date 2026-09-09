@@ -285,23 +285,41 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
   const modelsForProvider = createMemo(() => {
     const pid = providerId()
     if (!pid) return []
-    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[] }> }> })?.provider?.find((p) => p.id === pid)
-    const raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
-    const entries = raw.length > 0 ? raw : (pid === "openrouter" ? [
-      ["qwen/qwen2.5-vl-32b-instruct:free", { name: "Qwen 2.5 VL 32B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
-      ["google/gemini-flash-1.5-8b:free", { name: "Gemini Flash 1.5 8B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
-    ] as Array<[string, unknown]> : pid === "openai" ? [
-      ["gpt-4o", { name: "GPT-4o", capabilities: { input: ["text", "image"] } }],
-      ["gpt-4o-mini", { name: "GPT-4o mini", capabilities: { input: ["text", "image"] } }],
-    ] as Array<[string, unknown]> : pid === "anthropic" ? [
-      ["claude-3-5-sonnet-20241022", { name: "Claude 3.5 Sonnet", capabilities: { input: ["text", "image"] } }],
-    ] as Array<[string, unknown]> : pid === "google" ? [
-      ["gemini-1.5-flash", { name: "Gemini 1.5 Flash", capabilities: { input: ["text", "image"] } }],
-    ] as Array<[string, unknown]> : [])
-    if (entries.length === 0) return []
-    // Show only vision models
-    return entries.map(([modelId, info]) => {
-      const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
+    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }> })?.provider?.find((p) => p.id === pid)
+    let raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
+    // Fallback to cached models-dev file when provider not branched (no models in sync) — load full catalog for that provider
+    if (raw.length === 0) {
+      try {
+        const cachePaths = [
+          `${process.env.HOME}/.cache/spinosa/models.json`,
+          `${process.env.HOME}/.cache/opencode/models.json`,
+        ]
+        for (const cp of cachePaths) {
+          try {
+            const txt = require("node:fs").readFileSync(cp, "utf-8")
+            const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[]; attachment?: boolean; modalities?: { input?: string[] } }> }>
+            const prov = data[pid]
+            if (prov) {
+              raw = Object.entries(prov.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
+              break
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+    if (raw.length === 0) {
+      // Last resort static free vision for openrouter
+      if (pid === "openrouter") {
+        return [
+          { providerId: pid, modelId: "qwen/qwen2.5-vl-32b-instruct:free", title: "Qwen 2.5 VL 32B (free)", description: "Vision · Free" },
+          { providerId: pid, modelId: "google/gemini-flash-1.5-8b:free", title: "Gemini Flash 1.5 8B (free)", description: "Vision · Free" },
+        ]
+      }
+      return []
+    }
+    // Show only vision models — input image (attach image), not output image generation. `attachment` is file attach support, but modalities.input is canonical.
+    return raw.map(([modelId, info]) => {
+      const input = (info as { capabilities?: { input?: string[] }; modalities?: { input?: string[] } }).capabilities?.input ?? (info as { modalities?: { input?: string[] } }).modalities?.input ?? (info as { input?: string[] }).input
       const isVision = Array.isArray(input) && input.includes("image")
       return {
         providerId: pid,
