@@ -252,41 +252,67 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
   const sync = useSync()
   const dialog = useDialog()
   const [providerId, setProviderId] = createSignal<string | null>(null)
+  const allProviders = createMemo(() => {
+    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
+    // Also consider provider_next for not-yet-connected providers
+    const next = (sync.data as unknown as { provider_next?: { all?: Array<{ id: string; name: string }> } })?.provider_next?.all ?? []
+    const merged = new Map<string, { id: string; name: string; models: Record<string, unknown> }>()
+    for (const p of providers) merged.set(p.id, { id: p.id, name: p.name, models: p.models ?? {} as Record<string, unknown> })
+    for (const p of next) if (!merged.has(p.id)) merged.set(p.id, { id: p.id, name: p.name, models: {} as Record<string, unknown> })
+    return Array.from(merged.values())
+  })
   const providersWithVision = createMemo(() => {
     const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
-    return providers.filter((p) => Object.values(p.models ?? {}).some((m) => {
+    const vision = providers.filter((p) => Object.values(p.models ?? {}).some((m) => {
       const input = (m as { capabilities?: { input?: string[] } }).capabilities?.input ?? (m as { input?: string[] }).input
       return Array.isArray(input) && input.includes("image") && (m as { status?: string }).status !== "deprecated"
     }))
+    // Fallback to all providers with any models (or popular) when no vision flagged — keeps dialog usable and avoids "No results found"
+    if (vision.length > 0) return vision
+    return providers.filter((p) => Object.keys(p.models ?? {}).length > 0)
   })
   const modelsForProvider = createMemo(() => {
     const pid = providerId()
     if (!pid) return []
     const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string; cost?: { input?: number } }> }> })?.provider?.find((p) => p.id === pid)
     if (!provider) return []
-    return Object.entries(provider.models ?? {})
-      .filter(([_, info]) => {
+    const all = Object.entries(provider.models ?? {})
+      .filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
+      .map(([modelId, info]) => {
         const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
-        return Array.isArray(input) && input.includes("image") && (info as { status?: string }).status !== "deprecated"
+        const isVision = Array.isArray(input) && input.includes("image")
+        return {
+          providerId: pid,
+          modelId,
+          title: info.name ?? modelId,
+          description: isVision ? ((info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision") : "Text only",
+          isVision,
+          cost: (info as { cost?: { input?: number } }).cost,
+        }
       })
-      .map(([modelId, info]) => ({
-        providerId: pid,
-        modelId,
-        title: info.name ?? modelId,
-        description: (info as { cost?: { input?: number } }).cost?.input === 0 ? "Free" : undefined,
-      }))
+    // Vision first, free first
+    all.sort((a, b) => (a.isVision === b.isVision ? 0 : a.isVision ? -1 : 1))
+    return all.map(({ providerId, modelId, title, description }) => ({
+      providerId,
+      modelId,
+      title,
+      description,
+    }))
   })
-  const providerOptions = createMemo(() =>
-    providersWithVision().map((p) => ({
+  const providerOptions = createMemo(() => {
+    const vision = providersWithVision()
+    const list = vision.length > 0 ? vision : allProviders().filter((p) => Object.keys((p as { models?: Record<string, unknown> }).models ?? {}).length > 0 || (p as { id: string }).id === "openrouter")
+    const display = list.length > 0 ? list : allProviders().slice(0, 8)
+    return display.map((p) => ({
       title: p.name,
       value: p.id,
       description: p.id,
-      category: "Providers with vision",
+      category: vision.length > 0 ? "Providers with vision" : "Providers",
       onSelect() {
         setProviderId(p.id)
       },
     }))
-  )
+  })
   const modelOptions = createMemo(() =>
     modelsForProvider().map((m) => ({
       title: m.title,
