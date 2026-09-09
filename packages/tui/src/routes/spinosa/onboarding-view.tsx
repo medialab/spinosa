@@ -2,7 +2,7 @@ import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { For, Show, type Accessor, type Setter } from "solid-js"
 import { STARTUP_PROGRESS_THRESHOLD_MS } from "@spinosa/core/commands/startup"
 import { CenteredColumn } from "../../component/centered-column"
-import { buttonBackground, buttonText } from "../../util/button"
+import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
 import {
   deferPress,
   ImportOptionsSelector,
@@ -138,6 +138,23 @@ export function OnboardingView(props: OnboardingViewProps) {
             <text fg={theme.text}>
               <span style={{ bold: true }}>{busy() ? `${waveString(spinIdx())} ` : ""}{resumeWorkspacePath ? "Resume Spinosa workspace" : "Create Spinosa workspace"}</span>
             </text>
+            <box flexGrow={1} />
+            <Show when={step() === "markitdown" && props.selectedVisionLabel().includes("/")}>
+              <box
+                paddingLeft={2}
+                paddingRight={2}
+                paddingTop={1}
+                paddingBottom={1}
+                backgroundColor={buttonBackground(theme, hoveredButton() === "vision-model")}
+                border={["left"]}
+                borderColor={buttonBorder(theme, hoveredButton() === "vision-model", theme.border)}
+                onMouseOver={() => setHoveredButton("vision-model")}
+                onMouseOut={() => setHoveredButton(null)}
+                onMouseDown={() => deferPress(props.onChangeVisionModel)}
+              >
+                <text fg={buttonText(theme, hoveredButton() === "vision-model", theme.text)}>{props.selectedVisionLabel()} ▼</text>
+              </box>
+            </Show>
           </box>
           <text fg={theme.textMuted}>
             Step {stepIndex()} of {totalSteps}
@@ -380,16 +397,13 @@ export function OnboardingView(props: OnboardingViewProps) {
                     viewportHeight={dimensions().height}
                   />
                 </Show>
-                {/* Reserved space for provider vision errors + permanent model button in Step 9 */}
+                {/* Reserved space for provider vision errors in Step 9 */}
                 <Show when={step() === "markitdown"}>
-                  <box minHeight={4} flexDirection="column" gap={1} paddingTop={1}>
-                    <box flexDirection="row" gap={1} alignItems="center" paddingLeft={1} paddingRight={1}>
-                      <text fg={theme.textMuted}>Vision: {props.selectedVisionLabel()}</text>
-                      <WizardActionButton theme={theme} label="Change" onPress={props.onChangeVisionModel} />
-                    </box>
+                  <box minHeight={3} flexDirection="column" gap={1} paddingTop={1}>
                     <Show when={props.visionError()} fallback={<text fg={theme.textMuted}> </text>}>
                       <box flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel} border={["left"]} borderColor={theme.error}>
                         <text fg={theme.error} wrapMode="word">{props.visionError()}</text>
+                        <WizardActionButton theme={theme} label="Change vision model" primary onPress={props.onChangeVisionModel} />
                       </box>
                     </Show>
                   </box>
