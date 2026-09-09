@@ -8,6 +8,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.12] — 2026-09-09
+
+### Changed
+
+- `spinosa mcp` removed `cli/cmd/mcp.ts:1` + `cli-main.ts:22` — `spinosa --help` no longer lists `mcp`.
+
+### Fixed
+
+- `spinosa upgrade` layout: `intro` now `●` info for all phases (`upgrade.ts:64` `log.step→log.info`), `Release: tag — date` + compare link (`core/upgrade.ts:301`), confirmation via `prompts.confirm` inside box (`core/upgrade.ts:22` `confirm` callback, `kernel/upgrade.ts:67`) — no raw `readline` outside box, no `tag|date|body` pipe.
+- Unified `clack` dialogs: `uninstall.ts:36` `○/✓` double-icon→`keeping/removing` single `●`, `agent.ts:81`, `plug.ts:208`, `export.ts:247`, `mcp.ts` (pre-removal) all now `UI.println(logo)` `UI.empty()` `intro` single blank.
+
 ## [1.1.0-beta.11] — 2026-09-09
 
 ### Changed
