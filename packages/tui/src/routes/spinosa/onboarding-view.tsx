@@ -357,7 +357,7 @@ export function OnboardingView(props: OnboardingViewProps) {
                 <text fg={theme.textMuted}>MarkItDown will use the chosen model to transcribe images into Markdown. Tesseract runs locally; vision models need network + API key.</text>
                 <OcrModelSelector
                   theme={theme}
-                  options={props.ocrModelOptions}
+                  options={props.ocrModelOptions()}
                   selectedIndex={props.selectedOcrModelIndex()}
                   viewportHeight={dimensions().height}
                   onSelectIndex={props.setSelectedOcrModelIndex}

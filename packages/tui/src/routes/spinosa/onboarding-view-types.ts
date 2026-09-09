@@ -81,7 +81,7 @@ export type OnboardingViewProps = {
   toolAllReady: Accessor<boolean>
   handleToolAction: () => void
   continueFromImports: () => void
-  ocrModelOptions: OcrModelOption[]
+  ocrModelOptions: Accessor<OcrModelOption[]>
   selectedOcrModelIndex: Accessor<number>
   setSelectedOcrModelIndex: Setter<number>
   continueFromVision: () => void
