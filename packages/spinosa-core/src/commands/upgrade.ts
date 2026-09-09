@@ -51,7 +51,7 @@ interface VersionCache {
   version: string
 }
 
-const VERSION_CACHE_TTL_SEC = 3600
+const VERSION_CACHE_TTL_SEC = 600
 
 export function verifyInstallerChecksum(installerScript: string, checksums: string): boolean {
   const expected = checksums
