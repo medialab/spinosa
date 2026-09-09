@@ -85,7 +85,7 @@ _spinosa_install_err_trap() {
   step_end "$exit_code" "${STEP_LABEL:-Install step} failed" 2>/dev/null || true
   spinosa_log ERROR "aborted line=${line} exit=${exit_code} cmd=${BASH_COMMAND:-}"
   restore_binary_backup_if_needed
-  printf '\n  %s Install failed at line %s (exit %s). See %s\n\n' \
+  printf '\n%s Install failed at line %s (exit %s). See %s\n\n' \
     "${R:-}✗${RESET:-}" "$line" "$exit_code" "$(spinosa_log_file)" >&2
   exit "$exit_code"
 }
@@ -180,21 +180,21 @@ else
   G='' Y='' R='' C='' BOLD='' RESET=''
 fi
 
-info()  { spinosa_log INFO "$1"; printf '  %s %s\n' "${C}●${RESET}" "$1"; }
+info()  { spinosa_log INFO "$1"; printf '%s %s\n' "${C}●${RESET}" "$1"; }
 vinfo() { [[ "$VERBOSE" == "1" ]] || return 0; info "$1"; }
-ok()    { spinosa_log INFO "$1"; printf '  %s %s\n' "${G}●${RESET}" "$1" >&2; }
+ok()    { spinosa_log INFO "$1"; printf '%s %s\n' "${G}●${RESET}" "$1" >&2; }
 vok()   { [[ "$VERBOSE" == "1" ]] || return 0; ok "$1"; }
-warn()  { spinosa_log WARN "$1"; printf '  %s %s\n' "${Y}●${RESET}" "$1" >&2; }
-note()  { spinosa_log INFO "$1"; printf '    %s\n' "$1"; }
+warn()  { spinosa_log WARN "$1"; printf '%s %s\n' "${Y}●${RESET}" "$1" >&2; }
+note()  { spinosa_log INFO "$1"; printf '%s\n' "$1"; }
 vnote() { [[ "$VERBOSE" == "1" ]] || return 0; note "$1"; }
-die()   { spinosa_log ERROR "$1"; printf '\n  %s %s\n\n' "${R}●${RESET}" "$1" >&2; exit 1; }
+die()   { spinosa_log ERROR "$1"; printf '\n%s %s\n\n' "${R}●${RESET}" "$1" >&2; exit 1; }
 divider() { printf '\n'; }
 
 intro() {
   local title="$1"
   spinosa_log INFO "intro=${title}"
   if [ -t 2 ]; then
-    printf '  %s %s\n' "${C}●${RESET}" "$title" >&2
+    printf '%s %s\n' "${C}●${RESET}" "$title" >&2
   else
     printf '%s\n' "$title" >&2
   fi
@@ -203,7 +203,7 @@ outro() {
   local msg="$1"
   spinosa_log INFO "outro=${msg}"
   if [ -t 2 ]; then
-    printf '  %s %s\n' "${G}●${RESET}" "$msg" >&2
+    printf '%s %s\n' "${G}●${RESET}" "$msg" >&2
     printf '\n' >&2
   else
     printf '%s\n' "$msg" >&2
@@ -214,9 +214,9 @@ section() {
   local title="$1"
   spinosa_log INFO "section=${title}"
   if [ -t 2 ]; then
-    printf '\n  %s %s%s%s\n' "→" "${BOLD}" "$title" "${RESET}"
+    printf '\n%s %s%s%s\n' "→" "${BOLD}" "$title" "${RESET}"
   else
-    printf '\n  → %s\n' "$title"
+    printf '\n→ %s\n' "$title"
   fi
 }
 
@@ -281,7 +281,7 @@ _render_wave() {
     elapsed=$(( $(date +%s) - started_at ))
     wave="$(wave_string "$tick")"
     bar="$wave"
-    printf '\r\033[2K  %s %s [%s] %ss/%ss' "${C}●${RESET}" "$label" "$bar" "$elapsed" "$timeout_seconds" >&2
+    printf '\r\033[2K%s %s [%s] %ss/%ss' "${C}●${RESET}" "$label" "$bar" "$elapsed" "$timeout_seconds" >&2
     tick=$((tick + 1))
     sleep 0.2
   done
@@ -296,7 +296,7 @@ step_begin() {
     _render_wave "$STEP_LABEL" "$timeout_seconds" "$STEP_STARTED_AT" &
     STEP_RENDER_PID=$!
   else
-    printf '  %s %s (timeout %ss)\n' "${C}●${RESET}" "$STEP_LABEL" "$timeout_seconds" >&2
+    printf '%s %s (timeout %ss)\n' "${C}●${RESET}" "$STEP_LABEL" "$timeout_seconds" >&2
   fi
 }
 
@@ -311,10 +311,10 @@ step_end() {
     printf '\r\033[2K' >&2
   fi
   if [ "$status" -eq 0 ]; then
-    printf '  %s %s (%ss)\n' "${G}●${RESET}" "$message" "$elapsed" >&2
+    printf '%s %s (%ss)\n' "${G}●${RESET}" "$message" "$elapsed" >&2
     spinosa_log INFO "step=ok label=${STEP_LABEL} elapsed=${elapsed}s"
   else
-    printf '  %s %s (%ss)\n' "${R}●${RESET}" "$message" "$elapsed" >&2
+    printf '%s %s (%ss)\n' "${R}●${RESET}" "$message" "$elapsed" >&2
     spinosa_log ERROR "step=fail label=${STEP_LABEL} elapsed=${elapsed}s status=${status}"
   fi
   STEP_STARTED_AT=0
@@ -504,9 +504,9 @@ map_platform() {
     darwin|macos|osx) os="darwin" ;;
     linux) os="linux" ;;
     *)
-      printf '\n  %s %s\n' "${Y}●${RESET}" "Your OS \"$1\" is not supported." >&2
-      printf '    %s\n' "Spinosa currently supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64 and x64." >&2
-      printf '    %s\n' "See https://github.com/medialab/spinosa#requirements for alternatives." >&2
+      printf '\n%s %s\n' "${Y}●${RESET}" "Your OS \"$1\" is not supported." >&2
+      printf '%s\n' "Spinosa currently supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64 and x64." >&2
+      printf '%s\n' "See https://github.com/medialab/spinosa#requirements for alternatives." >&2
       printf 'Unsupported OS for binary distribution: %s\n' "$1" >&2
       return 1
       ;;
@@ -516,9 +516,9 @@ map_platform() {
     arm64|aarch64) arch="arm64" ;;
     x86_64|amd64|x64) arch="x64" ;;
     *)
-      printf '\n  %s %s\n' "${Y}●${RESET}" "Your CPU architecture \"$2\" is not supported." >&2
-      printf '    %s\n' "Spinosa currently supports arm64 and x64 (amd64) on macOS and Linux (glibc)." >&2
-      printf '    %s\n' "See https://github.com/medialab/spinosa#requirements for alternatives." >&2
+      printf '\n%s %s\n' "${Y}●${RESET}" "Your CPU architecture \"$2\" is not supported." >&2
+      printf '%s\n' "Spinosa currently supports arm64 and x64 (amd64) on macOS and Linux (glibc)." >&2
+      printf '%s\n' "See https://github.com/medialab/spinosa#requirements for alternatives." >&2
       printf 'Unsupported architecture for binary distribution: %s\n' "$2" >&2
       return 1
       ;;
@@ -628,8 +628,8 @@ preflight_tools() {
 prompt_install_repair() {
   local detail="${1:-Something in the Spinosa install needs fixing.}"
   printf '\n' >&2
-  printf '  %s %s\n' "${Y}●${RESET}" "Installation needs repair." >&2
-  printf '    %s\n' "$detail" >&2
+  printf '%s %s\n' "${Y}●${RESET}" "Installation needs repair." >&2
+  printf '%s\n' "$detail" >&2
   if [ "${SPINOSA_REPAIR:-}" = "1" ]; then
     info "Repairing automatically (SPINOSA_REPAIR=1)..."
     return 0
@@ -638,7 +638,7 @@ prompt_install_repair() {
     info "Repairing automatically (--yes)..."
     return 0
   fi
-  printf '  %s %s [Y/n]: ' "${C}?${RESET}" "Repair now?" >&2
+  printf '%s %s [Y/n]: ' "${C}?${RESET}" "Repair now?" >&2
   local reply
   if ! read_from_tty reply; then
     printf '\n' >&2
@@ -1347,12 +1347,12 @@ prompt_upgrade() {
       info "Already on v${target}. No upgrade needed."
       return 1
     fi
-    printf '  %s %s\n' "${Y}●${RESET}" "Spinosa v${installed} is already installed." >&2
+    printf '%s %s\n' "${Y}●${RESET}" "Spinosa v${installed} is already installed." >&2
     if [ "$YES" -eq 1 ]; then
       info "Skipping reinstall prompt (--yes)."
       return 1
     fi
-    printf '  %s %s [y/N]: ' "${C}?${RESET}" "Reinstall?" >&2
+    printf '%s %s [y/N]: ' "${C}?${RESET}" "Reinstall?" >&2
     local reply
     read_tty_or_die reply
     case "$reply" in
@@ -1372,12 +1372,12 @@ prompt_upgrade() {
       info "Installing v${target} (over v${installed})..."
       return 0
     fi
-    printf '  %s %s\n' "${C}●${RESET}" "Spinosa v${installed} is installed. v${target} is available." >&2
+    printf '%s %s\n' "${C}●${RESET}" "Spinosa v${installed} is installed. v${target} is available." >&2
     if [ "$YES" -eq 1 ]; then
       info "Auto-upgrading (--yes)."
       return 0
     fi
-    printf '  %s %s [Y/n]: ' "${C}?${RESET}" "Upgrade?" >&2
+    printf '%s %s [Y/n]: ' "${C}?${RESET}" "Upgrade?" >&2
     local reply
     read_tty_or_die reply
     reply="${reply:-Y}"
@@ -1398,12 +1398,12 @@ prompt_upgrade() {
       fi
       return 0
     fi
-    printf '  %s %s\n' "${Y}●${RESET}" "Installed v${installed} is newer than target v${target}." >&2
+    printf '%s %s\n' "${Y}●${RESET}" "Installed v${installed} is newer than target v${target}." >&2
     if [ "$YES" -eq 1 ]; then
       info "Skipping downgrade (--yes)."
       return 1
     fi
-    printf '  %s %s [y/N]: ' "${C}?${RESET}" "Downgrade?" >&2
+    printf '%s %s [y/N]: ' "${C}?${RESET}" "Downgrade?" >&2
     local reply
     read_tty_or_die reply
     case "$reply" in
@@ -1418,7 +1418,7 @@ confirm_install() {
   if [ "$YES" -eq 1 ]; then
     return 0
   fi
-  printf '  %s %s [Y/n]: ' "${C}?${RESET}" "Install Spinosa v${version}?" >&2
+  printf '%s %s [Y/n]: ' "${C}?${RESET}" "Install Spinosa v${version}?" >&2
   local reply
   read_tty_or_die reply
   reply="${reply:-Y}"
@@ -1948,7 +1948,7 @@ print_path_instructions() {
   [[ "$fallback_bin" == "$HOME/.local/bin" ]] && fallback_bin='$HOME/.local/bin'
 
   spinosa_log INFO "Run Spinosa with: spinosa"
-  printf '  %s Run Spinosa with: %s%s%s\n' "${C}●${RESET}" "${BOLD}" "spinosa" "${RESET}"
+  printf '%s Run Spinosa with: %s%s%s\n' "${C}●${RESET}" "${BOLD}" "spinosa" "${RESET}"
 
   if "${SPINOSA_BIN_DIR}/spinosa" version >/dev/null 2>&1 \
     || "${SPINOSA_HOME}/bin/spinosa" version >/dev/null 2>&1; then
@@ -1973,13 +1973,13 @@ print_path_instructions() {
 
 print_banner() {
   printf '\n\n\n'
-  printf '  %s\n' '███████╗██████╗ ██╗███╗   ██╗ ██████╗ ███████╗ █████╗'
-  printf '  %s\n' '██╔════╝██╔══██╗██║████╗  ██║██╔═══██╗██╔════╝██╔══██╗'
-  printf '  %s\n' '███████╗██████╔╝██║██╔██╗ ██║██║   ██║███████╗███████║'
-  printf '  %s\n' '╚════██║██╔═══╝ ██║██║╚██╗██║██║   ██║╚════██║██╔══██║'
-  printf '  %s\n' '███████║██║     ██║██║ ╚████║╚██████╔╝███████║██║  ██║'
-  printf '  %s\n' '╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝'
-  printf '  %s\n\n' 'Binary Installer'
+  printf '%s\n' '███████╗██████╗ ██╗███╗   ██╗ ██████╗ ███████╗ █████╗'
+  printf '%s\n' '██╔════╝██╔══██╗██║████╗  ██║██╔═══██╗██╔════╝██╔══██╗'
+  printf '%s\n' '███████╗██████╔╝██║██╔██╗ ██║██║   ██║███████╗███████║'
+  printf '%s\n' '╚════██║██╔═══╝ ██║██║╚██╗██║██║   ██║╚════██║██╔══██║'
+  printf '%s\n' '███████║██║     ██║██║ ╚████║╚██████╔╝███████║██║  ██║'
+  printf '%s\n' '╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝'
+  printf '%s\n\n' 'Binary Installer'
 }
 
 handle_verify_only() {
@@ -2182,16 +2182,16 @@ main() {
 
   echo ""
   if [[ "$FROM_UPGRADE" -eq 1 ]]; then
-    printf '  %s %s\n' "${G}●${RESET}" "${BOLD}✨ Spinosa installed successfully! ✨${RESET}" >&2
+    printf '%s %s\n' "${G}●${RESET}" "${BOLD}✨ Spinosa installed successfully! ✨${RESET}" >&2
   else
-    printf '  %s%s%s\n\n' "${BOLD}" "✨ Spinosa installed successfully! ✨" "${RESET}"
+    printf '%s%s%s\n\n' "${BOLD}" "✨ Spinosa installed successfully! ✨" "${RESET}"
   fi
 
   spinosa_log INFO "install complete version=${VERSION} home=${SPINOSA_HOME} distribution=binary"
   local log_file
   log_file="$(spinosa_log_file)"
   if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
-    printf '  %s Install log: \033]8;;file://%s\033\\%s\033]8;;\033\\\n' "${C}●${RESET}" "$log_file" "$log_file"
+    printf '%s Install log: \033]8;;file://%s\033\\%s\033]8;;\033\\\n' "${C}●${RESET}" "$log_file" "$log_file"
   else
     info "Install log: $log_file"
   fi
