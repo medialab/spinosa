@@ -2133,32 +2133,27 @@ main() {
   verify_asset_checksum "$staged_binary" "$ASSET_NAME" "$checksums_file" "${ASSET_NAME}"
   chmod +x "$staged_binary"
 
-  if [[ "$VERBOSE" == "1" ]]; then
-    section "Stage checks"
-    run_timed_step "Verify staged binary" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
-      run_staged_binary_checks "$staged_binary" \
-      || die "Staged binary failed verification"
-  else
-    run_staged_binary_checks "$staged_binary" 2>/dev/null || die "Staged binary failed verification"
-  fi
+  _install_activate() {
+    activate_binary "$staged_binary"
+    verify_active_binary || {
+      restore_binary_backup_if_needed
+      die "Post-activation verification failed. Previous binary restored. See $(spinosa_log_file)"
+    }
+    install_shims
+    write_spinosa_env_file
+    write_install_metadata
+  }
+  [[ "$VERBOSE" == "1" ]] && section "Stage checks"
+  run_timed_step "Verifying package" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
+    run_staged_binary_checks "$staged_binary" \
+    || die "Staged binary failed verification"
 
   [[ "$VERBOSE" == "1" ]] && section "Activate"
-  activate_binary "$staged_binary"
-  verify_active_binary || {
-    restore_binary_backup_if_needed
-    die "Post-activation verification failed. Previous binary restored. See $(spinosa_log_file)"
-  }
-
-  install_shims
-  write_spinosa_env_file
-
-  # Commit metadata only after successful activation + shim.
-  write_install_metadata
+  run_timed_step "Installing" 30 _install_activate \
+    || die "Installation failed — see $(spinosa_log_file)"
   if [[ "$VERBOSE" == "1" ]]; then
     run_timed_step "Migrate workspace launchers" 30 migrate_workspace_launchers \
       || warn "Workspace launcher migration timed out or failed — some workspaces may need manual repair; see $(spinosa_log_file)"
-  else
-    migrate_workspace_launchers 2>/dev/null || true
   fi
 
   INSTALL_COMPLETED=1
@@ -2191,10 +2186,9 @@ main() {
 
   echo ""
   if [[ "$FROM_UPGRADE" -eq 1 ]]; then
-    ok "✨ Spinosa installed successfully! ✨"
+    printf '  %s %s%s%s\n' "${G}●${RESET}" "${BOLD}✨ Spinosa installed successfully! ✨${RESET}" >&2
   else
-    divider
-    printf '\n  ✨ Spinosa installed successfully! ✨\n\n'
+    printf '  %s%s%s\n\n' "${BOLD}" "✨ Spinosa installed successfully! ✨" "${RESET}"
   fi
 
   spinosa_log INFO "install complete version=${VERSION} home=${SPINOSA_HOME} distribution=binary"
