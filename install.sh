@@ -1525,7 +1525,7 @@ migrate_workspace_launchers() {
 
   while IFS= read -r workspace; do
     [ -n "$workspace" ] || continue
-    info "Checking workspace: ${workspace}"
+    vinfo "Finding workspace: ${workspace}"
     launcher="${workspace}/.bin/spinosa"
     status="$(classify_workspace_launcher "$launcher")"
     case "$status" in
@@ -1535,19 +1535,19 @@ migrate_workspace_launchers() {
         chmod +x "${launcher}.tmp.$$"
         mv "${launcher}.tmp.$$" "$launcher"
         migrated=$((migrated + 1))
-        note "Migrated workspace launcher: ${launcher}"
+        vnote "Migrated workspace launcher: ${launcher}"
         ;;
       managed-binary)
         ;;
       modified|unreadable)
         preserved=$((preserved + 1))
-        warn "Preserved modified workspace launcher: ${launcher} (status: ${status})"
+        [[ "$VERBOSE" == "1" ]] && warn "Preserved modified workspace launcher: ${launcher} (status: ${status})"
         ;;
     esac
   done < <(list_registered_workspace_paths)
 
   if [ "$migrated" -gt 0 ] || [ "$preserved" -gt 0 ]; then
-    info "Workspace launchers: migrated=${migrated} preserved=${preserved}"
+    vinfo "Workspace launchers: migrated=${migrated} preserved=${preserved}"
   fi
 }
 
@@ -1947,7 +1947,8 @@ print_path_instructions() {
   # shellcheck disable=SC2016
   [[ "$fallback_bin" == "$HOME/.local/bin" ]] && fallback_bin='$HOME/.local/bin'
 
-  info "Run Spinosa with: spinosa"
+  spinosa_log INFO "Run Spinosa with: spinosa"
+  printf '  %s Run Spinosa with: %s%s%s\n' "${C}●${RESET}" "${BOLD}" "spinosa" "${RESET}"
 
   if "${SPINOSA_BIN_DIR}/spinosa" version >/dev/null 2>&1 \
     || "${SPINOSA_HOME}/bin/spinosa" version >/dev/null 2>&1; then
@@ -2194,10 +2195,10 @@ main() {
 
   echo ""
   if [[ "$FROM_UPGRADE" -eq 1 ]]; then
-    ok "Spinosa installed successfully!"
+    ok "✨ Spinosa installed successfully! ✨"
   else
     divider
-    printf '\n  Spinosa installed successfully!\n\n'
+    printf '\n  ✨ Spinosa installed successfully! ✨\n\n'
   fi
 
   spinosa_log INFO "install complete version=${VERSION} home=${SPINOSA_HOME} distribution=binary"
