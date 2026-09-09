@@ -201,8 +201,8 @@ describe("install and release flow", () => {
   })
 
   test("local release pipeline builds product binaries and rolling channel assets", async () => {
-    const stages = await Bun.file(path.join(repoRoot, "script", "release", "stages.ts")).text()
-    const github = await Bun.file(path.join(repoRoot, "script", "release", "github.ts")).text()
+    const stages = await Bun.file(path.join(repoRoot, "scripts", "release", "stages.ts")).text()
+    const github = await Bun.file(path.join(repoRoot, "scripts", "release", "github.ts")).text()
     expect(stages).toContain("publishRollingChannelRelease")
     expect(stages).toContain("build-release-binaries")
     expect(stages).toContain("build-manifest.json")
@@ -235,7 +235,7 @@ describe("install and release flow", () => {
   })
 
   test("patch-local-install refuses binary product installs", async () => {
-    const script = await Bun.file(path.join(repoRoot, "script", "patch-local-install.sh")).text()
+    const script = await Bun.file(path.join(repoRoot, "scripts", "patch-local-install.sh")).text()
     expect(script).toContain("is_binary_product_install")
     expect(script).toContain("refusing to patch a binary Spinosa install")
     expect(script).toContain("distribution:[[:space:]]*binary")
@@ -253,7 +253,7 @@ describe("install and release flow", () => {
     await chmod(path.join(home, "bin", "spinosa"), 0o755)
 
     const refused = Bun.spawnSync({
-      cmd: ["bash", path.join(repoRoot, "script", "patch-local-install.sh")],
+      cmd: ["bash", path.join(repoRoot, "scripts", "patch-local-install.sh")],
       cwd: repoRoot,
       env: {
         ...process.env,

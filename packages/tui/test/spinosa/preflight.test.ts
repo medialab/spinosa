@@ -48,7 +48,7 @@ describe("launch preflight", () => {
     })
 
     expect(await runLaunchPreflight(deps)).toBe("continue")
-    expect(questions).toEqual(["✨ \x1b[1mSpinosa v1.1.0\x1b[0m is available (current \x1b[32mv1.0.0\x1b[0m). Upgrade now?"])
+    expect(questions).toEqual(["\x1b[36m?\x1b[0m \x1b[1mSpinosa v1.1.0\x1b[0m is available (current \x1b[32mv1.0.0\x1b[0m). Upgrade now?"])
   })
 
   test("upgrades outdated workspaces and exits without auto-launching", async () => {
