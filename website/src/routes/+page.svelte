@@ -5,6 +5,7 @@
 	import BgCanvas from '$lib/BgCanvas.svelte';
 	import github from '$lib/assets/github.png';
 	import { devInstallCmd, stableInstallCmd } from '$lib/install-urls';
+	import { fade } from 'svelte/transition';
 
 	const origin = $derived($page.url.origin);
 
@@ -229,13 +230,16 @@
 						tabindex="0"
 						onkeydown={(e) => e.key === 'Enter' && handleCopy()}
 					>
-						<code
-							class="block whitespace-nowrap text-[0.8rem] leading-6 underline-offset-2 hover:underline {beta
-								? 'text-red-700 decoration-red-300'
-								: 'text-basalt decoration-basalt/30'}"
-						>
-							{CMD}
-						</code>
+						{#key CMD}
+							<code
+								in:fade={{ duration: 150 }}
+								class="block whitespace-nowrap text-[0.8rem] leading-6 underline-offset-2 hover:underline {beta
+									? 'text-red-700 decoration-red-300'
+									: 'text-basalt decoration-basalt/30'}"
+							>
+								{CMD}
+							</code>
+						{/key}
 					</div>
 					<button
 						onclick={handleCopy}

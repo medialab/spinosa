@@ -6,6 +6,7 @@
 	import { devInstallCmd, stableInstallCmd } from '$lib/install-urls';
 	import gitIcon from '$lib/assets/github.png';
 	import docFooterImg from '$lib/assets/docs_footer.png';
+	import { fade } from 'svelte/transition';
 
 	let { children } = $props();
 	let beta = $state(false);
@@ -79,7 +80,7 @@
 				: 'bg-black hover:bg-neutral-800'}"
 			aria-label="Copy install command"
 		>
-			<p class="text-[0.65rem] leading-normal text-nowrap">{CMD}</p>
+			{#key CMD}<p in:fade={{ duration: 150 }} class="text-[0.65rem] leading-normal text-nowrap">{CMD}</p>{/key}
 		</button>
 		{#if showCopied}
 			<div
