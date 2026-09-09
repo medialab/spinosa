@@ -275,16 +275,27 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
     const pid = providerId()
     if (!pid) return []
     const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string; cost?: { input?: number } }> }> })?.provider?.find((p) => p.id === pid)
-    if (!provider) return []
-    const all = Object.entries(provider.models ?? {})
-      .filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
-      .map(([modelId, info]) => {
+    const rawModels = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
+    // Static fallback when provider has no models in catalog (not branched or not loaded)
+    const entries = rawModels.length > 0 ? rawModels : (pid === "openrouter" ? [
+      ["qwen/qwen2.5-vl-32b-instruct:free", { name: "Qwen 2.5 VL 32B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
+      ["google/gemini-flash-1.5-8b:free", { name: "Gemini Flash 1.5 8B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
+      ["qwen/qwen2.5-vl-72b-instruct:free", { name: "Qwen 2.5 VL 72B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
+    ] as Array<[string, unknown]> : pid === "openai" ? [
+      ["gpt-4o", { name: "GPT-4o", capabilities: { input: ["text", "image"] } }],
+      ["gpt-4o-mini", { name: "GPT-4o mini", capabilities: { input: ["text", "image"] } }],
+    ] as Array<[string, unknown]> : pid === "anthropic" ? [
+      ["claude-3-5-sonnet-20241022", { name: "Claude 3.5 Sonnet", capabilities: { input: ["text", "image"] } }],
+    ] as Array<[string, unknown]> : pid === "google" ? [
+      ["gemini-1.5-flash", { name: "Gemini 1.5 Flash", capabilities: { input: ["text", "image"] } }],
+    ] as Array<[string, unknown]> : [])
+    const all = entries.map(([modelId, info]) => {
         const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
         const isVision = Array.isArray(input) && input.includes("image")
         return {
           providerId: pid,
           modelId,
-          title: info.name ?? modelId,
+          title: (info as { name?: string }).name ?? modelId,
           description: isVision ? ((info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision") : "Text only",
           isVision,
           cost: (info as { cost?: { input?: number } }).cost,
@@ -302,14 +313,21 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
   const providerOptions = createMemo(() => {
     const vision = providersWithVision()
     const list = vision.length > 0 ? vision : allProviders().filter((p) => Object.keys((p as { models?: Record<string, unknown> }).models ?? {}).length > 0 || (p as { id: string }).id === "openrouter")
-    const display = list.length > 0 ? list : allProviders().slice(0, 8)
-    return display.map((p) => ({
-      title: p.name,
-      value: p.id,
-      description: p.id,
+    const displayBase = list.length > 0 ? list : allProviders().slice(0, 8)
+    // Static fallback when sync not yet loaded or no providers — ensures dialog never empty
+    const fallback = displayBase.length > 0 ? displayBase : [
+      { id: "openrouter", name: "OpenRouter", models: {} as Record<string, unknown> },
+      { id: "openai", name: "OpenAI", models: {} as Record<string, unknown> },
+      { id: "anthropic", name: "Anthropic", models: {} as Record<string, unknown> },
+      { id: "google", name: "Google", models: {} as Record<string, unknown> },
+    ]
+    return fallback.map((p) => ({
+      title: (p as { name: string }).name,
+      value: (p as { id: string }).id,
+      description: (p as { id: string }).id,
       category: vision.length > 0 ? "Providers with vision" : "Providers",
       onSelect() {
-        setProviderId(p.id)
+        setProviderId((p as { id: string }).id)
       },
     }))
   })
