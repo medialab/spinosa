@@ -531,7 +531,12 @@ export async function processMarkitdownInProcess(
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
         const errMsg = err instanceof Error ? err.message : String(err)
-        onLog?.(`MarkItDown failed: ${f.rel} — ${errMsg}`)
+        const visionHint = isImage && vision ? ` [vision:${vision.modelId}]` : ""
+        onLog?.(`MarkItDown failed: ${f.rel}${visionHint} — ${errMsg}`)
+        if (isImage && vision) {
+          // Vision transcription failed — surface provider/model error clearly
+          onLog?.(`  Vision ${vision.modelId} error for ${f.rel} — ${errMsg} — Back to change model or pick Tesseract/copy`)
+        }
         if (fileExt(f.src) === "pdf") {
           pdfOcrFallback.push(f)
           // Do not emit a derived `rel → OCR fallback` progress entry — that
