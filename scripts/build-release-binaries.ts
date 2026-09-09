@@ -2,7 +2,7 @@
 /**
  * Thin release adapter: pack templates, compile four product binaries into dist/v{VERSION}/.
  *
- * Flags (used by script/release/stages.ts):
+ * Flags (used by scripts/release/stages.ts):
  *   --out-dir <dir> --version <ver> --channel <beta|stable> [--template-pack-id <id>]
  *   --host-only  --skip-install
  */
@@ -31,7 +31,7 @@ function argValue(flag: string): string | undefined {
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage:
-  bun script/build-release-binaries.ts --out-dir <dir> --version <ver> --channel <stable|beta>
+  bun scripts/build-release-binaries.ts --out-dir <dir> --version <ver> --channel <stable|beta>
   [--host-only] [--only linux-x64[,darwin-arm64,...]] [--skip-install]`)
   process.exit(0)
 }
@@ -62,7 +62,7 @@ if (channel !== "stable" && channel !== "beta") {
 mkdirSync(outDir, { recursive: true })
 
 console.log(`→ packing workspace template for v${version}`)
-await $`bun script/pack-workspace-template.ts --version ${version}`.cwd(root)
+await $`bun scripts/pack-workspace-template.ts --version ${version}`.cwd(root)
 const packMetaPath = path.join(root, "packages/spinosa-kernel/src/generated/template-pack-meta.json")
 const packModulePath = path.join(root, "packages/spinosa-kernel/src/generated/template-pack.gen.ts")
 if (!existsSync(packMetaPath) || !existsSync(packModulePath)) {

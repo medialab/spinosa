@@ -4,8 +4,8 @@
 # See docs/release/lima-linux-soak.md
 #
 # Usage:
-#   bash script/lima-linux-soak.sh --dist dist/vX.Y.Z --stage-only
-#   bash script/lima-linux-soak.sh --dist dist/vX.Y.Z --instance spinosa-linux-arm64 --smoke
+#   bash scripts/lima-linux-soak.sh --dist dist/vX.Y.Z --stage-only
+#   bash scripts/lima-linux-soak.sh --dist dist/vX.Y.Z --instance spinosa-linux-arm64 --smoke
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,8 +30,8 @@ warn() { printf '  %s %s\n' "${Y}●${RESET}" "$*" >&2; }
 usage() {
   cat <<'EOF'
 Usage:
-  bash script/lima-linux-soak.sh --dist <dir> --stage-only
-  bash script/lima-linux-soak.sh --dist <dir> --instance <lima-name> --smoke
+  bash scripts/lima-linux-soak.sh --dist <dir> --stage-only
+  bash scripts/lima-linux-soak.sh --dist <dir> --instance <lima-name> --smoke
 
 Options:
   --dist DIR       Immutable release dir (binaries + optional install.sh)

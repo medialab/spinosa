@@ -29,7 +29,7 @@ dist/
 framework/bin/.build/
 .build/
 
-# Generated embedded template pack blobs (rebuilt by script/pack-workspace-template.ts)
+# Generated embedded template pack blobs (rebuilt by scripts/pack-workspace-template.ts)
 /packages/spinosa-kernel/src/generated/template-blobs/
 /packages/spinosa-kernel/src/generated/template-files/
 /packages/spinosa-kernel/src/generated/template-pack-meta.json
@@ -42,7 +42,7 @@ framework/bin/.build/
 # Local checkout launcher symlink (use `bun run spinosa` / `bun run dev`)
 /spinosa
 /spinosa-local
-/script/local-spinosa.sh
+/scripts/local-spinosa.sh
 /.spinosa-local-branch
 
 # Framework (generated per-workspace)

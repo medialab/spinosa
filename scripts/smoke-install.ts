@@ -14,10 +14,10 @@
  *   If the host binary is missing from --dist, deep install/version checks are skipped.
  *
  * Usage:
- *   bun script/smoke-install.ts
- *   bun script/smoke-install.ts --repo-root
- *   bun script/smoke-install.ts --dist dist/vX.Y.Z
- *   bun script/smoke-install.ts --binary dist/vX.Y.Z/spinosa-darwin-arm64
+ *   bun scripts/smoke-install.ts
+ *   bun scripts/smoke-install.ts --repo-root
+ *   bun scripts/smoke-install.ts --dist dist/vX.Y.Z
+ *   bun scripts/smoke-install.ts --binary dist/vX.Y.Z/spinosa-darwin-arm64
  */
 import {
   chmodSync,
@@ -57,10 +57,10 @@ const structureOnly =
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage:
-  bun script/smoke-install.ts                              # live checkout
-  bun script/smoke-install.ts --repo-root                  # same
-  bun script/smoke-install.ts --dist <release-dir>         # binary installer via local HTTP
-  bun script/smoke-install.ts --binary <product-binary>    # direct binary version/doctor
+  bun scripts/smoke-install.ts                              # live checkout
+  bun scripts/smoke-install.ts --repo-root                  # same
+  bun scripts/smoke-install.ts --dist <release-dir>         # binary installer via local HTTP
+  bun scripts/smoke-install.ts --binary <product-binary>    # direct binary version/doctor
 Env:
   SPINOSA_SMOKE_STRUCTURE=1     structure / asset checks only
   SPINOSA_RELEASE_BASE_URL      honored by rewritten install.sh (set by --dist)`)

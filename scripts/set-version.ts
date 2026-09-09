@@ -90,7 +90,7 @@ export function syncProductVersion(version: string, root: string): {
 function main() {
   const version = process.argv[2]
   if (!version) {
-    console.error("Usage: bun script/set-version.ts <version>")
+    console.error("Usage: bun scripts/set-version.ts <version>")
     process.exit(1)
   }
 

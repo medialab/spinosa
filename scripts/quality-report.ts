@@ -141,7 +141,7 @@ type Baseline = {
 }
 
 const excludedPaths = new Set([baselineRelativePath, reportRelativePath])
-const includedAdditionalPaths = [".github/workflows/quality.yml", "script/quality-report.ts"]
+const includedAdditionalPaths = [".github/workflows/quality.yml", "scripts/quality-report.ts"]
 
 function classify(filePath: string): Bucket {
   const normalized = filePath.toLowerCase()

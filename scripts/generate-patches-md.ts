@@ -48,7 +48,7 @@ for (const file of patchFiles) {
 const body = `# Patch Audit
 
 Generated from \`package.json\` \`patchedDependencies\` (${entries.length} entries).
-Do not edit the table by hand — run \`bun script/generate-patches-md.ts\`.
+Do not edit the table by hand — run \`bun scripts/generate-patches-md.ts\`.
 
 | Package | Version | Patch file |
 |---------|---------|------------|

@@ -34,10 +34,10 @@ const CORE_RELEASE_TESTS = [
   "test/uninstall.test.ts",
   "test/version-cache.test.ts",
   "test/distribution.test.ts",
-  "../../script/release/github.test.ts",
-  "../../script/release/bump.test.ts",
-  "../../script/release/lib.test.ts",
-  "../../script/set-version.test.ts",
+  "../../scripts/release/github.test.ts",
+  "../../scripts/release/bump.test.ts",
+  "../../scripts/release/lib.test.ts",
+  "../../scripts/set-version.test.ts",
 ] as const
 
 const TUI_RELEASE_TESTS = [
@@ -139,7 +139,7 @@ const wave2 = await wave("wave 2: launch / workspace regressions", [
     if (result.exitCode !== 0) throw new Error("tui release-critical failed")
   }),
   runJob("repo smoke", async () => {
-    const result = await $`bun script/smoke-install.ts`.cwd(root).nothrow()
+    const result = await $`bun scripts/smoke-install.ts`.cwd(root).nothrow()
     if (result.exitCode !== 0) throw new Error("repo smoke failed")
   }),
 ])

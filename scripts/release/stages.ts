@@ -97,7 +97,7 @@ export async function runBump(ctx: StageContext): Promise<string> {
   ctx.reporter.detail("bun.lock refreshed for frozen installs")
 
   // Root + installer are source of truth; product packages (spinosa-core/cli/…) are synced too.
-  // Kernel/tui stay on their own 1.17.x fork versions — see script/set-version.ts.
+  // Kernel/tui stay on their own 1.17.x fork versions — see scripts/set-version.ts.
   const versionPaths = [
     "package.json",
     "install.sh",
@@ -142,11 +142,11 @@ export async function runBuild(ctx: StageContext): Promise<void> {
   mkdirSync(paths.channelDist, { recursive: true })
 
   // Shared entry: packs template + buildSpinosaBinaries → flat product assets + build-manifest.json
-  const build = await $`bun script/build-release-binaries.ts --out-dir ${paths.dist} --version ${version} --channel ${paths.channel}`
+  const build = await $`bun scripts/build-release-binaries.ts --out-dir ${paths.dist} --version ${version} --channel ${paths.channel}`
     .cwd(RELEASE_ROOT)
     .nothrow()
   if (build.exitCode !== 0) {
-    throw new Error("product binary build failed — see script/build-release-binaries.ts")
+    throw new Error("product binary build failed — see scripts/build-release-binaries.ts")
   }
 
   for (const binaryPath of Object.values(paths.binaryPaths)) {
@@ -284,10 +284,10 @@ export async function runSmoke(ctx: StageContext): Promise<void> {
   }
   const flags = ["--dist", paths.dist]
   if (structureOnly) flags.push("--structure")
-  const result = await $`bun script/smoke-install.ts ${flags}`.cwd(RELEASE_ROOT).nothrow()
+  const result = await $`bun scripts/smoke-install.ts ${flags}`.cwd(RELEASE_ROOT).nothrow()
   if (result.exitCode !== 0) {
     throw new Error(
-      "local binary installer smoke failed — published installs would break for users; see script/smoke-install.ts",
+      "local binary installer smoke failed — published installs would break for users; see scripts/smoke-install.ts",
     )
   }
   ctx.reporter.detail(structureOnly ? `structure-smoked ${paths.dist}` : `full-smoked ${paths.dist}`)
@@ -462,7 +462,7 @@ export async function runVerifyRemote(ctx: StageContext): Promise<void> {
     const remoteBinary = resolve(remoteDir, hostBinary)
     const flags = ["--binary", remoteBinary]
     if (process.env.SPINOSA_SMOKE_STRUCTURE === "1") flags.push("--structure")
-    const smoke = await $`bun script/smoke-install.ts ${flags}`.cwd(RELEASE_ROOT).nothrow()
+    const smoke = await $`bun scripts/smoke-install.ts ${flags}`.cwd(RELEASE_ROOT).nothrow()
     if (smoke.exitCode !== 0) throw new Error("remote binary smoke failed")
     ctx.reporter.detail(`remote smoke passed for ${paths.tag} (${hostBinary})`)
   }

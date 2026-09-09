@@ -1,6 +1,6 @@
 ---
 type: directory_guidance
-scope: tests/
+scope: tests/pipeline/
 description: |
   Self-contained test files for the Spinosa research pipeline.
   Each file has YAML frontmatter (expectations) + a prompt body
@@ -11,7 +11,7 @@ created: 2026-06-30
 updated: 2026-06-30
 ---
 
-# tests/ — Pipeline Test Suite
+# tests/pipeline/ — Pipeline Test Suite
 
 Each file is a self-contained test: YAML frontmatter declares what's
 expected, the prompt body tells the orchestrator which pipeline to

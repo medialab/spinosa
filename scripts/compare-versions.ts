@@ -10,7 +10,7 @@ const left = normalizeFrameworkVersion(process.argv[2])
 const right = normalizeFrameworkVersion(process.argv[3])
 
 if (!left || !right) {
-  console.error("Usage: bun script/compare-versions.ts <left> <right>")
+  console.error("Usage: bun scripts/compare-versions.ts <left> <right>")
   process.exit(3)
 }
 

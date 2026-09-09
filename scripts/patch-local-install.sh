@@ -112,7 +112,7 @@ link_workspace_packages "$TARGET"
 
 printf '%s %s\n' "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${TARGET}/.spinosa-install-complete"
 
-bun "$ROOT/script/patch-local-install-metadata.ts" "$VERSION"
+bun "$ROOT/scripts/patch-local-install-metadata.ts" "$VERSION"
 
 _info "Verifying patched runtime"
 SPINOSA_HOME="$SPINOSA_HOME" SPINOSA_TEMPLATE_ROOT="$TARGET" \

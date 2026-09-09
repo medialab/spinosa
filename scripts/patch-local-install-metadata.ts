@@ -6,7 +6,7 @@ import { releaseChannel } from "../packages/spinosa-core/src/utils/version.ts"
 
 const version = process.argv[2]
 if (!version) {
-  console.error("Usage: bun script/patch-local-install-metadata.ts <version>")
+  console.error("Usage: bun scripts/patch-local-install-metadata.ts <version>")
   process.exit(1)
 }
 

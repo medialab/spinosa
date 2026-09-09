@@ -42,7 +42,7 @@ async function step(label: string, fn: () => Promise<void>): Promise<void> {
 }
 
 await step("distribution + release unit tests", async () => {
-  const result = await $`bun test --timeout 30000 test/distribution.test.ts test/uninstall.test.ts ../../script/release/lib.test.ts ../../script/release/bump.test.ts ../../script/set-version.test.ts`
+  const result = await $`bun test --timeout 30000 test/distribution.test.ts test/uninstall.test.ts ../../scripts/release/lib.test.ts ../../scripts/release/bump.test.ts ../../scripts/set-version.test.ts`
     .cwd(path.join(root, "packages/spinosa-core"))
     .nothrow()
   if (result.exitCode !== 0) throw new Error("binary unit tests failed")
@@ -55,7 +55,7 @@ await step("installer bats", async () => {
 
 await step("host product binary build", async () => {
   const result =
-    await $`bun script/build-release-binaries.ts --out-dir ${outDir} --version ${version} --channel ${channel} --host-only`
+    await $`bun scripts/build-release-binaries.ts --out-dir ${outDir} --version ${version} --channel ${channel} --host-only`
       .cwd(root)
       .nothrow()
   if (result.exitCode !== 0) throw new Error("host binary build failed")
@@ -69,7 +69,7 @@ const hostBinary = path.join(outDir, hostAsset)
 await step("host binary smoke", async () => {
   if (!existsSync(hostBinary)) throw new Error(`missing host binary ${hostBinary}`)
   assertPortableBinary(hostBinary)
-  const result = await $`bun script/smoke-install.ts --binary ${hostBinary}`.cwd(root).nothrow()
+  const result = await $`bun scripts/smoke-install.ts --binary ${hostBinary}`.cwd(root).nothrow()
   if (result.exitCode !== 0) {
     if (process.env.SPINOSA_BINARY_SMOKE_STRICT === "1") {
       throw new Error("host binary smoke failed")
