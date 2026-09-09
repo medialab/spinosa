@@ -51,7 +51,14 @@ interface VersionCache {
   version: string
 }
 
-const VERSION_CACHE_TTL_SEC = 600
+const VERSION_CACHE_TTL_SEC: Record<string, number> = {
+  beta: 300,
+  stable: 3600,
+}
+
+function versionCacheTtlSec(channel: string): number {
+  return VERSION_CACHE_TTL_SEC[channel] ?? 600
+}
 
 export function verifyInstallerChecksum(installerScript: string, checksums: string): boolean {
   const expected = checksums
@@ -557,7 +564,7 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   const now = Math.floor(Date.now() / 1000)
 
   const cache = readVersionCache(channel)
-  if (cache?.version && now - cache.timestamp < VERSION_CACHE_TTL_SEC) {
+  if (cache?.version && now - cache.timestamp < versionCacheTtlSec(channel)) {
     const latestCmp = compareFrameworkVersions(cache.version, installedVersion)
     const available = latestCmp !== undefined && latestCmp > 0
     return {
