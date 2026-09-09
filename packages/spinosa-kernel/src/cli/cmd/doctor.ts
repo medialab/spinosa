@@ -76,7 +76,8 @@ async function probeMarkitdown(): Promise<boolean> {
   // and fail the compile. Resolve-only is enough evidence the package is
   // embedded/present; never claim available without that evidence (binary mode
   // previously always returned true).
-  return moduleAvailable("markitdown-ts", true)
+  // Spinosa fork is @spinosa/markitdown; keep markitdown-ts fallback.
+  return (await moduleAvailable("@spinosa/markitdown", true)) || (await moduleAvailable("markitdown-ts", true))
 }
 
 async function probeCanvas(compiled: boolean): Promise<boolean> {

@@ -302,6 +302,7 @@
         "@napi-rs/canvas-linux-arm64-gnu": "1.0.2",
         "@napi-rs/canvas-linux-x64-gnu": "1.0.2",
         "@spinosa/harness": "workspace:*",
+        "@spinosa/markitdown": "workspace:*",
         "@spinosa/runtime": "workspace:*",
         "ai": "^5.0.0",
         "markitdown-ts": "0.0.10",
@@ -464,6 +465,18 @@
         "typescript": "catalog:",
         "vscode-languageserver-types": "3.17.5",
         "why-is-node-running": "3.2.2",
+      },
+    },
+    "packages/spinosa-markitdown": {
+      "name": "@spinosa/markitdown",
+      "version": "1.0.0-spinosa.1",
+      "dependencies": {
+        "ai": "^5.0.0",
+        "markitdown-ts": "0.0.10",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
       },
     },
     "packages/spinosa-runtime": {
@@ -1520,6 +1533,8 @@
     "@spinosa/kernel-core": ["@spinosa/kernel-core@workspace:packages/core"],
 
     "@spinosa/llm": ["@spinosa/llm@workspace:packages/llm"],
+
+    "@spinosa/markitdown": ["@spinosa/markitdown@workspace:packages/spinosa-markitdown"],
 
     "@spinosa/plugin": ["@spinosa/plugin@workspace:packages/plugin"],
 

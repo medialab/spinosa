@@ -20,6 +20,7 @@
     "@napi-rs/canvas-linux-arm64-gnu": "1.0.2",
     "@napi-rs/canvas-linux-x64-gnu": "1.0.2",
     "@spinosa/harness": "workspace:*",
+    "@spinosa/markitdown": "workspace:*",
     "@spinosa/runtime": "workspace:*",
     "ai": "^5.0.0",
     "@ai-sdk/openai": "^2.0.0",

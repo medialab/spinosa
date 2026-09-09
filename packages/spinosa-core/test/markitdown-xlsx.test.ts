@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import * as XLSX from "xlsx"
-import { MarkItDown } from "markitdown-ts"
+import { MarkItDown } from "@spinosa/markitdown"
 import { ensureSheetJsFs } from "../src/import/sheetjs-fs"
 import { markitdownConvertFile } from "../src/import/markitdown-convert"
 

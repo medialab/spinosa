@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { MarkItDown } from "markitdown-ts"
+import { MarkItDown } from "@spinosa/markitdown"
 import { ensureSheetJsFs } from "./sheetjs-fs"
 
 type MarkItDownResult = Awaited<ReturnType<MarkItDown["convert"]>>

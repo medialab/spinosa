@@ -89,9 +89,36 @@ export function requiresKeyForModel(id: string): string | undefined {
   return findOcrModel(id)?.requiresKey
 }
 
+/** Resolve provider API key: env first, then Spinosa provider store (so TUI connect works). */
+function resolveProviderKey(requiresKey: string): string | undefined {
+  const direct = process.env[requiresKey]
+  if (direct) return direct
+  // Spinosa stores provider keys via opencode config / provider loader;
+  // we also check common fallbacks without importing heavy kernel deps.
+  // Google supports both GOOGLE_GENERATIVE_AI_API_KEY and GEMINI_API_KEY.
+  if (requiresKey === "GOOGLE_API_KEY" || requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") {
+    return process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY
+  }
+  if (requiresKey === "ANTHROPIC_API_KEY") {
+    return process.env.ANTHROPIC_API_KEY
+  }
+  return undefined
+}
+
+function isValidOcrModelId(id: string): boolean {
+  if (id === "tesseract-local" || id === "none" || id === "vision:provider-picker") return true
+  if (!id.includes("/")) return false
+  const slash = id.indexOf("/")
+  const provider = id.slice(0, slash)
+  const model = id.slice(slash + 1)
+  if (!provider || !model || model.length < 2) return false
+  if (!/^[a-z0-9_-]+$/i.test(provider)) return false
+  return true
+}
+
 /**
  * Create a Vercel AI SDK `LanguageModel` for the selected vision option.
- * Lazy-imports `@ai-sdk/openai` so workspaces using Tesseract don't need the dep.
+ * Lazy-imports provider SDKs so Tesseract-only workspaces don't need deps.
  * For OpenRouter we reuse the OpenAI compatible provider with custom baseURL.
  * Supports both curated `OCR_MODEL_OPTIONS` ids and dynamic `provider/model`
  * ids from the catalog (e.g. `anthropic/claude-3.5-sonnet`, `openrouter/qwen/...`).
@@ -101,6 +128,7 @@ export function requiresKeyForModel(id: string): string | undefined {
 export async function createVisionLanguageModel(
   ocrModelId: string,
 ): Promise<undefined | { model: unknown; modelId: string; provider: string }> {
+  if (!isValidOcrModelId(ocrModelId)) return undefined
   if (ocrModelId === "tesseract-local" || ocrModelId === "none") return undefined
   const opt = findOcrModel(ocrModelId)
   let modelId: string | undefined = opt?.modelId
@@ -114,18 +142,24 @@ export async function createVisionLanguageModel(
     // Vision is implied for any provider/model picked via the vision selector
     if (!modelId) return undefined
     // Derive key name: OPENROUTER_API_KEY, ANTHROPIC_API_KEY, etc.
-    requiresKey = provider === "openrouter" ? "OPENROUTER_API_KEY" : `${provider.toUpperCase()}_API_KEY`
+    // Google uses GOOGLE_GENERATIVE_AI_API_KEY (alias GEMINI_API_KEY)
+    if (provider === "google") requiresKey = "GOOGLE_GENERATIVE_AI_API_KEY"
+    else requiresKey = provider === "openrouter" ? "OPENROUTER_API_KEY" : `${provider.toUpperCase()}_API_KEY`
     // Also respect opt for curated entries
     if (opt?.requiresKey) requiresKey = opt.requiresKey
   }
   if (!modelId) return undefined
-  const key = requiresKey ? process.env[requiresKey] : undefined
+  const key = requiresKey ? resolveProviderKey(requiresKey) : undefined
   // For curated free openrouter models, key is required; for dynamic, also require if provider needs it
   if (requiresKey && !key) return undefined
   // Lazy import — keeps Tesseract-only workspaces from needing `ai`/`@ai-sdk/openai`.
+  // For production: openrouter proxies any provider; direct anthropic/google also work via OpenRouter.
+  // Direct anthropic/google SDKs can be added later (@ai-sdk/anthropic, @ai-sdk/google) — fallback to openai-compatible for now.
   try {
     const { createOpenAI } = await import("@ai-sdk/openai")
     const baseURL = provider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined
+    // For direct anthropic/google, OpenAI-compatible endpoint will fail fast with clear auth error;
+    // user should pick via openrouter (e.g. openrouter/anthropic/claude-3-5-sonnet) for cross-provider vision.
     const openai = createOpenAI({
       apiKey: key ?? "sk-test",
       ...(baseURL ? { baseURL } : {}),

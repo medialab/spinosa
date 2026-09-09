@@ -85,7 +85,7 @@ export function networkImageAvailable(): boolean {
 export async function pdfHasTextLayer(pdfPath: string): Promise<boolean> {
   // Outcome-based: try MarkItDown, if it yields non-empty markdown → text layer
   try {
-    const { MarkItDown } = await import("markitdown-ts")
+    const { MarkItDown } = await import("@spinosa/markitdown")
     const { markitdownConvertFile } = await import("./markitdown-convert")
     const converter = new MarkItDown()
     const result = await markitdownConvertFile(converter, pdfPath)

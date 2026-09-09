@@ -61,6 +61,7 @@
       "packages/spinosa-cli",
       "packages/spinosa-harness",
       "packages/spinosa-runtime",
+      "packages/spinosa-markitdown",
       "packages/tui",
       "packages/ui"
     ],

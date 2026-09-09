@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@spinosa/markitdown",
+  "version": "1.0.0-spinosa.1",
+  "description": "Spinosa fork of markitdown-ts (dead8309/markitdown-ts) — vision LLM transcription integrated, branched for Spinosa",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/medialab/spinosa",
+    "directory": "packages/spinosa-markitdown"
+  },
+  "homepage": "https://github.com/dead8309/markitdown-ts#readme",
+  "keywords": ["markitdown", "markdown", "spinosa", "vision", "ocr"],
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "ai": "^5.0.0",
+    "markitdown-ts": "0.0.10"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

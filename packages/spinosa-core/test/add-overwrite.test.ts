@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { MarkItDown } from "markitdown-ts"
+import { MarkItDown } from "@spinosa/markitdown"
 import { addFiles } from "../src/commands/add"
 mock.module("../src/import/ppu-ocr", () => ({ runPpuOcrBatch: async () => undefined }))
 

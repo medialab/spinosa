@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, appendFileSync, readFileSync, readdirSync, rmSyn
 import * as path from "node:path"
 import { spawn, type ChildProcess } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import { MarkItDown } from "markitdown-ts"
+import { MarkItDown } from "@spinosa/markitdown"
 
 import stripAnsi from "strip-ansi"
 import { markitdownConvertFile } from "./markitdown-convert"
@@ -521,11 +521,41 @@ export async function processMarkitdownInProcess(
       const startTime = Date.now()
       try {
         mkdirSync(path.dirname(f.dest), { recursive: true })
-        const result = await markitdownConvertFile(
+        // Vision transcription: retry transient 429/5xx/timeout with backoff; auth errors fail fast.
+        const callWithVision = async () => markitdownConvertFile(
           converter,
           f.src,
           isImage && vision ? { llmModel: vision.model, llmPrompt: vision.prompt } : undefined,
         )
+        const isRetryableVisionError = (msg: string) => /429|rate.?limit|timeout|timed out|503|502|500|ECONNRESET|ETIMEDOUT/i.test(msg)
+        const isAuthError = (msg: string) => /401|403|Incorrect API key|invalid_api_key|authentication/i.test(msg)
+        let result: Awaited<ReturnType<typeof markitdownConvertFile>> | undefined
+        if (isImage && vision) {
+          let lastErr: unknown
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              // 45s timeout per attempt so a hanging vision call doesn't block the whole import.
+              const withTimeout = Promise.race([
+                callWithVision(),
+                new Promise<never>((_, rej) => setTimeout(() => rej(new Error("vision timeout after 45s")), 45000)),
+              ])
+              result = await withTimeout
+              lastErr = undefined
+              break
+            } catch (e) {
+              lastErr = e
+              const msg = e instanceof Error ? e.message : String(e)
+              if (isAuthError(msg) || !isRetryableVisionError(msg) || attempt === 2) throw e
+              const backoff = 1000 * Math.pow(2, attempt) + Math.random() * 500
+              onLog?.(`  Vision ${vision.modelId} retry ${attempt + 1}/3 for ${f.rel} after ${msg.slice(0,120)} — backoff ${Math.round(backoff)}ms`)
+              await new Promise(r => setTimeout(r, backoff))
+              throwIfSpinosaCancelled(shouldAbort)
+            }
+          }
+          if (!result && lastErr) throw lastErr
+        } else {
+          result = await callWithVision()
+        }
         throwIfSpinosaCancelled(shouldAbort)
         const text = result?.markdown ?? ""
         if (!text.trim()) throw new Error("MarkItDown returned no content")
@@ -791,7 +821,7 @@ export async function processOcr(
       if (likelyTextPdf) {
         try {
           // Text-layer PDFs → try MarkItDown first (outcome-based isText detection, no pdf.js)
-          const { MarkItDown } = await import("markitdown-ts")
+          const { MarkItDown } = await import("@spinosa/markitdown")
           const { markitdownConvertFile } = await import("./markitdown-convert")
           const converter = new MarkItDown()
           const mdResult = await markitdownConvertFile(converter, file.src)
@@ -1809,7 +1839,7 @@ export async function verifyAndRecoverImport(
             let markitdownText = ""
             let markitdownOk = false
             try {
-              const { MarkItDown } = await import("markitdown-ts")
+              const { MarkItDown } = await import("@spinosa/markitdown")
               const { markitdownConvertFile } = await import("./markitdown-convert")
               const converter = new MarkItDown()
               const mdRes = await markitdownConvertFile(converter, srcFile)

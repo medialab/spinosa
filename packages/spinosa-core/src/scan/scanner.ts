@@ -127,8 +127,10 @@ export async function scanSource(
 export async function detectDocumentTools(): Promise<ToolStatus> {
   const hasTesseract = tesseractAvailable()
   const unsupported = hasTesseract ? undefined : ocrUnsupportedReason()
+  // Fork is @spinosa/markitdown; keep markitdown-ts as fallback for availability
+  const hasMarkitdown = checkModuleAvailable("@spinosa/markitdown") || checkModuleAvailable("markitdown-ts")
   return {
-    markitdown: checkModuleAvailable("markitdown-ts"),
+    markitdown: hasMarkitdown,
     ocr: ocrAvailable(),
     pdfjs: pdfjsAvailable(),
     ...(unsupported ? { ocrUnsupportedReason: unsupported } : {}),
@@ -136,7 +138,7 @@ export async function detectDocumentTools(): Promise<ToolStatus> {
 }
 
 function checkModuleAvailable(name: string): boolean {
-  return moduleAvailable(name, name === "markitdown-ts")
+  return moduleAvailable(name, name === "@spinosa/markitdown" || name === "markitdown-ts")
 }
 
 export function suggestWorkspacePath(sourcePath: string): string | undefined {
