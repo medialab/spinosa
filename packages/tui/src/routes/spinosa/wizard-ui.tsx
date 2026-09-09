@@ -430,7 +430,6 @@ export function OcrModelSelector(props: {
                 backgroundColor={active() ? props.theme.primary : buttonBackground(props.theme, false)}
                 border={active() ? ["left"] : []}
                 borderColor={active() ? props.theme.primary : undefined}
-                onMouseOver={() => props.onSelectIndex(index())}
                 onMouseDown={() => deferPress(() => props.onSelect(index()))}
               >
                 <box flexDirection="row" gap={1} alignItems="center">
