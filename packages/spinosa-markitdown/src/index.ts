@@ -15,6 +15,13 @@ Preserve headings, paragraphs, lists, and tables in Markdown.
 Mark unreadable content as [illegible].
 Do not add extra commentary beyond the transcription.`
 
+const MIME_FOR_EXT: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+}
+
 // Patch upstream ImageConverter to handle all image types for vision
 // We do it by reaching into the prototype after import (sync)
 let patched = false
@@ -42,14 +49,16 @@ function patchImageConverter() {
             // Try upstream first (jpg/png) — if it returns null, do our own LLM call
             const res = await origProto.call(this, source, options).catch(() => null)
             if (res?.markdown?.trim()) return res
-            // Fallback: direct LLM call for webp/heic etc. (upstream only supports jpg/png)
+            // Fallback: direct LLM call for webp (upstream only supports jpg/png) — always send as data URL with correct MIME
             try {
               const buf = typeof source === "string" ? fs.readFileSync(source) : Buffer.from(source as any)
               const b64 = buf.toString("base64")
+              const mime = MIME_FOR_EXT[ext] || "image/jpeg"
+              const dataUrl = `data:${mime};base64,${b64}`
               const prompt = options.llmPrompt || SPINOSA_OCR_PROMPT
               const gen = await generateText({
                 model: options.llmModel,
-                messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image", image: b64 }] }],
+                messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image", image: dataUrl }] }],
               })
               const text = gen.text?.trim() ?? ""
               if (text) return { title: null, markdown: `# Description:\n${text}`, text_content: text }
