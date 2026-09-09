@@ -487,6 +487,7 @@ export function Onboarding() {
   const [failedCount, setFailedCount] = createSignal(0);
   const [stillMissingCount, setStillMissingCount] = createSignal(0);
   const [processingFile, setProcessingFile] = createSignal("");
+  const [visionError, setVisionError] = createSignal<string | undefined>(undefined);
   const [progressFiles, setProgressFiles] = createSignal<
     ImportFileProgressItem[]
   >([]);
@@ -1197,12 +1198,17 @@ export function Onboarding() {
     });
     const onPhaseLog = job.wrapLog((msg: string) => {
       if (msg.startsWith("  ")) {
-        // Per-file progress lines (e.g. "file → OCR ...") are shown as the
-        // status only; the emitter already drives processingFile, so setting it
-        // here too would duplicate the same text as a second line.
         const label = msg.trim();
+        // Surface vision provider errors immediately in reserved Step 9 area
+        if (label.includes("Vision ") && label.includes(" error ") && step() === "markitdown") {
+          setVisionError(label.replace(/^.*Vision /, "Vision ").slice(0, 160))
+        }
         setProcessingStatus(label);
         return;
+      }
+      // Also catch top-level vision unavailable (missing key) during markitdown
+      if (msg.includes("Vision model") && msg.includes("unavailable") && step() === "markitdown") {
+        setVisionError(msg.slice(0, 160))
       }
       appendLogLine(msg);
     });
@@ -1309,6 +1315,7 @@ export function Onboarding() {
             if (shouldAbort()) return false;
             setBusy(true);
             setStep("markitdown");
+            setVisionError(undefined)
             // Images are only in markitdown when vision (provider/model) is selected;
             // with tesseract/none they are copy-only and not counted here.
             const hasVision = selectedOcrModel().includes("/")
@@ -1335,15 +1342,21 @@ export function Onboarding() {
           if (id === "markitdown") {
             const visionFailed = result.failed > 0 && selectedOcrModel().includes("/")
             const hasVision = selectedOcrModel().includes("/")
-            setProcessingStatus(
-              visionFailed
-                ? `MarkItDown — ${result.converted} ok, ${result.failed} failed (vision ${selectedOcrModel()} — check provider/key, Back to change)`
-                : hasVision
+            if (visionFailed) {
+              setVisionError(`Vision ${selectedOcrModel()} failed for ${result.failed} file(s) — check provider/key or rate limit. You can change model and retry.`)
+              setProcessingStatus(
+                `MarkItDown — ${result.converted} ok, ${result.failed} failed (vision ${selectedOcrModel()} — see error below)`
+              );
+            } else {
+              setVisionError(undefined)
+              setProcessingStatus(
+                hasVision
                   ? `Office docs, text PDFs & images via vision — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`
                   : `Office docs & text PDFs converted — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
-            );
+              );
+            }
             // Dwell longer when vision failed so provider error is readable before verify
-            await delay(visionFailed ? 1500 : 500);
+            await delay(visionFailed ? 2500 : 500);
           }
           if (id === "ocr") {
             setProcessingStatus(
@@ -2009,6 +2022,13 @@ export function Onboarding() {
     selectedOcrModelIndex,
     setSelectedOcrModelIndex,
     continueFromVision,
+    visionError,
+    onChangeVisionModel: () => {
+      // Go back to vision picker — same as Back but from markitdown step
+      logAction("change-vision", `from ${step()} to vision (provider error)`)
+      setVisionError(undefined)
+      setStep("vision")
+    },
     waitingForGate,
     gateLabel,
     gateAction,

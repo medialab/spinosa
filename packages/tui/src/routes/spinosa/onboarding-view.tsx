@@ -380,6 +380,17 @@ export function OnboardingView(props: OnboardingViewProps) {
                     viewportHeight={dimensions().height}
                   />
                 </Show>
+                {/* Reserved space for provider vision errors in Step 9 — converting via MarkItDown */}
+                <Show when={step() === "markitdown"}>
+                  <box minHeight={3} flexDirection="column" gap={1} paddingTop={1}>
+                    <Show when={props.visionError()} fallback={<text fg={theme.textMuted}> </text>}>
+                      <box flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel} border={["left"]} borderColor={theme.error}>
+                        <text fg={theme.error} wrapMode="word">{props.visionError()}</text>
+                        <WizardActionButton theme={theme} label="Change vision model" primary onPress={props.onChangeVisionModel} />
+                      </box>
+                    </Show>
+                  </box>
+                </Show>
               </Show>
               <Show when={step() === "verification"}>
                 <Show when={progressFiles().length > 0}>
