@@ -3,6 +3,7 @@ import { ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { Theme } from "../../context/theme"
 import { SplitBorder } from "../../ui/border"
 import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
+import { selectedForeground } from "../../context/theme"
 import { Locale } from "../../util/locale"
 import type { ImportScanPreview, NewWorkspacePreview } from "../../spinosa/onboarding-preview"
 import type { DialogContext } from "../../ui/dialog"
@@ -420,23 +421,26 @@ export function OcrModelSelector(props: {
           {(item, index) => {
             const active = createMemo(() => props.selectedIndex === index())
             const selected = createMemo(() => props.selectedIndex === index())
+            const isVisionSelected = createMemo(() => active() && item.kind === "vision")
             return (
               <box
                 paddingLeft={1}
                 paddingRight={1}
                 paddingTop={1}
                 paddingBottom={1}
-                backgroundColor={buttonBackground(props.theme, active())}
+                backgroundColor={isVisionSelected() ? props.theme.primary : buttonBackground(props.theme, active())}
+                border={isVisionSelected() ? ["left"] : []}
+                borderColor={isVisionSelected() ? props.theme.primary : undefined}
                 onMouseOver={() => props.onSelectIndex(index())}
                 onMouseDown={() => deferPress(() => props.onSelect(index()))}
               >
                 <box flexDirection="row" gap={1} alignItems="center">
-                  <text fg={buttonText(props.theme, active(), props.theme.primary)} width={2}>
+                  <text fg={isVisionSelected() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, active(), props.theme.primary)} width={2}>
                     {selected() ? "●" : "○"}
                   </text>
                   <box flexDirection="column" flexGrow={1}>
-                    <text fg={buttonText(props.theme, active(), props.theme.text)}>{item.label}</text>
-                    <text fg={buttonText(props.theme, active(), props.theme.textMuted)}>{item.detail}</text>
+                    <text fg={isVisionSelected() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, active(), props.theme.text)}>{item.label}</text>
+                    <text fg={isVisionSelected() ? selectedForeground(props.theme, props.theme.primary) : buttonText(props.theme, active(), props.theme.textMuted)}>{item.detail}</text>
                   </box>
                 </box>
               </box>

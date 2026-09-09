@@ -3,6 +3,7 @@ import { For, Show, type Accessor, type Setter } from "solid-js"
 import { STARTUP_PROGRESS_THRESHOLD_MS } from "@spinosa/core/commands/startup"
 import { CenteredColumn } from "../../component/centered-column"
 import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
+import { selectedForeground } from "../../context/theme"
 import {
   deferPress,
   ImportOptionsSelector,
@@ -145,14 +146,14 @@ export function OnboardingView(props: OnboardingViewProps) {
                 paddingRight={2}
                 paddingTop={1}
                 paddingBottom={1}
-                backgroundColor={buttonBackground(theme, hoveredButton() === "vision-model")}
+                backgroundColor={theme.primary}
                 border={["left"]}
-                borderColor={buttonBorder(theme, hoveredButton() === "vision-model", theme.border)}
+                borderColor={theme.primary}
                 onMouseOver={() => setHoveredButton("vision-model")}
                 onMouseOut={() => setHoveredButton(null)}
                 onMouseDown={() => deferPress(props.onChangeVisionModel)}
               >
-                <text fg={buttonText(theme, hoveredButton() === "vision-model", theme.text)}>{props.selectedVisionLabel()} ▼</text>
+                <text fg={selectedForeground(theme, theme.primary)}>{props.selectedVisionLabel()} ▼</text>
               </box>
             </Show>
           </box>
