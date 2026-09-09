@@ -27,6 +27,7 @@ import { useSDK } from "../../context/sdk";
 import { useDialog } from "../../ui/dialog";
 import { DialogSelect } from "../../ui/dialog-select";
 import { DialogProvider } from "../../component/dialog-provider";
+import { DialogPrompt } from "../../ui/dialog-prompt";
 import {
   createImportJob,
   type ImportJobHandle,
@@ -1031,10 +1032,37 @@ export function Onboarding() {
     if (chosen === "vision:provider-picker") {
       // Open provider/model picker for vision — same catalog as /model, filtered for image input
       logAction("vision", "Opening provider/model picker for vision");
-      // Use the same provider/model dialog but pre-filtered for vision capability
-      // For now, reuse generic provider dialog then model dialog; after selection, continue
-      dialog.replace(() => <DialogVisionPicker onPicked={(providerId, modelId) => {
+      dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
         const id = `${providerId}/${modelId}`
+        const requiresKey = providerId === "openrouter" ? "OPENROUTER_API_KEY" : providerId === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${providerId.toUpperCase()}_API_KEY`
+        const hasEnvKey = Boolean(process.env[requiresKey] ?? (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY" ? process.env.GEMINI_API_KEY : undefined))
+        const isConnected = sync.data.provider_next.connected.includes(providerId)
+        if (!hasEnvKey && !isConnected) {
+          // Seamless: prompt for key inline, persist via auth.set + set env for immediate use — no exit needed
+          logAction("vision", `Vision ${id} needs ${requiresKey} — prompting`)
+          const key = await new Promise<string | null>((resolve) => {
+            dialog.replace(() => (
+              <DialogPrompt
+                title={`${providerId} API key`}
+                placeholder="Paste API key"
+                onConfirm={(v) => resolve(v)}
+              />
+            ), () => resolve(null))
+          })
+          if (!key) {
+            logAction("vision", `Vision ${id} cancelled — no key entered`)
+            dialog.clear()
+            return
+          }
+          // Set for current process so pipeline finds it immediately
+          process.env[requiresKey] = key
+          if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
+          try {
+            await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
+            await sync.refreshProviders()
+          } catch {}
+          logAction("vision", `Vision ${id} key saved for ${providerId}`)
+        }
         setSelectedOcrModel(id)
         logAction("vision", `Picked vision model ${id}`)
         dialog.clear()

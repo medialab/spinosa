@@ -89,19 +89,50 @@ export function requiresKeyForModel(id: string): string | undefined {
   return findOcrModel(id)?.requiresKey
 }
 
-/** Resolve provider API key: env first, then Spinosa provider store (so TUI connect works). */
+import { readFileSync } from "node:fs"
+import { homedir } from "node:os"
+
+/** Resolve provider API key: env first, then Spinosa secure store (auth.json, 0o600) — same as Spinosa. */
 function resolveProviderKey(requiresKey: string): string | undefined {
   const direct = process.env[requiresKey]
   if (direct) return direct
-  // Spinosa stores provider keys via opencode config / provider loader;
-  // we also check common fallbacks without importing heavy kernel deps.
-  // Google supports both GOOGLE_GENERATIVE_AI_API_KEY and GEMINI_API_KEY.
+  // Google aliases
   if (requiresKey === "GOOGLE_API_KEY" || requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") {
-    return process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY
+    const g = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY
+    if (g) return g
   }
-  if (requiresKey === "ANTHROPIC_API_KEY") {
-    return process.env.ANTHROPIC_API_KEY
-  }
+  if (requiresKey === "ANTHROPIC_API_KEY" && process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
+  // Spinosa secure store: Global.Path.data/auth.json (0o600), same as packages/spinosa-kernel/src/auth/index.ts
+  // Supports SPINOSA_AUTH_CONTENT env override (used in tests/CI)
+  try {
+    if (process.env.SPINOSA_AUTH_CONTENT) {
+      const parsed = JSON.parse(process.env.SPINOSA_AUTH_CONTENT) as Record<string, unknown>
+      const providerId = requiresKey.replace(/_API_KEY$/, "").toLowerCase()
+      const entry = parsed[providerId] as { type?: string; key?: string } | undefined
+      if (entry?.key) return entry.key
+    }
+  } catch {}
+  try {
+    const candidates = [
+      process.env.SPINOSA_HOME ? `${process.env.SPINOSA_HOME}/auth.json` : null,
+      `${homedir()}/.local/share/spinosa/auth.json`,
+      `${homedir()}/Library/Application Support/spinosa/auth.json`,
+      `${homedir()}/.spinosa/auth.json`,
+    ].filter(Boolean) as string[]
+    for (const file of candidates) {
+      try {
+        const raw = readFileSync(file, "utf-8")
+        const data = JSON.parse(raw) as Record<string, { type?: string; key?: string }>
+        const providerId = requiresKey.replace(/_API_KEY$/, "").toLowerCase()
+        const altId = providerId === "google_generative_ai" ? "google" : providerId
+        const entry = data[providerId] ?? data[altId]
+        if (entry?.key) return entry.key
+        for (const [k, v] of Object.entries(data)) {
+          if (k.toLowerCase() === providerId && (v as any)?.key) return (v as any).key
+        }
+      } catch {}
+    }
+  } catch {}
   return undefined
 }
 
