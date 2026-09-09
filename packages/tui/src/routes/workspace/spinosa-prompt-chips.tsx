@@ -22,12 +22,15 @@ import { useConnected } from "../../component/use-connected"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider } from "../../component/dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
+import { DialogConfirm } from "../../ui/dialog-confirm"
+import { deleteWorkspace } from "../../spinosa/service"
 import { errorMessage } from "../../util/error"
 
 type ActionRowItem = {
   key: string
   label: string
   onPress: () => void
+  danger?: boolean
 }
 
 export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
@@ -156,6 +159,28 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
     void DialogAlert.show(dialog, "Couldn’t update this workspace", message)
   }
 
+  const handleDeleteWorkspace = async () => {
+    const workspacePath = spinosa.activePath
+    if (!workspacePath || spinosa.genericMode) return
+    const confirmed = await DialogConfirm.show(
+      dialog,
+      "Delete workspace",
+      "Are you sure you want to delete this workspace?",
+      { confirmLabel: "Yes", cancelLabel: "No", defaultChoice: "cancel" },
+    )
+    if (!confirmed) return
+    try {
+      await deleteWorkspace(workspacePath)
+      spinosa.useGenericMode()
+      toast.show({ variant: "success", message: "Workspace deleted." })
+    } catch (error) {
+      toast.show({
+        variant: "error",
+        message: error instanceof Error ? error.message : "Couldn’t delete this workspace.",
+      })
+    }
+  }
+
   const primaryActions = createMemo<ActionRowItem[]>(() =>
     !connected()
       ? ([{
@@ -174,6 +199,12 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
             key: "change-workspace",
             label: "Switch workspace",
             onPress: () => spinosa.showPicker(),
+          },
+          {
+            key: "delete-workspace",
+            label: "Delete workspace",
+            onPress: () => void handleDeleteWorkspace(),
+            danger: true,
           },
           ...(needsWorkspaceUpdate() || busyAction() === "update" || busyAction() === "completed"
             ? [
@@ -217,9 +248,9 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
               paddingRight={workspaceReady() ? 2 : 1}
               paddingTop={1}
               paddingBottom={1}
-              backgroundColor={buttonBackground(theme, highlighted())}
+              backgroundColor={buttonBackground(theme, highlighted(), Boolean(item.danger))}
               border={workspaceReady() ? ["left"] : ["top", "bottom", "left", "right"]}
-              borderColor={buttonBorder(theme, highlighted())}
+              borderColor={buttonBorder(theme, highlighted(), undefined, Boolean(item.danger))}
               onMouseOver={() => {
                 setHoveredAction(item.key)
                 setSelectedAction(index())
@@ -230,7 +261,7 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
                 setTimeout(() => item.onPress(), 0)
               }}
             >
-              <text fg={buttonText(theme, highlighted())} wrapMode="none">
+              <text fg={buttonText(theme, highlighted(), undefined, Boolean(item.danger))} wrapMode="none">
                 {item.label}
               </text>
             </box>
@@ -268,6 +299,7 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean }) {
               { key: "n", desc: "New workspace", group: "Home", cmd: () => navigate({ type: "onboarding" }) },
               { key: "a", desc: "Import files", group: "Home", cmd: () => navigate({ type: "add-files" }) },
               { key: "w", desc: "Switch workspace", group: "Home", cmd: () => spinosa.showPicker() },
+              { key: "d", desc: "Delete workspace", group: "Home", cmd: () => void handleDeleteWorkspace() },
               ...(needsWorkspaceUpdate()
                 ? [{ key: "u", desc: "Update workspace files", group: "Home", cmd: () => void runWorkspaceUpdate() }]
                 : []),
