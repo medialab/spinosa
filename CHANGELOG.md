@@ -8,6 +8,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.10] — 2026-09-09
+
+### Changed
+
+- Flush left — no left border pad (`install.sh:183` `●` at col 0, `→` black bold `install.sh:217`, `preflight.ts:227` `●` flush) plus early `echo` pad removal `install.sh:17`.
+- Workspace updates unified: `preflight.ts:225` `offerWorkspaceUpgrades` now `force:true` — `spinosa upgrade` does version + pack in one `?` prompt, no second `Workspace template pack update` `preflight.ts:296` round.
+
+### Fixed
+
+- `beta` check TTL `300s` / `stable` `3600s` `upgrade.ts:54` `versionCacheTtlSec()` (was `3600`), `spinosa` finds `beta.10` after 5m not 1h.
+- `tui` setup brief toast removed `home.tsx:329`.
+
 ## [1.1.0-beta.9] — 2026-09-09
 
 ### Changed
