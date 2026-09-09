@@ -270,18 +270,36 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
     }
     return Array.from(merged.values())
   })
-  const providersWithVision = createMemo(() => allProviders())
+  const providersWithVision = createMemo(() => {
+    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
+    const vision = providers.filter((p) => Object.values(p.models ?? {}).some((m) => {
+      const input = (m as { capabilities?: { input?: string[] } }).capabilities?.input ?? (m as { input?: string[] }).input
+      return Array.isArray(input) && input.includes("image") && (m as { status?: string }).status !== "deprecated"
+    }))
+    if (vision.length > 0) return vision
+    // Fallback when catalog not yet loaded or no vision flagged — show known vision providers
+    const all = allProviders()
+    const withVisionFallback = all.filter((p) => ["openrouter", "openai", "anthropic", "google"].includes(p.id))
+    return withVisionFallback.length > 0 ? withVisionFallback : all.slice(0, 4)
+  })
   const modelsForProvider = createMemo(() => {
     const pid = providerId()
     if (!pid) return []
     const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; input?: string[] }> }> })?.provider?.find((p) => p.id === pid)
     const raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
-    // Reuse DialogModel's model sorting + vision labeling; if provider has no models in catalog (not branched), show popular free vision models as fallback
     const entries = raw.length > 0 ? raw : (pid === "openrouter" ? [
       ["qwen/qwen2.5-vl-32b-instruct:free", { name: "Qwen 2.5 VL 32B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
       ["google/gemini-flash-1.5-8b:free", { name: "Gemini Flash 1.5 8B (free)", cost: { input: 0 }, capabilities: { input: ["text", "image"] } }],
+    ] as Array<[string, unknown]> : pid === "openai" ? [
+      ["gpt-4o", { name: "GPT-4o", capabilities: { input: ["text", "image"] } }],
+      ["gpt-4o-mini", { name: "GPT-4o mini", capabilities: { input: ["text", "image"] } }],
+    ] as Array<[string, unknown]> : pid === "anthropic" ? [
+      ["claude-3-5-sonnet-20241022", { name: "Claude 3.5 Sonnet", capabilities: { input: ["text", "image"] } }],
+    ] as Array<[string, unknown]> : pid === "google" ? [
+      ["gemini-1.5-flash", { name: "Gemini 1.5 Flash", capabilities: { input: ["text", "image"] } }],
     ] as Array<[string, unknown]> : [])
     if (entries.length === 0) return []
+    // Show only vision models
     return entries.map(([modelId, info]) => {
       const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
       const isVision = Array.isArray(input) && input.includes("image")
@@ -289,10 +307,10 @@ function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: str
         providerId: pid,
         modelId,
         title: (info as { name?: string }).name ?? modelId,
-        description: isVision ? ((info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision") : "Text only",
+        description: (info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision",
         isVision,
       }
-    }).sort((a, b) => (a.isVision === b.isVision ? 0 : a.isVision ? -1 : 1))
+    }).filter((m) => m.isVision)
       .map(({ providerId, modelId, title, description }) => ({ providerId, modelId, title, description }))
   })
   const providerOptions = createMemo(() => {
