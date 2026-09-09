@@ -444,7 +444,7 @@ export function OcrModelSelector(props: {
           }}
         </For>
       </scrollbox>
-      <text fg={props.theme.textMuted}>↑↓ move · enter select · chosen engine handles images & scanned PDFs via MarkItDown vision</text>
+      <text fg={props.theme.textMuted}>↑↓ move · enter select · Tesseract: local PDFs (images copied) · Vision: MarkItDown LLM (needs key) · None: copy only</text>
     </box>
   )
 }

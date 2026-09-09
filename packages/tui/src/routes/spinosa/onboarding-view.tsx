@@ -146,7 +146,7 @@ export function OnboardingView(props: OnboardingViewProps) {
             {step() === "scan" ? " — scanning your source" : ""}
             {step() === "imports" ? " — selecting file types to import" : ""}
             {step() === "vision" ? " — selecting OCR engine for images & scanned PDFs" : ""}
-            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting office docs & text PDFs via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs (images → copy, pending network)" : step() === "verification" ? " — verifying the import" : ""}
+            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : step() === "verification" ? " — verifying the import" : ""}
             {step() === "provider" ? " — choosing your LLM provider" : ""}
             {step() === "startup" ? " — preparing your startup" : ""}
             {step() === "done" ? " — your workspace is ready" : ""}

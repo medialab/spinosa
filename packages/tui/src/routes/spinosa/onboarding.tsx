@@ -1249,22 +1249,25 @@ export function Onboarding() {
           }
           if (id === "markitdown") {
             setBusy(false);
-            await gate("Process text files");
+            await gate("Convert office docs & text PDFs");
             if (shouldAbort()) return false;
             setBusy(true);
             setStep("markitdown");
-            const visionHint = selectedOcrModel().includes("/") ? ` (images via vision: ${selectedOcrModel()})` : selectedOcrModel() === "none" ? " (images: copy only)" : " (images → copy, PDFs → tesseract fallback)";
-            setProcessingStatus(`Converting via MarkItDown — ${count} files${visionHint} — Back to change model`);
+            // Images are only in markitdown when vision (provider/model) is selected;
+            // with tesseract/none they are copy-only and not counted here.
+            const hasVision = selectedOcrModel().includes("/")
+            const simpleHint = hasVision ? ` (images via vision:${selectedOcrModel().split("/").pop()})` : ""
+            setProcessingStatus(`Converting via MarkItDown — ${count} files${simpleHint} — Back to change model`);
             await delay(500);
             return true;
           }
           setBusy(false);
-          await gate("Process images and PDFs");
+          await gate("OCR scanned PDFs with Tesseract");
           if (shouldAbort()) return false;
           setBusy(true);
           setStep("ocr");
-          const ocrHint = selectedOcrModel().includes("/") ? ` (vision ${selectedOcrModel()} fallback)` : ""
-          setProcessingStatus(`Running Tesseract on scanned PDFs — ${count} files${ocrHint} — Back to change vision model`);
+          // OCR phase handles only scanned PDFs (ita+eng+fra 300dpi); images already via markitdown/copy
+          setProcessingStatus(`Running Tesseract on scanned PDFs — ${count} files — Back to change vision model`);
           await delay(500);
           return true;
         },
@@ -1275,10 +1278,13 @@ export function Onboarding() {
           }
           if (id === "markitdown") {
             const visionFailed = result.failed > 0 && selectedOcrModel().includes("/")
+            const hasVision = selectedOcrModel().includes("/")
             setProcessingStatus(
               visionFailed
                 ? `MarkItDown — ${result.converted} ok, ${result.failed} failed (vision ${selectedOcrModel()} — check provider/key, Back to change)`
-                : `Office docs & text PDFs converted — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+                : hasVision
+                  ? `Office docs, text PDFs & images via vision — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`
+                  : `Office docs & text PDFs converted — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
             );
             // Dwell longer when vision failed so provider error is readable before verify
             await delay(visionFailed ? 1500 : 500);
@@ -1286,8 +1292,8 @@ export function Onboarding() {
           if (id === "ocr") {
             setProcessingStatus(
               result.failed > 0
-                ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed (images: ${selectedOcrModel().includes("/") ? `vision ${selectedOcrModel()}` : selectedOcrModel() === "none" ? "copy only" : "copy"}) — Back to change`
-                : `Scanned PDFs via Tesseract — ${result.converted} files (images: ${selectedOcrModel().includes("/") ? `vision ${selectedOcrModel()}` : "copy"})`,
+                ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed — Back to change vision model`
+                : `Scanned PDFs via Tesseract — ${result.converted} files`,
             );
             // Dwell so failure-first 100% results are readable before verify.
             await delay(1000);
