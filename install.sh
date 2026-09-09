@@ -142,6 +142,7 @@ REINSTALL=0
 MIN_DAYS=""
 YES=0
 PREFIX_MODE=0
+FROM_UPGRADE=0
 DEFAULT_SPINOSA_HOME="$HOME/.spinosa"
 SPINOSA_HOME="${SPINOSA_HOME:-$DEFAULT_SPINOSA_HOME}"
 SPINOSA_METADATA_DIR="${SPINOSA_HOME}/metadata"
@@ -176,11 +177,32 @@ else
 fi
 
 info()  { spinosa_log INFO "$1"; printf '  %s  %s %s\n' "${DIM}│${RESET}" "${C}●${RESET}" "$1"; }
-ok()    { spinosa_log INFO "$1"; printf '  %s  %s %s\n' "${DIM}│${RESET}" "${G}◆${RESET}" "$1" >&2; }
+ok()    { spinosa_log INFO "$1"; printf '  %s  %s %s %s\n' "${DIM}│${RESET}" "${C}●${RESET}" "${G}✓${RESET}" "$1" >&2; }
 warn()  { spinosa_log WARN "$1"; printf '  %s  %s %s\n' "${DIM}│${RESET}" "${Y}●${RESET}" "$1" >&2; }
 note()  { spinosa_log INFO "$1"; printf '  %s    %s\n' "${DIM}│${RESET}" "$1"; }
 die()   { spinosa_log ERROR "$1"; printf '\n  %s  %s %s\n\n' "${DIM}│${RESET}" "${R}✗${RESET}" "$1" >&2; exit 1; }
 divider() { printf '  %s\n' "${DIM}│${RESET}"; }
+
+intro() {
+  local title="$1"
+  spinosa_log INFO "intro=${title}"
+  if [ -t 2 ]; then
+    printf '%s  %s %s\n' "${DIM}┌${RESET}" "${C}●${RESET}" "$title" >&2
+  else
+    printf '%s\n' "$title" >&2
+  fi
+}
+outro() {
+  local msg="$1"
+  spinosa_log INFO "outro=${msg}"
+  if [ -t 2 ]; then
+    printf '  %s\n' "${DIM}│${RESET}" >&2
+    printf '%s  %s\n' "${DIM}└${RESET}" "$msg" >&2
+    printf '\n' >&2
+  else
+    printf '%s\n' "$msg" >&2
+  fi
+}
 
 section() {
   local title="$1"
@@ -420,6 +442,7 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || die "--bin-dir requires a directory path"
       SPINOSA_BIN_DIR="$2"; shift 2 ;;
     --dev)        die "--dev is not implemented; clone the repository and follow DEVELOPMENT.md" ;;
+    --from-upgrade) FROM_UPGRADE=1; shift ;;
     --yes|-y)     YES=1; shift ;;
     --)           shift; break ;;
     --help|-h)
@@ -452,6 +475,11 @@ while [ $# -gt 0 ]; do
     *) die "Unknown option: $1" ;;
   esac
 done
+
+# Allow Node caller (spinosa upgrade) to signal that it already showed the outer intro/logo
+if [[ "${SPINOSA_UPGRADE:-0}" == "1" ]]; then
+  FROM_UPGRADE=1
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PLATFORM / ASSETS
@@ -2019,7 +2047,9 @@ main() {
     return 0
   fi
 
-  if [[ "$YES" -eq 0 ]]; then
+  if [[ "$FROM_UPGRADE" -eq 1 ]]; then
+    : # from spinosa upgrade — parent already did intro/logo, no second banner
+  elif [[ "$YES" -eq 0 ]]; then
     print_banner
   fi
   section "System check"
@@ -2141,8 +2171,12 @@ main() {
   fi
 
   echo ""
-  divider
-  printf '\n  %s%sSpinosa installed successfully!%s\n\n' "${BOLD}" "${G}" "${RESET}"
+  if [[ "$FROM_UPGRADE" -eq 1 ]]; then
+    ok "Spinosa installed successfully!"
+  else
+    divider
+    printf '\n  %s%sSpinosa installed successfully!%s\n\n' "${BOLD}" "${G}" "${RESET}"
+  fi
 
   spinosa_log INFO "install complete version=${VERSION} home=${SPINOSA_HOME} distribution=binary"
   note "Install log: $(spinosa_log_file)"

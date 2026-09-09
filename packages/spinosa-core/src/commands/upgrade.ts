@@ -379,7 +379,7 @@ export async function upgradeFramework(
 
   options.onPhase?.("install", "Running installer...")
 
-  const upgradeArgs = ["--upgrade", "--version", resolvedVersion, "--no-launch"]
+  const upgradeArgs = ["--upgrade", "--version", resolvedVersion, "--no-launch", "--from-upgrade"]
   if (options.yes) upgradeArgs.push("--yes")
   if (options.reinstall) upgradeArgs.push("--reinstall")
 
@@ -467,6 +467,7 @@ async function runInstallerWithTimeout(
     const child = spawn("bash", [installerPath, ...upgradeArgs], {
       stdio: suppress ? ["ignore", "pipe", "pipe"] : "inherit",
       detached: true,
+      env: { ...process.env, SPINOSA_UPGRADE: "1" },
     })
 
     let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
