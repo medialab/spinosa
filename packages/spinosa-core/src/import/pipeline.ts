@@ -7,6 +7,7 @@ import { MarkItDown } from "markitdown-ts"
 import stripAnsi from "strip-ansi"
 import { markitdownConvertFile } from "./markitdown-convert"
 import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
+import { TesseractLowConfidenceError } from "./tesseract-ocr"
 import {
   shouldSkipSourceFile,
   findSourceFiles,
@@ -529,6 +530,23 @@ export async function processMarkitdownInProcess(
         }
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
+        if (err instanceof TesseractLowConfidenceError) {
+          const binaryDest = path.join(path.dirname(f.dest), path.basename(f.src))
+          try { rmSync(f.dest, { force: true }) } catch {}
+          const copied = await safeCopyAsync(f.src, binaryDest)
+          if (copied) {
+            onLog?.(`  ${f.rel} → tesseract low confidence (avg ${err.avgConf.toFixed(1)}, low ${err.lowPct.toFixed(1)}%) — keeping original ${path.basename(binaryDest)}`)
+            appendNdjson(mdLog, {
+              ts: isoNow(), status: "skip",
+              source: f.rel, output: path.basename(binaryDest),
+              engine: "tesseract", pages: "", duration_s: (Date.now() - startTime) / 1000,
+              error: `low confidence: ${err.message} — original kept`,
+            })
+            await emitDone(f.rel, "done")
+            skipped++
+            continue
+          }
+        }
         const errMsg = err instanceof Error ? err.message : String(err)
         failed++
         onLog?.(`  ${f.rel} → OCR fallback failed: ${errMsg}`)
@@ -692,6 +710,42 @@ export async function processOcr(
         }
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
+        if (err instanceof TesseractLowConfidenceError) {
+          // Low confidence → discard garbled md, keep original as binary + placeholder md
+          const binaryDest = path.join(path.dirname(file.dest), path.basename(file.src))
+          try { rmSync(file.dest, { force: true }); rmSync(`${file.dest.slice(0, -3)}_pages`, { recursive: true, force: true }) } catch {}
+          const copied = await safeCopyAsync(file.src, binaryDest)
+          // Create placeholder md so raw has an entry and future verify doesn't loop
+          const placeholder = [
+            "---",
+            `source_document: "${path.basename(file.rel).replace(/"/g, '\\"')}"`,
+            `ocr_status: low_confidence`,
+            `ocr_avg_conf: ${err.avgConf.toFixed(1)}`,
+            `ocr_low_pct: ${err.lowPct.toFixed(1)}`,
+            "---",
+            "",
+            `# ${path.basename(file.rel, path.extname(file.rel))} — OCR pending network`,
+            "",
+            `Original file kept as \`${path.basename(binaryDest)}\` pending network OCR (tesseract low confidence avg ${err.avgConf.toFixed(1)}, low ${err.lowPct.toFixed(1)}%).`,
+            "",
+            `> Garbled OCR discarded to avoid polluting raw.`,
+            "",
+          ].join("\n")
+          try {
+            mkdirSync(path.dirname(file.dest), { recursive: true })
+            writeTextAtomicSafe(file.dest, placeholder)
+            injectColdFrontmatter(file.dest)
+          } catch {}
+          if (copied) {
+            onLog?.(`  ${file.rel} → tesseract low confidence (avg ${err.avgConf.toFixed(1)}, low ${err.lowPct.toFixed(1)}%) — keeping original ${path.basename(binaryDest)} + placeholder md`)
+            appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+              ts: isoNow(), status: "skip", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: `low confidence: ${err.message} — original kept`,
+            })
+            prog?.file("OCR", ++processed, total, file.rel, "done")
+            skipped++
+            continue
+          }
+        }
         const msg = err instanceof Error ? err.message : String(err)
         failed++
         appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
