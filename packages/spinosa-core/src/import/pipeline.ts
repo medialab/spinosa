@@ -374,35 +374,8 @@ export async function processMarkitdownInProcess(
     await emitDone(ps.rel)
   }
 
-  const nonPdfFiles: ClassifiedEntry[] = []
-  const pdfRemaining: ClassifiedEntry[] = []
   const pdfOcrFallback: ClassifiedEntry[] = []
-
-  for (const f of toProcess) {
-    throwIfSpinosaCancelled(shouldAbort)
-    if (fileExt(f.src) !== "pdf") { nonPdfFiles.push(f); continue }
-    await emitStart(f.rel)
-    onLog?.(`  ${f.rel} → pdf-js ...`)
-    const startTime = Date.now()
-    try {
-      await convertTextPdf(f.src, f.dest, f.rel, shouldAbort)
-      throwIfSpinosaCancelled(shouldAbort)
-      converted++
-      recoverable.push({ src: f.src, dest: f.dest })
-      appendNdjson(path.join(logsDir, "markitdown-processed.ndjson"), {
-        ts: isoNow(), status: "ok", source: f.rel,
-        output: markitdownOutputRelPath(f.rel),
-        engine: "pdf-js", pages: "",
-        duration_s: (Date.now() - startTime) / 1000,
-      })
-      await emitDone(f.rel)
-    } catch (err) {
-      if (isSpinosaCancellationError(err)) throw err
-      pdfRemaining.push(f)
-    }
-  }
-
-  const remainingMd = [...nonPdfFiles, ...pdfRemaining]
+  const remainingMd = [...toProcess]
 
   const mdLog = path.join(logsDir, "markitdown-processed.ndjson")
   if (remainingMd.length > 0) {
@@ -494,40 +467,65 @@ export async function processMarkitdownInProcess(
     }
   }
 
-  // Recover PDFs that failed both pdf-js and MarkItDown via OCR
+  // Recover PDFs that failed MarkItDown via OCR (tesseract primary, ppu fallback)
   if (pdfOcrFallback.length > 0) {
-    onLog?.(`Falling back to OCR for ${pdfOcrFallback.length} PDF(s) that failed text extraction...`)
+    onLog?.(`Falling back to OCR for ${pdfOcrFallback.length} PDF(s) that failed MarkItDown...`)
     for (const f of pdfOcrFallback) {
       throwIfSpinosaCancelled(shouldAbort)
       await emitStart(f.rel)
       const startTime = Date.now()
       let ok = false
+      let fallbackEngine = "tesseract"
       try {
-        const result = await runOcrWorker([{ src: f.src, rel: f.rel, dest: f.dest }], {
-          onLog,
-          shouldAbort,
-          signal: hooks?.signal,
-          onChild: hooks?.onChild,
-          detached: hooks?.ocrDetached ?? true,
-        })
-        ok = result.converted > 0 && convertedOutputExists(f.dest)
-        if (ok) {
-          converted++
-          recoverable.push({ src: f.src, dest: f.dest })
-          onLog?.(`  ${f.rel} → OCR fallback succeeded`)
+        if (tesseractAvailable()) {
+          const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
+          await ocrPdfViaTesseract(f.src, f.dest, f.rel, { shouldAbort, onLog })
+          ok = convertedOutputExists(f.dest)
+          if (ok) {
+            converted++
+            recoverable.push({ src: f.src, dest: f.dest })
+            onLog?.(`  ${f.rel} → tesseract OCR fallback succeeded`)
+          } else {
+            failed++
+            const errDetail = "tesseract produced no convertible output"
+            onLog?.(`  ${f.rel} → OCR fallback returned no content — ${errDetail}`)
+            appendNdjson(mdLog, {
+              ts: isoNow(), status: "fail",
+              source: f.rel, output: markitdownOutputRelPath(f.rel),
+              engine: "tesseract", pages: "", duration_s: (Date.now() - startTime) / 1000,
+              error: errDetail,
+            })
+            await emitDone(f.rel, "failed")
+            continue
+          }
         } else {
-          failed++
-          const errDetail = result.errors?.[0] ?? "OCR produced no convertible output"
-          onLog?.(`  ${f.rel} → OCR fallback returned no content — ${errDetail}`)
-          appendNdjson(mdLog, {
-            ts: isoNow(), status: "fail",
-            source: f.rel, output: markitdownOutputRelPath(f.rel),
-            engine: "ppu-paddle-ocr", pages: "", duration_s: (Date.now() - startTime) / 1000,
-            error: errDetail,
-            mode: resolveOcrWorkerMode(),
+          fallbackEngine = "ppu-paddle-ocr"
+          const result = await runOcrWorker([{ src: f.src, rel: f.rel, dest: f.dest }], {
+            onLog,
+            shouldAbort,
+            signal: hooks?.signal,
+            onChild: hooks?.onChild,
+            detached: hooks?.ocrDetached ?? true,
           })
-          await emitDone(f.rel, "failed")
-          continue
+          ok = result.converted > 0 && convertedOutputExists(f.dest)
+          if (ok) {
+            converted++
+            recoverable.push({ src: f.src, dest: f.dest })
+            onLog?.(`  ${f.rel} → OCR fallback succeeded`)
+          } else {
+            failed++
+            const errDetail = result.errors?.[0] ?? "OCR produced no convertible output"
+            onLog?.(`  ${f.rel} → OCR fallback returned no content — ${errDetail}`)
+            appendNdjson(mdLog, {
+              ts: isoNow(), status: "fail",
+              source: f.rel, output: markitdownOutputRelPath(f.rel),
+              engine: "ppu-paddle-ocr", pages: "", duration_s: (Date.now() - startTime) / 1000,
+              error: errDetail,
+              mode: resolveOcrWorkerMode(),
+            })
+            await emitDone(f.rel, "failed")
+            continue
+          }
         }
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
@@ -537,9 +535,9 @@ export async function processMarkitdownInProcess(
         appendNdjson(mdLog, {
           ts: isoNow(), status: "fail",
           source: f.rel, output: markitdownOutputRelPath(f.rel),
-          engine: "ppu-paddle-ocr", pages: "", duration_s: (Date.now() - startTime) / 1000,
+          engine: fallbackEngine, pages: "", duration_s: (Date.now() - startTime) / 1000,
           error: errMsg,
-          mode: resolveOcrWorkerMode(),
+          ...(fallbackEngine === "ppu-paddle-ocr" ? { mode: resolveOcrWorkerMode() } : {}),
         })
         await emitDone(f.rel, "failed")
         continue
@@ -547,8 +545,8 @@ export async function processMarkitdownInProcess(
       appendNdjson(mdLog, {
         ts: isoNow(), status: "ok",
         source: f.rel, output: markitdownOutputRelPath(f.rel),
-        engine: "ppu-paddle-ocr", pages: "", duration_s: (Date.now() - startTime) / 1000,
-        mode: resolveOcrWorkerMode(),
+        engine: fallbackEngine, pages: "", duration_s: (Date.now() - startTime) / 1000,
+        ...(fallbackEngine === "ppu-paddle-ocr" ? { mode: resolveOcrWorkerMode() } : {}),
       })
       await emitDone(f.rel)
     }
@@ -615,9 +613,9 @@ export async function processOcr(
   }
 
   // Primary path: tesseract for scanned PDFs (ita+eng+fra, 300dpi). PPU is fallback for one release.
+  // Outcome-based: try MarkItDown first for PDFs that look like text (contain /Font), else tesseract.
   if (tesseractAvailable() && toProcess.length > 0) {
     const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
-    const { isTextBasedPdf } = await import("../extension/pdf")
     for (const file of toProcess) {
       throwIfSpinosaCancelled(shouldAbort)
       const start = Date.now()
@@ -645,46 +643,38 @@ export async function processOcr(
         prog?.file("OCR", ++processed, total, file.rel, "failed")
         continue
       }
+      // Quick font marker check — avoids expensive MarkItDown on scanned/invalid PDFs without /Font
+      let likelyTextPdf = false
       try {
-        // Text-layer PDFs → MarkItDown-style text extraction (no OCR)
-        let hasText = false
-        try { hasText = await isTextBasedPdf(file.src) } catch { hasText = false }
-        if (hasText) {
-          // Reuse convertTextPdf logic via dynamic import to keep text layer
-          const { pdfExtractPageTexts } = await import("../extension/pdf-js")
-          const pageTexts = await pdfExtractPageTexts(file.src)
+        const head = readFileSync(file.src).subarray(0, 262144).toString("utf-8", 0, 262144)
+        likelyTextPdf = head.includes("/Font") || head.includes("/CIDFont")
+      } catch { likelyTextPdf = false }
+      if (likelyTextPdf) {
+        try {
+          // Text-layer PDFs → try MarkItDown first (outcome-based isText detection, no pdf.js)
+          const { MarkItDown } = await import("markitdown-ts")
+          const { markitdownConvertFile } = await import("./markitdown-convert")
+          const converter = new MarkItDown()
+          const mdResult = await markitdownConvertFile(converter, file.src)
           throwIfSpinosaCancelled(shouldAbort)
-          const title = path.basename(file.rel, path.extname(file.rel))
-          const pages = pageTexts.length
-          if (pages === 1) {
+          const mdText = mdResult?.markdown?.trim() ?? ""
+          if (mdText) {
             mkdirSync(path.dirname(file.dest), { recursive: true })
-            writeTextAtomicSafe(file.dest, `# ${title}\n\n${pageTexts[0]!.text.trim() || "[No text extracted]"}\n`)
+            writeTextAtomicSafe(file.dest, mdText)
             injectColdFrontmatter(file.dest)
-          } else {
-            const pageDir = file.dest.endsWith(".md") ? file.dest.slice(0, -3) : `${file.dest}_pages`
-            rmSync(pageDir, { recursive: true, force: true })
-            mkdirSync(pageDir, { recursive: true })
-            for (const { page, text } of pageTexts) {
-              const pageFile = path.join(pageDir, `page-${String(page).padStart(3, "0")}.md`)
-              writeTextAtomicSafe(pageFile, ["---", `source_document: "${path.basename(file.rel).replace(/"/g, '\\"')}"`, `page: ${page}`, `page_count: ${pages}`, "---", "", `# ${title} - Page ${page}`, "", text.trim() || "[No text extracted on this page]", ""].join("\n"))
-              injectColdFrontmatter(pageFile)
-            }
-            mkdirSync(path.dirname(file.dest), { recursive: true })
-            writeTextAtomicSafe(file.dest, `# ${title}\n\n${pageTexts.map(({ page }) => `- [Page ${page}](${path.basename(file.dest.slice(0, -3))}/page-${String(page).padStart(3, "0")}.md)`).join("\n")}\n`)
-            injectColdFrontmatter(file.dest)
+            converted++
+            recoverable.push({ src: file.src, dest: file.dest })
+            appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+              ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "markitdown", pages: "", duration_s: (Date.now() - start) / 1000,
+            })
+            onLog?.(`  ${file.rel} → text-layer PDF via MarkItDown (${mdText.length} chars)`)
+            prog?.file("OCR", ++processed, total, file.rel, "done")
+            continue
           }
-          converted++
-          recoverable.push({ src: file.src, dest: file.dest })
-          appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-            ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "pdf-js", pages: String(pages), duration_s: (Date.now() - start) / 1000,
-          })
-          onLog?.(`  ${file.rel} → text-layer PDF extracted via pdf.js (${pages} pages)`)
-          prog?.file("OCR", ++processed, total, file.rel, "done")
-          continue
+        } catch (err) {
+          if (isSpinosaCancellationError(err)) throw err
+          // fall through to tesseract
         }
-      } catch (err) {
-        if (isSpinosaCancellationError(err)) throw err
-        // fall through to tesseract
       }
       try {
         const result = await ocrPdfViaTesseract(file.src, file.dest, file.rel, { shouldAbort, onLog })
@@ -1617,28 +1607,21 @@ export async function verifyAndRecoverImport(
         if (tesseractAvailable()) {
           try {
             const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
-            const { isTextBasedPdf } = await import("../extension/pdf")
-            let hasText = false
-            try { hasText = await isTextBasedPdf(srcFile) } catch { hasText = false }
-            if (hasText) {
-              const { pdfExtractPageTexts } = await import("../extension/pdf-js")
-              const pageTexts = await pdfExtractPageTexts(srcFile)
+            // Outcome-based: try MarkItDown first, success → text PDF
+            let markitdownText = ""
+            let markitdownOk = false
+            try {
+              const { MarkItDown } = await import("markitdown-ts")
+              const { markitdownConvertFile } = await import("./markitdown-convert")
+              const converter = new MarkItDown()
+              const mdRes = await markitdownConvertFile(converter, srcFile)
               throwIfSpinosaCancelled(shouldAbort)
-              const title = path.basename(relPath, path.extname(relPath))
+              markitdownText = mdRes?.markdown?.trim() ?? ""
+              markitdownOk = markitdownText.length > 0
+            } catch { markitdownOk = false }
+            if (markitdownOk) {
               mkdirSync(path.dirname(destFile), { recursive: true })
-              if (pageTexts.length === 1) {
-                writeTextAtomicSafe(destFile, `# ${title}\n\n${pageTexts[0]!.text.trim() || "[No text extracted]"}\n`)
-              } else {
-                const pageDir = destFile.endsWith(".md") ? destFile.slice(0, -3) : `${destFile}_pages`
-                rmSync(pageDir, { recursive: true, force: true })
-                mkdirSync(pageDir, { recursive: true })
-                for (const { page, text } of pageTexts) {
-                  const pageFile = path.join(pageDir, `page-${String(page).padStart(3, "0")}.md`)
-                  writeTextAtomicSafe(pageFile, ["---", `source_document: "${path.basename(relPath).replace(/"/g, '\\"')}"`, `page: ${page}`, `page_count: ${pageTexts.length}`, "---", "", `# ${title} - Page ${page}`, "", text.trim() || "[No text extracted on this page]", ""].join("\n"))
-                  injectColdFrontmatter(pageFile)
-                }
-                writeTextAtomicSafe(destFile, `# ${title}\n\n${pageTexts.map(({ page }) => `- [Page ${page}](${path.basename(destFile.slice(0, -3))}/page-${String(page).padStart(3, "0")}.md)`).join("\n")}\n`)
-              }
+              writeTextAtomicSafe(destFile, markitdownText)
               injectColdFrontmatter(destFile)
               ocrConverted = 1
             } else {

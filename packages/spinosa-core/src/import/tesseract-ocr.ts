@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:f
 import { mkdtemp, readFile } from "node:fs/promises"
 import * as path from "node:path"
 import { tmpdir } from "node:os"
-import { isTextBasedPdf } from "../extension/pdf"
 import { safeCopyAsync, writeTextAtomicSafe } from "../utils/fs"
 import { injectColdFrontmatter } from "./frontmatter"
 import { throwIfSpinosaCancelled } from "./cancellation"
@@ -84,7 +83,17 @@ export function networkImageAvailable(): boolean {
 }
 
 export async function pdfHasTextLayer(pdfPath: string): Promise<boolean> {
-  return isTextBasedPdf(pdfPath)
+  // Outcome-based: try MarkItDown, if it yields non-empty markdown → text layer
+  try {
+    const { MarkItDown } = await import("markitdown-ts")
+    const { markitdownConvertFile } = await import("./markitdown-convert")
+    const converter = new MarkItDown()
+    const result = await markitdownConvertFile(converter, pdfPath)
+    const text = result?.markdown?.trim() ?? ""
+    return text.length > 0
+  } catch {
+    return false
+  }
 }
 
 function titleFromRel(rel: string): string {

@@ -371,27 +371,29 @@ async function addSingleFile(
       let restored = true
       const tmpDest = destFile + `.spinosa-part-${process.pid}-${crypto.randomUUID()}`
 
-      // Check if PDF has text layer → use MarkItDown/pdfjs instead of OCR
+      // Outcome-based text-layer detection: quick /Font check then MarkItDown
+      let likelyTextPdf = false
       try {
-        const { isTextBasedPdf } = await import("../extension/pdf")
-        const hasText = await isTextBasedPdf(srcFile)
-        if (hasText) {
-          try {
-            const converter = new MarkItDown()
-            const result = await markitdownConvertFile(converter, srcFile)
-            throwIfSpinosaCancelled(shouldAbort)
-            const text = result?.markdown ?? ""
-            if (!text.trim()) throw new Error("MarkItDown returned no content")
+        const head = (await import("node:fs")).readFileSync(srcFile).subarray(0, 262144).toString("utf-8")
+        likelyTextPdf = head.includes("/Font") || head.includes("/CIDFont")
+      } catch { likelyTextPdf = false }
+      if (likelyTextPdf) {
+        try {
+          const converter = new MarkItDown()
+          const result = await markitdownConvertFile(converter, srcFile)
+          throwIfSpinosaCancelled(shouldAbort)
+          const text = result?.markdown?.trim() ?? ""
+          if (text) {
             writeTextAtomic(destFile, text)
             mdConverted = 1
             injectColdFrontmatter(destFile)
             removeConvertedBackups(backups)
             break
-          } catch {
-            // fall through to OCR on failure
           }
+        } catch {
+          // fall through to OCR
         }
-      } catch { /* ignore text check */ }
+      }
 
       try {
         const { tesseractAvailable, ocrPdfViaTesseract } = await import("../import/tesseract-ocr")

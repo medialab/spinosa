@@ -191,11 +191,11 @@ The orchestrator maintains session notes in `.spinosa/memory/orchestrator-notes.
 
 ## Document conversion (OCR)
 
-- **Text-layer PDFs** (`isTextBasedPdf` true) → MarkItDown / pdf.js text extraction (no OCR).
-- **Scanned PDFs** (`isTextBasedPdf` false) → `pdftoppm -png -r 300` → `tesseract -l ita+eng+fra --psm 6` → `.md` (see `packages/spinosa-core/src/import/tesseract-ocr.ts`). Requires `tesseract`, `pdftoppm` (poppler), and `ita`/`eng`/`fra` tessdata.
+- **Text-layer PDFs** → `MarkItDown` succeeds (outcome-based `isTextBased` via MarkItDown non-empty) → keep text layer, no OCR, frontmatter + `page-*.md` split.
+- **Scanned PDFs** → `MarkItDown` empty/fails → `pdftoppm -png -r 300` → `tesseract -l ita+eng+fra --psm 6` → `.md` (see `packages/spinosa-core/src/import/tesseract-ocr.ts`). Requires `tesseract`, `pdftoppm` (poppler), and `ita`/`eng`/`fra` tessdata.
 - **Images** (`jpg`/`jpeg`/`png`/`gif`/`webp`/`heic`/`tif`/`bmp`/`svg`) → copy as binary to `raw/` (no OCR, no MarkItDown), tagged `images_pending_network_ocr` in `system/workspace_index.md` Skipped Media. A future network provider will replace the copy with OCR `.md`.
 - **Office docs** (`docx`/`xlsx`/`csv`/`html`/`epub`/`json`/`xml`/`zip`) → MarkItDown unchanged.
-- Legacy `ppu-paddle-ocr` + `onnxruntime` are kept as a one-release fallback when `tesseract` is unavailable, then removed (light binary ≈198M darwin-arm64 via `SPINOSA_WITH_ONNX=0`).
+- Legacy `ppu-paddle-ocr` + `onnxruntime` are kept as a one-release fallback when `tesseract` is unavailable, then removed (light binary ≈198M darwin-arm64 via `SPINOSA_WITH_ONNX=0`; `pdfjs-dist`/`@napi-rs/canvas` remain bundled for now but no longer used for text detection).
 
 ## Sub-agent gateway
 

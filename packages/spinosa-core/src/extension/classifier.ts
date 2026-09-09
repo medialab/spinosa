@@ -11,7 +11,6 @@ import {
   AUDIO_VIDEO_EXTENSIONS,
   BINARY_COPYABLE_EXTENSIONS,
 } from "../constants"
-import { isTextBasedPdf } from "./pdf"
 import type { FileClass, ImportRoute } from "./types"
 
 const HOME = homedir()
@@ -107,11 +106,10 @@ export async function classifySourceFile(filePath: string): Promise<FileClass> {
     if (extInList(ext, NATIVE_EXTENSIONS)) return "native"
 
     if (ext === "pdf") {
-      try {
-        return (await isTextBasedPdf(filePath)) ? "markitdown" : "ocr_convertible"
-      } catch {
-        return "unknown"
-      }
+      // Outcome-based: all PDFs start as ocr_convertible; pipeline will try MarkItDown first,
+      // success → text PDF, empty/fail → tesseract. Keeps scan lightweight and allows
+      // isText detection via MarkItDown outcome, not pdf.js.
+      return "ocr_convertible"
     }
 
     if (extInList(ext, IMAGE_EXTENSIONS)) return "ocr_convertible"
@@ -180,18 +178,6 @@ export async function importRouteForFile(
     case "ocr_convertible": {
       if (!opts?.ocrChoice) return undefined
       const ext = fileExt(srcFile)
-      if (ext === "pdf") {
-        // Double-check text layer: scanned → tesseract, text → markitdown (mirrors new flow)
-        try {
-          const hasText = await isTextBasedPdf(srcFile)
-          if (hasText) return opts.markitdownChoice ? "markitdown" : undefined
-        } catch {
-          // fall through to OCR
-        }
-        // scanned PDFs → tesseract OCR (guarded by availability at pipeline time)
-        // Return "ocr" — pipeline will use tesseract if available else skip/fallback
-        return "ocr"
-      }
       if (extInList(ext, IMAGE_EXTENSIONS)) {
         // Images: copy-only for now, leave room for network provider
         return "copy"
