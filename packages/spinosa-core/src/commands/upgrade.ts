@@ -5,7 +5,6 @@ import { createHash } from "node:crypto"
 import { homedir, tmpdir as osTmpdir } from "node:os"
 import path from "node:path"
 import {
-  readAutoUpgrade,
   type ReleaseChannel,
   installUrlForChannel,
   resolveReleaseVersionForChannel,
@@ -534,11 +533,6 @@ async function runInstallerWithTimeout(
 export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   spinosaLogInfo("upgrade", "checkUpgradeAvailable start")
   if (process.env.SPINOSA_NO_UPGRADE_CHECK === "1") {
-    return { available: false }
-  }
-
-  const autoUpgrade = await readAutoUpgrade()
-  if (!autoUpgrade) {
     return { available: false }
   }
 
