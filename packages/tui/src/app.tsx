@@ -465,6 +465,34 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const appReady = () => ready() && (startup.skipInitialLoading || spinosa.bootReady)
   const tuiReady = () => appReady() && (startup.skipInitialLoading || startupLoadingComplete())
 
+  // Auto-retry if TUI hasn't rendered after 3-5s normal startup + buffer.
+  // Whitescreen after `checking for updates...` leaves `tuiReady()` false.
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retried = false
+  onMount(() => {
+    retryTimer = setTimeout(() => {
+      if (tuiReady() || retried) return
+      retried = true
+      tuiLog("tui auto-retry: tuiReady still false after 8s, forcing reload")
+      // Force boot ready and hide startup loading to unblock render.
+      // If still not ready, the next effect will trigger a full reload.
+      setStartupLoadingComplete(true)
+      setTimeout(() => {
+        if (!tuiReady()) {
+          tuiLog("tui auto-retry: still not ready, reloading renderer")
+          // Destroy and recreate is handled by Effect scope; here we just
+          // force a hard reload via location (works in dev) or exit.
+          try {
+            globalThis.location?.reload?.()
+          } catch {}
+        }
+      }, 1000)
+    }, 8000)
+  })
+  onCleanup(() => {
+    if (retryTimer) clearTimeout(retryTimer)
+  })
+
   const api = createTuiApi(
     createTuiApiAdapters({
       version: InstallationVersion,
