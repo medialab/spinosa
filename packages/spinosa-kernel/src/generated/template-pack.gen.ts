@@ -279,7 +279,7 @@ import file_275 from "./template-blobs/511aeb589273c14cf34c9267d0c395d891132fbf9
 import file_276 from "./template-blobs/a2e855a23f53ba682e6dee9d65019b4717b6330fd77590fac7bd7edf69da0cfb.bin" with { type: "file" };
 
 export const templatePack = {
-  version: "1.1.0-beta.9",
+  version: "1.1.0-beta.10",
   packId: "eb9883d33e28df5557ace27e8aaad040e1454df9aefef54b6d4b30a2e2ac3def",
   files: [
   { path: ".agents/agents/spinosa-analyst.md", mode: 420, sha256: "1e4e006ad3037dfc523038747011ae9cb6604bd8a138be996f346e74297c0201", contentPath: file_0 },
