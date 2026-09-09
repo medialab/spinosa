@@ -346,25 +346,15 @@ run_timed_step() {
   STEP_OUTPUT_FILE="$output_file"
   step_begin "$label" "$timeout_seconds"
   started="$(date +%s)"
-  # Stream child output to log live while also capturing for final tail
   (trap - ERR; "$@") >"$output_file" 2>&1 &
   pid=$!
   STEP_COMMAND_PID="$pid"
-  # Live tee: tail output file to log in background (best-effort)
-  local tee_pid=""
-  if command -v tail >/dev/null 2>&1; then
-    tail -F "$output_file" 2>/dev/null | while IFS= read -r line; do spinosa_log INFO "${label}: ${line}"; done &
-    tee_pid=$!
-  fi
   while kill -0 "$pid" 2>/dev/null; do
     if (( $(date +%s) - started >= timeout_seconds )); then
       kill_process_tree_graceful "$pid"
       wait "$pid" 2>/dev/null || true
-      [ -n "$tee_pid" ] && kill "$tee_pid" 2>/dev/null || true
-      wait "$tee_pid" 2>/dev/null || true
       STEP_COMMAND_PID=""
       step_end 124 "${label} timed out after ${timeout_seconds}s"
-      # Ensure full output is logged even if live tee missed tail
       while IFS= read -r line; do spinosa_log ERROR "$line"; done < "$output_file"
       tail -n 20 "$output_file" >&2 || true
       spinosa_log ERROR "${label} timed out after ${timeout_seconds}s — last 20 lines preserved above"
@@ -375,8 +365,6 @@ run_timed_step() {
     sleep 0.2
   done
   wait "$pid" || status=$?
-  [ -n "$tee_pid" ] && kill "$tee_pid" 2>/dev/null || true
-  wait "$tee_pid" 2>/dev/null || true
   STEP_COMMAND_PID=""
   while IFS= read -r line; do spinosa_log INFO "${label}: ${line}"; done < "$output_file"
   if [ "$status" -ne 0 ]; then
