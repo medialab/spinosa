@@ -193,23 +193,27 @@
 				style="animation-delay: 0.2s; {entered ? '' : 'opacity: 0'}"
 			>
 				<label
-					class="flex items-center gap-2 text-[0.7rem] tracking-wide text-basalt/60 cursor-pointer select-none w-fit"
+					class="flex items-center gap-2 text-[0.7rem] tracking-wide cursor-pointer select-none w-fit group"
 				>
-					<span class={!beta ? 'text-basalt' : ''}>stable</span>
+					<span class={!beta ? 'text-basalt' : 'text-basalt/40 group-hover:text-basalt/70'}>stable</span>
 					<button
 						type="button"
 						role="switch"
 						aria-checked={beta}
 						aria-label="Toggle beta channel"
 						onclick={() => (beta = !beta)}
-						class="relative inline-flex h-[18px] w-[32px] shrink-0 items-center rounded-full border border-warm-limestone bg-washed-clay transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basalt/20"
+						class="relative inline-flex h-[18px] w-[32px] shrink-0 items-center rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basalt/20 hover:border-basalt/20 {beta
+							? 'border-sun-cured-terracotta/30 bg-sun-cured-terracotta/10 hover:bg-sun-cured-terracotta/20'
+							: 'border-warm-limestone bg-washed-clay hover:bg-warm-limestone'}"
 					>
 						<span
-							class="pointer-events-none block h-[12px] w-[12px] rounded-full bg-basalt transition-transform duration-200"
+							class="pointer-events-none block h-[12px] w-[12px] rounded-full transition-transform duration-200 {beta
+								? 'bg-sun-cured-terracotta'
+								: 'bg-basalt'}"
 							style="transform: translateX({beta ? '14px' : '2px'})"
 						></span>
 					</button>
-					<span class={beta ? 'text-basalt' : ''}>beta</span>
+					<span class={beta ? 'text-sun-cured-terracotta' : 'text-basalt/40 group-hover:text-basalt/70'}>beta</span>
 				</label>
 				<div
 					class="relative flex flex-wrap items-center justify-start gap-[5px]"
@@ -217,21 +221,27 @@
 					onmouseleave={() => (bashHovered = false)}
 				>
 					<div
-						class="flex items-center max-w-full overflow-x-auto rounded-[6px] border border-warm-limestone bg-washed-clay/98 px-4 py-[13px] cursor-pointer transition-[background-color] duration-200 ease-out hover:bg-warm-limestone"
+						class="flex items-center max-w-full overflow-x-auto rounded-[6px] border px-4 py-[13px] cursor-pointer transition-[background-color] duration-200 ease-out {beta
+							? 'border-red-200 bg-red-50 hover:bg-red-100'
+							: 'border-warm-limestone bg-washed-clay/98 hover:bg-warm-limestone'}"
 						onclick={handleCopy}
 						role="button"
 						tabindex="0"
 						onkeydown={(e) => e.key === 'Enter' && handleCopy()}
 					>
 						<code
-							class="block whitespace-nowrap text-[0.8rem] leading-6 text-basalt underline-offset-2 hover:underline decoration-basalt/30"
+							class="block whitespace-nowrap text-[0.8rem] leading-6 underline-offset-2 hover:underline {beta
+								? 'text-red-700 decoration-red-300'
+								: 'text-basalt decoration-basalt/30'}"
 						>
 							{CMD}
 						</code>
 					</div>
 					<button
 						onclick={handleCopy}
-						class="relative flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-warm-limestone bg-washed-clay/98 px-[15px] py-[13px] text-basalt transition-[background-color] duration-200 ease-out hover:bg-warm-limestone focus-visible:bg-warm-limestone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basalt/20 focus-visible:ring-offset-2"
+						class="relative flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border px-[15px] py-[13px] transition-[background-color] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 {beta
+							? 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100 focus-visible:bg-red-100 focus-visible:ring-red-200'
+							: 'border-warm-limestone bg-washed-clay/98 text-basalt hover:bg-warm-limestone focus-visible:bg-warm-limestone focus-visible:ring-basalt/20'}"
 						aria-label={showToast ? 'Copied' : 'Copy command'}
 					>
 						{#if showToast}

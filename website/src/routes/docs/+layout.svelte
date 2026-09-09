@@ -74,7 +74,9 @@
 	<div class="relative hidden md:flex items-center justify-self-center gap-3">
 		<button
 			onclick={handleCopyCmd}
-			class="flex cursor-pointer items-center rounded-md bg-black px-2 py-0.5 text-white"
+			class="flex cursor-pointer items-center rounded-md px-2 py-0.5 text-white transition-colors duration-200 {beta
+				? 'bg-red-500 hover:bg-red-600'
+				: 'bg-black hover:bg-neutral-800'}"
 			aria-label="Copy install command"
 		>
 			<p class="text-[0.65rem] leading-normal text-nowrap">{CMD}</p>
@@ -87,23 +89,27 @@
 			</div>
 		{/if}
 		<label
-			class="flex items-center gap-1.5 text-[0.6rem] tracking-wide text-neutral-400 cursor-pointer select-none"
+			class="flex items-center gap-1.5 text-[0.6rem] tracking-wide cursor-pointer select-none group"
 		>
-			<span class={!beta ? 'text-black' : ''}>stable</span>
+			<span class={!beta ? 'text-black' : 'text-neutral-400 group-hover:text-neutral-600'}>stable</span>
 			<button
 				type="button"
 				role="switch"
 				aria-checked={beta}
 				aria-label="Toggle beta channel"
 				onclick={() => (beta = !beta)}
-				class="relative inline-flex h-[14px] w-[26px] shrink-0 items-center rounded-full border border-neutral-200 bg-white transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10"
+				class="relative inline-flex h-[14px] w-[26px] shrink-0 items-center rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 hover:border-black/20 {beta
+					? 'border-red-300 bg-red-50 hover:bg-red-100'
+					: 'border-neutral-200 bg-white hover:bg-neutral-50'}"
 			>
 				<span
-					class="pointer-events-none block h-[10px] w-[10px] rounded-full bg-black transition-transform duration-200"
+					class="pointer-events-none block h-[10px] w-[10px] rounded-full transition-transform duration-200 {beta
+						? 'bg-red-500'
+						: 'bg-black'}"
 					style="transform: translateX({beta ? '12px' : '2px'})"
 				></span>
 			</button>
-			<span class={beta ? 'text-black' : ''}>beta</span>
+			<span class={beta ? 'text-red-500' : 'text-neutral-400 group-hover:text-neutral-600'}>beta</span>
 		</label>
 	</div>
 	<a
