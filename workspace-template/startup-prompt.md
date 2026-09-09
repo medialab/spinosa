@@ -19,7 +19,7 @@ While `setup_status: cli_started` / this prompt is running:
 
 - Collected project name and preferred LLM CLI
 - Imported accepted files into `raw/`
-- Wrote `system/context.md` and `system/configuration.md` with `setup_status: cli_started`
+- Wrote `system/configuration.md` with `setup_status: cli_started`
 
 Do not repeat onboarding. Startup takes the raw corpus and builds the workspace content.
 
@@ -33,8 +33,7 @@ Before Phase 1 dispatch, write `agent_reports/g_{session_id}.md` using `.agents/
 
 ## Gate: do not stop until ALL of (mapping-only)
 
-- `setup_status` is `workspace_started` in `.spinosa/workspace` (canonical) — for mapping-only you may keep `cli_started` if you plan to re-run
-- `setup_status` is `workspace_started` in both `system/context.md` and `system/configuration.md` — or keep `cli_started` for re-runnable mapping
+- `setup_status` is `workspace_started` in `system/configuration.md` — for mapping-only you may keep `cli_started` if you plan to re-run
 - `system/dictionary.md` contains the master dictionary
 - `system/workspace_index.md` records total raw files, extraction coverage, maps, and known gaps
 - `maps/` contains the navigation maps needed to retrieve the corpus
@@ -59,9 +58,9 @@ Before Phase 1 dispatch, write `agent_reports/g_{session_id}.md` using `.agents/
 
 ## Phase 1: Verify
 
-Read `system/context.md` and `system/configuration.md`. Check:
+Read `system/configuration.md`. Check:
 
-- `context.md` exists with `setup_status: cli_started`
+- `configuration.md` exists with `setup_status: cli_started`
 - `configuration.md` exists with `active_corpus_path: raw/`
 - `raw/` exists
 - No blocking placeholders (`[path]`, `[project name]`)
@@ -227,7 +226,7 @@ If available, use the Spinosa TUI health checks to validate startup structure, Y
 
 After map validation passes:
 
-1. Optionally replace `setup_status: cli_started` with `setup_status: workspace_started` in `system/context.md` and `system/configuration.md` — or keep `cli_started` to allow re-running mapping.
+1. Optionally replace `setup_status: cli_started` with `setup_status: workspace_started` in `system/configuration.md` — or keep `cli_started` to allow re-running mapping.
 2. **Mapping-only cleanup: keep extraction intermediates in place for inspection** (`agent_reports/extraction_*.md` and `extraction_checkpoint.md`) — do not move to `.trash/` yet. Only move after you manually approve final validation.
 3. Update `.spinosa/memory/orchestrator-notes.md` with a mapping summary (files processed, maps created, dictionary terms, validation result).
 

@@ -79,7 +79,7 @@ Chain rules:
 
 ### Startup mode overrides (`cli_started` / running `startup-prompt.md`)
 
-While `setup_status` is `cli_started` or the current task is startup indexing per [[startup-prompt.md]]:
+While `setup_status` is `cli_started` (single source: `system/configuration.md`) or the current task is startup indexing per [[startup-prompt.md]]:
 
 - Follow [[startup-prompt.md]] only (classification **Q0**). Orchestrator + indexing pipeline agents (`spinosa-mapper`, `spinosa-serendippo`, `spinosa-verifier`, `spinosa-evaluator` as named in startup phases).
 - **Never** dispatch `spinosa-overseer`. **Never** invoke `agent-interception`. Overseer is not the orchestrator and is forbidden during indexing.

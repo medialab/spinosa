@@ -757,7 +757,6 @@ description:
   - Agents read this to understand scope, active corpus, evidence rules, and researcher preferences.
 created: ${date}
 updated: ${date}
-setup_status: cli_started
 connects_to:
   - AGENTS.md
   - system/configuration.md

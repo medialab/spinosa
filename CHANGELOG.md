@@ -8,6 +8,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0-beta.14] — 2026-09-09
+
+### Changed
+
+- `setup_status` consolidated to single marker `system/configuration.md` — removed from `system/context.md` and `.spinosa/workspace` (`meta.ts:57` read `configuration.md` first, `meta.ts:98` write to `configuration.md`, `create.ts:197` no longer writes to `.spinosa/workspace`, `registry.ts:760` context no longer gets `setup_status`), `startup-prompt.md:36` Gate + `Phase 7` now single file, `docs/diagrams.md:29` `CFG[system/configuration.md]`, `AGENTS.md:88` clarify single source.
+
+### Fixed
+
+- `create.ts:33` `resumableWorkspace` now checks `system/configuration.md` single marker (was only `.spinosa/workspace`), fixes `create-workspace.test.ts` E2E resume after `setup_status` consolidation.
+
 ## [1.1.0-beta.13] — 2026-09-09
 
 ### Changed

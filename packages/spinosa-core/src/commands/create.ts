@@ -32,15 +32,26 @@ export interface CreateWorkspaceResult {
 
 function resumableWorkspace(candidate: string, corpusPath: string): boolean {
   const markerPath = path.join(candidate, ".spinosa", "workspace")
-  if (!existsSync(markerPath)) return false
-  try {
-    const marker = readFileSync(markerPath, "utf-8")
-    const status = marker.match(/^setup_status:\s*(.+)$/m)?.[1]?.trim()
-    const source = marker.match(/^source_location:\s*(.+)$/m)?.[1]?.trim()
-    return status === "importing" && source === path.resolve(corpusPath)
-  } catch {
-    return false
+  if (existsSync(markerPath)) {
+    try {
+      const marker = readFileSync(markerPath, "utf-8")
+      const status = marker.match(/^setup_status:\s*(.+)$/m)?.[1]?.trim()
+      const source = marker.match(/^source_location:\s*(.+)$/m)?.[1]?.trim()
+      if (status === "importing" && source === path.resolve(corpusPath)) return true
+    } catch {}
   }
+  // Single source of truth is system/configuration.md — check there as fallback
+  const configPath = path.join(candidate, "system", "configuration.md")
+  if (existsSync(configPath)) {
+    try {
+      const config = readFileSync(configPath, "utf-8")
+      const status = config.match(/^setup_status:\s*(.+)$/m)?.[1]?.trim()
+      // source_location lives in .spinosa/workspace, so also check there for source
+      const markerSource = existsSync(markerPath) ? readFileSync(markerPath, "utf-8").match(/^source_location:\s*(.+)$/m)?.[1]?.trim() : undefined
+      return status === "importing" && markerSource === path.resolve(corpusPath)
+    } catch {}
+  }
+  return false
 }
 
 export function resolveWorkspacePath(corpusPath: string, workspaceName?: string): string {
@@ -194,7 +205,6 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
         `created: ${today()}`,
         `project_name: ${projectName}`,
         `source_location: ${resolvedCorpus}`,
-        `setup_status: not_started`,
         "",
       ]
       writeFileSync(path.join(workspacePath, ".spinosa", "workspace"), markerLines.join("\n"), "utf-8")

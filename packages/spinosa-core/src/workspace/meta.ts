@@ -54,12 +54,13 @@ export async function readWorkspaceMarker(workspacePath: string): Promise<Partia
   }
 
   const config = await readConfiguration(workspacePath)
-  const setupStatus = parseSetupStatus(read("setup_status"))
+  // Single source of truth: system/configuration.md. Fall back to legacy .spinosa/workspace only for migration.
+  const setupStatus = parseSetupStatus(config.setupStatus) ?? parseSetupStatus(read("setup_status"))
   return {
     path: workspacePath,
     workspaceID: readWorkspaceIDFromMarker(text),
     projectName: resolveWorkspaceDisplayName(workspacePath, read("project_name")),
-    setupStatus: setupStatus ?? (config.setupStatus ? parseSetupStatus(config.setupStatus) : "unknown"),
+    setupStatus: setupStatus ?? "unknown",
     frameworkVersion: read("framework_version") ?? "unknown",
     sourceLocation: read("source_location"),
     created: read("created"),
@@ -96,17 +97,26 @@ export async function writeWorkspaceFrameworkVersion(workspacePath: string, vers
 }
 
 export async function writeWorkspaceStatus(workspacePath: string, status: string): Promise<boolean> {
-  let markerPath = path.join(workspacePath, ".spinosa", "workspace")
-  if (!await Bun.file(markerPath).exists()) {
-    markerPath = path.join(workspacePath, "spinosa", "workspace")
-    if (!await Bun.file(markerPath).exists()) {
-      markerPath = path.join(workspacePath, "framework", "spinosa", "workspace")
-    }
-  }
+  const configPath = path.join(workspacePath, "system", "configuration.md")
   try {
-    const text = await Bun.file(markerPath).text()
-    const updated = text.replace(/^(setup_status:\s*).+$/m, `$1${status}`)
-    writeTextAtomic(markerPath, updated)
+    const text = await Bun.file(configPath).text()
+    if (/^setup_status:\s*.+$/m.test(text)) {
+      const updated = text.replace(/^(setup_status:\s*).+$/m, `$1${status}`)
+      writeTextAtomic(configPath, updated)
+    } else {
+      // Insert after frontmatter created/updated if missing
+      const updated = text.replace(/^(updated:\s*.+)$/m, `$1\nsetup_status: ${status}`)
+      writeTextAtomic(configPath, updated)
+    }
+    // Best-effort legacy clean: remove stray setup_status from .spinosa/workspace if present
+    try {
+      const legacyPath = path.join(workspacePath, ".spinosa", "workspace")
+      const legacyText = await Bun.file(legacyPath).text()
+      if (/^setup_status:/m.test(legacyText)) {
+        const cleaned = legacyText.replace(/^setup_status:.*\n?/m, "")
+        writeTextAtomic(legacyPath, cleaned)
+      }
+    } catch {}
     return true
   } catch {
     return false

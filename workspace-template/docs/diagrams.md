@@ -26,7 +26,7 @@ flowchart TB
         SRC --> OCR[PaddleOCR Python\nscanned PDF .jpg .png]
         SRC --> SKIP[Audio/video skipped]
         MD & MKD & OCR --> RAW[raw/ corpus .md]
-        CLI --> CFG[system/context.md\nsetup_status: cli_started]
+        CLI --> CFG[system/configuration.md\nsetup_status: cli_started]
     end
 
     subgraph Indexing ["Phase B: Workspace Indexing"]
@@ -49,7 +49,7 @@ flowchart TB
         SEREN --> VAL[2.7 Validate]
         VAL --> VER[spinosa-verifier\nclaim check]
         VER --> EVAL[spinosa-evaluator\nroute audit]
-        EVAL --> DONE[setup_status:\nworkspace_started]
+        EVAL --> DONE[system/configuration.md\nsetup_status: workspace_started]
     end
 
     RAW --> ORCH_0
