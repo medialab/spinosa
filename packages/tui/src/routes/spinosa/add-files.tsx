@@ -160,7 +160,19 @@ export function AddFiles() {
     })
   }
 
-  const WAVE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+  const WAVE_UNICODE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const
+  const WAVE_ASCII = ["_", "-", "~", "=", "#", "=", "~", "-"] as const
+  const WAVE = (() => {
+    try {
+      const term = (process.env.TERM ?? "").toLowerCase()
+      if (term === "dumb" || term === "linux" || process.env.NO_COLOR !== undefined) return WAVE_ASCII as unknown as string[]
+      const lang = (process.env.LANG ?? process.env.LC_ALL ?? "").toLowerCase()
+      if (lang === "c" || lang === "posix") return WAVE_ASCII as unknown as string[]
+      return WAVE_UNICODE as unknown as string[]
+    } catch {
+      return WAVE_UNICODE as unknown as string[]
+    }
+  })()
   const waveString = (f: number) => { let r = ""; for (let i = 0; i < 6; i++) { const p = (i + f) % 14, l = p <= 6 ? p : 13 - p; r += WAVE[l] }; return r }
   const wavePulse = (f: number) => { const p = f % 14; return WAVE[p <= 6 ? p : 13 - p] }
   const waveRow = (f: number, width: number) => { let r = ""; for (let i = 0; i < width; i++) { const angle = (i * Math.PI) / 7 + f * Math.PI / 7; const l = Math.max(0, Math.min(7, Math.round(3.5 + 3.5 * Math.sin(angle)))); r += WAVE[l] }; return r }

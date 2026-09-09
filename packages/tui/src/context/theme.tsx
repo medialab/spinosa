@@ -81,6 +81,22 @@ export {
 
 const THEME_REFRESH_DELAYS = [250, 1000] as const
 
+function respectsNoColor(): boolean {
+  return process.env.NO_COLOR !== undefined
+}
+function supportsTrueColor(): boolean {
+  if (respectsNoColor()) return false
+  const colorterm = (process.env.COLORTERM ?? "").toLowerCase()
+  if (colorterm.includes("truecolor") || colorterm.includes("24bit")) return true
+  const term = (process.env.TERM ?? "").toLowerCase()
+  if (term.includes("direct") || term.includes("truecolor")) return true
+  return false
+}
+function isDumbTerm(): boolean {
+  const term = (process.env.TERM ?? "").toLowerCase()
+  return term === "dumb" || term === "linux"
+}
+
 type State = {
   themes: Record<string, ThemeJson>
   mode: "dark" | "light"
@@ -153,6 +169,12 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     let systemThemeMode: "dark" | "light" | undefined
     let hasResolvedSystemTheme = false
     function resolveSystemTheme(mode: "dark" | "light" = store.mode) {
+      if (respectsNoColor() || isDumbTerm()) {
+        if (hasResolvedSystemTheme) return Promise.resolve()
+        setSystemTheme(undefined)
+        if (store.active === "system") setStore("active", "opencode")
+        return Promise.resolve()
+      }
       return renderer
         .getPalette({ size: 16 })
         .then((colors: TerminalColors) => {
@@ -182,6 +204,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     let systemRefreshQueued = false
     let systemRefreshMode = store.mode
     function refreshSystemTheme(mode: "dark" | "light" = store.mode) {
+      if (respectsNoColor() || isDumbTerm()) return
       systemRefreshMode = mode
       if (systemRefreshRunning) {
         systemRefreshQueued = true
