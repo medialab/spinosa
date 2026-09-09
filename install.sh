@@ -14,24 +14,24 @@ if [ -z "${BASH_VERSION-}" ]; then
       exec bash "$0" "$@"
     fi
     echo "" >&2
-    echo "  This installer must be run under bash." >&2
-    echo "  Please use one of the following:" >&2
-    echo "    curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 https://github.com/medialab/spinosa/releases/download/stable/install.sh -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh" >&2
-    echo "    bash <(curl -fsSL https://github.com/medialab/spinosa/releases/download/stable/install.sh)" >&2
-    echo "    curl -fsSL ... -o install.sh && bash install.sh" >&2
+    echo "This installer must be run under bash." >&2
+    echo "Please use one of the following:" >&2
+    echo "curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 https://github.com/medialab/spinosa/releases/download/stable/install.sh -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh" >&2
+    echo "bash <(curl -fsSL https://github.com/medialab/spinosa/releases/download/stable/install.sh)" >&2
+    echo "curl -fsSL ... -o install.sh && bash install.sh" >&2
     echo "" >&2
     exit 1
   fi
   echo "" >&2
-  echo "  Spinosa requires bash. Install it first:" >&2
+  echo "Spinosa requires bash. Install it first:" >&2
   if command -v apk >/dev/null 2>&1; then
-    echo "    apk add bash" >&2
+    echo "apk add bash" >&2
   elif command -v apt-get >/dev/null 2>&1; then
-    echo "    sudo apt-get install bash" >&2
+    echo "sudo apt-get install bash" >&2
   elif command -v brew >/dev/null 2>&1; then
-    echo "    brew install bash" >&2
+    echo "brew install bash" >&2
   else
-    echo "    Install bash through your system package manager." >&2
+    echo "Install bash through your system package manager." >&2
   fi
   echo "" >&2
   exit 1
@@ -86,7 +86,7 @@ _spinosa_install_err_trap() {
   spinosa_log ERROR "aborted line=${line} exit=${exit_code} cmd=${BASH_COMMAND:-}"
   restore_binary_backup_if_needed
   printf '\n%s Install failed at line %s (exit %s). See %s\n\n' \
-    "${R:-}✗${RESET:-}" "$line" "$exit_code" "$(spinosa_log_file)" >&2
+    "${R:-}●${RESET:-}" "$line" "$exit_code" "$(spinosa_log_file)" >&2
   exit "$exit_code"
 }
 
@@ -174,17 +174,17 @@ ENV_BACKUP=""
 # ══════════════════════════════════════════════════════════════════════════════
 
 if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
-  G=$'\033[32m' Y=$'\033[31m' R=$'\033[31m' C=$'\033[36m'
+  G=$'\033[32m' R=$'\033[31m' C=$'\033[36m'
   BOLD=$'\033[1m' RESET=$'\033[0m'
 else
-  G='' Y='' R='' C='' BOLD='' RESET=''
+  G='' R='' C='' BOLD='' RESET=''
 fi
 
 info()  { spinosa_log INFO "$1"; printf '%s %s\n' "${C}●${RESET}" "$1"; }
 vinfo() { [[ "$VERBOSE" == "1" ]] || return 0; info "$1"; }
 ok()    { spinosa_log INFO "$1"; printf '%s %s\n' "${G}●${RESET}" "$1" >&2; }
 vok()   { [[ "$VERBOSE" == "1" ]] || return 0; ok "$1"; }
-warn()  { spinosa_log WARN "$1"; printf '%s %s\n' "${Y}●${RESET}" "$1" >&2; }
+warn()  { spinosa_log WARN "$1"; printf '%s %s\n' "${R}●${RESET}" "$1" >&2; }
 note()  { spinosa_log INFO "$1"; printf '%s\n' "$1"; }
 vnote() { [[ "$VERBOSE" == "1" ]] || return 0; note "$1"; }
 die()   { spinosa_log ERROR "$1"; printf '\n%s %s\n\n' "${R}●${RESET}" "$1" >&2; exit 1; }
@@ -504,7 +504,7 @@ map_platform() {
     darwin|macos|osx) os="darwin" ;;
     linux) os="linux" ;;
     *)
-      printf '\n%s %s\n' "${Y}●${RESET}" "Your OS \"$1\" is not supported." >&2
+      printf '\n%s %s\n' "${R}●${RESET}" "Your OS \"$1\" is not supported." >&2
       printf '%s\n' "Spinosa currently supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64 and x64." >&2
       printf '%s\n' "See https://github.com/medialab/spinosa#requirements for alternatives." >&2
       printf 'Unsupported OS for binary distribution: %s\n' "$1" >&2
@@ -516,7 +516,7 @@ map_platform() {
     arm64|aarch64) arch="arm64" ;;
     x86_64|amd64|x64) arch="x64" ;;
     *)
-      printf '\n%s %s\n' "${Y}●${RESET}" "Your CPU architecture \"$2\" is not supported." >&2
+      printf '\n%s %s\n' "${R}●${RESET}" "Your CPU architecture \"$2\" is not supported." >&2
       printf '%s\n' "Spinosa currently supports arm64 and x64 (amd64) on macOS and Linux (glibc)." >&2
       printf '%s\n' "See https://github.com/medialab/spinosa#requirements for alternatives." >&2
       printf 'Unsupported architecture for binary distribution: %s\n' "$2" >&2
@@ -628,7 +628,7 @@ preflight_tools() {
 prompt_install_repair() {
   local detail="${1:-Something in the Spinosa install needs fixing.}"
   printf '\n' >&2
-  printf '%s %s\n' "${Y}●${RESET}" "Installation needs repair." >&2
+  printf '%s %s\n' "${R}●${RESET}" "Installation needs repair." >&2
   printf '%s\n' "$detail" >&2
   if [ "${SPINOSA_REPAIR:-}" = "1" ]; then
     info "Repairing automatically (SPINOSA_REPAIR=1)..."
@@ -1347,7 +1347,7 @@ prompt_upgrade() {
       info "Already on v${target}. No upgrade needed."
       return 1
     fi
-    printf '%s %s\n' "${Y}●${RESET}" "Spinosa v${installed} is already installed." >&2
+    printf '%s %s\n' "${R}●${RESET}" "Spinosa v${installed} is already installed." >&2
     if [ "$YES" -eq 1 ]; then
       info "Skipping reinstall prompt (--yes)."
       return 1
@@ -1398,7 +1398,7 @@ prompt_upgrade() {
       fi
       return 0
     fi
-    printf '%s %s\n' "${Y}●${RESET}" "Installed v${installed} is newer than target v${target}." >&2
+    printf '%s %s\n' "${R}●${RESET}" "Installed v${installed} is newer than target v${target}." >&2
     if [ "$YES" -eq 1 ]; then
       info "Skipping downgrade (--yes)."
       return 1
@@ -1727,7 +1727,7 @@ verify_active_binary() {
 install_shims() {
   if [ "$PREFIX_MODE" -eq 1 ]; then
     info "Custom install root (--prefix) — skipping global shim."
-    info "  Run Spinosa from: ${SPINOSA_HOME}/bin/spinosa"
+    info "Run Spinosa from: ${SPINOSA_HOME}/bin/spinosa"
     return 0
   fi
   local shim="${SPINOSA_BIN_DIR}/spinosa"
@@ -1972,7 +1972,7 @@ print_path_instructions() {
 }
 
 print_banner() {
-  printf '\n\n\n'
+  printf '\n'
   printf '%s\n' '███████╗██████╗ ██╗███╗   ██╗ ██████╗ ███████╗ █████╗'
   printf '%s\n' '██╔════╝██╔══██╗██║████╗  ██║██╔═══██╗██╔════╝██╔══██╗'
   printf '%s\n' '███████╗██████╔╝██║██╔██╗ ██║██║   ██║███████╗███████║'
@@ -2001,8 +2001,8 @@ handle_dry_run() {
   asset_url="${base}/${ASSET_NAME}"
   checksums_url="${base}/checksums.txt"
   info "Dry run — would download:"
-  info "  ${checksums_url}"
-  info "  ${asset_url}"
+  info "${checksums_url}"
+  info "${asset_url}"
   info "Would install binary to: ${SPINOSA_HOME}/bin/spinosa"
   if [ "$PREFIX_MODE" -eq 0 ]; then
     info "Would create shim: ${SPINOSA_BIN_DIR}/spinosa"

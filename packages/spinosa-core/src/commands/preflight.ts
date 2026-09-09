@@ -36,16 +36,16 @@ import { isSpinosaWorkspace, readWorkspaceMeta } from "../workspace/meta"
 import { listRegisteredWorkspaces } from "../workspace/registry"
 
 /** User-facing line printed before the remote version check. */
-export const LAUNCH_STATUS_CHECKING = "checking for updates..."
+export const LAUNCH_STATUS_CHECKING = "Checking for updates..."
 
 /** User-facing line printed when the installed version is current. */
-export const LAUNCH_STATUS_NO_UPDATES = "no updates available"
+export const LAUNCH_STATUS_NO_UPDATES = "No updates available"
 
 /** User-facing line printed immediately before the TUI starts. */
-export const LAUNCH_STATUS_LAUNCHING = "launching TUI..."
+export const LAUNCH_STATUS_LAUNCHING = "Launching TUI..."
 
 /** User-facing line printed after a successful launch-time upgrade. */
-export const LAUNCH_STATUS_UPGRADE_DONE = "upgrade complete — run spinosa again to launch"
+export const LAUNCH_STATUS_UPGRADE_DONE = "Upgrade complete — run spinosa again to launch"
 
 /** Minimum time each status line stays visible (ms). */
 export const MIN_STATUS_MS = 1000
@@ -293,7 +293,7 @@ export async function offerStaleTemplatePackUpdates(
     return
   }
 
-  deps.out(`Workspace template pack update available for ${stale.length} workspace(s):`)
+  deps.out(`\x1b[1m→\x1b[0m Workspace template pack update available for ${stale.length} workspace(s):`)
   for (const entry of stale) {
     deps.out(`\x1b[36m●\x1b[0m ${entry.name} — ${formatStalePaths(entry.freshness)}`)
   }
@@ -370,7 +370,7 @@ export async function runLaunchPreflight(
   }
 
   const current = available.currentVersion ? ` (current \x1b[32mv${available.currentVersion}\x1b[0m)` : ""
-  if (!(await resolved.confirm(`✨ \x1b[1mSpinosa v${available.latestVersion}\x1b[0m is available${current}. Upgrade now?`, true))) {
+  if (!(await resolved.confirm(`\x1b[36m?\x1b[0m \x1b[1mSpinosa v${available.latestVersion}\x1b[0m is available${current}. Upgrade now?`, true))) {
     await offerStaleTemplatePackUpdates(resolved, options)
     return "continue"
   }
