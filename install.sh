@@ -2151,10 +2151,6 @@ main() {
   [[ "$VERBOSE" == "1" ]] && section "Activate"
   run_timed_step "Installing" 30 _install_activate \
     || die "Installation failed — see $(spinosa_log_file)"
-  if [[ "$VERBOSE" == "1" ]]; then
-    run_timed_step "Migrate workspace launchers" 30 migrate_workspace_launchers \
-      || warn "Workspace launcher migration timed out or failed — some workspaces may need manual repair; see $(spinosa_log_file)"
-  fi
 
   INSTALL_COMPLETED=1
   ACTIVATION_STARTED=0
