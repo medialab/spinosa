@@ -750,6 +750,19 @@ class Oauth extends _HeyApiClient {
   }
 }
 
+class Vision extends _HeyApiClient {
+  public transcribe<ThrowOnError extends boolean = false>(options: Options<never, ThrowOnError>) {
+    return (options.client ?? this._client).post<{ text: string }, unknown, ThrowOnError>({
+      url: "/provider/{providerID}/models/{modelID}/vision/transcribe",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+}
+
 class Provider extends _HeyApiClient {
   /**
    * List all providers
@@ -771,6 +784,7 @@ class Provider extends _HeyApiClient {
     })
   }
   oauth = new Oauth({ client: this._client })
+  vision = new Vision({ client: this._client })
 }
 
 class Find extends _HeyApiClient {

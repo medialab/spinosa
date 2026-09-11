@@ -24,12 +24,183 @@ import type { FileClass, ImportRoute } from "../extension/types"
 import { injectColdFrontmatter, convertedOutputExists } from "./frontmatter"
 import type { ImportBatchManager } from "./batch"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled, SpinosaCancellationError } from "./cancellation"
+import { isVisionModelId } from "./vision-helpers"
 import { ProgressEmitter, type FileProgressStatus } from "../progress/progress"
 import { ocrAvailable, tesseractAvailable } from "../tools/detection"
 import { ocrUnsupportedReason } from "../tools/ocr-support"
 import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
 import { decodeWorkerPayload, disposeWorkerPayload, encodeWorkerPayload } from "./worker-payload"
 import { terminateChild } from "../progress/child-kill"
+import { recordResult, manifestDest, manifestPath, reconcileManifest, loadManifest, pruneManifest, type ManifestStatus, type ManifestRecord } from "./manifest"
+
+// ── Phase-result manifest recording ─────────────────────────────────────
+// Every terminal file state lands in <workspace>/.logs/import-manifest.ndjson
+// so resume runs skip done files, re-process changed ones, and retry failed
+// ones — without relying on output existence alone.
+function recordPhaseResult(
+  logsDir: string | undefined,
+  f: ClassifiedEntry,
+  route: string,
+  status: ManifestStatus,
+  engine: string,
+  model?: string,
+  attempts?: number,
+): void {
+  if (!logsDir) return
+  recordResult({
+    logsDir, rel: f.rel, ext: fileExt(f.src), route, status,
+    srcFile: f.src, dest: manifestDest(logsDir, f.dest), engine, model, attempts,
+  })
+}
+
+/** Buckets handed to applyResumeFilter (vision/copy buckets optional). */
+export type ResumeBuckets = {
+  directFiles: ClassifiedEntry[]
+  markitdownFiles: ClassifiedEntry[]
+  visionFiles?: ClassifiedEntry[]
+  ocrFiles: ClassifiedEntry[]
+  copyFiles?: ClassifiedEntry[]
+}
+
+export type ResumeFilterResult = {
+  skippedUnchanged: string[]
+  changed: string[]
+  rerouted: string[]
+  removedPruned: string[]
+  retriedFailed: string[]
+  untrackedNew: string[]
+}
+
+/**
+ * Resume short-circuit: drop already-imported files from classified buckets
+ * using the durable manifest, so re-runs don't re-process them. Returns the
+ * resume accounting for UX. Rules:
+ * - done + fingerprint match + same route (+ same vision model) → skip.
+ * - fingerprint mismatch, route change, or vision-model change → re-process.
+ * - failed/skipped records always retry (transient errors may pass).
+ * - tracked-but-absent rels are pruned from the manifest file.
+ * - overwrite runs bypass filtering (user asked to redo everything).
+ * Mutates the passed buckets in place.
+ */
+export function applyResumeFilter(
+  classified: ResumeBuckets,
+  logsDir: string,
+  opts?: {
+    manifest?: Map<string, ManifestRecord>
+    modelId?: string
+    overwrite?: boolean
+    onLog?: (msg: string) => void
+  },
+): ResumeFilterResult {
+  const empty: ResumeFilterResult = {
+    skippedUnchanged: [], changed: [], rerouted: [], removedPruned: [], retriedFailed: [], untrackedNew: [],
+  }
+  const bucketRoutes: Array<{ key: keyof ResumeBuckets; route: string }> = [
+    { key: "directFiles", route: "direct" },
+    { key: "markitdownFiles", route: "markitdown" },
+    { key: "visionFiles", route: "vision" },
+    { key: "ocrFiles", route: "ocr" },
+    { key: "copyFiles", route: "copy" },
+  ]
+  const entries: Array<{ rel: string; srcFile: string; ext: string }> = []
+  const relRoute = new Map<string, string>()
+  const destByRel = new Map<string, string>()
+  for (const { key, route } of bucketRoutes) {
+    for (const f of classified[key] ?? []) {
+      entries.push({ rel: f.rel, srcFile: f.src, ext: fileExt(f.src) })
+      if (!relRoute.has(f.rel)) relRoute.set(f.rel, route)
+      if (!destByRel.has(f.rel)) destByRel.set(f.rel, f.dest)
+    }
+  }
+  const manifest = opts?.manifest ?? loadManifest(logsDir).records
+  if (manifest.size > 0) {
+    opts?.onLog?.(`Manifest: ${manifestPath(logsDir)} (${manifest.size} tracked files)`)
+  }
+  // Route/model drift: a done record under a different engine selection is
+  // stale by definition (e.g. tesseract transcript exists, user now wants vision).
+  const normModel = (id: string | undefined) => (id && isVisionModelId(id) ? id : "")
+  const currentModel = normModel(opts?.modelId)
+  const rerouted: string[] = []
+  for (const [rel, route] of relRoute) {
+    const record = manifest.get(rel)
+    if (!record || record.status !== "done") continue
+    if (record.route && record.route !== route) {
+      manifest.delete(rel)
+      rerouted.push(rel)
+      continue
+    }
+    // Vision-model drift only counts on explicit mismatch (both known).
+    // Adopted records without a model never trigger and simply match.
+    if (route === "vision" && record.model && currentModel && record.model !== currentModel) {
+      manifest.delete(rel)
+      rerouted.push(rel)
+    }
+  }
+  if (opts?.overwrite) {
+    const removed = [...manifest.keys()].filter((rel) => !relRoute.has(rel))
+    const pruned = pruneManifest(logsDir, removed)
+    opts?.onLog?.(`Resume bypassed (overwrite): re-processing everything${pruned > 0 ? `, pruned ${pruned} removed` : ""}`)
+    return { ...empty, removedPruned: removed.slice(0, pruned) }
+  }
+  const reconciled = reconcileManifest(manifest, entries)
+  // Manifest hit but output gone by hand → not actually done. Re-process
+  // (verify would recover these too, but doing it here keeps one pass).
+  const missingOutput: string[] = []
+  const trulyUnchanged = reconciled.unchanged.filter((rel) => {
+    const dest = destByRel.get(rel)
+    if (dest && !convertedOutputExists(dest)) {
+      missingOutput.push(rel)
+      return false
+    }
+    return true
+  })
+  const skipSet = new Set(trulyUnchanged)
+  for (const { key } of bucketRoutes) {
+    const bucket = classified[key]
+    if (!bucket) continue
+    const kept = bucket.filter((f) => !skipSet.has(f.rel))
+    bucket.length = 0
+    bucket.push(...kept)
+  }
+  const prunedCount = pruneManifest(logsDir, reconciled.removed)
+  const retriedFailed: string[] = []
+  const untrackedNew: string[] = []
+  for (const rel of reconciled.untracked) {
+    const record = manifest.get(rel)
+    if (record && (record.status === "failed" || record.status === "skipped")) retriedFailed.push(rel)
+    else untrackedNew.push(rel)
+  }
+  const changed = [...reconciled.changed, ...rerouted]
+  // Changed files must actually re-process: mark them so phase-level
+  // exists-skips overwrite instead of skipping the stale dest.
+  // (missingOutput needs no flag — with no dest, nothing skips it.)
+  if (changed.length > 0) {
+    const changedSet = new Set(changed)
+    for (const { key } of bucketRoutes) {
+      for (const f of classified[key] ?? []) {
+        if (changedSet.has(f.rel)) f.force = true
+      }
+    }
+  }
+  const recovered = [...changed, ...missingOutput]
+  const capList = (rels: string[]): string =>
+    rels.length > 50 ? `${rels.slice(0, 50).join(", ")}, …+${rels.length - 50} more` : rels.join(", ")
+  opts?.onLog?.(
+    `Resume: ${trulyUnchanged.length} already imported (skipped) · ${recovered.length} changed (re-processing) · ${untrackedNew.length} new · ${reconciled.removed.length} removed (pruned) · ${retriedFailed.length} failed (retrying)`,
+  )
+  spinosaLogInfo(
+    "resume",
+    `skipped=[${capList(trulyUnchanged)}] changed=[${capList(changed)}] missing-output=[${capList(missingOutput)}] removed=[${capList(reconciled.removed)}] retry=[${capList(retriedFailed)}] new=[${capList(untrackedNew)}]`,
+  )
+  return {
+    skippedUnchanged: trulyUnchanged,
+    changed: recovered,
+    rerouted,
+    removedPruned: reconciled.removed.slice(0, prunedCount),
+    retriedFailed,
+    untrackedNew,
+  }
+}
 
 export interface CopyResult {
   copied: number
@@ -56,7 +227,7 @@ export type ImportProgressCallback = (
   status?: FileProgressStatus,
 ) => void
 
-type CopyPhase = "all" | "direct" | "markitdown" | "ocr"
+type CopyPhase = "all" | "direct" | "markitdown" | "vision" | "ocr"
 
 interface CopyOptions {
   markitdownChoice?: boolean
@@ -68,7 +239,7 @@ interface CopyOptions {
   subfolder?: string
   onProgress?: ImportProgressCallback
   onLog?: (line: string) => void
-  onClassified?: (classified: { directFiles: ClassifiedEntry[]; markitdownFiles: ClassifiedEntry[]; ocrFiles: ClassifiedEntry[]; copyFiles?: ClassifiedEntry[]; logsDir: string }) => void
+  onClassified?: (classified: { directFiles: ClassifiedEntry[]; markitdownFiles: ClassifiedEntry[]; visionFiles?: ClassifiedEntry[]; ocrFiles: ClassifiedEntry[]; copyFiles?: ClassifiedEntry[]; logsDir: string }) => void
   onPhaseChange?: (phase: string, message: string) => void
   shouldAbort?: () => boolean
   /** AbortSignal for immediate child cancel (preferred over shouldAbort polling). */
@@ -94,6 +265,20 @@ export interface ClassifiedEntry {
   src: string
   rel: string
   dest: string
+  /** Resume: source changed (or re-routed) since the tracked run — phases must
+      overwrite the existing dest instead of skipping it. */
+  force?: boolean
+}
+
+async function isLegacyVisionModel(ocrModelId: string): Promise<boolean> {
+  // Legacy short ids (no "/") resolve through the vision-models registry.
+  if (ocrModelId.includes("/")) return false
+  try {
+    const { findOcrModel } = await import("./vision-models")
+    return findOcrModel(ocrModelId)?.kind === "vision"
+  } catch {
+    return false
+  }
 }
 
 export async function scanAndClassifySource(
@@ -106,6 +291,7 @@ export async function scanAndClassifySource(
 ): Promise<{
   directFiles: ClassifiedEntry[]
   markitdownFiles: ClassifiedEntry[]
+  visionFiles: ClassifiedEntry[]
   ocrFiles: ClassifiedEntry[]
   copyFiles: ClassifiedEntry[]
   logsDir: string
@@ -155,6 +341,7 @@ export async function scanAndClassifySource(
 
   const directFiles: ClassifiedEntry[] = []
   const markitdownFiles: ClassifiedEntry[] = []
+  const visionFiles: ClassifiedEntry[] = []
   const ocrFiles: ClassifiedEntry[] = []
   const copyFiles: ClassifiedEntry[] = []
 
@@ -178,41 +365,39 @@ export async function scanAndClassifySource(
   }
   for (const e of filtered("ocr_convertible")) {
     if (extInList(e.ext, IMAGE_EXTENSIONS)) {
-      // Images: with vision model → MarkItDown vision (transcribe via LLM);
-      // otherwise copy-only (pending network OCR).
-      if (ocrModelId) {
-        if (ocrModelId === "none") continue
-        if (ocrModelId === "tesseract-local") {
-          // fall through to copy
-        } else if (ocrModelId.includes("/")) {
-          // Dynamic provider/model (e.g. openrouter/... or anthropic/...) — treat as vision
-          let isVision = true
-          try {
-            const { findOcrModel } = await import("./vision-models")
-            const m = findOcrModel(ocrModelId)
-            if (m) isVision = m.kind === "vision"
-          } catch {}
-          if (isVision) {
-            markitdownFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
-            continue
-          }
-        } else {
+      // Images: with a vision model → dedicated vision SDK transcription;
+      // otherwise copied as-is. "none" also copies.
+      // MarkItDown handles office docs only, never images.
+      let routeVision = false
+      if (ocrModelId && isVisionModelId(ocrModelId)) {
+        routeVision = true
+      } else if (ocrModelId && !ocrModelId.includes("/")) {
+        // Legacy short id (e.g. from vision-models registry)
+        try {
           const { findOcrModel } = await import("./vision-models")
-          const m = findOcrModel(ocrModelId)
-          if (m?.kind === "vision") {
-            markitdownFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
-            continue
-          }
-          if (m?.kind === "none") continue
-        }
+          routeVision = findOcrModel(ocrModelId)?.kind === "vision"
+        } catch {}
+      }
+      if (routeVision) {
+        visionFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
+        continue
       }
       copyFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, e.relPath) })
     } else {
-      ocrFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, ocrOutputRelPath(e.relPath)) })
+      // PDFs: vision model → vision page transcription; "none" → copy as-is
+      // (never OCR, never drop); tesseract (or legacy unset) → tesseract OCR,
+      // which extracts digital PDFs via pdf.js before spending OCR.
+      if (ocrModelId === "none") {
+        copyFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, e.relPath) })
+      } else if (ocrModelId && (isVisionModelId(ocrModelId) || await isLegacyVisionModel(ocrModelId))) {
+        visionFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, markitdownOutputRelPath(e.relPath)) })
+      } else {
+        ocrFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, ocrOutputRelPath(e.relPath)) })
+      }
     }
   }
 
-  return { directFiles, markitdownFiles, ocrFiles, copyFiles, logsDir }
+  return { directFiles, markitdownFiles, visionFiles, ocrFiles, copyFiles, logsDir }
 }
 
 // ── Phase runners (receive pre-classified file lists) ────────────────────
@@ -229,8 +414,10 @@ export async function processDirectCopy(
   shouldAbort?: () => boolean,
   onRetry?: (attempt: number, reason: string) => void,
   onRename?: (original: string, renamed: string) => void,
+  logsDir?: string,
 ): Promise<PhaseResult> {
   let converted = 0; let skipped = 0; let failed = 0; let renamed = 0
+  let permanentFailed = 0
   const recoverable: { src: string; dest: string }[] = []
   let completed = 0
   const total = files.length
@@ -241,15 +428,25 @@ export async function processDirectCopy(
     await yieldToEL()
   }
 
-  const tryCopy = async (entry: ClassifiedEntry, attempt: number): Promise<"copied" | "skipped" | "failed"> => {
+  const tryCopy = async (entry: ClassifiedEntry, attempt: number): Promise<CopyDirectResult> => {
     // File-start: show which file is in flight before the copy finishes.
     // Numerator stays at completed so the bar never jumps ahead of real work.
     await emitProgress(entry.rel, completed, "processing")
     const { src, rel, dest } = entry
-    return copyDirectRawFile(src, dest, rel, onLog, overwrite, shouldAbort, (a, r) => onRetry?.(attempt || a, r), (o, rn) => { renamed++; onRename?.(o, rn) })
+    return copyDirectRawFile(src, dest, rel, onLog, overwrite || entry.force, shouldAbort, (a, r) => onRetry?.(attempt || a, r), (o, rn) => { renamed++; onRename?.(o, rn) })
   }
 
-  const handleResult = async (entry: ClassifiedEntry, result: "copied" | "skipped" | "failed", bucket: ClassifiedEntry[]) => {
+  const handleResult = async (entry: ClassifiedEntry, result: CopyDirectResult, bucket: ClassifiedEntry[]) => {
+    if (result === "failed-permanent") {
+      // Doomed on arrival: paint the row red NOW (no retry rounds), so the
+      // filename changes color the moment the failure is known — not after
+      // backoff rounds or a later verification pass.
+      completed++
+      permanentFailed++
+      await emitProgress(entry.rel, completed, "failed")
+      recordPhaseResult(logsDir, entry, "direct", "failed", "direct")
+      return
+    }
     if (result === "failed") {
       // A failed copy is not counted yet — it is still retrying. It only
       // counts as processed once it either succeeds or exhausts retries.
@@ -265,7 +462,11 @@ export async function processDirectCopy(
       converted++
       if (entry.dest.endsWith(".md")) injectColdFrontmatter(entry.dest)
       recoverable.push({ src: entry.src, dest: entry.dest })
-    } else { skipped++ }
+      recordPhaseResult(logsDir, entry, "direct", "done", "direct")
+    } else {
+      skipped++
+      recordPhaseResult(logsDir, entry, "direct", "done", "direct")
+    }
   }
 
   // First pass: bounded-concurrency parallel fast attempts.
@@ -303,8 +504,9 @@ export async function processDirectCopy(
   for (const entry of retryBucket) {
     completed++
     await emitProgress(entry.rel, completed, "failed")
+    recordPhaseResult(logsDir, entry, "direct", "failed", "direct", undefined, DIRECT_COPY_MAX_RETRIES + 1)
   }
-  failed = retryBucket.length
+  failed = permanentFailed + retryBucket.length
   return { converted, skipped, failed, renamed, recoverable }
 }
 
@@ -314,6 +516,7 @@ export async function processImageCopy(
   onLog?: (msg: string) => void,
   overwrite?: boolean,
   shouldAbort?: () => boolean,
+  logsDir?: string,
 ): Promise<PhaseResult> {
   let converted = 0; let skipped = 0; let failed = 0
   const recoverable: { src: string; dest: string }[] = []
@@ -323,24 +526,29 @@ export async function processImageCopy(
     throwIfSpinosaCancelled(shouldAbort)
     prog?.file("copy", processed, total, entry.rel, "processing")
     await new Promise<void>((r) => setTimeout(r, 0))
-    if (existsSync(entry.dest) && !overwrite) {
+    if (existsSync(entry.dest) && !overwrite && !entry.force) {
       skipped++
       prog?.file("copy", ++processed, total, entry.rel, "done")
-      onLog?.(`  ${entry.rel} → already exists, skipped (pending network OCR)`)
+      onLog?.(`  ${entry.rel} → already exists, skipped (copy as-is, no OCR engine selected)`)
+      recordPhaseResult(logsDir, entry, "copy", "done", "copy")
       continue
     }
     const ok = await safeCopyAsync(entry.src, entry.dest, {
+      shouldAbort,
       onRetry: (attempt, reason) => onLog?.(`  ${entry.rel} → retry ${attempt} (${reason})`),
+      onRename: () => onLog?.(`  ${entry.rel} → renamed (name too long)`),
     })
     if (ok) {
       converted++
       recoverable.push({ src: entry.src, dest: entry.dest })
       prog?.file("copy", ++processed, total, entry.rel, "done")
-      onLog?.(`  ${entry.rel} → copied for network OCR (pending)`)
+      onLog?.(`  ${entry.rel} → copied as-is (no OCR engine selected)`)
+      recordPhaseResult(logsDir, entry, "copy", "done", "copy")
     } else {
       failed++
       prog?.file("copy", ++processed, total, entry.rel, "failed")
       onLog?.(`  ${entry.rel} → copy failed`)
+      recordPhaseResult(logsDir, entry, "copy", "failed", "copy")
     }
   }
   return { converted, skipped, failed, renamed: 0, recoverable }
@@ -354,9 +562,9 @@ export type MarkitdownHooks = {
   ocrDetached?: boolean
   /** Force in-process (worker entry / tests). Default: spawn NDJSON child like OCR. */
   inProcess?: boolean
-  /** Selected OCR/vision model id (e.g. tesseract-local, openrouter/qwen2.5-vl:free). When vision, images flow via MarkItDown llmModel. Can be a getter for live switching. */
+  /** Deprecated: vision is now externalized to SDK. Keep for compat but ignored. */
   ocrModelId?: string | (() => string)
-  /** Called when vision transcription fails for an image — allows TUI to pause queue and let user pick new model (retry) or skip. */
+  /** Deprecated: vision failure now handled in vision phase. */
   onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
 }
 
@@ -379,7 +587,7 @@ export async function processMarkitdownInProcess(
   const preSkipped: ClassifiedEntry[] = []
   const toProcess: ClassifiedEntry[] = []
   for (const f of files) {
-    if (convertedOutputExists(f.dest)) { preSkipped.push(f) } else { toProcess.push(f) }
+    if (convertedOutputExists(f.dest) && !f.force) { preSkipped.push(f) } else { toProcess.push(f) }
   }
 
   skipped += preSkipped.length
@@ -404,6 +612,9 @@ export async function processMarkitdownInProcess(
       output: markitdownOutputRelPath(ps.rel),
       engine: "markitdown", pages: "", duration_s: 0,
     })
+    // Adopt legacy outputs into tracking so resume knows them (and their
+    // current fingerprint — a later edit re-processes).
+    recordPhaseResult(logsDir, ps, "markitdown", "done", "markitdown")
     await emitDone(ps.rel)
   }
 
@@ -413,58 +624,14 @@ export async function processMarkitdownInProcess(
   const mdLog = path.join(logsDir, "markitdown-processed.ndjson")
   if (remainingMd.length > 0) {
     const converter = new MarkItDown()
-    // Vision model for images — supports live switching: if the user picks a new vision
-    // model mid-phase via the header dropdown, the next file uses the new model (old file keeps old).
-    const resolveOcrModelId = () => {
-      const v = hooks?.ocrModelId
-      return typeof v === "function" ? v() : v
-    }
-    const visionCache = new Map<string, { model: unknown; prompt: string; modelId: string } | undefined>()
-    const missingCache = new Map<string, string | undefined>()
-    const getVisionForId = async (id: string | undefined) => {
-      if (!id || id === "tesseract-local" || id === "none") return { vision: undefined as { model: unknown; prompt: string; modelId: string } | undefined, need: undefined as string | undefined }
-      if (visionCache.has(id) || missingCache.has(id)) return { vision: visionCache.get(id), need: missingCache.get(id) }
-      const { findOcrModel, OCR_VISION_PROMPT, createVisionLanguageModel } = await import("./vision-models")
-      const opt = findOcrModel(id)
-      const isVision = opt ? opt.kind === "vision" : id.includes("/")
-      if (!isVision) {
-        visionCache.set(id, undefined)
-        missingCache.set(id, undefined)
-        return { vision: undefined, need: undefined }
-      }
-      const created = await createVisionLanguageModel(id)
-      if (created?.model) {
-        const v = { model: created.model, prompt: OCR_VISION_PROMPT, modelId: created.modelId }
-        visionCache.set(id, v)
-        missingCache.set(id, undefined)
-        return { vision: v, need: undefined }
-      } else {
-        let need = opt?.requiresKey
-        if (!need && id.includes("/")) {
-          const prov = id.slice(0, id.indexOf("/"))
-          need = prov === "openrouter" ? "OPENROUTER_API_KEY" : `${prov.toUpperCase()}_API_KEY`
-        }
-        need ??= "provider key"
-        visionCache.set(id, undefined)
-        missingCache.set(id, need)
-        onLog?.(`Vision model ${id} unavailable (missing ${need}) — images will be copied as-is (no transcription)`)
-        spinosaLogWarn("markitdown", `vision unavailable ${id} missing ${need}`)
-        return { vision: undefined, need }
-      }
-    }
-    // Pre-warm cache for initial id so first image doesn't pay import cost in loop
-    const initialId = resolveOcrModelId()
-    if (initialId && initialId !== "tesseract-local" && initialId !== "none") {
-      await getVisionForId(initialId)
-    }
-    // Formats markitdown-ts doesn't handle — convert inline
+    // MarkItDown now handles office/docs only — images are externalized to vision-transcribe.ts (SDK path).
+    // Vision model wiring removed; keep MarkItDown pure for docx/xlsx/epub/html etc.
     const INLINE_FORMATS = new Set(["json", "csv", "xml"])
     for (let _idx = 0; _idx < remainingMd.length; _idx++) {
       const f = remainingMd[_idx]!
       throwIfSpinosaCancelled(shouldAbort)
       const ext = fileExt(f.src).toLowerCase()
 
-      // Inline conversion for formats markitdown-ts doesn't support
       if (INLINE_FORMATS.has(ext)) {
         await emitStart(f.rel)
         onLog?.(`  ${f.rel} → ${ext} ...`)
@@ -473,11 +640,16 @@ export async function processMarkitdownInProcess(
           const raw = readFileSync(f.src, "utf-8")
           throwIfSpinosaCancelled(shouldAbort)
           mkdirSync(path.dirname(f.dest), { recursive: true })
-          writeTextAtomicSafe(f.dest, `# ${path.basename(f.rel)}\n\n\`\`\`${ext}\n${raw}\n\`\`\`\n`)
+          const writtenDest = writeTextAtomicSafe(f.dest, `# ${path.basename(f.rel)}\n\n\`\`\`${ext}\n${raw}\n\`\`\`\n`)
+          // writeTextAtomicSafe may truncate ENAMETOOLONG dests: everything
+          // downstream (frontmatter, recoverable, manifest) must use the
+          // path actually written, not the requested one.
+          f.dest = writtenDest
           injectColdFrontmatter(f.dest)
           converted++
           await emitDone(f.rel)
           recoverable.push({ src: f.src, dest: f.dest })
+          recordPhaseResult(logsDir, f, "markitdown", "done", `inline-${ext}`)
           appendNdjson(mdLog, {
             ts: isoNow(), status: "ok", source: f.rel,
             output: markitdownOutputRelPath(f.rel),
@@ -489,6 +661,7 @@ export async function processMarkitdownInProcess(
           const errMsg = err instanceof Error ? err.message : String(err)
           failed++
           await emitDone(f.rel, "failed")
+          recordPhaseResult(logsDir, f, "markitdown", "failed", `inline-${ext}`)
           appendNdjson(mdLog, {
             ts: isoNow(), status: "fail", source: f.rel,
             output: markitdownOutputRelPath(f.rel),
@@ -503,95 +676,27 @@ export async function processMarkitdownInProcess(
 
       await emitStart(f.rel)
       const isImage = extInList(ext, IMAGE_EXTENSIONS)
-      // Live-switch: resolve current vision per file so header dropdown pick applies at next file
-      const currentId = resolveOcrModelId()
-      const { vision, need: visionMissingNeed } = await getVisionForId(currentId)
-      if (isImage && !vision) {
-        // Image routed to MarkItDown due to vision selection but no valid
-        // LanguageModel (missing key / offline) — keep original as fallback copy
-        // to `raw/<rel>` (not `__jpg.md`) so workspace isn't left gaps.
-        // Log missing-key clearly per-file so `markitdown-processed.ndjson` shows why.
-        const fallbackDest = path.join(path.dirname(f.dest), path.basename(f.src))
-        try { mkdirSync(path.dirname(fallbackDest), { recursive: true }) } catch {}
-        const ok = await safeCopyAsync(f.src, fallbackDest)
-        const missingHint = currentId && visionMissingNeed ? `vision ${currentId} missing ${visionMissingNeed}` : "vision key missing"
-        if (ok) {
-          converted++
-          recoverable.push({ src: f.src, dest: fallbackDest })
-          appendNdjson(mdLog, {
-            ts: isoNow(), status: "ok", source: f.rel,
-            output: path.basename(fallbackDest),
-            engine: "image-copy-fallback", pages: "",
-            duration_s: 0,
-            error: missingHint,
-          })
-          onLog?.(`  ${f.rel} → image copy fallback (${missingHint})`)
-          await emitDone(f.rel)
-        } else {
-          failed++
-          appendNdjson(mdLog, {
-            ts: isoNow(), status: "fail", source: f.rel,
-            output: markitdownOutputRelPath(f.rel),
-            engine: "image-copy-fallback", pages: "",
-            duration_s: 0,
-            error: `copy fallback failed (${missingHint})`,
-          })
-          onLog?.(`  ${f.rel} → image copy fallback failed (${missingHint})`)
-          await emitDone(f.rel, "failed")
-        }
+      if (isImage) {
+        // Images should have been routed to vision phase; if any slip through, treat as failed
+        // rather than invoking MarkItDown vision (now externalized). Log clearly.
+        onLog?.(`  ${f.rel} → image routed to MarkItDown but vision is externalized — marking failed (will be handled by vision phase if selected)`)
+        failed++
+        await emitDone(f.rel, "failed")
+        recordPhaseResult(logsDir, f, "markitdown", "failed", "markitdown-ts")
+        appendNdjson(mdLog, {
+          ts: isoNow(), status: "fail", source: f.rel,
+          output: markitdownOutputRelPath(f.rel),
+          engine: "markitdown-ts",
+          duration_s: 0,
+          error: "image vision externalized to SDK — route to vision phase",
+        })
         continue
       }
-      if (isImage && vision) onLog?.(`  ${f.rel} → compressing image for vision…`)
-      onLog?.(`  ${f.rel} → markitdown-ts${isImage && vision ? ` (vision:${vision.modelId})` : ""} ...`)
-      if (isImage && vision) onLog?.(`  ${f.rel} → waiting for vision model ${vision.modelId}…`)
+      onLog?.(`  ${f.rel} → markitdown-ts ...`)
       const startTime = Date.now()
       try {
         mkdirSync(path.dirname(f.dest), { recursive: true })
-        // Vision transcription: retry transient 429/5xx/timeout with backoff; auth errors fail fast.
-        const callWithVision = async () => markitdownConvertFile(
-          converter,
-          f.src,
-          isImage && vision ? { llmModel: vision.model, llmPrompt: vision.prompt } : undefined,
-        )
-        const isRetryableVisionError = (msg: string) => /429|rate.?limit|timeout|timed out|503|502|500|ECONNRESET|ETIMEDOUT/i.test(msg)
-        const isAuthError = (msg: string) => /401|403|Incorrect API key|invalid_api_key|authentication/i.test(msg)
-        let result: Awaited<ReturnType<typeof markitdownConvertFile>> | undefined
-        if (isImage && vision) {
-          let lastErr: unknown
-          for (let attempt = 0; attempt < 3; attempt++) {
-            throwIfSpinosaCancelled(shouldAbort)
-            try {
-              // 45s timeout + abort signal so “Stopping process” exits immediately (not after 45s)
-              const abortSignal = hooks?.signal
-              const abortPromise = new Promise<never>((_, rej) => {
-                if (shouldAbort?.()) rej(new SpinosaCancellationError("MarkItDown vision cancelled"))
-                if (abortSignal?.aborted) rej(new SpinosaCancellationError("MarkItDown vision cancelled"))
-                abortSignal?.addEventListener("abort", () => rej(new SpinosaCancellationError("MarkItDown vision cancelled")), { once: true })
-              })
-              const withTimeout = Promise.race([
-                callWithVision(),
-                new Promise<never>((_, rej) => setTimeout(() => rej(new Error("vision timeout after 45s")), 45000)),
-                abortPromise,
-              ])
-              result = await withTimeout
-              lastErr = undefined
-              break
-            } catch (e) {
-              if (isSpinosaCancellationError(e)) throw e
-              lastErr = e
-              const msg = e instanceof Error ? e.message : String(e)
-              if (isAuthError(msg) || !isRetryableVisionError(msg) || attempt === 2) throw e
-              const backoff = 1000 * Math.pow(2, attempt) + Math.random() * 500
-              onLog?.(`  Vision ${vision.modelId} retry ${attempt + 1}/3 for ${f.rel} after ${msg.slice(0,120)} — backoff ${Math.round(backoff)}ms`)
-              await new Promise(r => setTimeout(r, backoff))
-              throwIfSpinosaCancelled(shouldAbort)
-            }
-          }
-          if (!result && lastErr) throw lastErr
-        } else {
-          throwIfSpinosaCancelled(shouldAbort)
-          result = await callWithVision()
-        }
+        const result = await markitdownConvertFile(converter, f.src)
         throwIfSpinosaCancelled(shouldAbort)
         const text = result?.markdown ?? ""
         if (!text.trim()) throw new Error("MarkItDown returned no content")
@@ -600,66 +705,75 @@ export async function processMarkitdownInProcess(
         converted++
         await emitDone(f.rel)
         recoverable.push({ src: f.src, dest: f.dest })
+        recordPhaseResult(logsDir, f, "markitdown", "done", "markitdown-ts")
         appendNdjson(mdLog, {
           ts: isoNow(), status: "ok", source: f.rel,
           output: markitdownOutputRelPath(f.rel),
-          engine: isImage && vision ? `markitdown-ts (vision:${vision.modelId})` : "markitdown-ts", pages: "",
+          engine: "markitdown-ts", pages: "",
           duration_s: (Date.now() - startTime) / 1000,
-          ...(isImage && vision ? { model: vision.modelId } : {}),
         })
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
         const errMsg = err instanceof Error ? err.message : String(err)
-        const visionHint = isImage && vision ? ` [vision:${vision.modelId}]` : ""
-        onLog?.(`MarkItDown failed: ${f.rel}${visionHint} — ${errMsg}`)
-        if (isImage && vision) {
-          // Vision transcription failed — surface provider/model error clearly
-          onLog?.(`  Vision ${vision.modelId} error for ${f.rel} — ${errMsg} — Back to change model or pick Tesseract/copy`)
-          if (hooks?.onVisionFailure) {
-            try {
-              const action = await hooks.onVisionFailure(f.rel, vision.modelId, errMsg)
-              if (action === "retry") {
-                const newId = resolveOcrModelId()
-                const nv = await getVisionForId(newId)
-                if (nv.vision) {
-                  _idx--
-                  onLog?.(`  Retrying ${f.rel} with new vision model ${nv.vision.modelId}…`)
-                  continue
-                }
-              } else if (action === "abort") {
-                throw new SpinosaCancellationError("Vision failure abort requested")
-              }
-            } catch (e) {
-              if (isSpinosaCancellationError(e)) throw e
-            }
-          }
-        }
+        onLog?.(`MarkItDown failed: ${f.rel} — ${errMsg}`)
         if (fileExt(f.src) === "pdf") {
           pdfOcrFallback.push(f)
-          // Do not emit a derived `rel → OCR fallback` progress entry — that
-          // creates a phantom `processing` row (leaked pending) because
-          // `applyImportProgressStatus` keys on exact `rel`. Fallback progress
-          // is reported via the subsequent `emitStart(f.rel)` in the OCR loop;
-          // the derived label is log-only.
           onLog?.(`  ${f.rel} → OCR fallback queued`)
           await yieldToEL()
         } else {
           failed++
           await emitDone(f.rel, "failed")
+          recordPhaseResult(logsDir, f, "markitdown", "failed", "markitdown-ts")
           appendNdjson(mdLog, {
             ts: isoNow(), status: "fail", source: f.rel,
             output: markitdownOutputRelPath(f.rel),
-            engine: isImage && vision ? `markitdown-ts (vision:${vision.modelId})` : "markitdown-ts", pages: "",
+            engine: "markitdown-ts", pages: "",
             duration_s: (Date.now() - startTime) / 1000,
-            error: errMsg + (isImage && vision ? ` [vision:${vision.modelId}]` : ""),
-            ...(isImage && vision ? { model: vision.modelId } : {}),
+            error: errMsg,
           })
         }
       }
     }
   }
 
-  // Recover PDFs that failed MarkItDown via OCR (tesseract only)
+  // Recover PDFs that failed MarkItDown via the SELECTED engine only.
+  // PDFs no longer reach this phase via the classifier, but direct callers
+  // may still pass them: vision selection → fail honestly (the vision phase
+  // owns them — never tesseract behind the user's back); "none" → fail
+  // honestly (copy owns them); tesseract/legacy → tesseract fallback.
+  const rawOcrModelId = hooks?.ocrModelId
+  const selectedOcrModelId = typeof rawOcrModelId === "function" ? rawOcrModelId() : rawOcrModelId
+  let pdfFallbackEngine: "tesseract" | "vision" | "none" = "tesseract"
+  if (selectedOcrModelId && selectedOcrModelId !== "tesseract-local") {
+    pdfFallbackEngine = isVisionModelId(selectedOcrModelId) ? "vision" : "none"
+    if (pdfFallbackEngine === "none" && !selectedOcrModelId.includes("/")) {
+      try {
+        const { findOcrModel } = await import("./vision-models")
+        if (findOcrModel(selectedOcrModelId)?.kind === "vision") pdfFallbackEngine = "vision"
+      } catch {}
+    }
+  }
+  if (pdfOcrFallback.length > 0 && pdfFallbackEngine !== "tesseract") {
+    const reason =
+      pdfFallbackEngine === "vision"
+        ? "PDF misrouted to MarkItDown under vision selection (vision phase owns it) — re-run import"
+        : "PDF misrouted to MarkItDown under copy-as-is selection — re-run import"
+    for (const f of pdfOcrFallback) {
+      throwIfSpinosaCancelled(shouldAbort)
+      await emitStart(f.rel)
+      failed++
+      onLog?.(`  ${f.rel} → no tesseract fallback (${reason})`)
+      recordPhaseResult(logsDir, f, "markitdown", "failed", "markitdown-ts")
+      appendNdjson(mdLog, {
+        ts: isoNow(), status: "fail",
+        source: f.rel, output: markitdownOutputRelPath(f.rel),
+        engine: "markitdown-ts", pages: "", duration_s: 0,
+        error: reason,
+      })
+      await emitDone(f.rel, "failed")
+    }
+    pdfOcrFallback.length = 0
+  }
   if (pdfOcrFallback.length > 0) {
     onLog?.(`Falling back to OCR for ${pdfOcrFallback.length} PDF(s) that failed MarkItDown...`)
     for (const f of pdfOcrFallback) {
@@ -677,10 +791,12 @@ export async function processMarkitdownInProcess(
             converted++
             recoverable.push({ src: f.src, dest: f.dest })
             onLog?.(`  ${f.rel} → tesseract OCR fallback succeeded`)
+            recordPhaseResult(logsDir, f, "ocr", "done", "tesseract")
           } else {
             failed++
             const errDetail = "tesseract produced no convertible output"
             onLog?.(`  ${f.rel} → OCR fallback returned no content — ${errDetail}`)
+            recordPhaseResult(logsDir, f, "ocr", "failed", "tesseract")
             appendNdjson(mdLog, {
               ts: isoNow(), status: "fail",
               source: f.rel, output: markitdownOutputRelPath(f.rel),
@@ -695,6 +811,7 @@ export async function processMarkitdownInProcess(
           const reason = ocrUnsupportedReason() ?? "OCR engine unavailable (tesseract missing)"
           failed++
           onLog?.(`  ${f.rel} → OCR fallback unavailable — ${reason}`)
+          recordPhaseResult(logsDir, f, "ocr", "failed", "tesseract")
           appendNdjson(mdLog, {
             ts: isoNow(), status: "fail",
             source: f.rel, output: markitdownOutputRelPath(f.rel),
@@ -712,6 +829,9 @@ export async function processMarkitdownInProcess(
           const copied = await safeCopyAsync(f.src, binaryDest)
           if (copied) {
             onLog?.(`  ${f.rel} → tesseract low confidence (avg ${err.avgConf.toFixed(1)}, low ${err.lowPct.toFixed(1)}%) — keeping original ${path.basename(binaryDest)}`)
+            // Placeholder only, no usable transcript → mark skipped so a
+            // later resume retries instead of trusting the placeholder.
+            recordPhaseResult(logsDir, f, "ocr", "skipped", "tesseract")
             appendNdjson(mdLog, {
               ts: isoNow(), status: "skip",
               source: f.rel, output: path.basename(binaryDest),
@@ -726,6 +846,7 @@ export async function processMarkitdownInProcess(
         const errMsg = err instanceof Error ? err.message : String(err)
         failed++
         onLog?.(`  ${f.rel} → OCR fallback failed: ${errMsg}`)
+        recordPhaseResult(logsDir, f, "ocr", "failed", "tesseract")
         appendNdjson(mdLog, {
           ts: isoNow(), status: "fail",
           source: f.rel, output: markitdownOutputRelPath(f.rel),
@@ -759,22 +880,9 @@ export async function processMarkitdown(
   shouldAbort?: () => boolean,
   hooks?: MarkitdownHooks,
 ): Promise<PhaseResult> {
-  // Vision LLMs need network + API key and cannot be serialized to the NDJSON
-  // child via a plain JSON payload (LanguageModel is not serializable). Run
-  // any vision phase in-process so the model can be created in the same process.
-  // Luna (`openai/gpt-5.6-luna`) was silently falling back to image-copy via child.
-  const needsInProcess = (() => {
-    const raw = hooks?.ocrModelId
-    const id = typeof raw === "function" ? raw() : raw
-    if (!id) return false
-    if (id === "tesseract-local" || id === "none") return false
-    // Any provider/model (`openai/...`, `anthropic/...`, `openrouter/...`) is vision when routed via onboarding picker.
-    // Treat as in-process so `createVisionLanguageModel` can run and log missing-key clearly.
-    if (id.includes("/")) return true
-    // Curated vision ids (future) — fallback to none if not vision.
-    return false
-  })()
-  if (hooks?.inProcess || needsInProcess || process.env.SPINOSA_IMPORT_IN_PROCESS === "1") {
+  // Vision is now externalized to dedicated SDK phase (vision-transcribe.ts).
+  // MarkItDown stays office-docs only and always uses the worker protocol.
+  if (hooks?.inProcess || process.env.SPINOSA_IMPORT_IN_PROCESS === "1") {
     return processMarkitdownInProcess(files, logsDir, prog, onLog, shouldAbort, {
       ...hooks,
       inProcess: true,
@@ -803,7 +911,7 @@ export async function processOcr(
   const toProcess: ClassifiedEntry[] = []
   const preSkipped: ClassifiedEntry[] = []
   for (const f of files) {
-    if (convertedOutputExists(f.dest)) { preSkipped.push(f) } else { toProcess.push(f) }
+    if (convertedOutputExists(f.dest) && !f.force) { preSkipped.push(f) } else { toProcess.push(f) }
   }
 
   skipped += preSkipped.length
@@ -816,73 +924,81 @@ export async function processOcr(
       output: ocrOutputRelPath(ps.rel),
       engine: "tesseract", pages: "", duration_s: 0,
     })
+    recordPhaseResult(logsDir, ps, "ocr", "done", "tesseract")
     prog?.file("OCR", ++processed, total, ps.rel, "done")
   }
 
-  // Primary path: tesseract for scanned PDFs (ita+eng+fra, 300dpi) — only engine.
-  // Outcome-based: try MarkItDown first for PDFs that look like text (contain /Font), else tesseract.
-  if (tesseractAvailable() && toProcess.length > 0) {
+  // Pass 1 (no tesseract needed): digital PDFs carry an encoded text layer,
+  // extracted directly via the bundled pdf.js census (no API key, no OCR
+  // spend). Scanned/invalid PDFs collect into `remaining` for tesseract.
+  // Images must never reach OCR — fail fast with a pointer to vision.
+  const remaining: ClassifiedEntry[] = []
+  for (const file of toProcess) {
+    throwIfSpinosaCancelled(shouldAbort)
+    const start = Date.now()
+    prog?.file("OCR", processed, total, file.rel, "processing")
+    await yieldToEL()
+    const ext = fileExt(file.src).toLowerCase()
+    // Images should have been split to copyFiles; if any slip through, treat as copy-fail not OCR
+    if (extInList(ext, IMAGE_EXTENSIONS)) {
+      const err = "image files are copy-only (no tesseract for images — pick a vision model to transcribe them)"
+      failed++
+      appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+        ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
+      })
+      onLog?.(`  ${file.rel} → ${err}`)
+      prog?.file("OCR", ++processed, total, file.rel, "failed")
+      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
+      continue
+    }
+    if (ext !== "pdf") {
+      const err = `unsupported OCR extension: ${ext}`
+      failed++
+      appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+        ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
+      })
+      onLog?.(`  ${file.rel} → ${err}`)
+      prog?.file("OCR", ++processed, total, file.rel, "failed")
+      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
+      continue
+    }
+    // Encoded-text census: /Encrypt → false, /Font sniff → true, else a
+    // bounded pdf.js parse with a 5s timeout. Digital → extract here.
+    let digitalDone = false
+    try {
+      const { isTextBasedPdf } = await import("../extension/pdf")
+      if (await isTextBasedPdf(file.src)) {
+        await convertTextPdf(file.src, file.dest, file.rel, shouldAbort)
+        throwIfSpinosaCancelled(shouldAbort)
+        if (convertedOutputExists(file.dest)) {
+          converted++
+          recoverable.push({ src: file.src, dest: file.dest })
+          appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
+            ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "pdfjs", pages: "", duration_s: (Date.now() - start) / 1000,
+          })
+          onLog?.(`  ${file.rel} → digital PDF, text extracted via pdf.js (no OCR)`)
+          prog?.file("OCR", ++processed, total, file.rel, "done")
+          recordPhaseResult(logsDir, file, "ocr", "done", "pdfjs")
+          digitalDone = true
+        }
+      }
+    } catch (err) {
+      if (isSpinosaCancellationError(err)) throw err
+      // fall through to tesseract below
+    }
+    if (!digitalDone) remaining.push(file)
+  }
+
+  // Pass 2: tesseract for scanned leftovers (ita+eng+fra, 300dpi) — only engine.
+  // This phase only receives PDFs when Tesseract (or legacy unset) is the
+  // selected engine — vision/none route elsewhere.
+  if (tesseractAvailable() && remaining.length > 0) {
     const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
-    for (const file of toProcess) {
+    for (const file of remaining) {
       throwIfSpinosaCancelled(shouldAbort)
       const start = Date.now()
       prog?.file("OCR", processed, total, file.rel, "processing")
       await yieldToEL()
-      const ext = fileExt(file.src).toLowerCase()
-      // Images should have been split to copyFiles; if any slip through, treat as copy-fail not OCR
-      if (extInList(ext, IMAGE_EXTENSIONS)) {
-        const err = "image files are copy-only (pending network OCR), not tesseract"
-        failed++
-        appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-          ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
-        })
-        onLog?.(`  ${file.rel} → ${err}`)
-        prog?.file("OCR", ++processed, total, file.rel, "failed")
-        continue
-      }
-      if (ext !== "pdf") {
-        const err = `unsupported OCR extension: ${ext}`
-        failed++
-        appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-          ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
-        })
-        onLog?.(`  ${file.rel} → ${err}`)
-        prog?.file("OCR", ++processed, total, file.rel, "failed")
-        continue
-      }
-      // Quick font marker check — avoids expensive MarkItDown on scanned/invalid PDFs without /Font
-      let likelyTextPdf = false
-      try {
-        const head = readFileSync(file.src).subarray(0, 262144).toString("utf-8", 0, 262144)
-        likelyTextPdf = head.includes("/Font") || head.includes("/CIDFont")
-      } catch { likelyTextPdf = false }
-      if (likelyTextPdf) {
-        try {
-          // Text-layer PDFs → try MarkItDown first (outcome-based isText detection, no pdf.js)
-          const { MarkItDown } = await import("@spinosa/markitdown")
-          const { markitdownConvertFile } = await import("./markitdown-convert")
-          const converter = new MarkItDown()
-          const mdResult = await markitdownConvertFile(converter, file.src)
-          throwIfSpinosaCancelled(shouldAbort)
-          const mdText = mdResult?.markdown?.trim() ?? ""
-          if (mdText) {
-            mkdirSync(path.dirname(file.dest), { recursive: true })
-            writeTextAtomicSafe(file.dest, mdText)
-            injectColdFrontmatter(file.dest)
-            converted++
-            recoverable.push({ src: file.src, dest: file.dest })
-            appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-              ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "markitdown", pages: "", duration_s: (Date.now() - start) / 1000,
-            })
-            onLog?.(`  ${file.rel} → text-layer PDF via MarkItDown (${mdText.length} chars)`)
-            prog?.file("OCR", ++processed, total, file.rel, "done")
-            continue
-          }
-        } catch (err) {
-          if (isSpinosaCancellationError(err)) throw err
-          // fall through to tesseract
-        }
-      }
       try {
         const result = await ocrPdfViaTesseract(file.src, file.dest, file.rel, { shouldAbort, onLog })
         throwIfSpinosaCancelled(shouldAbort)
@@ -894,6 +1010,7 @@ export async function processOcr(
           })
           onLog?.(`  ${file.rel} → tesseract OCR succeeded (${result.pages} pages)`)
           prog?.file("OCR", ++processed, total, file.rel, "done")
+          recordPhaseResult(logsDir, file, "ocr", "done", "tesseract")
         } else {
           throw new Error("tesseract produced no output")
         }
@@ -927,6 +1044,9 @@ export async function processOcr(
           } catch {}
           if (copied) {
             onLog?.(`  ${file.rel} → tesseract low confidence (avg ${err.avgConf.toFixed(1)}, low ${err.lowPct.toFixed(1)}%) — keeping original ${path.basename(binaryDest)} + placeholder md`)
+            // Placeholder only, no usable transcript → mark skipped so a
+            // later resume retries instead of trusting the placeholder.
+            recordPhaseResult(logsDir, file, "ocr", "skipped", "tesseract")
             appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
               ts: isoNow(), status: "skip", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: `low confidence: ${err.message} — original kept`,
             })
@@ -942,16 +1062,17 @@ export async function processOcr(
         })
         onLog?.(`  ${file.rel} → tesseract failed: ${msg}`)
         prog?.file("OCR", ++processed, total, file.rel, "failed")
+        recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
       }
     }
     prog?.file("OCR", processed, total, "", "done")
     return { converted, skipped, failed, renamed: 0, recoverable }
   }
 
-  if (toProcess.length > 0 && !tesseractAvailable()) {
+  if (remaining.length > 0 && !tesseractAvailable()) {
     const reason = ocrUnsupportedReason() ?? "OCR engine unavailable (tesseract missing)"
     onLog?.(`OCR unavailable: ${reason}`)
-    for (const file of toProcess) {
+    for (const file of remaining) {
       throwIfSpinosaCancelled(shouldAbort)
       failed++
       appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
@@ -966,16 +1087,17 @@ export async function processOcr(
       })
       onLog?.(`  ${file.rel} → OCR failed: ${reason}`)
       prog?.file("OCR", ++processed, total, file.rel, "failed")
+      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
       await yieldToEL()
     }
     return { converted, skipped, failed, renamed: 0, recoverable }
   }
 
   // No ppu-paddle-ocr fallback — tesseract is the only OCR engine
-  if (toProcess.length > 0) {
+  if (remaining.length > 0) {
     // Any remaining files after tesseract block are unexpected (e.g. tesseract not available already handled)
     // Mark them as failed with clear reason
-    for (const file of toProcess) {
+    for (const file of remaining) {
       throwIfSpinosaCancelled(shouldAbort)
       failed++
       const err = "OCR failed: tesseract unavailable and no fallback"
@@ -984,6 +1106,7 @@ export async function processOcr(
         ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: 0, error: err,
       })
       prog?.file("OCR", ++processed, total, file.rel, "failed")
+      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
     }
     return { converted, skipped, failed, renamed: 0, recoverable }
   }
@@ -1107,17 +1230,31 @@ async function runMarkitdownViaChild(
   throwIfSpinosaCancelled(shouldAbort)
   const mode = resolveMarkitdownWorkerMode()
   const workerPayload = encodeWorkerPayload({ files, logsDir, ocrModelId: hooks?.ocrModelId })
-  const child =
-    mode === "binary-cli"
-      ? spawn(productBinaryExecutable(), ["internal", "markitdown-worker", workerPayload.arg], {
-          stdio: ["ignore", "pipe", "pipe"],
+  let child: ReturnType<typeof spawn>
+  try {
+    child =
+      mode === "binary-cli"
+        ? spawn(productBinaryExecutable(), ["internal", "markitdown-worker", workerPayload.arg], {
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: true,
+            env: process.env,
+          })
+        : spawn(bunExecutableForWorker(), ["run", markitdownWorkerScriptPath(), workerPayload.arg], {
+            stdio: ["ignore", "pipe", "pipe"],
           detached: true,
-          env: process.env,
         })
-      : spawn(bunExecutableForWorker(), ["run", markitdownWorkerScriptPath(), workerPayload.arg], {
-          stdio: ["ignore", "pipe", "pipe"],
-          detached: true,
-        })
+  } catch (err) {
+    // Spawn failure (missing bun/binary) must fail every file loudly — never
+    // return zero counts that read as "nothing to do".
+    disposeWorkerPayload(workerPayload.tempPath)
+    const msg = `MarkItDown worker spawn failed: ${err instanceof Error ? err.message : String(err)}`
+    onLog?.(msg)
+    for (const f of files) {
+      prog?.file("MarkItDown", 0, files.length, f.rel, "failed")
+      recordPhaseResult(logsDir, f, "markitdown", "failed", "markitdown-worker")
+    }
+    return { converted: 0, skipped: 0, failed: files.length, renamed: 0, recoverable: [] }
+  }
 
   hooks?.onChild?.(child)
 
@@ -1160,9 +1297,14 @@ async function runMarkitdownViaChild(
     stderrBuf += chunk.toString()
   })
 
-  const { code, signal, aborted } = await waitForOcrChild(child, shouldAbort, hooks?.signal).finally(() =>
+  const { code, signal, aborted, timedOut } = await waitForOcrChild(child, shouldAbort, hooks?.signal).finally(() =>
     disposeWorkerPayload(workerPayload.tempPath),
   )
+  if (timedOut) {
+    const msg = "MarkItDown worker timed out after 15m and was killed"
+    state.errors.push(msg)
+    onLog?.(msg)
+  }
   if (stdoutCarry.trim()) consumeMarkitdownWorkerNdjsonLine(stdoutCarry, state, { onLog, onProgress })
   // Reconcile any files whose terminal progress was lost to truncation:
   // emit a synthetic terminal event so TUI's `Files (… pending)` does not leak
@@ -1225,16 +1367,18 @@ export async function waitForOcrChild(
   child: ChildProcess,
   shouldAbort?: () => boolean,
   signal?: AbortSignal,
-): Promise<{ code: number | null; signal: string | null; aborted: boolean }> {
+  timeoutMs = 15 * 60 * 1000,
+): Promise<{ code: number | null; signal: string | null; aborted: boolean; timedOut?: boolean }> {
   return new Promise((resolve) => {
     let settled = false
     let terminating = false
     const abortRequested = () => Boolean(shouldAbort?.() || signal?.aborted)
 
-    const finish = (result: { code: number | null; signal: string | null; aborted: boolean }) => {
+    const finish = (result: { code: number | null; signal: string | null; aborted: boolean; timedOut?: boolean }) => {
       if (settled) return
       settled = true
       clearInterval(poll)
+      clearTimeout(timer)
       if (signal) {
         try {
           signal.removeEventListener("abort", onAbortEvent)
@@ -1245,12 +1389,12 @@ export async function waitForOcrChild(
       resolve(result)
     }
 
-    const requestTerminate = () => {
+    const requestTerminate = (timedOut = false) => {
       if (settled || terminating) return
       terminating = true
       clearInterval(poll)
       void terminateChild(child).then(() => {
-        finish({ code: null, signal: "SIGTERM", aborted: true })
+        finish({ code: null, signal: "SIGTERM", aborted: !timedOut, timedOut })
       })
     }
 
@@ -1268,6 +1412,9 @@ export async function waitForOcrChild(
       if (!abortRequested()) return
       requestTerminate()
     }, 75)
+
+    // Hung children must not wedge the queue forever: kill + report timeout.
+    const timer = setTimeout(() => requestTerminate(true), timeoutMs)
 
     if (signal) {
       if (signal.aborted) requestTerminate()
@@ -1316,6 +1463,9 @@ function expectedImportDestRel(
       return rel
     case "markitdown":
       return markitdownOutputRelPath(rel)
+    case "vision":
+      // Vision transcripts land next to MarkItDown output (doc__pdf.md).
+      return markitdownOutputRelPath(rel)
     case "ocr":
       return ocrOutputRelPath(rel)
     default:
@@ -1341,7 +1491,8 @@ function appendNdjson(path: string, obj: Record<string, unknown>): void {
   appendFileSync(path, JSON.stringify(obj) + "\n", "utf-8")
 }
 
-async function convertTextPdf(srcFile: string, destFile: string, relPath: string, shouldAbort?: () => boolean): Promise<void> {
+/** Digital PDF → Markdown via bundled pdf.js (no OCR engine needed). Exported for single-file add. */
+export async function convertTextPdf(srcFile: string, destFile: string, relPath: string, shouldAbort?: () => boolean): Promise<void> {
   const title = path.basename(relPath, path.extname(relPath))
   const { pdfExtractPageTexts } = await import("../extension/pdf-js")
   const pageTexts = await pdfExtractPageTexts(srcFile)
@@ -1386,7 +1537,7 @@ async function convertTextPdf(srcFile: string, destFile: string, relPath: string
   injectColdFrontmatter(destFile)
 }
 
-type CopyDirectResult = "copied" | "skipped" | "failed"
+type CopyDirectResult = "copied" | "skipped" | "failed" | "failed-permanent"
 
 async function copyDirectRawFile(
   srcFile: string,
@@ -1411,18 +1562,31 @@ async function copyDirectRawFile(
   await yieldToEL()
   throwIfSpinosaCancelled(shouldAbort)
 
+  let renameAttempted = false
+  let lastReason = ""
   if (await safeCopyAsync(srcFile, destFile, {
+    shouldAbort,
     onRetry: (attempt, reason) => {
+      lastReason = reason
       onLog?.(`  ${relPath} → retry ${attempt} (${reason})`)
       onRetry?.(attempt, reason)
     },
     onRename: (original, renamed) => {
       onLog?.(`  ${relPath} → renamed (name too long)`)
       onRename?.(original, renamed)
+      renameAttempted = true
     },
   })) {
     onLog?.(`  ${relPath} → copied`)
     return "copied"
+  }
+
+  // Doomed paths must not burn 3 rounds of backoff: a name that stays too
+  // long even after the truncate-rescue (or a vanished source) fails the
+  // same way on every attempt, so report it terminally right away.
+  if (renameAttempted && /ENAMETOOLONG/.test(lastReason)) {
+    onLog?.(`  ${relPath} → failed, no retry (name too long even when truncated)`)
+    return "failed-permanent"
   }
 
   return "failed"
@@ -1442,6 +1606,7 @@ export async function verifyAndRecoverImport(
   failedFilesDir?: string,
   subfolder?: string,
   phase?: CopyPhase,
+  ocrModelId?: string,
 ): Promise<VerifyResult> {
   let missing = 0
   let recovered = 0
@@ -1472,12 +1637,13 @@ export async function verifyAndRecoverImport(
     const route = await importRouteForFile(srcFile, {
       markitdownChoice: markitdownChoice ?? false,
       ocrChoice: ocrChoice ?? false,
+      ocrModelId,
     })
     throwIfSpinosaCancelled(shouldAbort)
     if (!route) continue
 
-    const routePhase = route === "markitdown" ? "markitdown" : route === "ocr" ? "ocr" : "direct"
-    // "copy" (image_pending) shares direct phase for verify filtering
+    const routePhase = route === "markitdown" ? "markitdown" : route === "vision" ? "vision" : route === "ocr" ? "ocr" : "direct"
+    // "copy" (image_pending / none) shares direct phase for verify filtering
     if (phase && phase !== "all" && routePhase !== phase) continue
 
     const sourceRel = safeRelBySource.get(srcFile) ?? srcFile.replace(sourcePath, "").replace(/^\//, "")
@@ -1528,40 +1694,49 @@ export async function verifyAndRecoverImport(
         }
         break
       }
+      case "vision": {
+        // Vision transcripts are never auto-retried here: no MarkItDown
+        // recovery (it cannot transcribe images/scanned PDFs), no tesseract
+        // recovery (the user did not select it), and no source-copy onto the
+        // .md path (that poisons raw/ for agents). The source is preserved to
+        // _failed_files below; re-running import recovers it.
+        spinosaLogWarn("vision", `verify recover left missing ${relPath}: vision transcript absent, no auto-retry`)
+        onLog?.(`    Still missing (vision transcript absent — re-run import to retry, no auto-retry): ${relPath}`)
+        break
+      }
       case "ocr": {
         let ocrConverted = 0
         let ocrError: string | undefined
-        if (tesseractAvailable()) {
-          try {
-            const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
-            // Outcome-based: try MarkItDown first, success → text PDF
-            let markitdownText = ""
-            let markitdownOk = false
-            try {
-              const { MarkItDown } = await import("@spinosa/markitdown")
-              const { markitdownConvertFile } = await import("./markitdown-convert")
-              const converter = new MarkItDown()
-              const mdRes = await markitdownConvertFile(converter, srcFile)
-              throwIfSpinosaCancelled(shouldAbort)
-              markitdownText = mdRes?.markdown?.trim() ?? ""
-              markitdownOk = markitdownText.length > 0
-            } catch { markitdownOk = false }
-            if (markitdownOk) {
-              mkdirSync(path.dirname(destFile), { recursive: true })
-              writeTextAtomicSafe(destFile, markitdownText)
+        // Mirror processOcr: digital PDFs extract via pdf.js (no tesseract
+        // needed); scanned PDFs retry tesseract. MarkItDown never handles PDFs.
+        try {
+          const { isTextBasedPdf } = await import("../extension/pdf")
+          if (await isTextBasedPdf(srcFile)) {
+            mkdirSync(path.dirname(destFile), { recursive: true })
+            await convertTextPdf(srcFile, destFile, relPath, shouldAbort)
+            throwIfSpinosaCancelled(shouldAbort)
+            if (convertedOutputExists(destFile)) {
               injectColdFrontmatter(destFile)
               ocrConverted = 1
-            } else {
-              await ocrPdfViaTesseract(srcFile, destFile, relPath, { shouldAbort, onLog })
-              if (convertedOutputExists(destFile)) ocrConverted = 1
-              else ocrError = "tesseract produced no convertible markdown"
+              onLog?.(`    Recovered (digital PDF via pdf.js): ${relPath}`)
             }
+          }
+        } catch (err) {
+          if (isSpinosaCancellationError(err)) throw err
+          // fall through to tesseract retry
+        }
+        if (ocrConverted === 0 && tesseractAvailable()) {
+          try {
+            const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
+            await ocrPdfViaTesseract(srcFile, destFile, relPath, { shouldAbort, onLog })
+            if (convertedOutputExists(destFile)) ocrConverted = 1
+            else ocrError = "tesseract produced no convertible markdown"
           } catch (err) {
             if (isSpinosaCancellationError(err)) throw err
             ocrError = err instanceof Error ? err.message : String(err)
             onLog?.(`    tesseract failed: ${ocrError}`)
           }
-        } else {
+        } else if (ocrConverted === 0) {
           ocrError = ocrUnsupportedReason() ?? "OCR engine unavailable"
         }
         if (ocrConverted > 0 && convertedOutputExists(destFile)) {
@@ -1655,9 +1830,19 @@ export async function copySource(
     return res
   }
 
+  // Resume: drop already-imported files so re-runs only process what's new,
+  // changed, re-routed, or previously failed. Manifest lives in logsDir.
+  const rawModelId = options?.ocrModelId
+  applyResumeFilter(classified, classified.logsDir, {
+    modelId: typeof rawModelId === "string" ? rawModelId : undefined,
+    overwrite: options?.overwrite,
+    onLog: options?.onLog,
+  })
+
   options?.onClassified?.({
     directFiles: classified.directFiles,
     markitdownFiles: classified.markitdownFiles,
+    visionFiles: classified.visionFiles,
     ocrFiles: classified.ocrFiles,
     copyFiles: (classified as unknown as { copyFiles: ClassifiedEntry[] }).copyFiles ?? [],
     logsDir: classified.logsDir,
@@ -1673,6 +1858,15 @@ export async function copySource(
   }
 
   const copyFiles = (classified as unknown as { copyFiles: ClassifiedEntry[] }).copyFiles ?? []
+  const visionFiles = classified.visionFiles ?? []
+  if (visionFiles.length > 0) {
+    // copySource has no vision transcribe callback (CLI path): never drop
+    // these silently — preserve originals and let verify report them.
+    options?.onLog?.(
+      `Vision: ${visionFiles.length} file(s) need a vision model, which copySource cannot transcribe — preserving originals to _failed_files/`,
+    )
+    await preserveFailedImportFiles(visionFiles, destDir, options?.onLog)
+  }
   const attemptedFiles = [
     ...(runPhase("direct") ? classified.directFiles : []),
     ...(runPhase("direct") ? copyFiles : []),
@@ -1685,16 +1879,16 @@ export async function copySource(
 
   if (runPhase("direct") && classified.directFiles.length > 0) {
     options?.onPhaseChange?.("direct", `Copying ${classified.directFiles.length} files...`)
-    const dr = await processDirectCopy(classified.directFiles, prog, options?.onLog, options?.overwrite, options?.shouldAbort)
+    const dr = await processDirectCopy(classified.directFiles, prog, options?.onLog, options?.overwrite, options?.shouldAbort, undefined, undefined, classified.logsDir)
     res.copied += dr.converted; res.skipped += dr.skipped; res.failed += dr.failed
   }
 
   if (copyFiles.length > 0) {
-    // Images: copy-only, pending network OCR
+    // Files kept as-is: no OCR engine selected for them ("none" or legacy).
     if (runPhase("direct")) {
-      options?.onPhaseChange?.("direct", `Copying ${copyFiles.length} images (pending network OCR)...`)
+      options?.onPhaseChange?.("direct", `Copying ${copyFiles.length} files as-is (no OCR)...`)
     }
-    const cr = await processImageCopy(copyFiles, prog, options?.onLog, options?.overwrite, options?.shouldAbort)
+    const cr = await processImageCopy(copyFiles, prog, options?.onLog, options?.overwrite, options?.shouldAbort, classified.logsDir)
     res.copied += cr.converted; res.skipped += cr.skipped; res.failed += cr.failed
   }
 
@@ -1732,6 +1926,7 @@ export async function copySource(
       destDir,
       options?.subfolder,
       options?.runPhase,
+      typeof options?.ocrModelId === "string" ? options.ocrModelId : undefined,
     )
     res.stillMissing = verifyResult.stillMissing
     res.recovered = verifyResult.recovered

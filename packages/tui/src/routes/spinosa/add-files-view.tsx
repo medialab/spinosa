@@ -84,6 +84,13 @@ type AddFilesViewProps = {
   waitingForGate: Accessor<boolean>
   gateLabel: Accessor<string>
   gateAction: Accessor<() => void>
+  visionError: Accessor<string | undefined>
+  visionPaused: Accessor<boolean>
+  onVisionRetry: () => void
+  onVisionSkip: () => void
+  onOpenMonitor: () => void
+  backgroundAvailable: Accessor<boolean>
+  onBackground: () => void
   importOutcomeFg: Accessor<Theme["error"]>
   importOutcome: Accessor<ImportOutcome>
   importOutcomeHeading: (outcome: ImportOutcome) => string
@@ -148,6 +155,8 @@ export function AddFilesView(props: AddFilesViewProps) {
     waitingForGate,
     gateLabel,
     gateAction,
+    visionError,
+    visionPaused,
     importOutcomeFg,
     importOutcome,
     importOutcomeHeading,
@@ -170,7 +179,7 @@ export function AddFilesView(props: AddFilesViewProps) {
       <CenteredColumn>
       <box flexGrow={1} alignItems="center" paddingLeft={2} paddingRight={2}>
         <box flexGrow={1} minHeight={0} />
-        <box width="100%" maxWidth={72} flexDirection="column" gap={1}>
+        <box width="100%" maxWidth={80} flexDirection="column" gap={1}>
           <box flexDirection="row" alignItems="center" gap={1}>
             <box
               paddingLeft={2}
@@ -196,7 +205,7 @@ export function AddFilesView(props: AddFilesViewProps) {
             {step() === "path" ? " — choosing source folders" : ""}
             {step() === "tools" ? " — checking your document tools" : ""}
             {step() === "scan" ? " — scanning your source" : ""}
-            {step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting office docs & text PDFs via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs (images → copy, pending network)" : ""}
+            {step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : ""}
             {step() === "done" ? " — import complete" : ""}
             {step() === "error" ? " — fixing the issue and retrying" : ""}
           </text>
@@ -374,6 +383,19 @@ export function AddFilesView(props: AddFilesViewProps) {
                     viewportHeight={dimensions().height}
                   />
                 </Show>
+                <Show when={visionError()}>
+                  <box flexDirection="column" gap={0} border={["left"]} borderColor={theme.error} paddingLeft={1}>
+                    <text fg={theme.error}>{visionError()}</text>
+                  </box>
+                  <Show when={visionPaused()}>
+                    <box flexDirection="row" gap={1}>
+                      <WizardActionButton theme={theme} label="Retry" primary onPress={() => props.onVisionRetry()} />
+                      <WizardActionButton theme={theme} label="Skip file" onPress={() => props.onVisionSkip()} />
+                      <WizardActionButton theme={theme} label="Open monitor" onPress={() => props.onOpenMonitor()} />
+                    </box>
+                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>r retry · s skip · m monitor</text>
+                  </Show>
+                </Show>
               </Show>
             </WizardPanel>
             <WizardActionRow>
@@ -398,6 +420,14 @@ export function AddFilesView(props: AddFilesViewProps) {
               <Show when={step() === "direct" || step() === "markitdown" || step() === "ocr"}>
                 <Show when={waitingForGate()}>
                   <WizardGateButton theme={theme} label={gateLabel()} action={() => gateAction()()} />
+                </Show>
+                <Show when={props.backgroundAvailable()}>
+                  <WizardActionButton
+                    theme={theme}
+                    label="Continue in background"
+                    onPress={() => props.onBackground()}
+                  />
+                  <text fg={theme.textMuted} attributes={TextAttributes.DIM}>b background</text>
                 </Show>
               </Show>
             </WizardActionRow>

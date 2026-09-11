@@ -12,6 +12,7 @@ import {
   BINARY_COPYABLE_EXTENSIONS,
 } from "../constants"
 import type { FileClass, ImportRoute } from "./types"
+import { isVisionModelId } from "../import/vision-helpers"
 
 const HOME = homedir()
 
@@ -106,9 +107,9 @@ export async function classifySourceFile(filePath: string): Promise<FileClass> {
     if (extInList(ext, NATIVE_EXTENSIONS)) return "native"
 
     if (ext === "pdf") {
-      // Outcome-based: all PDFs start as ocr_convertible; pipeline will try MarkItDown first,
-      // success → text PDF, empty/fail → tesseract. Keeps scan lightweight and allows
-      // isText detection via MarkItDown outcome, not pdf.js.
+      // Outcome-based: all PDFs start as ocr_convertible; the processing phase
+      // triages via the pdf.js encoded-text census — digital PDFs extract
+      // directly, scanned PDFs go to the selected OCR engine. Keeps scan light.
       return "ocr_convertible"
     }
 
@@ -178,27 +179,31 @@ export async function importRouteForFile(
     case "ocr_convertible": {
       if (!opts?.ocrChoice) return undefined
       const ext = fileExt(srcFile)
+      const modelId = opts?.ocrModelId
+      // "none" means keep files as-is: copy, never OCR, never drop.
+      if (modelId === "none") return "copy"
       if (extInList(ext, IMAGE_EXTENSIONS)) {
-        // Images: with vision model → MarkItDown vision, otherwise copy-only
-        if (opts?.ocrModelId) {
-          if (opts.ocrModelId === "none") return undefined
-          if (opts.ocrModelId === "tesseract-local") return "copy"
-          // Dynamic provider/model ids (e.g. openrouter/qwen/...) are vision if they contain "/"
-          if (opts.ocrModelId.includes("/")) {
-            // Check static registry first, otherwise treat as vision
-            try {
-              const { findOcrModel } = await import("../import/vision-models")
-              const m = findOcrModel(opts.ocrModelId)
-              if (m) {
-                if (m.kind === "vision") return "markitdown"
-                if (m.kind === "none") return undefined
-                return "copy"
-              }
-            } catch {}
-            return "markitdown"
-          }
+        // Images: vision model → dedicated SDK transcription, otherwise copy-only.
+        // MarkItDown handles office docs only, never images.
+        if (modelId) {
+          if (modelId === "tesseract-local") return "copy"
+          if (isVisionModelId(modelId)) return "vision"
+          try {
+            const { findOcrModel } = await import("../import/vision-models")
+            const m = findOcrModel(modelId)
+            if (m) return m.kind === "vision" ? "vision" : "copy"
+          } catch {}
         }
         return "copy"
+      }
+      // PDFs: vision model → vision page transcription; tesseract (or legacy
+      // unset) → tesseract OCR, which extracts digital PDFs via pdf.js first.
+      if (modelId && modelId !== "tesseract-local") {
+        if (isVisionModelId(modelId)) return "vision"
+        try {
+          const { findOcrModel } = await import("../import/vision-models")
+          if (findOcrModel(modelId)?.kind === "vision") return "vision"
+        } catch {}
       }
       return "ocr"
     }
@@ -244,6 +249,15 @@ export function ocrOutputRelPath(relPath: string): string {
 
 const MAX_NAME_BYTES = 250
 
+// Byte-length truncation: slicing by UTF-16 code units still overflows on
+// multibyte names (the filesystem limit is 255 *bytes* per component).
+function truncateUtf8ByBytes(value: string, maxBytes: number): string {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value
+  let end = value.length
+  while (end > 0 && Buffer.byteLength(value.slice(0, end), "utf8") > maxBytes) end--
+  return end > 0 ? value.slice(0, end) : value.slice(0, 1)
+}
+
 // Split off the trailing extension (multi-part aware: ".tar.gz" -> ext ".gz")
 // so truncation keeps the real suffix.
 function splitExt(name: string): { stem: string; ext: string } {
@@ -270,7 +284,7 @@ export function safeRelPaths(relPaths: string[]): string[] {
       let name = raw
       if (Buffer.byteLength(raw, "utf8") > MAX_NAME_BYTES) {
         const { stem, ext } = splitExt(raw)
-        name = stem.slice(0, Math.max(1, MAX_NAME_BYTES - ext.length)) + ext
+        name = truncateUtf8ByBytes(stem, Math.max(1, MAX_NAME_BYTES - Buffer.byteLength(ext, "utf8"))) + ext
       }
       const dirKey = out.join("/")
       const seen = seenLevels.get(dirKey) ?? new Set<string>()
@@ -280,10 +294,11 @@ export function safeRelPaths(relPaths: string[]): string[] {
         let i = 1
         let candidate = name
         const { stem, ext } = splitExt(name)
-        const budget = MAX_NAME_BYTES - ext.length
+        const extBytes = Buffer.byteLength(ext, "utf8")
+        const budget = MAX_NAME_BYTES - extBytes
         while (collides(candidate) && i < 9999) {
           const suffix = `_${i}`
-          candidate = stem.slice(0, Math.max(1, budget - suffix.length)) + suffix + ext
+          candidate = truncateUtf8ByBytes(stem, Math.max(1, budget - Buffer.byteLength(suffix, "utf8"))) + suffix + ext
           i++
         }
         name = candidate

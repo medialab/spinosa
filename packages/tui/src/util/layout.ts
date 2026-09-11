@@ -25,7 +25,7 @@ function previousSiblings(parent: BaseRenderable, frameID: number) {
 }
 
 /** Slightly wider than the default shell so the homepage action row stays on one line. */
-export const MAIN_CONTENT_MAX_WIDTH = 92
+export const MAIN_CONTENT_MAX_WIDTH = 100
 export const SESSION_CHAT_MAX_WIDTH = 132
 export const SIDEBAR_WIDTH = 42
 export const MAIN_CONTENT_HORIZONTAL_PADDING = 4

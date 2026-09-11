@@ -32,6 +32,13 @@ describe("rolling channel installer fetch", () => {
       .resolves.toBeUndefined()
   })
 
+  test("refuses non-https installer URLs without fetching", async () => {
+    await expect(resolvePinnedVersionFromInstaller("http://example.test/beta/install.sh"))
+      .resolves.toBeUndefined()
+    await expect(resolvePinnedVersionFromInstaller("file:///tmp/install.sh"))
+      .resolves.toBeUndefined()
+  })
+
   test("does not treat a stale beta pin as a successful fetch failure", async () => {
     server.use(
       http.get("https://example.test/beta/install.sh", () =>

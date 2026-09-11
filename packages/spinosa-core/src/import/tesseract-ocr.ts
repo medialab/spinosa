@@ -4,7 +4,48 @@ import * as path from "node:path"
 import { tmpdir } from "node:os"
 import { safeCopyAsync, writeTextAtomicSafe } from "../utils/fs"
 import { injectColdFrontmatter } from "./frontmatter"
-import { throwIfSpinosaCancelled } from "./cancellation"
+import { SpinosaCancellationError, isSpinosaCancellationError, throwIfSpinosaCancelled } from "./cancellation"
+
+type SpawnedProc = { exited: Promise<number>; kill: () => void; stderr?: unknown; stdout?: unknown }
+
+/**
+ * Await a spawned child, killing it when cancellation flips (poll +
+ * AbortSignal). Without this, cancelling mid-render leaves orphan CPU burn:
+ * `throwIfSpinosaCancelled` between awaits never stops a running child.
+ */
+export async function waitAbortableChild(
+  proc: SpawnedProc,
+  opts?: { shouldAbort?: () => boolean; signal?: AbortSignal; label?: string },
+): Promise<number> {
+  if (opts?.shouldAbort?.() || opts?.signal?.aborted) {
+    try { proc.kill() } catch {}
+    throw new SpinosaCancellationError(`${opts?.label ?? "child process"} cancelled`)
+  }
+  if (!opts?.shouldAbort && !opts?.signal) return proc.exited
+  return await new Promise<number>((resolve, reject) => {
+    let settled = false
+    const cleanup = () => {
+      clearInterval(timer)
+      opts?.signal?.removeEventListener("abort", onAbort)
+    }
+    const abort = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      try { proc.kill() } catch {}
+      reject(new SpinosaCancellationError(`${opts?.label ?? "child process"} cancelled`))
+    }
+    const onAbort = () => abort()
+    const timer = setInterval(() => {
+      if (opts?.shouldAbort?.() || opts?.signal?.aborted) abort()
+    }, 200)
+    opts?.signal?.addEventListener("abort", onAbort, { once: true })
+    proc.exited.then(
+      (code) => { if (!settled) { settled = true; cleanup(); resolve(code) } },
+      (err) => { if (!settled) { settled = true; cleanup(); reject(err) } },
+    )
+  })
+}
 
 let _tesseractAvailable: boolean | undefined
 
@@ -132,7 +173,7 @@ export async function ocrPdfViaTesseract(
   srcPath: string,
   destFile: string,
   relPath: string,
-  options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void },
+  options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void; signal?: AbortSignal },
 ): Promise<TesseractOcrResult> {
   throwIfSpinosaCancelled(options?.shouldAbort)
   if (!tesseractAvailable()) throw new Error("tesseract not available (missing tesseract/pdftoppm or tessdata ita+eng+fra)")
@@ -141,11 +182,20 @@ export async function ocrPdfViaTesseract(
   try {
     const prefix = path.join(tmpDir, "page")
     // pdftoppm -png -r 300 pdf prefix
-    const pdftoppmProc = Bun.spawn(["pdftoppm", "-png", "-r", "300", srcPath, prefix], {
-      stdout: "pipe",
-      stderr: "pipe",
+    let pdftoppmProc: SpawnedProc
+    try {
+      pdftoppmProc = Bun.spawn(["pdftoppm", "-png", "-r", "300", srcPath, prefix], {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+    } catch (err) {
+      throw new Error(`pdftoppm spawn failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    const pdftoppmExit = await waitAbortableChild(pdftoppmProc, {
+      shouldAbort: options?.shouldAbort,
+      signal: options?.signal,
+      label: `pdftoppm ${relPath}`,
     })
-    const pdftoppmExit = await pdftoppmProc.exited
     if (pdftoppmExit !== 0) {
       const errText = await new Response(pdftoppmProc.stderr as unknown as ReadableStream).text().catch(() => "")
       throw new Error(`pdftoppm failed (exit ${pdftoppmExit}): ${errText.slice(0, 400)}`)
@@ -163,11 +213,20 @@ export async function ocrPdfViaTesseract(
       throwIfSpinosaCancelled(options?.shouldAbort)
       const png = path.join(tmpDir, pngs[i]!)
       const txtBase = path.join(tmpDir, `out-${i}`)
-      const tessProc = Bun.spawn(
-        ["tesseract", png, txtBase, "-l", "ita+eng+fra", "--psm", "6", "--oem", "1"],
-        { stdout: "pipe", stderr: "pipe" },
-      )
-      const tessExit = await tessProc.exited
+      let tessProc: SpawnedProc
+      try {
+        tessProc = Bun.spawn(
+          ["tesseract", png, txtBase, "-l", "ita+eng+fra", "--psm", "6", "--oem", "1"],
+          { stdout: "pipe", stderr: "pipe" },
+        )
+      } catch (err) {
+        throw new Error(`tesseract spawn failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      const tessExit = await waitAbortableChild(tessProc, {
+        shouldAbort: options?.shouldAbort,
+        signal: options?.signal,
+        label: `tesseract ${relPath} page ${i + 1}`,
+      })
       // tesseract writes txtBase.txt even on empty; read it
       const txtPath = `${txtBase}.txt`
       let pageText = ""
@@ -187,8 +246,14 @@ export async function ocrPdfViaTesseract(
           ["tesseract", png, "stdout", "-l", "ita+eng+fra", "--psm", "6", "tsv"],
           { stdout: "pipe", stderr: "pipe" },
         )
-        const tsvText = await new Response(tsvProc.stdout as unknown as ReadableStream).text()
-        await tsvProc.exited
+        const [tsvText] = await Promise.all([
+          new Response(tsvProc.stdout as unknown as ReadableStream).text(),
+          waitAbortableChild(tsvProc, {
+            shouldAbort: options?.shouldAbort,
+            signal: options?.signal,
+            label: `tesseract-tsv ${relPath} page ${i + 1}`,
+          }),
+        ])
         const lines = tsvText.split("\n").slice(1) // skip header
         let sum = 0, n = 0, low = 0
         for (const line of lines) {
@@ -211,7 +276,10 @@ export async function ocrPdfViaTesseract(
           pageLowCounts.push(0)
           pageWordCounts.push(0)
         }
-      } catch {
+      } catch (err) {
+        // Cancellation must propagate — swallowing it here would mark a
+        // cancelled file converted on the last page.
+        if (isSpinosaCancellationError(err)) throw err
         pageConfs.push(0)
         pageLowCounts.push(0)
         pageWordCounts.push(0)

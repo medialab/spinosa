@@ -226,13 +226,7 @@ export function ensureOnnxRuntimeSharedLibs(
   const staged: string[] = []
   const skipped: string[] = []
   if (!files.length) {
-    // Empty embed means the binary was built without onnx companion libs.
-    // linux-x64 intentionally ships without OCR — do not warn there.
-    if (isCompiledBinaryDistribution() && isOcrPlatformSupported()) {
-      console.error(
-        "[spinosa] onnxruntime companion libs were not embedded in this binary; OCR/ONNX will fail",
-      )
-    }
+    // ONNX/ppu-paddle-ocr removed — tesseract is sole OCR engine, no companion libs needed.
     return { staged, skipped, stageDir: options.stageDir ?? options.tmpDir ?? tmpdir() }
   }
 

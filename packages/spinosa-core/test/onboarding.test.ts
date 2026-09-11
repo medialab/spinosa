@@ -31,6 +31,7 @@ describe("onboarding delivery accounting", () => {
     const acc: PhaseAccumulator = {
       direct: phase({ skipped: 2 }),
       markitdown: phase({ skipped: 1 }),
+      vision: phase({ skipped: 0 }),
       ocr: phase({ skipped: 3 }),
     };
 

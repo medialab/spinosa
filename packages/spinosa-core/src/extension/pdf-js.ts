@@ -277,7 +277,9 @@ export async function pdfExtractPageTexts(pdfPath: string): Promise<{ page: numb
           text: stripAnsi(content.items.map((item) => ("str" in item ? item.str : "")).join(" ")),
         })
       } catch {
-        continue
+        // Never silently drop a page: a failed page is an explicit gap in
+        // the transcript so downstream never mistakes it for blank.
+        result.push({ page: i, text: "[Page text extraction failed]" })
       }
     }
     return result

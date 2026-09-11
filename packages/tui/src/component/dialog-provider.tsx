@@ -18,6 +18,8 @@ import { useClipboard } from "../context/clipboard"
 import { useLocal } from "../context/local"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { copyProviderAuthorizationCode } from "../util/provider-authorization-code"
+import { showLocalProviderWizard } from "./dialog-local-provider"
+import { apiKeyInputError, normalizeApiKeyInput } from "../util/api-key"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -139,8 +141,27 @@ export function createDialogProviderOptions() {
         },
       }]
     })()
+    const hasLocal = (() => {
+      const cfgProviders = Object.keys((sync.data.config as any)?.provider ?? {})
+      if (cfgProviders.some((k) => ["local", "ollama", "vllm", "omlx", "lmstudio"].includes(k) || k.startsWith("local"))) return true
+      return sync.data.provider.some((p) => ["local", "ollama", "vllm", "lmstudio", "omlx"].includes(p.id) || p.id.startsWith("local"))
+    })()
+    const localSynthetic = !hasLocal
+      ? [
+          {
+            title: "Local model",
+            value: "__local__",
+            description: "Ollama, vLLM, oMLX — configure endpoint",
+            category: "Local",
+            async onSelect() {
+              await showLocalProviderWizard({ dialog, sdk, sync, theme, toast })
+            },
+          },
+        ]
+      : []
     return [
       ...spinosaDefault,
+      ...localSynthetic,
       ...pipe(
       providerOptions(sync.data.provider_next.all),
       map((provider) => {
@@ -432,11 +453,16 @@ function ApiMethod(props: ApiMethodProps) {
       }
       onConfirm={async (value) => {
         if (!value) return
+        const problem = apiKeyInputError(value)
+        if (problem) {
+          toast.show({ variant: "error", message: `That doesn't look like an API key (${problem}).` })
+          return
+        }
         await sdk.client.auth.set({
           providerID: props.providerID,
           auth: {
             type: "api",
-            key: value,
+            key: normalizeApiKeyInput(value),
             ...(props.metadata ? { metadata: props.metadata } : {}),
           },
         })

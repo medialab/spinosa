@@ -1,71 +1,22 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import type { ImportOption } from "./wizard-ui";
-import type { CliOption, ToolCheckResult } from "./onboarding-view-types";
+import type { ImportOption, OcrModelOption } from "./wizard-ui";
+import type { ToolCheckResult } from "./onboarding-view-types";
 
-const WAVE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const;
-
-export const CLI_OPTIONS: CliOption[] = [
-  {
-    value: "spinosa",
-    label: "Spinosa",
-    description: "Open Spinosa TUI startup prompt ready.",
-  },
-  {
-    value: "opencode",
-    label: "Spinosa",
-    description: "Run Spinosa CLI startup prompt.",
-  },
-  {
-    value: "opencode_desktop",
-    label: "Spinosa Desktop",
-    description: "Open Spinosa paste copied prompt.",
-  },
-  {
-    value: "gemini",
-    label: "Gemini",
-    description: "Run Gemini CLI in this workspace.",
-  },
-  {
-    value: "qwen",
-    label: "Qwen",
-    description: "Run Qwen CLI in this workspace.",
-  },
-  {
-    value: "claude_code",
-    label: "Claude Code",
-    description: "Run terminal CLI in this workspace.",
-  },
-  {
-    value: "claude_code_desktop",
-    label: "Claude Code Desktop",
-    description: "Open desktop app prompt ready.",
-  },
-  {
-    value: "codex",
-    label: "Codex",
-    description: "Run Codex terminal CLI in this workspace.",
-  },
-  {
-    value: "codex_app",
-    label: "Codex App",
-    description: "Open Codex app paste copied prompt.",
-  },
-  {
-    value: "hermes",
-    label: "Hermes Agent",
-    description: "Run Hermes CLI in this workspace.",
-  },
-  {
-    value: "kilo",
-    label: "Kilo",
-    description: "Run Kilo terminal CLI in this workspace.",
-  },
-  {
-    value: "other",
-    label: "Other",
-    description: "Copy generic launch command another tool.",
-  },
-];
+const WAVE_UNICODE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const;
+const WAVE_ASCII = ["_", "-", "~", "=", "#", "=", "~", "-"] as const;
+// Locale-aware: dumb/linux/no-color terminals get ASCII waves.
+const WAVE: readonly string[] = (() => {
+  try {
+    const term = (process.env.TERM ?? "").toLowerCase();
+    if (term === "dumb" || term === "linux" || process.env.NO_COLOR !== undefined)
+      return WAVE_ASCII as unknown as string[];
+    const lang = (process.env.LANG ?? process.env.LC_ALL ?? "").toLowerCase();
+    if (lang === "c" || lang === "posix") return WAVE_ASCII as unknown as string[];
+    return WAVE_UNICODE as unknown as string[];
+  } catch {
+    return WAVE_UNICODE as unknown as string[];
+  }
+})();
 
 export function validateSinglePath(value: string): "valid" | "invalid" {
   try {
@@ -124,7 +75,7 @@ export function initialToolChecks(): ToolCheckResult[] {
     {
       label: "MarkItDown",
       status: "checking",
-      detail: "Office docs, EPUB, HTML, text PDFs",
+      detail: "Office docs, EPUB, HTML",
     },
     {
       label: "PDF.js",
@@ -157,7 +108,7 @@ export function toolCheckResults(
     {
       label: "MarkItDown",
       status: status.markitdown ? "available" : "missing",
-      detail: "Office docs, EPUB, HTML, text PDFs",
+      detail: "Office docs, EPUB, HTML",
     },
     {
       label: "PDF.js",
@@ -170,9 +121,26 @@ export function toolCheckResults(
 export function toolActionLabel(checks: readonly ToolCheckResult[]): string {
   if (checks.length === 0) return "";
   if (checks.some((check) => check.status === "checking")) return "Checking...";
-  if (checks.some((check) => check.status === "missing"))
+  if (checks.some((check) => check.status === "missing")) {
+    // Tesseract is optional: vision-model and copy-as-is flows never touch
+    // it, so its absence must not block the wizard behind a useless
+    // reinstall loop. Any other missing tool still needs repair.
+    if (onlyLocalOcrMissing(checks)) return "Continue without local OCR";
     return "Reinstall missing tools";
+  }
   return "Scan source folders";
+}
+
+/**
+ * True when every missing tool is local OCR (Tesseract). The OCR-engine
+ * choice comes later in the wizard; users picking vision/none never need it.
+ */
+export function onlyLocalOcrMissing(checks: readonly ToolCheckResult[]): boolean {
+  const missing = checks.filter((check) => check.status === "missing");
+  return (
+    missing.length > 0 &&
+    missing.every((check) => check.label === "Tesseract OCR")
+  );
 }
 
 export function toolChecksReady(checks: readonly ToolCheckResult[]): boolean {
@@ -200,17 +168,8 @@ export function mergeImportOptions(
   return target;
 }
 
-export type OcrModelOption = {
-  id: string
-  label: string
-  detail: string
-  kind: "tesseract" | "vision" | "none"
-  modelId?: string
-  provider?: string
-  vision: boolean
-  cost?: "free" | "paid" | "offline"
-  requiresKey?: string
-}
+// Canonical option type lives in wizard-ui (single definition).
+export type { OcrModelOption } from "./wizard-ui";
 
 export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
@@ -224,25 +183,28 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
     id: "vision:provider-picker",
     label: "Vision model (provider / model)",
-    detail: "Choose a provider and a vision-capable model — images transcribed via MarkItDown LLM (needs API key, e.g. OPENROUTER_API_KEY)",
+    detail: "Choose a provider and a vision-capable model — images and scanned PDFs transcribed via SDK (needs API key, e.g. OPENROUTER_API_KEY)",
     kind: "vision",
     vision: true,
     cost: "paid",
   },
   {
     id: "none",
-    label: "Don't OCR images, just copy them",
-    detail: "Images copied to raw/ as-is · scanned PDFs skipped · no model needed",
+    label: "Don't OCR, just copy files as-is",
+    detail: "Images and scanned PDFs copied to raw/ unchanged · no text extracted · no model needed",
     kind: "none",
     vision: false,
     cost: "offline",
   },
 ]
 
-export function defaultOcrModelId(): string {
-  return "tesseract-local"
-}
+/** Short per-engine hints for the selector footer. Single source — the
+    OcrModelSelector hint line composes from here, so copy can't drift. */
+export const OCR_ENGINE_HINTS = {
+  tesseract: "Tesseract: local PDFs (images copied)",
+  vision: "Vision: SDK transcription (needs key)",
+  none: "None: copy only",
+} as const
 
-export function findOcrModel(id: string): OcrModelOption | undefined {
-  return OCR_MODEL_OPTIONS.find((o) => o.id === id)
-}
+export const OCR_ENGINE_HINT_LINE =
+  `↑↓ move · space select · enter continue · ${OCR_ENGINE_HINTS.tesseract} · ${OCR_ENGINE_HINTS.vision} · ${OCR_ENGINE_HINTS.none}`

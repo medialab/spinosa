@@ -146,6 +146,9 @@ export async function setAutoUpgrade(enabled: boolean): Promise<void> {
 }
 
 export async function resolvePinnedVersionFromInstaller(url: string): Promise<string | undefined> {
+  // The URL is env-overridable for dev/testing: only fetch https targets so
+  // a stray env value can't turn the version check into plaintext SSRF bait.
+  if (!/^https:\/\//i.test(url)) return undefined
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {

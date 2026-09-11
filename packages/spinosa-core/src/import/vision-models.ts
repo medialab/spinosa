@@ -1,19 +1,10 @@
 /**
- * OCR / vision model registry for MarkItDown image handling.
+ * Legacy OCR model registry for short model ids (no "/").
  *
- * `markitdown-ts` can call a vision LLM via Vercel AI SDK `LanguageModel`
- * (`llmModel` + `llmPrompt`) to transcribe images into Markdown. Without it,
- * images are EXIF-only. See https://github.com/dead8309/markitdown-ts
- *
- * This module is the single source of truth for:
- * - curated OCR model options shown in the onboarding TUI
- * - helper to create a Vercel `LanguageModel` for the selected option
- * - prompt used for OCR transcription
- *
- * Provider wiring: OpenRouter free endpoint via `@ai-sdk/openai` with
- * `baseURL: https://openrouter.ai/api/v1` is the cheapest hosted vision
- * path. Tesseract remains the offline fallback. Selection is persisted per
- * workspace (see pipeline hooks + workspace config).
+ * The TUI renders its own option list (onboarding-helpers); this registry
+ * exists only so old persisted short ids still resolve to a kind via
+ * findOcrModel. Do not add display copy here — it will drift.
+ * Provider wiring is via kernel `/provider/{providerID}/models/{modelID}/vision/transcribe`.
  */
 
 export type OcrModelKind = "tesseract" | "vision" | "none"
@@ -26,7 +17,7 @@ export type OcrModelOption = {
   /** Detail line under label. */
   detail: string
   kind: OcrModelKind
-  /** For vision: `provider/model` as passed to Vercel AI SDK. */
+  /** For vision: `provider/model` as passed to kernel. */
   modelId?: string
   /** Provider id for auth lookup (openrouter, openai, etc.). */
   provider?: string
@@ -37,13 +28,6 @@ export type OcrModelOption = {
   /** Requires API key env (e.g. OPENROUTER_API_KEY). */
   requiresKey?: string
 }
-
-export const OCR_VISION_PROMPT = `
-Transcribe all visible text accurately.
-Preserve headings, paragraphs, lists, and tables in Markdown.
-Mark unreadable content as [illegible].
-Do not add extra commentary beyond the transcription.
-`.trim()
 
 export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
@@ -57,152 +41,21 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
     id: "vision:provider-picker",
     label: "Vision model (provider / model)",
-    detail: "Choose a provider and a vision-capable model — images transcribed via MarkItDown LLM (needs API key)",
+    detail: "Choose a provider and a vision-capable model — images and scanned PDFs transcribed via SDK (needs API key)",
     kind: "vision",
     vision: true,
     cost: "paid",
   },
   {
     id: "none",
-    label: "Don't OCR images, just copy them",
-    detail: "Images copied to raw/ as-is · scanned PDFs skipped · no model needed",
+    label: "Don't OCR, just copy files as-is",
+    detail: "Images and scanned PDFs copied to raw/ unchanged · no text extracted · no model needed",
     kind: "none",
     vision: false,
     cost: "offline",
   },
 ]
 
-export function defaultOcrModelId(): string {
-  // Default to offline Tesseract so fresh workspaces work without network/key.
-  return "tesseract-local"
-}
-
 export function findOcrModel(id: string): OcrModelOption | undefined {
   return OCR_MODEL_OPTIONS.find((o) => o.id === id)
-}
-
-export function isVisionModel(id: string): boolean {
-  return findOcrModel(id)?.kind === "vision"
-}
-
-export function requiresKeyForModel(id: string): string | undefined {
-  return findOcrModel(id)?.requiresKey
-}
-
-import { readFileSync } from "node:fs"
-import { homedir } from "node:os"
-
-/** Resolve provider API key: env first, then Spinosa secure store (auth.json, 0o600) — same as Spinosa. */
-function resolveProviderKey(requiresKey: string): string | undefined {
-  const direct = process.env[requiresKey]
-  if (direct) return direct
-  // Google aliases
-  if (requiresKey === "GOOGLE_API_KEY" || requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") {
-    const g = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY
-    if (g) return g
-  }
-  if (requiresKey === "ANTHROPIC_API_KEY" && process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
-  // Spinosa secure store: Global.Path.data/auth.json (0o600), same as packages/spinosa-kernel/src/auth/index.ts
-  // Supports SPINOSA_AUTH_CONTENT env override (used in tests/CI)
-  try {
-    if (process.env.SPINOSA_AUTH_CONTENT) {
-      const parsed = JSON.parse(process.env.SPINOSA_AUTH_CONTENT) as Record<string, unknown>
-      const providerId = requiresKey.replace(/_API_KEY$/, "").toLowerCase()
-      const entry = parsed[providerId] as { type?: string; key?: string } | undefined
-      if (entry?.key) return entry.key
-    }
-  } catch {}
-  try {
-    const candidates = [
-      process.env.SPINOSA_HOME ? `${process.env.SPINOSA_HOME}/auth.json` : null,
-      `${homedir()}/.local/share/spinosa/auth.json`,
-      `${homedir()}/Library/Application Support/spinosa/auth.json`,
-      `${homedir()}/.spinosa/auth.json`,
-    ].filter(Boolean) as string[]
-    for (const file of candidates) {
-      try {
-        const raw = readFileSync(file, "utf-8")
-        const data = JSON.parse(raw) as Record<string, { type?: string; key?: string }>
-        const providerId = requiresKey.replace(/_API_KEY$/, "").toLowerCase()
-        const altId = providerId === "google_generative_ai" ? "google" : providerId
-        const entry = data[providerId] ?? data[altId]
-        if (entry?.key) return entry.key
-        for (const [k, v] of Object.entries(data)) {
-          if (k.toLowerCase() === providerId && (v as any)?.key) return (v as any).key
-        }
-      } catch {}
-    }
-  } catch {}
-  return undefined
-}
-
-function isValidOcrModelId(id: string): boolean {
-  if (id === "tesseract-local" || id === "none" || id === "vision:provider-picker") return true
-  if (!id.includes("/")) return false
-  const slash = id.indexOf("/")
-  const provider = id.slice(0, slash)
-  const model = id.slice(slash + 1)
-  if (!provider || !model || model.length < 2) return false
-  if (!/^[a-z0-9_-]+$/i.test(provider)) return false
-  return true
-}
-
-/**
- * Create a Vercel AI SDK `LanguageModel` for the selected vision option.
- * Lazy-imports provider SDKs so Tesseract-only workspaces don't need deps.
- * For OpenRouter we reuse the OpenAI compatible provider with custom baseURL.
- * Supports both curated `OCR_MODEL_OPTIONS` ids and dynamic `provider/model`
- * ids from the catalog (e.g. `anthropic/claude-3.5-sonnet`, `openrouter/qwen/...`).
- *
- * Returns `undefined` when model is not vision or key is missing (caller should fallback).
- */
-export async function createVisionLanguageModel(
-  ocrModelId: string,
-): Promise<undefined | { model: unknown; modelId: string; provider: string }> {
-  if (!isValidOcrModelId(ocrModelId)) return undefined
-  if (ocrModelId === "tesseract-local" || ocrModelId === "none") return undefined
-  const opt = findOcrModel(ocrModelId)
-  let modelId: string | undefined = opt?.modelId
-  let provider: string | undefined = opt?.provider
-  let requiresKey: string | undefined = opt?.requiresKey
-  // Dynamic provider/model ids (e.g. `openrouter/qwen/...`, `anthropic/claude-...`)
-  if (!modelId && ocrModelId.includes("/")) {
-    const slash = ocrModelId.indexOf("/")
-    provider = ocrModelId.slice(0, slash)
-    modelId = ocrModelId.slice(slash + 1)
-    // Vision is implied for any provider/model picked via the vision selector
-    if (!modelId) return undefined
-    // Derive key name: OPENROUTER_API_KEY, ANTHROPIC_API_KEY, etc.
-    // Google uses GOOGLE_GENERATIVE_AI_API_KEY (alias GEMINI_API_KEY)
-    if (provider === "google") requiresKey = "GOOGLE_GENERATIVE_AI_API_KEY"
-    else requiresKey = provider === "openrouter" ? "OPENROUTER_API_KEY" : `${provider.toUpperCase()}_API_KEY`
-    // Also respect opt for curated entries
-    if (opt?.requiresKey) requiresKey = opt.requiresKey
-  }
-  if (!modelId) return undefined
-  const key = requiresKey ? resolveProviderKey(requiresKey) : undefined
-  // For openrouter, API key is mandatory; for other providers (openai/anthropic/google) allow OAuth
-  // (isConnected or provider already in catalog) — don't block vision when key is missing, let provider handle OAuth
-  if (requiresKey && !key) {
-    if (provider === "openrouter") return undefined
-    // For direct providers, allow dummy key — backend may have OAuth token (e.g. openai ChatGPT, anthropic)
-    // If neither API key nor OAuth is configured, createVision will still try with dummy and fail with clear 401, surfaced in step 9
-  }
-  // Lazy import — keeps Tesseract-only workspaces from needing `ai`/`@ai-sdk/openai`.
-  // For production: openrouter proxies any provider; direct anthropic/google also work via OpenRouter.
-  // Direct anthropic/google SDKs can be added later (@ai-sdk/anthropic, @ai-sdk/google) — fallback to openai-compatible for now.
-  try {
-    const { createOpenAI } = await import("@ai-sdk/openai")
-    const baseURL = provider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined
-    // For direct anthropic/google, OpenAI-compatible endpoint will fail fast with clear auth error;
-    // user should pick via openrouter (e.g. openrouter/anthropic/claude-3-5-sonnet) for cross-provider vision.
-    const openai = createOpenAI({
-      apiKey: key ?? "sk-test",
-      ...(baseURL ? { baseURL } : {}),
-    })
-    const model = openai(modelId)
-    return { model, modelId, provider: provider ?? "openai" }
-  } catch {
-    return undefined
-  }
 }

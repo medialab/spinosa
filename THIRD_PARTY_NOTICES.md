@@ -25,3 +25,23 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Tesseract OCR
+
+The Spinosa installer can provision [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
+binaries and [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast)
+language data into `$SPINOSA_HOME/tools/` for offline OCR.
+
+Tesseract is distributed under the Apache License 2.0.
+tessdata_fast language data is distributed under the Apache License 2.0.
+
+## Poppler (pdftoppm)
+
+The Spinosa installer can provision the `pdftoppm` utility from
+[Poppler](https://poppler.freedesktop.org/) into `$SPINOSA_HOME/tools/`
+for PDF page rendering.
+
+Poppler is distributed under the GNU General Public License v2 or later
+(GPL-2.0-or-later). Corresponding source for any Poppler binaries
+distributed with Spinosa releases is available from the Poppler project at
+https://poppler.freedesktop.org/ (git: https://gitlab.freedesktop.org/poppler/poppler).

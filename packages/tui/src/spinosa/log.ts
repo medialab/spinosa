@@ -50,6 +50,10 @@ function sanitizeLogText(value: string): string {
   return sanitized
     .replace(/\b(authorization|cookie|password|secret|token|api[_-]?key)=([^\s]+)/gi, "$1=[REDACTED]")
     .replace(/\b(Basic|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
+    // Bare key material in prose (providers echo keys in errors; JSON blobs
+    // land here via stringified error objects).
+    .replace(/\b(sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9]{8,}|xox[bap]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9]+|AIza[A-Za-z0-9_-]{10,}|AKIA[A-Z0-9]{10,})\b/g, "[REDACTED]")
+    .replace(/((?:api[_-]?key|token)["']?\s*[:=]\s*["']?)[A-Za-z0-9._~+/-]{12,}/gi, "$1[REDACTED]")
 }
 
 function sanitizeLogValue(value: unknown, key: string): unknown {

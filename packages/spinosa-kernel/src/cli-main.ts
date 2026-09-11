@@ -18,7 +18,6 @@ import { UI } from "./cli/ui"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { FormatError } from "./cli/error"
 import { DebugCommand } from "./cli/cmd/debug"
-import { StatsCommand } from "./cli/cmd/stats"
 import { AttachCommand } from "./cli/cmd/attach"
 import { TuiThreadCommand } from "./cli/cmd/tui"
 import { EOL } from "os"
@@ -40,9 +39,19 @@ import {
   isCompiledBinaryDistribution,
   registerEmbeddedTemplatePack,
 } from "@spinosa/core/distribution/bootstrap"
+import { ensureBundledToolsEnv } from "@spinosa/core/distribution/tools"
 
 const args = hideBin(process.argv)
 const { pid, ppid } = process
+
+// Fast path for --help/--version: skip template bootstrap and Heap init (~400ms preload still paid, but bootstrap+Heap skipped)
+const isFastPath =
+  args.includes("-h") ||
+  args.includes("--help") ||
+  args.includes("-v") ||
+  args.includes("--version") ||
+  args[0] === "version" ||
+  args[0] === "help"
 
 bootLog("kernel.init", "kernel entry parsing args", {
   argv: args.join(" "),
@@ -57,8 +66,19 @@ bootLog("kernel.init", "kernel entry parsing args", {
   BUN_VERSION: process.env.BUN_VERSION ?? undefined,
 })
 
-if (isCompiledBinaryDistribution()) {
-  try {
+// Bundled OCR tools ($SPINOSA_HOME/tools/<platform>/bin) take PATH precedence
+// on every startup — dev and binary alike — so tesseract/pdftoppm resolve
+// deterministically. Microsecond-cheap after first call; runs before the fast
+// path so even --version-adjacent probes see the same resolution.
+try {
+  ensureBundledToolsEnv()
+} catch (error) {
+  bootLog("kernel.tools", "bundled tools env unavailable", {
+    error: error instanceof Error ? error.message : String(error),
+  })
+}
+
+if (!isFastPath && isCompiledBinaryDistribution()) {  try {
     const packMod = await import("./generated/template-pack.gen.ts")
     registerEmbeddedTemplatePack(() => packMod.templatePack as never)
   } catch (error) {
@@ -115,6 +135,13 @@ const cli = yargs(args)
       process.env.SPINOSA_PURE = "1"
     }
 
+    if (isFastPath) {
+      process.env.AGENT = "1"
+      process.env.SPINOSA = "1"
+      process.env.SPINOSA_PID = String(process.pid)
+      return
+    }
+
     Heap.start()
 
     process.env.AGENT = "1"
@@ -122,9 +149,8 @@ const cli = yargs(args)
     process.env.SPINOSA_PID = String(process.pid)
   })
   .usage("")
-  .completion("completion", "generate shell completion script")
   // --- Curated Spinosa help: keep core workflow visible, hide advanced, eliminate opencode fork internals ---
-  // Visible (14): TUI default + new/add/update/status/list/doctor/providers/models/agent/upgrade/uninstall/stats/version
+  // Visible (13): TUI default + new/add/update/status/list/doctor/providers/models/agent/upgrade/uninstall/version
   .command(TuiThreadCommand)
   .command(WorkspaceNewCommand)
   .command(WorkspaceAddCommand)
@@ -137,7 +163,6 @@ const cli = yargs(args)
   .command(UpgradeCommand)
   .command(UninstallCommand)
   .command(ModelsCommand)
-  .command(StatsCommand)
   .command(VersionCommand)
   // Keep but hide from main help (still callable via `spinosa <cmd> --help`): advanced/debug
   .command({ ...AttachCommand, describe: false } as any)
@@ -148,7 +173,7 @@ const cli = yargs(args)
   .command({ ...PreflightCommand, describe: false } as any)
   .command({ ...StartupAutocleanCommand, describe: false } as any)
   .command({ ...InternalCommand, describe: false } as any)
-  // Eliminated: TuiThreadCommand, ConsoleCommand, ServeCommand (duplicate of web), ExportCommand, ImportCommand, PrCommand, SessionCommand, PluginCommand — not registered
+  // Eliminated: StatsCommand, TuiThreadCommand, ConsoleCommand, ServeCommand (duplicate of web), ExportCommand, ImportCommand, PrCommand, SessionCommand, PluginCommand — not registered; yargs completion disabled
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

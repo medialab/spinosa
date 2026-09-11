@@ -10,14 +10,14 @@ import {
 
 describe("layout constants", () => {
   test("uses the widened homepage/main-shell cap", () => {
-    expect(MAIN_CONTENT_MAX_WIDTH).toBe(92)
+    expect(MAIN_CONTENT_MAX_WIDTH).toBe(100)
     expect(SESSION_CHAT_MAX_WIDTH).toBe(132)
     expect(SIDEBAR_WIDTH).toBe(42)
   })
 
   test("caps wide terminals", () => {
-    expect(mainColumnWidth(200, true)).toBe(92)
-    expect(sessionContentWidth(200, true)).toBe(88)
+    expect(mainColumnWidth(200, true)).toBe(100)
+    expect(sessionContentWidth(200, true)).toBe(96)
   })
 
   test("shrinks on narrow terminals", () => {

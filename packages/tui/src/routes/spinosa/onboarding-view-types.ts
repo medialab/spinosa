@@ -82,6 +82,7 @@ export type OnboardingViewProps = {
   handleToolAction: () => void
   continueFromImports: () => void
   ocrModelOptions: Accessor<OcrModelOption[]>
+  ocrEngineHint: Accessor<string>
   selectedOcrModelIndex: Accessor<number>
   setSelectedOcrModelIndex: Setter<number>
   selectedOcrModel: Accessor<string>
@@ -92,9 +93,13 @@ export type OnboardingViewProps = {
   visionPaused: Accessor<boolean>
   onChangeVisionModel: () => void
   selectedVisionLabel: Accessor<string>
+  hasVisionModel: Accessor<boolean>
   waitingForGate: Accessor<boolean>
   gateLabel: Accessor<string>
   gateAction: Accessor<() => void>
+  gateAutoPress: Accessor<boolean>
+  backgroundAvailable: Accessor<boolean>
+  onBackground: () => void
   cliOptions: CliOption[]
   selectedCli: Accessor<number>
   setSelectedCli: Setter<number>

@@ -106,7 +106,7 @@ export async function confirmSpinosaBack(dialog: DialogContext, step: string) {
   const operation = step === "direct"
     ? "the current file copy"
     : step === "markitdown"
-      ? "the current MarkItDown conversion"
+      ? "the current conversion (MarkItDown / Vision)"
       : step === "ocr"
         ? "the current OCR operation"
         : step === "verification"
@@ -182,7 +182,7 @@ export function shouldCancelSpinosaWorkOnCtrlC(props: {
   waitingForGate: boolean
   cancellableSteps: readonly string[]
 }) {
-  return props.busy || props.cancellableSteps.includes(props.step) || (props.waitingForGate && props.cancellableSteps.includes(props.step))
+  return props.busy || props.cancellableSteps.includes(props.step)
 }
 
 /** True when tools-step Enter should fire the Scan / repair action (matches button visibility). */
@@ -299,6 +299,13 @@ export function WizardGateButton(props: { theme: Theme; label: string; action: (
   const [remaining, setRemaining] = createSignal(30)
   let timer: ReturnType<typeof setInterval> | undefined
 
+  // A reused instance showing a new gate must restart the countdown —
+  // otherwise the stale timer fires the previous gate's action early.
+  createEffect(() => {
+    props.label
+    setRemaining(30)
+  })
+
   onMount(() => {
     timer = setInterval(() => {
       setRemaining((r) => {
@@ -391,8 +398,10 @@ export type OcrModelOption = {
   label: string
   detail: string
   kind: "tesseract" | "vision" | "none"
+  modelId?: string
+  provider?: string
   vision: boolean
-  cost?: string
+  cost?: "free" | "paid" | "offline"
   requiresKey?: string
 }
 
@@ -404,6 +413,9 @@ export function OcrModelSelector(props: {
   viewportHeight: number
   onSelectIndex: (index: number) => void
   onSelect: (index: number) => void
+  /** Footer hint line. Defaults to the legacy copy; pass the shared
+      OCR_ENGINE_HINT_LINE to stay in sync with engine details. */
+  hint?: string
 }) {
   let scroll: ScrollBoxRenderable | undefined
   createEffect(() => {
@@ -450,7 +462,7 @@ export function OcrModelSelector(props: {
           }}
         </For>
       </scrollbox>
-      <text fg={props.theme.textMuted}>↑↓ move · space select · enter continue · Tesseract: local PDFs (images copied) · Vision: MarkItDown LLM (needs key) · None: copy only</text>
+      <text fg={props.theme.textMuted}>{props.hint ?? "↑↓ move · space select · enter continue · Tesseract: local PDFs (images copied) · Vision: SDK transcription (needs key) · None: copy only"}</text>
     </box>
   )
 }
@@ -599,6 +611,16 @@ export function ImportFileResults(props: {
   )
 }
 
+export function formatImportProgressStatus(message: string): string {
+  const value = message.trim()
+  const separator = value.indexOf("→")
+  return separator === -1 ? value : value.slice(separator + 1).trim()
+}
+
+export function progressStatusLabel(status: string, complete: boolean): string {
+  return complete ? "" : status.trim()
+}
+
 export function ProgressBar(props: {
   theme: Theme
   current: number
@@ -617,6 +639,7 @@ export function ProgressBar(props: {
   const filled = () => Math.round(pct() * blocks())
   const bar = () => "█".repeat(filled()) + "░".repeat(blocks() - filled())
   const complete = createMemo(() => isImportPhaseComplete(props.current, props.total, props.files))
+  const statusLabel = createMemo(() => progressStatusLabel(props.status, complete()))
   const recap = createMemo(() => {
     if (!complete()) return ""
     const files = props.files ?? []
@@ -660,8 +683,10 @@ export function ProgressBar(props: {
           {statusGlyph("processing")} {currentLabel()}
         </text>
       </Show>
-      <Show when={!complete() && props.status !== "" && !(props.files && props.files.length > 0)}>
-        <text fg={props.theme.textMuted} wrapMode="none" overflow="hidden">{Locale.truncate(props.status, 80)}</text>
+      <Show when={statusLabel() !== ""}>
+        <text fg={props.theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" overflow="hidden">
+          {Locale.truncate(statusLabel(), 80)}
+        </text>
       </Show>
       <ImportFileResults
         theme={props.theme}

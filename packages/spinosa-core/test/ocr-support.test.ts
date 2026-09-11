@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { isOcrPlatformSupported, ocrUnsupportedReason } from "../src/tools/ocr-support"
 
 describe("OCR platform gate", () => {
-  test("linux-x64 is explicitly unsupported", () => {
-    expect(isOcrPlatformSupported({ platform: "linux", arch: "x64" })).toBe(false)
-    expect(ocrUnsupportedReason({ platform: "linux", arch: "x64" })).toMatch(/unsupported on linux-x64/i)
+  test("all platforms are supported via tesseract (ONNX removed)", () => {
+    expect(isOcrPlatformSupported({ platform: "linux", arch: "x64" })).toBe(true)
+    expect(ocrUnsupportedReason({ platform: "linux", arch: "x64" })).toBeUndefined()
   })
 
   test("darwin and linux-arm64 remain supported", () => {

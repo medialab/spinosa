@@ -136,9 +136,9 @@ function buildScanRows(totals: { markdown: number; markitdown: number; native: n
     if (count > 0) rows.push({ label, status: `${count} file${count === 1 ? "" : "s"}` })
   }
   push(totals.markdown, "Text-based files to rename")
-  push(totals.markitdown, "Office docs / HTML / EPUB / text PDFs")
+  push(totals.markitdown, "Office docs / HTML / EPUB")
   push(totals.native, "Native Markdown to copy")
-  push(totals.ocr, "OCR candidates (scanned PDFs → tesseract 300dpi, images → copy pending network)")
+  push(totals.ocr, "PDFs + images (routed by OCR engine choice)")
   push(totals.video, "Videos")
   push(totals.audio, "Audio")
   if (totals.unknown > 0) rows.push({ label: "Unknown files", status: `${pluralCount(totals.unknown, "file")} unsupported`, tone: "muted" })

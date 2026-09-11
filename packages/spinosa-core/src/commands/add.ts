@@ -25,7 +25,7 @@ import { spinosaLogInfo } from "../utils/log"
 import { MarkItDown } from "@spinosa/markitdown"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled } from "../import/cancellation"
 import { markitdownConvertFile } from "../import/markitdown-convert"
-import { preserveFailedImportFiles, type ClassifiedEntry, type ImportProgressCallback } from "../import/pipeline"
+import { preserveFailedImportFiles, convertTextPdf, type ClassifiedEntry, type ImportProgressCallback } from "../import/pipeline"
 
 function backupConvertedOutput(outputPath: string): string[] {
   const paths = [outputPath]
@@ -334,7 +334,7 @@ async function addSingleFile(
 
     case "ocr_convertible": {
       const ext = fileExt(srcFile).toLowerCase()
-      // Images: copy-only, pending network OCR
+      // Images: copy-only, kept as-is (no OCR engine in single-file CLI path)
       if (extInList(ext, IMAGE_EXTENSIONS)) {
         const destFile = path.join(rawDir, path.basename(srcFile))
         failedDest = destFile
@@ -350,7 +350,7 @@ async function addSingleFile(
         }
         break
       }
-      // PDFs: tesseract for scanned, MarkItDown for text-layer
+      // PDFs: pdf.js census for digital, tesseract for scanned
       const fileName = path.basename(srcFile)
       const stem = fileName.replace(/\.[^.]+$/, "")
       const destName = `${stem}__${fileExt(fileName)}.md`
@@ -370,28 +370,25 @@ async function addSingleFile(
       let restored = true
       const tmpDest = destFile + `.spinosa-part-${process.pid}-${crypto.randomUUID()}`
 
-      // Outcome-based text-layer detection: quick /Font check then MarkItDown
-      let likelyTextPdf = false
+      // PDFs: pdf.js census first — digital PDFs extract directly (no OCR
+      // engine needed); scanned PDFs fall through to tesseract below.
+      // MarkItDown never handles PDFs (office docs only).
       try {
-        const head = (await import("node:fs")).readFileSync(srcFile).subarray(0, 262144).toString("utf-8")
-        likelyTextPdf = head.includes("/Font") || head.includes("/CIDFont")
-      } catch { likelyTextPdf = false }
-      if (likelyTextPdf) {
-        try {
-          const converter = new MarkItDown()
-          const result = await markitdownConvertFile(converter, srcFile)
+        const { isTextBasedPdf } = await import("../extension/pdf")
+        if (await isTextBasedPdf(srcFile)) {
+          await convertTextPdf(srcFile, destFile, relPath, shouldAbort)
           throwIfSpinosaCancelled(shouldAbort)
-          const text = result?.markdown?.trim() ?? ""
-          if (text) {
-            writeTextAtomic(destFile, text)
-            mdConverted = 1
+          if (convertedOutputExists(destFile)) {
             injectColdFrontmatter(destFile)
             removeConvertedBackups(backups)
+            ocrConverted = 1
+            onProgress?.(`${fileName} → digital PDF, text extracted via pdf.js (no OCR)`)
             break
           }
-        } catch {
-          // fall through to OCR
         }
+      } catch (err) {
+        if (isSpinosaCancellationError(err)) throw err
+        // fall through to tesseract
       }
 
       try {

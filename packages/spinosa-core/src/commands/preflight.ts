@@ -47,8 +47,8 @@ export const LAUNCH_STATUS_LAUNCHING = "Launching TUI..."
 /** User-facing line printed after a successful launch-time upgrade. */
 export const LAUNCH_STATUS_UPGRADE_DONE = "Upgrade complete — run spinosa again to launch"
 
-/** Minimum time each status line stays visible (ms). */
-export const MIN_STATUS_MS = 1000
+/** Minimum time each status line stays visible (ms). Cache-hit path skips this. */
+export const MIN_STATUS_MS = 300
 
 export type StaleTemplatePackWorkspace = {
   path: string
@@ -355,16 +355,24 @@ export async function runLaunchPreflight(
   const tChecking = Date.now()
 
   const available = await resolved.checkUpgradeAvailable()
-  spinosaLogInfo("preflight", `upgrade check: available=${available.available} latest=${available.latestVersion ?? "none"}`)
+  const elapsedChecking = Date.now() - tChecking
+  spinosaLogInfo("preflight", `upgrade check: available=${available.available} latest=${available.latestVersion ?? "none"} elapsed=${elapsedChecking}ms`)
 
-  // Ensure "checking..." is visible at least MIN_STATUS_MS (unless network already took longer)
-  await ensureMinVisibleSince(tChecking, MIN_STATUS_MS, resolved)
+  // Cache-hit (disk <150ms) skips MIN_STATUS delay — version cache TTL is beta:300 stable:3600
+  const isCacheHit = elapsedChecking < 150
+  if (!isCacheHit) {
+    await ensureMinVisibleSince(tChecking, MIN_STATUS_MS, resolved)
+  }
 
   if (!available.available || !available.latestVersion) {
     resolved.out(LAUNCH_STATUS_NO_UPDATES)
-    const tNoUpdates = Date.now()
-    spinosaLogInfo("preflight", "no upgrade needed, continuing")
-    await ensureMinVisibleSince(tNoUpdates, MIN_STATUS_MS, resolved)
+    if (!isCacheHit) {
+      const tNoUpdates = Date.now()
+      spinosaLogInfo("preflight", "no upgrade needed, continuing")
+      await ensureMinVisibleSince(tNoUpdates, MIN_STATUS_MS, resolved)
+    } else {
+      spinosaLogInfo("preflight", "no upgrade needed (cached), continuing without delay")
+    }
     await offerStaleTemplatePackUpdates(resolved, options)
     return "continue"
   }

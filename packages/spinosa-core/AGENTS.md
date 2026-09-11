@@ -18,7 +18,7 @@ This package owns workspace, corpus, import, artifact, and application-domain co
 | `utils/version.ts` | `compareFrameworkVersions()`, `releaseChannel()`, `parseInstallPinnedVersion()` |
 | `system/channels.ts` | Reads `beta: true\|false` from `~/.spinosa/metadata/config.yaml` |
 
-Document converters (`markitdown-ts`, `pdfjs-dist`, `ppu-paddle-ocr`, `@napi-rs/canvas`) live in this package — not in `@spinosa/tui`.
+Document converters (`markitdown-ts`, `pdfjs-dist`, `@napi-rs/canvas`) live in this package — not in `@spinosa/tui`. OCR is tesseract only (ppu-paddle-ocr/onnx removed).
 
 Kernel commands `upgrade` and `preflight` are thin wrappers. Launch preflight runs in `packages/spinosa-kernel/src/cli/cmd/tui.ts` **before** the TUI worker spawns. Do not add a second preflight path in the bash launcher.
 

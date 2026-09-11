@@ -2,6 +2,7 @@ import { createRequire } from "node:module"
 import { existsSync } from "node:fs"
 import * as path from "node:path"
 import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
+import { bundledTessdataDir } from "../distribution/tools"
 import { isOcrPlatformSupported } from "./ocr-support"
 
 const require = createRequire(import.meta.url)
@@ -66,7 +67,10 @@ export function tesseractAvailable(): boolean {
       _tesseractAvailable = false
       return _tesseractAvailable
     }
+    // Bundled tools first (deterministic across brew upgrades/removals),
+    // then explicit env, then well-known system locations.
     const candidates = [
+      bundledTessdataDir(),
       process.env.TESSDATA_PREFIX,
       "/opt/homebrew/share/tessdata",
       "/usr/local/share/tessdata",

@@ -286,8 +286,15 @@ describe("Spinosa CLI", () => {
   })
 
   test("version-only mode via env", async () => {
+    const originalRoot = process.env.SPINOSA_TEMPLATE_ROOT
+    process.env.SPINOSA_TEMPLATE_ROOT = repoRoot
     const result = capture()
-    expect(await runSpinosaCli(["--version"], result.io)).toBe(0)
-    expect(result.output[0]).toMatch(/^spinosa /)
+    try {
+      expect(await runSpinosaCli(["--version"], result.io)).toBe(0)
+      expect(result.output[0]).toMatch(/^spinosa /)
+    } finally {
+      if (originalRoot === undefined) delete process.env.SPINOSA_TEMPLATE_ROOT
+      else process.env.SPINOSA_TEMPLATE_ROOT = originalRoot
+    }
   })
 })

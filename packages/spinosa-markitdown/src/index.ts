@@ -1,7 +1,10 @@
 /**
  * @spinosa/markitdown — Spinosa fork of markitdown-ts 0.0.10
  * Branched from dead8309/markitdown-ts, vendored for seamless integration.
- * Patches: image vision support for all IMAGE_EXTENSIONS + OCR prompt.
+ * Vision is now externalized to SDK (packages/spinosa-core/src/import/vision-transcribe.ts);
+ * this patch is retained only for backwards-compat and is gated on `options.llmModel`.
+ * New code must not pass `llmModel` — use the Vision processor instead.
+ * Patches: legacy image vision support for IMAGE_EXTENSIONS + OCR prompt.
  */
 import { MarkItDown as Upstream } from "markitdown-ts"
 import { generateText } from "ai"
@@ -10,6 +13,8 @@ import * as fs from "node:fs"
 const SPINOSA_IMAGE_EXTS = new Set([
   ".jpg", ".jpeg", ".png", ".webp",
 ])
+// Single source of truth for MIME is now packages/spinosa-core/src/import/vision-helpers.ts
+// (kept here for backwards-compat). Keep in sync with IMAGE_EXTENSIONS.
 const SPINOSA_OCR_PROMPT = `Transcribe all visible text accurately.
 Preserve headings, paragraphs, lists, and tables in Markdown.
 Mark unreadable content as [illegible].

@@ -6,13 +6,16 @@ import { runImportProcessor, type ImportProcessorId } from "./processors"
 export type ClassifiedImportSources = {
   directFiles: ClassifiedEntry[]
   markitdownFiles: ClassifiedEntry[]
+  visionFiles: ClassifiedEntry[]
   ocrFiles: ClassifiedEntry[]
+  copyFiles?: ClassifiedEntry[]
   logsDir: string
 }
 
 export type ImportPhaseResults = {
   direct: PhaseResult
   markitdown: PhaseResult
+  vision: PhaseResult
   ocr: PhaseResult
 }
 
@@ -36,6 +39,7 @@ export type RunImportWorkflowOptions = {
   overwrite?: boolean
   ocrModelId?: string | (() => string)
   onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
+  transcribeVision?: import("./vision-transcribe").VisionTranscribe
   /**
    * Called before each non-empty phase. Return false to skip the phase
    * (e.g. user declined a gate). Throw / abort via shouldAbort for cancel.
@@ -56,12 +60,14 @@ export async function runImportWorkflow(
   const results: ImportPhaseResults = {
     direct: emptyPhase(),
     markitdown: emptyPhase(),
+    vision: emptyPhase(),
     ocr: emptyPhase(),
   }
 
   const phases: Array<{ id: ImportProcessorId; files: ClassifiedEntry[] }> = [
     { id: "direct", files: classified.directFiles },
     { id: "markitdown", files: classified.markitdownFiles },
+    { id: "vision", files: classified.visionFiles ?? [] },
     { id: "ocr", files: classified.ocrFiles },
   ]
 
@@ -86,6 +92,7 @@ export async function runImportWorkflow(
       overwrite: options.overwrite,
       ocrModelId: options.ocrModelId,
       onVisionFailure: options.onVisionFailure,
+      transcribeVision: options.transcribeVision,
     })
     results[id] = result
     await options.afterPhase?.(id, result)

@@ -51,6 +51,8 @@ export interface OnboardingOptions {
   additionalRecovered?: number
   /** Interactive multi-source flows may have no importable files in source 1. */
   allowEmptySelection?: boolean
+  /** Selected OCR engine id (vision model / tesseract-local / none) for route-aware verify. */
+  ocrModelId?: string
 }
 
 export interface OnboardingVerifyStats {
@@ -108,6 +110,7 @@ export interface OnboardingContext {
 export interface PhaseAccumulator {
   direct: PhaseResult
   markitdown: PhaseResult
+  vision: PhaseResult
   ocr: PhaseResult
 }
 
@@ -116,6 +119,8 @@ export function countDeliveredImportFiles(acc: PhaseAccumulator, recovered = 0):
     + acc.direct.skipped
     + acc.markitdown.converted
     + acc.markitdown.skipped
+    + (acc.vision?.converted ?? 0)
+    + (acc.vision?.skipped ?? 0)
     + acc.ocr.converted
     + acc.ocr.skipped
     + recovered
@@ -176,6 +181,9 @@ export async function completeOnboarding(
     (msg: string) => onPhase?.("import", msg),
     options.shouldAbort,
     ctx.rawDir,
+    undefined,
+    undefined,
+    options.ocrModelId,
   )
 
   const verify: OnboardingVerifyStats = {
@@ -242,10 +250,11 @@ export async function completeOnboarding(
       total: ctx.copyableCount,
       imported,
       copied: acc.direct.converted,
-      skipped: acc.direct.skipped + acc.markitdown.skipped + acc.ocr.skipped,
+      skipped: acc.direct.skipped + acc.markitdown.skipped + (acc.vision?.skipped ?? 0) + acc.ocr.skipped,
       mdConverted: acc.markitdown.converted,
       ocrConverted: acc.ocr.converted,
-    },
+      visionConverted: acc.vision?.converted ?? 0,
+    } as never,
     cli: cliLabel,
     handoffAction: flagLaunch === "run" ? "Run launch command now" : "Copy launch command",
     handoffResult,
@@ -316,6 +325,7 @@ export async function runOnboarding(
   return completeOnboarding(ctx, {
     direct: { converted: result.copied, skipped: result.skipped, failed: result.failed, renamed: 0, recoverable: [] },
     markitdown: { converted: result.mdConverted, skipped: result.mdSkipped, failed: result.mdFailed, renamed: 0, recoverable: [] },
+    vision: { converted: 0, skipped: 0, failed: 0, renamed: 0, recoverable: [] },
     ocr: { converted: result.ocrConverted, skipped: result.ocrSkipped, failed: result.ocrFailed, renamed: 0, recoverable: [] },
   }, options)
 }
@@ -356,9 +366,9 @@ updated: ${today()}
 
 ## Scan Summary
 - Text-based files to rename to Markdown: ${scanCounts.markdown}
-- Office docs/HTML/EPUB/text PDFs via MarkItDown: ${scanCounts.markitdown}
+- Office docs/HTML/EPUB via MarkItDown: ${scanCounts.markitdown}
 - Native-readable files to copy unchanged: ${scanCounts.native}
-- OCR candidates (scanned PDFs → tesseract 300dpi ita+eng+fra, images → copy pending network): ${scanCounts.ocrConvertible}
+- OCR candidates (PDFs → pdf.js text census, scanned → tesseract 300dpi ita+eng+fra; images → copy as-is): ${scanCounts.ocrConvertible}
 - Videos (optional): ${scanCounts.video}
 - Audio (optional): ${scanCounts.audio}
 - Unsupported or unknown files: ${scanCounts.unknown}
@@ -367,7 +377,7 @@ updated: ${today()}
 ## Workspace Import Result
 - Selected import candidates: ${copyResult.total}
 - Files imported into workspace: ${copyResult.imported}
-- Files copied directly (incl. images pending network OCR): ${copyResult.copied}
+- Files copied directly (incl. images kept as-is): ${copyResult.copied}
 - Files skipped during direct copy: ${copyResult.skipped}
 - MarkItDown converted: ${copyResult.mdConverted}
 - MarkItDown mode: ${markitdownMode}

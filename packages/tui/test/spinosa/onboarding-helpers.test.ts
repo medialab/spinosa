@@ -3,6 +3,9 @@ import {
   formatBytes,
   initialToolChecks,
   mergeImportOptions,
+  OCR_ENGINE_HINT_LINE,
+  OCR_ENGINE_HINTS,
+  onlyLocalOcrMissing,
   toolActionLabel,
   toolCheckResults,
   toolChecksReady,
@@ -41,8 +44,26 @@ describe("onboarding helpers", () => {
       markitdown: true,
       pdfjs: true,
     });
-    expect(toolActionLabel(missing)).toBe("Reinstall missing tools");
+    // Tesseract is optional (vision/none flows never touch it), so its lone
+    // absence continues the wizard instead of looping a useless reinstall.
+    expect(toolActionLabel(missing)).toBe("Continue without local OCR");
+    expect(onlyLocalOcrMissing(missing)).toBe(true);
     expect(toolChecksReady(missing)).toBe(false);
+
+    const coreMissing = toolCheckResults({
+      ocr: true,
+      markitdown: false,
+      pdfjs: true,
+    });
+    expect(toolActionLabel(coreMissing)).toBe("Reinstall missing tools");
+    expect(onlyLocalOcrMissing(coreMissing)).toBe(false);
+  });
+
+  test("engine hint line composes from per-engine hints", () => {
+    expect(OCR_ENGINE_HINT_LINE).toContain(OCR_ENGINE_HINTS.tesseract);
+    expect(OCR_ENGINE_HINT_LINE).toContain(OCR_ENGINE_HINTS.vision);
+    expect(OCR_ENGINE_HINT_LINE).toContain(OCR_ENGINE_HINTS.none);
+    expect(OCR_ENGINE_HINT_LINE).toContain("enter continue");
   });
 
   test("merges import options by extension", () => {

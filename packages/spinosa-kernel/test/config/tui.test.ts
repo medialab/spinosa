@@ -443,11 +443,11 @@ it.instance("merges keybind overrides across precedence layers", () =>
       const fs = yield* FSUtil.Service
       const test = yield* TestInstance
       yield* fs.writeJson(path.join(Global.Path.config, "tui.json"), { keybinds: { app_exit: "ctrl+q" } })
-      yield* fs.writeJson(path.join(test.directory, "tui.json"), { keybinds: { theme_list: "ctrl+k" } })
+      yield* fs.writeJson(path.join(test.directory, "tui.json"), { keybinds: { session_list: "ctrl+k" } })
 
       const config = yield* getTuiConfig(test.directory)
       expect(config.keybinds.get("app.exit")?.[0]?.key).toBe("ctrl+q")
-      expect(config.keybinds.get("theme.switch")?.[0]?.key).toBe("ctrl+k")
+      expect(config.keybinds.get("session.list")?.[0]?.key).toBe("ctrl+k")
     }),
   ),
 )

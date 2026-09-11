@@ -8,12 +8,50 @@ import { createStore } from "solid-js/store"
 import {
   createActiveWorkTracker,
   deferPress,
+  formatImportProgressStatus,
   nextFocusedSourceIndexForAppend,
+  ProgressBar,
+  progressStatusLabel,
   runGuardedBackNavigation,
   shouldActivateWizardToolAction,
   shouldCancelSpinosaWorkOnCtrlC,
   shouldConfirmSpinosaBack,
 } from "../../src/routes/spinosa/wizard-ui"
+
+test("vision progress stays visible beside a populated file queue", async () => {
+  expect(formatImportProgressStatus("  corpus/page.jpg → waiting for model response (up to 120s)…")).toBe(
+    "waiting for model response (up to 120s)…",
+  )
+  expect(progressStatusLabel("waiting for model response (up to 120s)…", false)).toBe(
+    "waiting for model response (up to 120s)…",
+  )
+  expect(progressStatusLabel("waiting for model response", true)).toBe("")
+
+  const { DEFAULT_THEMES, resolveTheme } = await import("../../src/theme")
+  const theme = resolveTheme(DEFAULT_THEMES.opencode, "dark")
+  const app = await testRender(
+    () => (
+      <ProgressBar
+        theme={theme}
+        current={54}
+        total={68}
+        status="waiting for model response (up to 120s)…"
+        fileName="corpus/page.jpg"
+        files={[{ rel: "corpus/page.jpg", status: "processing" }]}
+      />
+    ),
+    { width: 80, height: 12 },
+  )
+  try {
+    await app.renderOnce()
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("54 of 68")
+    expect(frame).toContain("page.jpg")
+    expect(frame).toContain("waiting for model response (up to 120s)…")
+  } finally {
+    app.renderer.destroy()
+  }
+})
 
 test("Enter activates Scan source folders when tools are ready", () => {
   const ready = [
@@ -271,12 +309,36 @@ test("scans and imports files from the dedicated add-files screen", async () => 
   mock.module("../../src/ui/dialog", () => ({
     useDialog: () => ({ clear() {}, replace() {} }),
   }))
+  mock.module("../../src/context/local", () => ({
+    useLocal: () => ({
+      vision: {
+        current: () => undefined,
+        isValid: () => false,
+      },
+    }),
+  }))
+  mock.module("../../src/context/sync", () => ({
+    useSync: () => ({
+      data: {
+        provider: [],
+        provider_next: { all: [], connected: [] },
+        provider_auth: {},
+      },
+      refreshProviders: async () => {},
+    }),
+  }))
   mock.module("../../src/context/sdk", () => ({
     useSDK: () => ({
       directory: workspace,
       publishJobEvent: () => {},
       event: { emit() {} },
-      client: {},
+      client: {
+        provider: {
+          vision: {
+            transcribe: async () => ({ data: { text: "mocked" }, error: undefined }),
+          },
+        },
+      },
     }),
   }))
   mock.module("../../src/spinosa/onboarding-preview", () => ({
@@ -296,9 +358,14 @@ test("scans and imports files from the dedicated add-files screen", async () => 
   }))
 
   const { AddFiles } = await import("../../src/routes/spinosa/add-files")
+  const { BackgroundImportProvider } = await import("../../src/spinosa/import-background")
 
   const app = await testRender(
-    () => <AddFiles />,
+    () => (
+      <BackgroundImportProvider>
+        <AddFiles />
+      </BackgroundImportProvider>
+    ),
     { width: 80, height: 24 },
   )
 

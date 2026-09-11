@@ -202,3 +202,29 @@ describe("verifyAndRecoverImport OCR fallback", () => {
     }
   })
 })
+
+describe("waitAbortableChild", () => {
+  test("resolves exit code normally and kills on abort", async () => {
+    const { waitAbortableChild } = await import("../src/import/tesseract-ocr")
+    const { SpinosaCancellationError } = await import("../src/import/cancellation")
+    // Normal exit.
+    const ok = Bun.spawn(["true"], { stdout: "pipe", stderr: "pipe" })
+    await expect(waitAbortableChild(ok, {})).resolves.toBe(0)
+    // Abort kills a hung child.
+    const hung = Bun.spawn(["sleep", "30"], { stdout: "pipe", stderr: "pipe" })
+    const controller = new AbortController()
+    const pending = waitAbortableChild(hung, { signal: controller.signal, label: "test-sleep" })
+    await new Promise((r) => setTimeout(r, 100))
+    controller.abort()
+    await expect(pending).rejects.toBeInstanceOf(SpinosaCancellationError)
+    // SIGTERM exit proves the hung child was actually killed.
+    await expect(hung.exited).resolves.toBe(143)
+    // Pre-aborted rejects immediately.
+    const preAborted = new AbortController()
+    preAborted.abort()
+    const quick = Bun.spawn(["true"], { stdout: "pipe", stderr: "pipe" })
+    await expect(waitAbortableChild(quick, { signal: preAborted.signal })).rejects.toBeInstanceOf(
+      SpinosaCancellationError,
+    )
+  })
+})

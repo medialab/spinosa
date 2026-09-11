@@ -107,19 +107,11 @@ export const InternalCommand = {
             process.stdout.write(`${JSON.stringify({ type: "error", message: unsupported })}\n`)
             process.exit(1)
           }
-          const { runOcrWorkerMain } = await import("@spinosa/core/import/ppu-ocr-worker")
-          try {
-            await runOcrWorkerMain({ files: input.files as never })
-            process.exit(0)
-          } catch (err) {
-            process.stdout.write(
-              `${JSON.stringify({
-                type: "error",
-                message: err instanceof Error ? err.message : String(err),
-              })}\n`,
-            )
-            process.exit(1)
-          }
+          // ppu-paddle-ocr purged — tesseract is sole OCR engine; ocr-worker is deprecated
+          process.stdout.write(
+            `${JSON.stringify({ type: "error", message: "ocr-worker deprecated: ppu-paddle-ocr removed, use tesseract" })}\n`,
+          )
+          process.exit(1)
         },
       })
       .command({

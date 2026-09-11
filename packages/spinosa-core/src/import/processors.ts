@@ -7,8 +7,9 @@ import {
   type PhaseResult,
   type ClassifiedEntry,
 } from "./pipeline"
+import { processVisionInProcess } from "./vision-transcribe"
 
-export type ImportProcessorId = "direct" | "markitdown" | "ocr"
+export type ImportProcessorId = "direct" | "markitdown" | "vision" | "ocr"
 
 export type ImportProcessorContext = {
   files: ClassifiedEntry[]
@@ -25,6 +26,7 @@ export type ImportProcessorContext = {
   overwrite?: boolean
   ocrModelId?: string | (() => string)
   onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
+  transcribeVision?: import("./vision-transcribe").VisionTranscribe
 }
 
 export type ImportProcessor = {
@@ -53,6 +55,7 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
         ctx.shouldAbort,
         ctx.onRetry,
         ctx.onRename,
+        ctx.logsDir,
       ),
   },
   markitdown: {
@@ -63,8 +66,19 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
       processMarkitdown(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
         onChild: ctx.onChild,
         signal: ctx.signal,
-        ocrModelId: ctx.ocrModelId,
+      }),
+  },
+  vision: {
+    id: "vision",
+    label: "Vision",
+    phase: "Vision",
+    run: async (ctx) =>
+      processVisionInProcess(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
+        visionModelId: ctx.ocrModelId,
+        transcribeVision: ctx.transcribeVision,
+        signal: ctx.signal,
         onVisionFailure: ctx.onVisionFailure,
+        onChild: ctx.onChild,
       }),
   },
   ocr: {
@@ -80,7 +94,7 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
 }
 
 export function listImportProcessors(): ImportProcessor[] {
-  return [importProcessors.direct, importProcessors.markitdown, importProcessors.ocr]
+  return [importProcessors.direct, importProcessors.markitdown, importProcessors.vision, importProcessors.ocr]
 }
 
 export async function runImportProcessor(

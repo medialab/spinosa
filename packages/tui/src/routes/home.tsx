@@ -14,6 +14,7 @@ import { TextAttributes } from "@opentui/core"
 import { useTuiConfig } from "../config"
 import { HomeSessionDestinationProvider } from "./home/session-destination"
 import { SpinosaPromptChips } from "./workspace/spinosa-prompt-chips"
+import { BackgroundImportChip } from "../component/background-import-chip"
 import { MAIN_CONTENT_MAX_WIDTH } from "../util/layout"
 import { safeResourceValue } from "../util/resource"
 import { CenteredColumn } from "../component/centered-column"
@@ -642,6 +643,7 @@ export function Home() {
           </Show>
 
           <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0}>
+            <BackgroundImportChip />
             <SpinosaPromptChips suppressEnter={recentListVisible()} onWorkspaceDeleted={loadRecentWorkspaces} />
             <Show when={providerConnected() && workspaceReady()}>
               <box>

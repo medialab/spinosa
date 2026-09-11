@@ -58,6 +58,49 @@ describe("Auth", () => {
     }),
   )
 
+  it.instance("set trims pasted whitespace from api secrets", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.set("openrouter", {
+        type: "api",
+        key: "  sk-or-v1-abc123\n",
+      })
+      const data = yield* auth.all()
+      const entry = data["openrouter"]!
+      expect(entry.type).toBe("api")
+      if (entry.type === "api") expect(entry.key).toBe("sk-or-v1-abc123")
+    }),
+  )
+
+  it.instance("set strips a pasted Bearer prefix from api secrets", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.set("openrouter", {
+        type: "api",
+        key: "Bearer sk-or-v1-abc123",
+      })
+      const data = yield* auth.all()
+      const entry = data["openrouter"]!
+      expect(entry.type).toBe("api")
+      if (entry.type === "api") expect(entry.key).toBe("sk-or-v1-abc123")
+    }),
+  )
+
+  it.instance("set trims pasted whitespace from wellknown tokens", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.set("https://example.com", {
+        type: "wellknown",
+        key: "TOKEN",
+        token: "\tabc\r\n",
+      })
+      const data = yield* auth.all()
+      const entry = data["https://example.com"]!
+      expect(entry.type).toBe("wellknown")
+      if (entry.type === "wellknown") expect(entry.token).toBe("abc")
+    }),
+  )
+
   it.instance("set and remove are no-ops on keys without trailing slashes", () =>
     Effect.gen(function* () {
       const auth = yield* Auth.Service

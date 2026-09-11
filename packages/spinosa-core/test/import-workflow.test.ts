@@ -33,7 +33,7 @@ describe("runImportWorkflow", () => {
 
     const order: string[] = []
     const result = await runImportWorkflow(
-      { directFiles, markitdownFiles, ocrFiles: [], logsDir },
+      { directFiles, markitdownFiles, visionFiles: [], ocrFiles: [], logsDir },
       {
         beforePhase: (id) => {
           order.push(id)
@@ -45,6 +45,7 @@ describe("runImportWorkflow", () => {
     expect(order).toEqual(["direct", "markitdown"])
     expect(result.direct.converted).toBe(1)
     expect(result.markitdown.converted).toBe(1)
+    expect(result.vision.converted).toBe(0)
     expect(result.ocr.converted).toBe(0)
   })
 })

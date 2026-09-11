@@ -6,6 +6,7 @@ import { Global } from "@spinosa/kernel-core/global"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
+import { BackgroundImportProvider } from "./spinosa/import-background"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
@@ -43,7 +44,6 @@ import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
-import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
@@ -126,9 +126,6 @@ const appBindingCommands = [
   "provider.connect",
   "console.org.switch",
   "opencode.status",
-  "theme.switch",
-  "theme.switch_mode",
-  "theme.mode.lock",
   "help.show",
   "docs.open",
   "diff.open",
@@ -226,7 +223,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   const t0 = Date.now()
   bootLog("tui.effect.run", "Effect.fn Tui.run entered")
   const global = yield* Global.Service
-  const exit = { epilogue: undefined as string | undefined, reason: undefined as unknown }
+  const exit = { epilogue: undefined as string | undefined, reason: undefined as unknown, exiting: false }
   const result = yield* Effect.scoped(
     Effect.gen(function* () {
       bootLog("tui.renderer", "creating CLI renderer")
@@ -301,10 +298,17 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
               exit={(reason) => {
                 if (renderer.isDestroyed) return
                 exit.reason = reason
+                exit.exiting = true
                 destroyRenderer(renderer)
               }}
             >
-              <EpilogueProvider set={(value) => (exit.epilogue = value)}>
+              {/* Once exit begins, teardown unmounts wipe their epilogue via
+                  onCleanup — ignore those late clears so the last-set value
+                  survives until shutdown reads it. */}
+              <EpilogueProvider set={(value) => {
+                if (value === undefined && exit.exiting) return
+                exit.epilogue = value
+              }}>
                 <>
                   <TuiPathsProvider
                     value={{
@@ -371,6 +375,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                   <ThemeProvider mode={mode}>
                                                     <LocalProvider>
                                                       <PromptStashProvider>
+                                                        <BackgroundImportProvider>
                                                         <DialogProvider>
                                                           <FrecencyProvider>
                                                             <PromptHistoryProvider>
@@ -393,6 +398,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                             </PromptHistoryProvider>
                                                           </FrecencyProvider>
                                                         </DialogProvider>
+                                                        </BackgroundImportProvider>
                                                       </PromptStashProvider>
                                                     </LocalProvider>
                                                   </ThemeProvider>
@@ -452,7 +458,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const toast = useToast()
   setToastError((err) => toast.error(err))
   const themeState = useTheme()
-  const { theme, mode, setMode, locked, lock, unlock } = themeState
+  const { theme } = themeState
   const sync = useSync()
   const project = useProject()
   const exit = useExit()
@@ -1003,34 +1009,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "status",
         run: () => {
           dialog.replace(() => <DialogStatus />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch",
-        title: "Switch theme",
-        slashName: "themes",
-        run: () => {
-          dialog.replace(() => <DialogThemeList />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch_mode",
-        title: mode() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-        run: () => {
-          setMode(mode() === "dark" ? "light" : "dark")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.mode.lock",
-        title: locked() ? "Unlock theme mode" : "Lock theme mode",
-        run: () => {
-          if (locked()) unlock()
-          else lock()
-          dialog.clear()
         },
         category: "System",
       },

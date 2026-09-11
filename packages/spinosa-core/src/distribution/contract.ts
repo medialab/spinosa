@@ -32,8 +32,6 @@ export const INSTALL_METADATA_KEYS = {
   autoUpgrade: "auto_upgrade",
 } as const
 
-export const DEPRECATED_INSTALLER_FLAGS = ["--no-bundled-tools"] as const
-
 export const HOME_LAYOUT = {
   binDir: "bin",
   binaryName: "spinosa",
@@ -53,6 +51,7 @@ export const HOME_LAYOUT = {
 export const BINARY_UNINSTALL_RUNTIME_TARGETS = [
   "bin/spinosa",
   "templates",
+  "tools",
   ".staging",
   "logs",
 ] as const

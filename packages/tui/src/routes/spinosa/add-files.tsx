@@ -8,17 +8,20 @@ import { useTheme } from "../../context/theme"
 import { useRoute } from "../../context/route"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { useToast } from "../../ui/toast"
+import { useSync } from "../../context/sync"
 import {
   preserveFailedImportFiles,
   scanAndClassifySource,
+  applyResumeFilter,
   type ClassifiedEntry,
 } from "@spinosa/core/import/pipeline"
 import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation"
 import { ImportBatchManager } from "@spinosa/core/import/batch"
 import { useSDK } from "../../context/sdk"
-import { createImportJob, type ImportJobHandle } from "../../spinosa/job-events"
+import { useLocal } from "../../context/local"
 import { runImportWorkflow } from "@spinosa/core/import/import-workflow"
-import { logStep, logAction, logTool, logGate, logError, setToastError, persistImportWizardLogLines } from "../../spinosa/log"
+import { createVisionTranscriber } from "../../spinosa/vision-transcribe"
+import { logStep, logAction, logTool, logError, setToastError, persistImportWizardLogLines } from "../../spinosa/log"
 import { CenteredColumn } from "../../component/centered-column"
 import { SPINOSA_BASE_MODE, useOpencodeKeymap, useOpencodeModeStack } from "../../keymap"
 import { useExit } from "../../context/exit"
@@ -30,6 +33,9 @@ import {
   resolveUserPath,
 } from "../../spinosa/onboarding-preview"
 import { runReinstall } from "../../spinosa/reinstall"
+import { onlyLocalOcrMissing, toolActionLabel as resolveToolActionLabel, initialToolChecks, toolCheckResults, formatBytes, wavePulse, waveRow, waveString, validateSinglePath } from "./onboarding-helpers"
+import { useBackgroundImport, isBackgroundAvailable, detachImportToBackground } from "../../spinosa/import-background"
+import { openBackgroundImportMonitor } from "../../component/dialog-background-import"
 import { readBundledFrameworkVersion, isPrereleaseFrameworkVersion } from "../../spinosa/service"
 import { normalizePathInput, resolveExistingUserPaths, isCloudStoragePath } from "@spinosa/core/utils/path"
 import {
@@ -39,6 +45,7 @@ import {
   createWorkflowGuard,
   deferPress,
   delay,
+  formatImportProgressStatus,
   generateScanLines,
   ImportOptionsSelector,
   nextFocusedSourceIndexForAppend,
@@ -61,12 +68,10 @@ import {
   yieldToEventLoop,
 } from "./wizard-ui"
 import {
-  applyImportProgressStatus,
   countImportProgress,
   formatImportDetailLogHint,
   importOutcomeAccentKey,
   importOutcomeHeading,
-  seedImportQueue,
   shouldShowImportDetailLogHint,
   type ImportFileProgressItem,
 } from "../../spinosa/import-progress-ui"
@@ -94,6 +99,8 @@ export function AddFiles() {
   const { navigate } = useRoute()
   const spinosa = useSpinosaWorkspace()
   const sdk = useSDK()
+  const local = useLocal()
+  const sync = useSync()
   const dimensions = useTerminalDimensions()
   const keymap = useOpencodeKeymap()
   const modeStack = useOpencodeModeStack()
@@ -125,6 +132,67 @@ export function AddFiles() {
   const [progressFiles, setProgressFiles] = createSignal<ImportFileProgressItem[]>([])
   const [failedCount, setFailedCount] = createSignal(0)
   const [importSummary, setImportSummary] = createSignal("")
+  // Foreground mirror of the service vision pause (add-files previously had
+  // no pause UI — auth failures silently failed files).
+  const [visionError, setVisionError] = createSignal<string | undefined>(undefined)
+  const [visionPaused, setVisionPaused] = createSignal(false)
+  // Background-capable import run owner (shared with onboarding + monitor).
+  const bg = useBackgroundImport()
+
+  // Mirror service run state into wizard display signals while a run owns
+  // them. Model changes (wizard or monitor) persist to the global vision
+  // store so future runs default to the picked model.
+  createEffect(() => {
+    if (!bg.active()) return
+    setProcessingStatus(bg.phaseLabel())
+    setProcessingFile(bg.currentFile())
+    setVisionError(bg.visionError())
+    setVisionPaused(bg.snapshot().visionPause !== undefined)
+    const files = bg.files()
+    setProgressFiles(files)
+    const counts = countImportProgress(files)
+    setProgTotal(files.length > 0 ? files.length : 1)
+    setProgCurrent(counts.succeeded + counts.failed)
+    setLogLines(bg.logLines())
+    const model = bg.modelId()
+    if (model.includes("/")) {
+      const [prov, ...rest] = model.split("/")
+      const modelName = rest.join("/")
+      const cur = local.vision.current()
+      if (prov && modelName && (!cur || cur.providerID !== prov || cur.modelID !== modelName)) {
+        try {
+          local.vision.set({ providerID: prov, modelID: modelName })
+        } catch {}
+      }
+    }
+    if (!bg.done() && !bg.background()) {
+      const gate = bg.pendingGate()
+      if (gate) {
+        setGateLabel(gate.label)
+        setGateAction(() => () => {
+          logAction("gate-click", gate.label)
+          bg.resolveGate(true)
+        })
+        setWaitingForGate(true)
+      } else {
+        setWaitingForGate(false)
+      }
+    }
+  })
+
+  // Slow phases only: detach and return to the workspace home. Same button
+  // slot as the phase actions. Finished queue → normal finish flow applies.
+  const detachToBackground = () => {
+    detachImportToBackground(bg, {
+      from: "add-files",
+      notify: (message) => toast.show({ variant: "info", message }),
+      navigateHome: () => goToWorkspace(),
+    })
+  }
+  const backgroundAvailable = () => isBackgroundAvailable(bg)
+  const openMonitor = () => {
+    openBackgroundImportMonitor(dialog)
+  }
   const [pathValidities, setPathValidities] = createStore<Record<number, "unchecked" | "valid" | "invalid">>({})
   const importOutcome = createMemo(() => ({ failedCount: failedCount(), stillMissing: 0 }))
   const importOutcomeFg = createMemo(() => {
@@ -133,49 +201,6 @@ export function AddFiles() {
     if (key === "warning") return theme.warning
     return theme.success
   })
-  const updateProgressFileStatus = (
-    relPath: string,
-    status: ImportFileProgressItem["status"],
-  ) => {
-    setProgressFiles((previous) => {
-      const next = applyImportProgressStatus(previous, relPath, status)
-      const counts = countImportProgress(next)
-      setProgTotal(next.length > 0 ? next.length : 1)
-      setProgCurrent(counts.succeeded + counts.failed)
-      return next
-    })
-  }
-  const appendProgressQueue = (rels: string[]) => {
-    if (rels.length === 0) return
-    setProgressFiles((previous) => {
-      const known = new Set(previous.map((item) => item.rel))
-      const next = [
-        ...previous,
-        ...seedImportQueue(rels).filter((item) => !known.has(item.rel)),
-      ]
-      const counts = countImportProgress(next)
-      setProgTotal(next.length > 0 ? next.length : 1)
-      setProgCurrent(counts.succeeded + counts.failed)
-      return next
-    })
-  }
-
-  const WAVE_UNICODE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const
-  const WAVE_ASCII = ["_", "-", "~", "=", "#", "=", "~", "-"] as const
-  const WAVE = (() => {
-    try {
-      const term = (process.env.TERM ?? "").toLowerCase()
-      if (term === "dumb" || term === "linux" || process.env.NO_COLOR !== undefined) return WAVE_ASCII as unknown as string[]
-      const lang = (process.env.LANG ?? process.env.LC_ALL ?? "").toLowerCase()
-      if (lang === "c" || lang === "posix") return WAVE_ASCII as unknown as string[]
-      return WAVE_UNICODE as unknown as string[]
-    } catch {
-      return WAVE_UNICODE as unknown as string[]
-    }
-  })()
-  const waveString = (f: number) => { let r = ""; for (let i = 0; i < 6; i++) { const p = (i + f) % 14, l = p <= 6 ? p : 13 - p; r += WAVE[l] }; return r }
-  const wavePulse = (f: number) => { const p = f % 14; return WAVE[p <= 6 ? p : 13 - p] }
-  const waveRow = (f: number, width: number) => { let r = ""; for (let i = 0; i < width; i++) { const angle = (i * Math.PI) / 7 + f * Math.PI / 7; const l = Math.max(0, Math.min(7, Math.round(3.5 + 3.5 * Math.sin(angle)))); r += WAVE[l] }; return r }
   const [spinIdx, setSpinIdx] = createSignal(0)
   const [stopping, setStopping] = createSignal(false)
   const [stopHint, setStopHint] = createSignal(STOP_SCREEN_DEFAULT_HINT)
@@ -190,11 +215,10 @@ export function AddFiles() {
 
   const workflow = createWorkflowGuard()
   const activeWork = createActiveWorkTracker()
-  let activeJob: ImportJobHandle | undefined
   let sourceInput: TextareaRenderable | undefined
   const sourceInputs = new Map<number, TextareaRenderable>()
   const pathSnapshot = new Map<number, string>()
-  let gateResolve: (() => void) | undefined
+  // Pre-run cancellation flag for scan phase (the run itself is service-owned).
   let abortProcessing = false
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -204,25 +228,12 @@ export function AddFiles() {
       .map((item) => item.ext),
   )
 
-  const toolActionLabel = createMemo(() => {
-    const checks = toolChecks()
-    if (checks.length === 0) return ""
-    if (checks.some((t) => t.status === "checking")) return "Checking..."
-    if (checks.some((t) => t.status === "missing")) return "Reinstall missing tools"
-    return "Scan source folders"
-  })
+  const toolActionLabel = createMemo(() => resolveToolActionLabel(toolChecks()))
 
   const toolAllReady = createMemo(() => {
     const checks = toolChecks()
     return checks.length > 0 && checks.every((t) => t.status === "available" || t.status === "unsupported")
   })
-
-  function formatBytes(bytes: number): string {
-    if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
-    if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`
-    if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`
-    return `${bytes} B`
-  }
 
   const totalSteps = 7
   const stepIndex = createMemo(() => {
@@ -339,27 +350,15 @@ export function AddFiles() {
   const allPathsResolved = () =>
     resolveExistingUserPaths(sourcePaths().map((entry) => readPathText(entry.id)))
 
-  const validateSinglePath = (p: string): "valid" | "invalid" => {
-    try {
-      if (!existsSync(p)) return "invalid"
-      const st = statSync(p)
-      if (st.isFile()) return "valid"
-      if (st.isDirectory()) return readdirSync(p).length > 0 ? "valid" : "invalid"
-      return "invalid"
-    } catch {
-      return "invalid"
-    }
-  }
-
   // ── Navigation & lifecycle ────────────────────────────────────────────────
   const stopActiveWork = () => {
     setStopping(true)
     spinOn()
-    if (gateResolve) { gateResolve(); gateResolve = undefined }
+    // The background service owns gates/pauses now; Back aborts the run
+    // unless it was explicitly detached to the home monitor.
+    if (bg.active() && !bg.background()) bg.cancel()
     abortProcessing = true
     workflow.bump()
-    activeJob?.cancel()
-    activeJob = undefined
     setBusy(false)
     setWaitingForGate(false)
   }
@@ -437,40 +436,16 @@ export function AddFiles() {
     requestBack(false)
   }
 
-  // ── Gate helper ───────────────────────────────────────────────────────────
-  const gate = (label = "Continue") => new Promise<void>((resolve) => {
-    gateResolve = resolve
-    logGate(label)
-    setGateLabel(label)
-    setGateAction(() => () => { logAction("gate-click", label); setWaitingForGate(false); gateResolve = undefined; resolve() })
-    setWaitingForGate(true)
-  })
-
-  // ── Tools check ───────────────────────────────────────────────────────────
+  // ── Tools check (aligned with onboarding: shared rows + labels) ─────────
   const runToolCheck = async () => {
     logStep("tools", "Checking document processing tools")
-    const checks: ToolCheckResult[] = [
-      { label: "Tesseract OCR", status: "checking", detail: "Scanned PDFs (ita+eng+fra, 300dpi)" },
-      { label: "MarkItDown", status: "checking", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: "checking", detail: "PDF text extraction and page rendering" },
-    ]
-    setToolChecks(checks)
+    setToolChecks(initialToolChecks())
     setStep("tools")
     spinOn()
 
     await delay(80)
     const toolStatus = await detectDocumentTools()
-    const ocrStatus = toolStatus.ocr
-      ? "available"
-      : toolStatus.ocrUnsupportedReason
-        ? "unsupported"
-        : "missing"
-    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm)"
-    const results: ToolCheckResult[] = [
-      { label: "Tesseract OCR", status: ocrStatus, detail: ocrDetail },
-      { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
-    ]
+    const results = toolCheckResults(toolStatus)
     setToolChecks(results)
     for (const r of results) logTool(r.label, r.status, r.detail)
     spinOff()
@@ -479,7 +454,7 @@ export function AddFiles() {
     if (busy()) return
     try { blurSourceInputs() } catch (error) { logError("blurSourceInputs", error) }
     const checks = toolChecks()
-    const needsRepair = checks.some((t) => t.status === "missing")
+    const needsRepair = checks.some((t) => t.status === "missing") && !onlyLocalOcrMissing(checks)
     const toolsReady = checks.every((t) => t.status === "available" || t.status === "unsupported")
     if (needsRepair) {
       logAction("repair-tools", `${checks.filter(t => t.status === "missing").length} tools missing`)
@@ -491,8 +466,9 @@ export function AddFiles() {
           setBusy(false)
         }
       })
-    } else if (toolsReady) {
-      logAction("start-scan", "All tools ready")
+    } else if (toolsReady || onlyLocalOcrMissing(checks)) {
+      // Tesseract-only absence never blocks: vision/none flows never touch local OCR.
+      logAction("start-scan", onlyLocalOcrMissing(checks) ? "Continuing without local OCR" : "All tools ready")
       startScan().catch((err) => {
         logError("startScan-top", err)
         appendLogLine(`Fatal: ${err instanceof Error ? err.message : String(err)}`)
@@ -529,17 +505,7 @@ export function AddFiles() {
       }
       await delay(200)
       const toolStatus = await detectDocumentTools()
-      const ocrStatus = toolStatus.ocr
-        ? "available"
-        : toolStatus.ocrUnsupportedReason
-          ? "unsupported"
-          : "missing"
-      const ocrDetail = toolStatus.ocrUnsupportedReason ?? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm)"
-      const results: ToolCheckResult[] = [
-        { label: "Tesseract OCR", status: ocrStatus, detail: ocrDetail },
-        { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
-        { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
-      ]
+      const results = toolCheckResults(toolStatus)
       setToolChecks(results)
       for (const r of results) logTool(r.label, r.status, r.detail)
       if (reinstallResult.exitCode === 0) {
@@ -623,9 +589,37 @@ export function AddFiles() {
     setProcessingStatus("Starting...")
     setProcessingFile("")
     setProgressFiles([])
-    abortProcessing = false
-    const generation = workflow.bump()
-    gateResolve = undefined
+    const storedVision = local.vision.current()
+    const initialVision =
+      storedVision && local.vision.isValid()
+        ? `${storedVision.providerID}/${storedVision.modelID}`
+        : "tesseract-local"
+    const started = bg.start({
+      kind: "add-files",
+      title: "Add files import",
+      directory: workspacePath,
+      workspacePath,
+      modelId: initialVision,
+      publish: sdk.publishJobEvent,
+      localEmit: (event) => sdk.event.emit("event", event),
+    })
+    if (!started) {
+      appendLogLine("An import is already running — finish or cancel it first.")
+      setBusy(false)
+      return
+    }
+    const { job, shouldAbort } = started
+    const sharedProg = job.prog
+    sharedProg.on((e) => bg.reportProgress(e))
+    const onPhaseLog = job.wrapLog((msg: string) => {
+      if (msg.startsWith("  ")) {
+        bg.reportPhaseLog(msg, formatImportProgressStatus)
+        return
+      }
+      bg.appendLog(msg)
+    })
+    bg.setPhase("setup")
+    bg.reportStatus("Starting...")
     spinOn()
     await delay(200)
 
@@ -638,98 +632,107 @@ export function AddFiles() {
     let totalRenamed = 0
     let totalDirect = 0
     let totalMd = 0
+    let totalVision = 0
     let totalOcr = 0
     let dirConverted = 0
     let mdConverted = 0
+    let visionConverted = 0
     let ocrConverted = 0
     const attemptedEntries: ClassifiedEntry[] = []
-
-    const job = createImportJob({
-      kind: "import",
-      title: "Add files import",
-      directory: workspacePath,
-      publish: sdk.publishJobEvent,
-      localEmit: (event) => sdk.event.emit("event", event),
-    })
-    activeJob = job
-    const shouldAbort = () => abortProcessing || !workflow.active(generation) || job.shouldAbort()
-    job.start()
-    const sharedProg = job.prog
-    sharedProg.on((e) => {
-      if (e.relPath && e.status === "processing") setProcessingFile(e.relPath)
-      else if (e.relPath && (e.status === "done" || e.status === "failed" || e.status === "error")) {
-        if (e.relPath === processingFile()) setProcessingFile("")
-      }
-      if (e.status && e.relPath) {
-        updateProgressFileStatus(e.relPath, e.status)
-      }
-    })
-    const onPhaseLog = job.wrapLog((msg: string) => {
-      if (msg.startsWith("  ")) {
-        setProcessingStatus(msg.trim())
-        return
-      }
-      appendLogLine(msg)
-    })
+    const transcribeVision = createVisionTranscriber(sdk)
 
     try {
       for (let sourceIndex = 0; sourceIndex < resolved.length; sourceIndex++) {
         const src = resolved[sourceIndex]!
         const sourceFolder = sourceIndex === 0 ? undefined : `source-${sourceIndex + 1}`
         if (shouldAbort()) break
-        appendLogLine(`Processing: ${src}${sourceFolder ? ` → ${sourceFolder}/` : ""}`)
+        bg.appendLog(`Processing: ${src}${sourceFolder ? ` → ${sourceFolder}/` : ""}`)
 
-        const classified = await scanAndClassifySource(src, rawDir, batchManager, sourceFolder, shouldAbort)
+        const classified = await scanAndClassifySource(src, rawDir, batchManager, sourceFolder, shouldAbort, bg.getModel())
         if (!classified) {
-          appendLogLine(`No importable files in: ${src}`)
+          bg.appendLog(`No importable files in: ${src}`)
           continue
         }
+        // Resume: skip already-imported files; re-process new, changed,
+        // re-routed, or previously failed ones. Done rows render done at once.
+        const resume = applyResumeFilter(classified, classified.logsDir, {
+          modelId: bg.getModel(),
+          onLog: (m) => bg.appendLog(m),
+        });
+        for (const rel of resume.skippedUnchanged) bg.reportProgress({ relPath: rel, status: "done" });
         attemptedEntries.push(
           ...classified.directFiles,
           ...classified.markitdownFiles,
+          ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
           ...classified.ocrFiles,
         )
-        appendProgressQueue([
+        bg.seedQueue([
           ...classified.directFiles,
           ...classified.markitdownFiles,
+          ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
           ...classified.ocrFiles,
         ].map((file) => file.rel))
 
-        // ── Shared import workflow (direct → MarkItDown → OCR) ────────────
+        // ── Shared import workflow (direct → MarkItDown → Vision → OCR) ────────────
         const phases = await runImportWorkflow(classified, {
           prog: sharedProg,
           onLog: onPhaseLog,
           shouldAbort,
           signal: job.registered.signal,
           onChild: job.registerChild,
+          ocrModelId: () => bg.getModel(),
+          transcribeVision,
+          // Service pause policy (new in add-files): empty results skip,
+          // auth/other errors pause until inline buttons or monitor resolve.
+          onVisionFailure: (rel, modelId, error) => bg.onVisionFailure(rel, modelId, error),
+          onRetry: (attempt, reason) => {
+            bg.reportStatus(`Retrying file (attempt ${attempt}): ${reason}`)
+          },
           onRename: (original, renamed) => {
-            appendLogLine(`  renamed (name too long): ${original} → ${renamed}`)
+            bg.appendLog(`  renamed (name too long): ${original} → ${renamed}`)
           },
           beforePhase: async (id, count) => {
             if (id === "direct") {
               setStep("direct")
-              setProcessingStatus(`Copying text-based files to raw — ${count} files`)
+              bg.setPhase("direct")
+              bg.reportStatus(`Copying text-based files to raw — ${count} files`)
               totalDirect += count
               await delay(500)
               return true
             }
             if (id === "markitdown") {
               setBusy(false)
-              await gate("Process text files")
+              if (!await bg.requestGate(id, count, "Convert office docs")) return false
               setBusy(true)
               if (shouldAbort()) return false
               setStep("markitdown")
-              setProcessingStatus("Converting office docs & text PDFs via MarkItDown...")
+              bg.setPhase("markitdown")
+              bg.setVisionError(undefined)
+              bg.reportStatus("Converting office docs via MarkItDown...")
               totalMd += count
               await delay(500)
               return true
             }
+            if (id === "vision") {
+              setBusy(false)
+              if (!await bg.requestGate(id, count, `Transcribe images & scanned PDFs via Vision Model`)) return false
+              setBusy(true)
+              if (shouldAbort()) return false
+              setStep("markitdown")
+              bg.setPhase("vision")
+              bg.setVisionError(undefined)
+              bg.reportStatus(`Transcribing images & scanned PDFs via Vision Model — ${count} files`)
+              totalVision += count
+              await delay(500)
+              return true
+            }
             setBusy(false)
-            await gate("Process images and PDFs")
+            if (!await bg.requestGate(id, count, "OCR scanned PDFs with Tesseract")) return false
             setBusy(true)
             if (shouldAbort()) return false
             setStep("ocr")
-            setProcessingStatus("Running Tesseract on scanned PDFs (images → copy, pending network)...")
+            bg.setPhase("ocr")
+            bg.reportStatus("Running Tesseract on scanned PDFs...")
             totalOcr += count
             await delay(500)
             return true
@@ -738,20 +741,25 @@ export function AddFiles() {
             if (result.renamed > 0) totalRenamed += result.renamed
             if (id === "direct") {
               dirConverted += result.converted
-              setProcessingStatus(`Text-based files copied — ${result.converted} files`)
+              bg.reportStatus(`Text-based files copied — ${result.converted} files`)
               await delay(500)
             }
             if (id === "markitdown") {
               mdConverted += result.converted
-              setProcessingStatus(`Office docs & text PDFs converted — ${result.converted} files`)
+              bg.reportStatus(`Office docs converted — ${result.converted} files`)
+              await delay(500)
+            }
+            if (id === "vision") {
+              visionConverted += result.converted
+              bg.reportStatus(`Images & scanned PDFs via Vision — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`)
               await delay(500)
             }
             if (id === "ocr") {
               ocrConverted += result.converted
-              setProcessingStatus(
+              bg.reportStatus(
                 result.failed > 0
-                  ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed (images kept as copy)`
-                  : `Scanned PDFs via Tesseract — ${result.converted} files (images kept as copy)`,
+                  ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed`
+                  : `Scanned PDFs via Tesseract — ${result.converted} files`,
               )
               // Dwell so failure-first 100% results are readable before done.
               await delay(1500)
@@ -759,61 +767,101 @@ export function AddFiles() {
           },
         })
         if (classified.markitdownFiles.length === 0) {
-          appendLogLine("No files require MarkItDown conversion.")
+          bg.appendLog("No files require MarkItDown conversion.")
+        }
+        const visionLen = ((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []).length
+        if (visionLen === 0 && bg.getModel().includes("/")) {
+          bg.appendLog("Vision: 0 images/PDFs to transcribe — skipping")
         }
         if (classified.ocrFiles.length === 0) {
-          appendLogLine("No files require OCR.")
+          bg.appendLog("No files require OCR.")
         }
         void phases
         if (shouldAbort()) { spinOff(); setBusy(false); return }
       }
 
       if (attemptedEntries.length === 0) {
-        appendLogLine("No selected files could be imported.")
+        bg.appendLog("No selected files could be imported.")
+        bg.finish({
+          converted: 0,
+          skipped: 0,
+          failed: 0,
+          renamed: 0,
+          recovered: 0,
+          stillMissing: 0,
+          text: "No selected files could be imported.",
+          success: false,
+        })
+        if (bg.background()) {
+          setBusy(false)
+          spinOff()
+          return
+        }
         setImportSummary("No selected files could be imported.")
         setProcessingDone(true)
         setStep("error")
-        job.finish("error", "No selected files could be imported.")
         return
       }
 
-      const preserved = await preserveFailedImportFiles(attemptedEntries, rawDir, appendLogLine)
+      const preserved = await preserveFailedImportFiles(attemptedEntries, rawDir, (m) => bg.appendLog(m))
       for (const rel of preserved.failedFilePaths) {
         // Close any protocol gap (for example a worker crash) in the same
         // list used by the renderer; never leave a missing file queued.
-        updateProgressFileStatus(rel, "failed")
+        bg.reportProgress({ relPath: rel, status: "failed" })
       }
-      const counts = countImportProgress(progressFiles())
+      const counts = countImportProgress(bg.snapshot().files)
       setFailedCount(counts.failed)
       const summary =
-        `${dirConverted}/${totalDirect} copied · ${mdConverted}/${totalMd} markitdown · ${ocrConverted}/${totalOcr} ocr` +
+        `${dirConverted}/${totalDirect} copied · ${mdConverted}/${totalMd} markitdown · ${visionConverted}/${totalVision} vision · ${ocrConverted}/${totalOcr} ocr` +
         (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
         (counts.failed > 0 ? ` · ${counts.failed} failed` : "")
+      const ok = counts.failed === 0 && preserved.failedFilePaths.length === 0
+      bg.finish({
+        converted: dirConverted + mdConverted + visionConverted + ocrConverted,
+        skipped: 0,
+        failed: counts.failed,
+        renamed: totalRenamed,
+        recovered: 0,
+        stillMissing: preserved.failedFilePaths.length,
+        text: summary,
+        success: ok,
+      })
+      if (bg.background()) {
+        // Headless finish: monitor dialog + home chip carry the result.
+        setBusy(false)
+        spinOff()
+        return
+      }
       setImportSummary(summary)
       setProcessingDone(true)
       // Keep progressFiles + last phase bar counters so the results panel
       // remains visible on the done step.
       setStep("done")
-      if (counts.failed > 0 || preserved.failedFilePaths.length > 0) {
-        persistImportWizardLogLines(logLines(), "add-files-import")
-        job.finish("error", summary)
-      } else {
-        job.finish("completed", summary)
+      if (!ok) {
+        persistImportWizardLogLines(bg.snapshot().logs, "add-files-import")
       }
     } catch (err) {
       if (isSpinosaCancellationError(err) || shouldAbort()) {
-        appendLogLine("Spinosa import cancelled.")
-        setProcessingStatus("Cancelled.")
-        job.cancel()
+        bg.appendLog("Spinosa import cancelled.")
+        bg.reportStatus("Cancelled.")
+        bg.cancel()
         return
       }
       logError("startProcessing", err)
-      appendLogLine(`Error: ${err instanceof Error ? err.message : String(err)}`)
-      job.finish("error", err instanceof Error ? err.message : String(err))
-      setStep("error")
+      bg.appendLog(`Error: ${err instanceof Error ? err.message : String(err)}`)
+      bg.finish({
+        converted: 0,
+        skipped: 0,
+        failed: 0,
+        renamed: 0,
+        recovered: 0,
+        stillMissing: 0,
+        text: err instanceof Error ? err.message : String(err),
+        success: false,
+      })
+      if (!bg.background()) setStep("error")
     } finally {
-      if (shouldAbort() && !processingDone()) job.cancel()
-      if (activeJob === job) activeJob = undefined
+      if (shouldAbort() && !processingDone() && !bg.background()) bg.cancel()
       spinOff()
       setBusy(false)
     }
@@ -924,6 +972,29 @@ export function AddFiles() {
         }
         handleBackPress()
         consume(); return
+      }
+
+      // Vision pause resolution + slow-phase shortcuts (run phases keep
+      // busy() true, so these precede the busy guard; never while typing).
+      if (!sourceInputFocused()) {
+        if (bg.snapshot().visionPause !== undefined) {
+          if (event.name === "r") {
+            bg.resolvePause("retry")
+            consume(); return
+          }
+          if (event.name === "s") {
+            bg.resolvePause("skip")
+            consume(); return
+          }
+          if (event.name === "m") {
+            openMonitor()
+            consume(); return
+          }
+        }
+        if (event.name === "b" && backgroundAvailable()) {
+          detachToBackground()
+          consume(); return
+        }
       }
 
       if (busy()) return
@@ -1058,6 +1129,11 @@ export function AddFiles() {
     processingFile, progressFiles, toolActionLabel, toolAllReady, handleBackPress, handleToolAction, continueFromScan,
     waitingForGate, gateLabel, gateAction, importOutcomeFg, importOutcome, importOutcomeHeading, importSummary, failedCount,
     shouldShowImportDetailLogHint, formatImportDetailLogHint, finish,
+    visionError, visionPaused,
+    onVisionRetry: () => bg.resolvePause("retry"),
+    onVisionSkip: () => bg.resolvePause("skip"),
+    onOpenMonitor: openMonitor,
+    backgroundAvailable, onBackground: detachToBackground,
   }
 
   return <AddFilesView {...viewProps} />

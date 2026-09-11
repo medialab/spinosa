@@ -118,7 +118,7 @@ export function OnboardingView(props: OnboardingViewProps) {
       <CenteredColumn>
       <box flexGrow={1} alignItems="center" paddingLeft={2} paddingRight={2}>
         <box flexGrow={1} minHeight={0} />
-        <box width="100%" maxWidth={72} flexDirection="column" gap={1}>
+        <box width="100%" maxWidth={80} flexDirection="column" gap={1}>
           <box flexDirection="row" alignItems="center" gap={1}>
             <box
               paddingLeft={2}
@@ -139,15 +139,19 @@ export function OnboardingView(props: OnboardingViewProps) {
               <span style={{ bold: true }}>{busy() ? `${waveString(spinIdx())} ` : ""}{resumeWorkspacePath ? "Resume Spinosa workspace" : "Create Spinosa workspace"}</span>
             </text>
             <box flexGrow={1} />
-            <Show when={step() === "markitdown" && props.selectedVisionLabel().includes("/")}>
+            <Show when={(step() === "markitdown" || step() === "verification" || step() === "error" || step() === "ocr" || step() === "direct" || step() === "setup") && props.hasVisionModel()}>
               <box
                 paddingLeft={2}
                 paddingRight={2}
                 paddingTop={1}
                 paddingBottom={1}
-                backgroundColor={buttonBackground(theme, hoveredButton() === "vision-model")}
+                backgroundColor={props.visionError() ? theme.error : buttonBackground(theme, hoveredButton() === "vision-model")}
                 border={["left"]}
-                borderColor={buttonBorder(theme, hoveredButton() === "vision-model", theme.border)}
+                borderColor={(() => {
+                  if (props.visionError()) return theme.error
+                  if (hoveredButton() === "vision-model") return theme.text
+                  return theme.success
+                })()}
                 onMouseOver={() => {
                   blurSourceInputs()
                   setHoveredButton("vision-model")
@@ -155,7 +159,11 @@ export function OnboardingView(props: OnboardingViewProps) {
                 onMouseOut={() => setHoveredButton(null)}
                 onMouseDown={() => deferPress(props.onChangeVisionModel)}
               >
-                <text fg={buttonText(theme, hoveredButton() === "vision-model", theme.primary)}>{props.selectedVisionLabel()} ▼</text>
+                <text fg={(() => {
+                  if (props.visionError()) return theme.text
+                  if (hoveredButton() === "vision-model") return buttonText(theme, true, theme.text)
+                  return theme.success
+                })()}>{props.selectedVisionLabel()} ▼</text>
               </box>
             </Show>
           </box>
@@ -163,10 +171,10 @@ export function OnboardingView(props: OnboardingViewProps) {
             Step {stepIndex()} of {totalSteps}
             {step() === "name" ? " — naming your workspace" : ""}
             {step() === "tools" ? " — checking your document tools" : ""}
-            {step() === "scan" ? " — scanning your source" : ""}
-            {step() === "imports" ? " — selecting file types to import" : ""}
+            {step() === "scan" && !scanDone() ? " — scanning your source" : ""}
+            {(step() === "imports" || (step() === "scan" && scanDone())) ? " — selecting file types to import" : ""}
             {step() === "vision" ? " — selecting OCR engine for images & scanned PDFs" : ""}
-            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : step() === "verification" ? " — verifying the import" : ""}
+            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? (props.hasVisionModel() ? " — converting docs via MarkItDown + transcribing images & scanned PDFs via Vision" : " — converting via MarkItDown") : step() === "ocr" ? " — running Tesseract on scanned PDFs" : step() === "verification" ? " — verifying the import" : ""}
             {step() === "provider" ? " — choosing your LLM provider" : ""}
             {step() === "startup" ? " — preparing your startup" : ""}
             {step() === "done" ? " — your workspace is ready" : ""}
@@ -239,11 +247,15 @@ export function OnboardingView(props: OnboardingViewProps) {
                         paddingRight={1}
                         paddingTop={0}
                         paddingBottom={0}
-                        backgroundColor={theme.backgroundPanel}
-                        onMouseOver={() => blurSourceInputs()}
+                        backgroundColor={hoveredButton() === `remove-${entry.id}` ? theme.error : theme.backgroundPanel}
+                        onMouseOver={() => {
+                          blurSourceInputs()
+                          setHoveredButton(`remove-${entry.id}`)
+                        }}
+                        onMouseOut={() => setHoveredButton(null)}
                         onMouseDown={() => deferPress(() => removeSourcePath(entry.id))}
                       >
-                        <text fg={theme.textMuted}>✕</text>
+                        <text fg={hoveredButton() === `remove-${entry.id}` ? theme.text : theme.textMuted}>✕</text>
                       </box>
                     </box>
                   )}
@@ -313,7 +325,7 @@ export function OnboardingView(props: OnboardingViewProps) {
               />
             </WizardActionRow>
           </Show>
-          <Show when={step() === "tools" || step() === "scan" || step() === "vision" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification"}>
+          <Show when={step() === "tools" || step() === "scan" || step() === "imports" || step() === "vision" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification"}>
             <WizardPanel theme={theme}>
               <Show when={step() === "tools"}>
                 <text fg={theme.textMuted}>Document processing tools</text>
@@ -347,8 +359,8 @@ export function OnboardingView(props: OnboardingViewProps) {
                   <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
                 </Show>
               </Show>
-              <Show when={step() === "scan"}>
-                <Show when={!scanDone()}>
+              <Show when={step() === "scan" || step() === "imports"}>
+                <Show when={step() === "scan" && !scanDone()}>
                   <text fg={theme.text}>{waveString(spinIdx())}</text>
                   <text fg={theme.textMuted}>{scanningFile() || "…"}</text>
                   <text fg={theme.textMuted}>Scanning {scanCount()} / {scanTotal()}</text>
@@ -357,30 +369,38 @@ export function OnboardingView(props: OnboardingViewProps) {
                     <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
                   </Show>
                 </Show>
-                <Show when={scanDone()}>
-                  <text fg={theme.textMuted}>Select file types to import</text>
-                  <ImportOptionsSelector
-                    theme={theme}
-                    options={importOptions()}
-                    selectedIndex={selectedImport()}
-                    viewportHeight={dimensions().height}
-                    formatDetail={(item) => formatBytes(item.bytes)}
-                    onSelectIndex={setSelectedImport}
-                    onToggleAll={toggleAllImports}
-                    onToggleItem={toggleImport}
-                  />
-                  <text fg={theme.textMuted}>↑↓ move · space toggle · a toggle all · enter continue</text>
+                <Show when={step() === "imports" || scanDone()}>
+                  <Show when={importOptions().length === 0} fallback={
+                    <>
+                      <text fg={theme.textMuted}>Select file types to import</text>
+                      <ImportOptionsSelector
+                        theme={theme}
+                        options={importOptions()}
+                        selectedIndex={selectedImport()}
+                        viewportHeight={dimensions().height}
+                        formatDetail={(item) => formatBytes(item.bytes)}
+                        onSelectIndex={setSelectedImport}
+                        onToggleAll={toggleAllImports}
+                        onToggleItem={toggleImport}
+                      />
+                      <text fg={theme.textMuted}>↑↓ move · space toggle · a toggle all · enter continue</text>
+                    </>
+                  }>
+                    <text fg={theme.text}>No importable files found in these folders.</text>
+                    <text fg={theme.textMuted}>Go back and pick a different source, or add files with supported types.</text>
+                  </Show>
                 </Show>
               </Show>
               <Show when={step() === "vision"}>
                 <text fg={theme.text}>Select OCR engine for images & scanned PDFs</text>
-                <text fg={theme.textMuted}>MarkItDown will use the chosen model to transcribe images into Markdown. Tesseract runs locally; vision models need network + API key.</text>
+                <text fg={theme.textMuted}>Digital PDFs extract directly. The chosen model transcribes images and scanned PDFs into Markdown. Tesseract runs locally; vision models need network + API key.</text>
                 <OcrModelSelector
                   theme={theme}
                   options={props.ocrModelOptions()}
                   selectedIndex={props.selectedOcrModelIndex()}
                   selectedId={props.selectedOcrModel()}
                   viewportHeight={dimensions().height}
+                  hint={props.ocrEngineHint()}
                   onSelectIndex={props.setSelectedOcrModelIndex}
                   onSelect={(idx) => {
                     if (idx === 1) props.openVisionPicker()
@@ -401,18 +421,16 @@ export function OnboardingView(props: OnboardingViewProps) {
                     viewportHeight={dimensions().height}
                   />
                 </Show>
-                {/* Reserved space for provider vision errors in Step 9 — pauses queue for retry */}
-                <Show when={step() === "markitdown"}>
-                  <box minHeight={3} flexDirection="column" gap={1} paddingTop={1}>
-                    <Show when={props.visionError()} fallback={<text fg={theme.textMuted}> </text>}>
-                      <box flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel} border={["left"]} borderColor={theme.error}>
-                        <text fg={theme.error} wrapMode="word">{props.visionError()}</text>
-                        <Show when={props.visionPaused()}>
-                          <text fg={theme.warning} wrapMode="word">Queue paused — pick a new model above to retry this file, or Back to abort.</text>
-                        </Show>
-                        <WizardActionButton theme={theme} label="Change vision model" primary onPress={props.onChangeVisionModel} />
-                      </box>
-                    </Show>
+                {/* Vision errors render inline (no reserved blank space — the
+                    error box appears only when there is an error). */}
+                <Show when={step() === "markitdown" && props.visionError()}>
+                  <box flexDirection="column" gap={1} paddingTop={1}>
+                    <box flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel} border={["left"]} borderColor={theme.error}>
+                      <text fg={theme.error} wrapMode="word">{props.visionError()}</text>
+                      <Show when={props.visionPaused()}>
+                        <text fg={theme.warning} wrapMode="word">Queue paused — pick a new model via the red Vision ▼ top-right to retry this file, or Back to abort.</text>
+                      </Show>
+                    </box>
                   </box>
                 </Show>
               </Show>
@@ -468,7 +486,7 @@ export function OnboardingView(props: OnboardingViewProps) {
                   onPress={handleToolAction}
                 />
               </Show>
-              <Show when={step() === "scan" && scanDone()}>
+              <Show when={(step() === "scan" && scanDone() && importOptions().length > 0) || (step() === "imports" && importOptions().length > 0)}>
                 <WizardActionButton
                   theme={theme}
                   label="Continue"
@@ -485,7 +503,19 @@ export function OnboardingView(props: OnboardingViewProps) {
                 />
               </Show>
               <Show when={step() !== "tools" && step() !== "scan" && step() !== "vision" && waitingForGate()}>
-                <WizardGateButton theme={theme} label={gateLabel()} action={() => gateAction()()} />
+                <Show when={props.gateAutoPress()} fallback={
+                  <WizardActionButton theme={theme} label={gateLabel()} primary onPress={() => gateAction()()} />
+                }>
+                  <WizardGateButton theme={theme} label={gateLabel()} action={() => gateAction()()} />
+                </Show>
+              </Show>
+              <Show when={props.backgroundAvailable()}>
+                <WizardActionButton
+                  theme={theme}
+                  label="Continue in background"
+                  onPress={() => props.onBackground()}
+                />
+                <text fg={theme.textMuted} attributes={TextAttributes.DIM}>b background · v model</text>
               </Show>
             </WizardActionRow>
           </Show>

@@ -24,14 +24,13 @@ import {
 import { OCR_MODEL_OPTIONS, type OcrModelOption } from "./onboarding-helpers";
 import { useSync } from "../../context/sync";
 import { useSDK } from "../../context/sdk";
+import { useLocal } from "../../context/local";
 import { useDialog } from "../../ui/dialog";
-import { DialogSelect } from "../../ui/dialog-select";
 import { DialogProvider } from "../../component/dialog-provider";
-import { DialogPrompt } from "../../ui/dialog-prompt";
-import {
-  createImportJob,
-  type ImportJobHandle,
-} from "../../spinosa/job-events";
+import { DialogVisionModel, isVisionProviderSelectable } from "../../component/dialog-vision";
+import { useToast } from "../../ui/toast";
+import { createVisionAuthFlow } from "../../spinosa/vision-auth-flow";
+import { useBackgroundImport, isBackgroundAvailable, detachImportToBackground } from "../../spinosa/import-background";
 import {
   prepareOnboarding,
   completeOnboarding,
@@ -40,9 +39,11 @@ import type { OnboardingContext } from "@spinosa/core/commands/onboard";
 import {
   scanAndClassifySource,
   verifyAndRecoverImport,
+  applyResumeFilter,
 } from "@spinosa/core/import/pipeline";
 import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation";
 import { runImportWorkflow } from "@spinosa/core/import/import-workflow";
+import { createVisionTranscriber } from "../../spinosa/vision-transcribe";
 import {
   buildStartupChatPrompt,
   formatStartupProgressMessage,
@@ -58,7 +59,6 @@ import {
   logTool,
   logResult,
   logError,
-  logGate,
   persistImportWizardLogLines,
 } from "../../spinosa/log";
 import { useExit } from "../../context/exit";
@@ -92,6 +92,7 @@ import {
   createWorkflowGuard,
   deferPress,
   delay,
+  formatImportProgressStatus,
   generateScanLines,
   ImportOptionsSelector,
   nextFocusedSourceIndexForAppend,
@@ -119,6 +120,8 @@ import {
   formatBytes,
   initialToolChecks,
   mergeImportOptions,
+  OCR_ENGINE_HINT_LINE,
+  onlyLocalOcrMissing,
   toolActionLabel as resolveToolActionLabel,
   toolCheckResults,
   toolChecksReady,
@@ -134,12 +137,10 @@ import {
 import { scanOnboardingSources } from "./onboarding-scan";
 import { prepareOnboardingWorkspace } from "./onboarding-workspace";
 import {
-  applyImportProgressStatus,
   countImportProgress,
   formatImportDetailLogHint,
   importOutcomeAccentKey,
   importOutcomeHeading,
-  seedImportQueue,
   shouldShowImportDetailLogHint,
   type ImportFileProgressItem,
 } from "../../spinosa/import-progress-ui";
@@ -190,12 +191,12 @@ let nextSourceId = 1;
 const CLI_OPTIONS: CliOption[] = [
   {
     value: "spinosa",
-    label: "Spinosa",
+    label: "Spinosa TUI",
     description: "Open the Spinosa TUI with the startup prompt ready.",
   },
   {
     value: "opencode",
-    label: "Spinosa",
+    label: "Spinosa CLI",
     description: "Run the Spinosa CLI with the startup prompt.",
   },
   {
@@ -251,134 +252,7 @@ const CLI_OPTIONS: CliOption[] = [
 ];
 
 function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: string) => void }) {
-  // Reuse the same data + filtering + sorting as normal /model (DialogModel) so vision labeling is identical.
-  const sync = useSync()
-  const [providerId, setProviderId] = createSignal<string | null>(null)
-  // All providers as shown in /model (DialogModel uses sync.data.provider sorted)
-  const allProviders = createMemo(() => {
-    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, unknown> }> })?.provider ?? []
-    const next = (sync.data as unknown as { provider_next?: { all?: Array<{ id: string; name: string }> } })?.provider_next?.all ?? []
-    const merged = new Map<string, { id: string; name: string; models: Record<string, unknown> }>()
-    for (const p of providers) merged.set(p.id, { id: p.id, name: p.name, models: p.models ?? {} as Record<string, unknown> })
-    for (const p of next) if (!merged.has(p.id)) merged.set(p.id, { id: p.id, name: p.name, models: {} as Record<string, unknown> })
-    if (merged.size === 0) {
-      // Fallback when catalog not yet loaded — ensure dialog never empty
-      return [
-        { id: "openrouter", name: "OpenRouter", models: {} as Record<string, unknown> },
-        { id: "openai", name: "OpenAI", models: {} as Record<string, unknown> },
-        { id: "anthropic", name: "Anthropic", models: {} as Record<string, unknown> },
-        { id: "google", name: "Google", models: {} as Record<string, unknown> },
-      ]
-    }
-    return Array.from(merged.values())
-  })
-  const providersWithVision = createMemo(() => {
-    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; status?: string }> }> })?.provider ?? []
-    const vision = providers.filter((p) => Object.values(p.models ?? {}).some((m) => {
-      const input = (m as { capabilities?: { input?: string[] }; modalities?: { input?: string[] } }).capabilities?.input ?? (m as { modalities?: { input?: string[] } }).modalities?.input ?? (m as { input?: string[] }).input
-      return Array.isArray(input) && input.includes("image") && (m as { status?: string }).status !== "deprecated"
-    }))
-    if (vision.length > 0) return vision
-    // Fallback when catalog not yet loaded or no vision flagged — show known vision providers
-    const all = allProviders()
-    const withVisionFallback = all.filter((p) => ["openrouter", "openai", "anthropic", "google"].includes(p.id))
-    return withVisionFallback.length > 0 ? withVisionFallback : all.slice(0, 4)
-  })
-  const modelsForProvider = createMemo(() => {
-    const pid = providerId()
-    if (!pid) return []
-    const provider = (sync.data as unknown as { provider?: Array<{ id: string; models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }> })?.provider?.find((p) => p.id === pid)
-    let raw = provider ? Object.entries(provider.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated") : []
-    const mapToVision = (entries: typeof raw) => entries.map(([modelId, info]) => {
-      const input = (info as { capabilities?: { input?: string[] }; modalities?: { input?: string[] } }).capabilities?.input ?? (info as { modalities?: { input?: string[] } }).modalities?.input ?? (info as { input?: string[] }).input
-      const isVision = Array.isArray(input) && input.includes("image")
-      return {
-        providerId: pid,
-        modelId,
-        title: (info as { name?: string }).name ?? modelId,
-        description: (info as { cost?: { input?: number } }).cost?.input === 0 ? "Vision · Free" : "Vision",
-        isVision,
-      }
-    }).filter((m) => m.isVision).map(({ providerId, modelId, title, description }) => ({ providerId, modelId, title, description }))
-    let vision = mapToVision(raw)
-    // Fallback to cached models-dev file when sync has no vision (not branched or text-only) — load full catalog for that provider
-    if (vision.length === 0) {
-      const home = process.env.HOME ?? homedir()
-      const cachePaths = [
-        `${home}/.cache/spinosa/models.json`,
-        `${home}/.cache/opencode/models.json`,
-      ]
-      for (const cp of cachePaths) {
-        try {
-          if (!existsSync(cp)) continue
-          const txt = readFileSync(cp, "utf-8")
-          const data = JSON.parse(txt) as Record<string, { models: Record<string, { name?: string; status?: string; cost?: { input?: number }; capabilities?: { input?: string[] }; modalities?: { input?: string[] }; input?: string[]; attachment?: boolean }> }>
-          const prov = data[pid]
-          if (prov) {
-            raw = Object.entries(prov.models ?? {}).filter(([_, info]) => (info as { status?: string }).status !== "deprecated")
-            vision = mapToVision(raw)
-            if (vision.length > 0) break
-          }
-        } catch {}
-      }
-    }
-    if (vision.length === 0) {
-      // Last resort static free vision for openrouter
-      if (pid === "openrouter") {
-        return [
-          { providerId: pid, modelId: "qwen/qwen2.5-vl-32b-instruct:free", title: "Qwen 2.5 VL 32B (free)", description: "Vision · Free" },
-          { providerId: pid, modelId: "google/gemini-flash-1.5-8b:free", title: "Gemini Flash 1.5 8B (free)", description: "Vision · Free" },
-        ]
-      }
-      return []
-    }
-    return vision
-  })
-  const providerOptions = createMemo(() => {
-    const vision = providersWithVision()
-    const list = vision.length > 0 ? vision : allProviders().filter((p) => Object.keys((p as { models?: Record<string, unknown> }).models ?? {}).length > 0 || (p as { id: string }).id === "openrouter")
-    const displayBase = list.length > 0 ? list : allProviders().slice(0, 8)
-    // Static fallback when sync not yet loaded or no providers — ensures dialog never empty
-    const fallback = displayBase.length > 0 ? displayBase : [
-      { id: "openrouter", name: "OpenRouter", models: {} as Record<string, unknown> },
-      { id: "openai", name: "OpenAI", models: {} as Record<string, unknown> },
-      { id: "anthropic", name: "Anthropic", models: {} as Record<string, unknown> },
-      { id: "google", name: "Google", models: {} as Record<string, unknown> },
-    ]
-    return fallback.map((p) => ({
-      title: (p as { name: string }).name,
-      value: (p as { id: string }).id,
-      description: (p as { id: string }).id,
-      category: vision.length > 0 ? "Providers with vision" : "Providers",
-      onSelect() {
-        setProviderId((p as { id: string }).id)
-      },
-    }))
-  })
-  const modelOptions = createMemo(() =>
-    modelsForProvider().map((m) => ({
-      title: m.title,
-      value: m.modelId,
-      description: m.description,
-      category: providerId() ?? undefined,
-      onSelect() {
-        props.onPicked(m.providerId, m.modelId)
-      },
-    }))
-  )
-  return (
-    <Show when={providerId() === null} fallback={
-      <DialogSelect
-        title={`Select vision model — ${providerId()}`}
-        options={modelOptions()}
-      />
-    }>
-      <DialogSelect
-        title="Select vision provider"
-        options={providerOptions()}
-      />
-    </Show>
-  )
+  return <DialogVisionModel onPicked={props.onPicked} />
 }
 
 export function Onboarding() {
@@ -421,46 +295,72 @@ export function Onboarding() {
   const [selectedOcrModel, setSelectedOcrModel] = createSignal("tesseract-local");
   const [selectedOcrModelIndex, setSelectedOcrModelIndex] = createSignal(0);
   const sync = useSync();
-  // Dynamic vision options: tesseract + none + provider vision models from catalog (input includes "image")
-  const ocrVisionOptionsFromProviders = createMemo(() => {
-    const providers = (sync.data as unknown as { provider?: Array<{ id: string; name: string; models: Record<string, { name?: string; input?: string[]; capabilities?: { input?: string[] }; status?: string; cost?: { input?: number }; release_date?: string }> }> })?.provider ?? []
-    const vision: OcrModelOption[] = []
-    for (const p of providers) {
-      for (const [modelId, info] of Object.entries(p.models ?? {})) {
-        if ((info as { status?: string }).status === "deprecated") continue
-        const input = (info as { capabilities?: { input?: string[] } }).capabilities?.input ?? (info as { input?: string[] }).input
-        const isVision = Array.isArray(input) && input.includes("image")
-        if (!isVision) continue
-        // Prefer free openrouter vision models, but show all vision models (user may have key for paid)
-        const isFree = (info as { cost?: { input?: number } }).cost?.input === 0
-        vision.push({
-          id: `${p.id}/${modelId}`,
-          label: `${p.name} · ${info.name ?? modelId}${isFree ? " (free)" : ""}`,
-          detail: `Vision · ${p.id}/${modelId}${isFree ? " · free" : ""}`,
-          kind: "vision",
-          modelId,
-          provider: p.id,
-          vision: true,
-          cost: isFree ? "free" : "paid",
-          requiresKey: p.id === "openrouter" ? "OPENROUTER_API_KEY" : undefined,
-        })
+  const local = useLocal();
+  const toast = useToast();
+  // Background-capable import run owner. Survives wizard unmount so the run
+  // can detach to the workspace home; wizard + home monitor are views over it.
+  const bg = useBackgroundImport();
+
+  // Mirror service run state into wizard display signals while a run owns
+  // them. Local appends before startProcessing are untouched (service idle).
+  createEffect(() => {
+    if (!bg.active()) return;
+    setProcessingStatus(bg.phaseLabel());
+    setProcessingFile(bg.currentFile());
+    setVisionError(bg.visionError());
+    setVisionPaused(bg.snapshot().visionPause !== undefined);
+    setSelectedOcrModel(bg.modelId());
+    const files = bg.files();
+    setProgressFiles(files);
+    const counts = countImportProgress(files);
+    setProgTotal(files.length > 0 ? files.length : 1);
+    setProgCurrent(counts.succeeded + counts.failed);
+    setLogLines(bg.logLines());
+    // Phase gates: show the wizard Continue UI unless detached (service
+    // auto-passes gates in background). Launch gate ("Go to the workspace")
+    // is set after done, so it never collides here.
+    if (!bg.done() && !bg.background()) {
+      const gate = bg.pendingGate();
+      if (gate) {
+        setGateLabel(gate.label);
+        setGateAction(() => () => {
+          logAction("gate-click", gate.label);
+          bg.resolveGate(true);
+        });
+        setGateAutoPress(true);
+        setWaitingForGate(true);
+      } else {
+        setWaitingForGate(false);
       }
     }
-    // Sort free first, then by provider/name
-    vision.sort((a, b) => (a.cost === "free" && b.cost !== "free" ? -1 : a.cost !== "free" && b.cost === "free" ? 1 : a.label.localeCompare(b.label)))
-    // Limit to 6 vision options to keep selector short
-    return vision.slice(0, 6)
-  })
+  });
+
+  // Slow phases only: detach the run and open the workspace home. Same
+  // button slot as the phase actions, different copy + function. When the
+  // queue already finished, the normal "Go to the workspace" applies.
+  const detachToBackground = () => {
+    detachImportToBackground(bg, {
+      from: "onboarding",
+      notify: (message) => toast.show({ variant: "info", message }),
+      navigateHome: (ws) => {
+        const target = ws ?? createdWorkspace();
+        if (target) void spinosa.openWorkspace(target, { route: { type: "global" } });
+        else navigate({ type: "global" });
+      },
+    });
+  };
+  const backgroundAvailable = () => isBackgroundAvailable(bg);
   const ocrModelOptions = createMemo(() => {
     const base = [...OCR_MODEL_OPTIONS] as OcrModelOption[]
     const picked = selectedOcrModel()
     if (picked.includes("/")) {
       const [prov, ...rest] = picked.split("/")
       const model = rest.join("/")
-      // Update the Vision button (index 1) to show the chosen model — keep 3 buttons total
+      // Update the Vision button (index 1) to show the chosen model — keep 3 buttons total.
+      // The name stays visible here and top-right; only gate/status copy stays generic.
       base[1] = {
         ...base[1]!,
-        label: `Vision: ${picked} ✓`,
+        label: `Vision Model: ${picked} ✓`,
         detail: `Selected — ${prov}/${model} — press space to select, Continue to re-choose vision model`,
         id: "vision:provider-picker",
         kind: "vision",
@@ -473,7 +373,10 @@ export function Onboarding() {
   })
 
   // Selector UX: focused index (hover/keyboard) vs chosen id (●). Mirrors ImportOptionsSelector pattern.
+  let hasRestoredVision = false
+  let hasUserInteracted = false
   const selectOcrOption = (index: number) => {
+    hasUserInteracted = true
     const opts = ocrModelOptions()
     const opt = opts[index]
     if (!opt) return
@@ -483,235 +386,118 @@ export function Onboarding() {
     setSelectedOcrModel(opt.id)
   }
 
-  // Vision picker: clickable middle button (and reclick) — opens provider/model dialog, then user presses Continue
-  // Aligns with /model auth: supports OAuth (openai ChatGPT, anthropic) + API key (openrouter, etc.)
-  // Only marks vision as selected (●) when a concrete provider/model is actually picked — esc keeps previous choice
+  // Persist vision default: tesseract until user picks a vision model, thereafter that vision is default
+  // Reads from same KV as chat (vision-model.json) — single source of truth via local.vision.
+  // Only runs once on initial load; user can still pick tesseract/"don't OCR" afterwards
+  createEffect(() => {
+    if (hasRestoredVision) return
+    if (!local.vision.ready) return
+    // Wait for provider catalog to hydrate — otherwise isValid/auth checks are premature
+    if (sync.data.provider.length === 0 && sync.data.provider_next.connected.length === 0) return
+    if (hasUserInteracted) {
+      hasRestoredVision = true
+      return
+    }
+    const last = local.vision.current()
+    if (!last) {
+      hasRestoredVision = true
+      return
+    }
+    if (selectedOcrModel() !== "tesseract-local") {
+      hasRestoredVision = true
+      return
+    }
+    const id = `${last.providerID}/${last.modelID}`
+    // Guard against stale/purged vision model – fallback to tesseract with toast
+    if (!local.vision.isValid()) {
+      logAction("vision", `Stored vision ${id} no longer valid – staying on Tesseract`)
+      hasRestoredVision = true
+      return
+    }
+    // Don't restore a vision model whose provider isn't authenticated/available — would show openai as selected without a key
+    const isProviderAvailable = sync.data.provider.some((p) => p.id === last.providerID)
+    const isConnected = sync.data.provider_next.connected.includes(last.providerID)
+    if (!isProviderAvailable && !isConnected) {
+      logAction("vision", `Stored vision ${id} provider not authenticated – staying on Tesseract`)
+      hasRestoredVision = true
+      return
+    }
+    // ChatGPT OAuth lacks api.responses.write. Provider.source identifies the active credential
+    // synchronously with the connected provider list, unlike the later auth-methods hydration.
+    const providerInfo = sync.data.provider.find((provider) => provider.id === last.providerID)
+    if (providerInfo && !isVisionProviderSelectable(providerInfo)) {
+      logAction("vision", `Stored vision ${id} is openai oauth without api.responses.write – staying on Tesseract, use openrouter for vision`)
+      hasRestoredVision = true
+      return
+    }
+    hasRestoredVision = true
+    setSelectedOcrModel(id)
+    setSelectedOcrModelIndex(1)
+    logAction("vision", `Restored vision default ${id} from previous pick`)
+  })
+  // Whenever a concrete vision model is selected, persist it as new default and also to chat recents
+  createEffect(
+    on(selectedOcrModel, (id) => {
+      if (!id.includes("/")) return
+      const [prov, ...rest] = id.split("/")
+      const model = rest.join("/")
+      if (!prov || !model) return
+      try {
+        local.vision.set({ providerID: prov, modelID: model })
+      } catch {}
+      try {
+        local.model.set({ providerID: prov, modelID: model }, { recent: true })
+      } catch {}
+    }),
+  )
+
+  // True when a concrete provider/model is chosen (selectedOcrModel holds "provider/model").
+  // The visible label stays generic ("Vision Model") per copy, so never gate UI on the label text.
+  const hasVisionModel = () => selectedOcrModel().includes("/")
+
+  // Shared vision provider/model auth flow (also used by the background
+  // import monitor). Order: select → auth if needed → confirm.
+  const visionAuth = createVisionAuthFlow({ dialog, sync, sdk, toast })
+  const { isVisionProviderAvailable, ensureProviderAuth, visionCredentialNote } = visionAuth
+
+  // Vision picker order: 1. select model → 2. auth if needed → 3. confirm.
+  // No dummy probes in production: the first real file transcription is the
+  // validation (auth failures pause with re-auth, empty results skip).
   const openVisionPicker = () => {
+    hasUserInteracted = true
     const prevChosenId = selectedOcrModel()
     const prevFocused = selectedOcrModelIndex()
     let didPick = false
+    const restorePrev = () => {
+      const opts = ocrModelOptions()
+      const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
+      if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
+      else setSelectedOcrModelIndex(prevFocused)
+    }
+
     logAction("vision", "Opening provider/model picker for vision")
     dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
       const id = `${providerId}/${modelId}`
-      const requiresKey = providerId === "openrouter" ? "OPENROUTER_API_KEY" : providerId === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${providerId.toUpperCase()}_API_KEY`
-      const hasEnvKey = Boolean(process.env[requiresKey] ?? (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY" ? process.env.GEMINI_API_KEY : undefined))
-      const isProviderAvailable = sync.data.provider.some((p) => p.id === providerId)
-      const isConnected = sync.data.provider_next.connected.includes(providerId)
-      const providerAuth = (sync.data as unknown as { provider_auth?: Record<string, Array<{ type: string }>> }).provider_auth?.[providerId]
-      const hasOauth = providerAuth?.some((m) => m.type === "oauth")
-      // Already configured via env, stored API key (provider available), or OAuth — no prompt needed (matches /model)
-      if (!hasEnvKey && !isProviderAvailable && !isConnected) {
-        if (hasOauth) {
-          const pendingId = id
-          const methods = providerAuth as Array<{ type: string; label: string; prompts?: Array<{ key: string; message: string; placeholder?: string; type?: string; options?: Array<{ label: string; value: string; hint?: string }>; when?: { key: string; op: string; value: string } }> }>
-          let methodIndex: number | null = 0
-          if (methods.length > 1) {
-            methodIndex = await new Promise<number | null>((resolve) => {
-              dialog.replace(
-                () => (
-                  <DialogSelect
-                    title="Select auth method"
-                    options={methods.map((x, idx) => ({ title: x.label, value: idx }))}
-                    onSelect={(option) => resolve(option.value as number)}
-                  />
-                ),
-                () => resolve(null),
-              )
-            })
-            if (methodIndex == null) {
-              logAction("vision", `Vision ${pendingId} auth method selection cancelled — keeping ${prevChosenId}`)
-              const opts = ocrModelOptions()
-              const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
-              if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
-              else setSelectedOcrModelIndex(prevFocused)
-              return
-            }
-          }
-          const method = methods[methodIndex!]
-          if (method.type === "oauth") {
-            let inputs: Record<string, string> | undefined
-            const prompts = (method as any).prompts as Array<any> | undefined
-            if (prompts?.length) {
-              inputs = {}
-              for (const prompt of prompts) {
-                if (prompt.when) {
-                  const v = inputs[prompt.when.key]
-                  if (v === undefined) continue
-                  const matches = prompt.when.op === "eq" ? v === prompt.when.value : v !== prompt.when.value
-                  if (!matches) continue
-                }
-                if (prompt.type === "select") {
-                  const val = await new Promise<string | null>((resolve) => {
-                    dialog.replace(
-                      () => (
-                        <DialogSelect
-                          title={prompt.message}
-                          options={prompt.options.map((x: any) => ({ title: x.label, value: x.value, description: x.hint }))}
-                          onSelect={(option) => resolve(option.value as string)}
-                        />
-                      ),
-                      () => resolve(null),
-                    )
-                  })
-                  if (val == null) {
-                    logAction("vision", `Vision ${pendingId} oauth prompts cancelled`)
-                    const opts = ocrModelOptions()
-                    const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
-                    if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
-                    return
-                  }
-                  inputs[prompt.key] = val
-                  continue
-                }
-                const val = await new Promise<string | null>((resolve) => {
-                  dialog.replace(
-                    () => (
-                      <DialogPrompt title={prompt.message} placeholder={prompt.placeholder} onConfirm={(v) => resolve(v)} />
-                    ),
-                    () => resolve(null),
-                  )
-                })
-                if (val == null) {
-                  logAction("vision", `Vision ${pendingId} oauth prompts cancelled`)
-                  const opts = ocrModelOptions()
-                  const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
-                  if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
-                  return
-                }
-                inputs[prompt.key] = val
-              }
-            }
-            const result = await sdk.client.provider.oauth.authorize({ providerID: providerId, method: methodIndex!, inputs })
-            if ((result as any).error) {
-              logAction("vision", `Vision ${pendingId} oauth failed: ${JSON.stringify((result as any).error)}`)
-              dialog.clear()
-              return
-            }
-            const data = (result as any).data as { method: string; url: string; instructions: string } | undefined
-            if (data?.method === "code") {
-              dialog.replace(() => (
-                <DialogPrompt
-                  title={method.label}
-                  placeholder="Authorization code"
-                  onConfirm={async (value) => {
-                    const { error } = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex!, code: value })
-                    if (!error) {
-                      await sync.refreshProviders()
-                      didPick = true
-                      setSelectedOcrModel(pendingId)
-                      setSelectedOcrModelIndex(1)
-                      logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change (auto after OAuth)`)
-                    } else {
-                      logAction("vision", `Vision ${pendingId} oauth code invalid`)
-                    }
-                    dialog.clear()
-                  }}
-                  description={() => (
-                    <box gap={1}>
-                      <text fg={theme.textMuted}>{data.instructions}</text>
-                      <text fg={theme.primary}>{data.url}</text>
-                    </box>
-                  )}
-                />
-              ))
-              return
-            }
-            if (data?.method === "auto") {
-              dialog.replace(() => (
-                <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-                  <box flexDirection="row" justifyContent="space-between">
-                    <text fg={theme.text} attributes={TextAttributes.BOLD}>{method.label}</text>
-                    <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>esc</text>
-                  </box>
-                  <box gap={1}>
-                    <text fg={theme.primary}>{data.url}</text>
-                    <text fg={theme.textMuted}>{data.instructions}</text>
-                  </box>
-                  <text fg={theme.textMuted}>Waiting for authorization...</text>
-                </box>
-              ))
-              void (async () => {
-                const cb = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex! })
-                if ((cb as any).error) {
-                  logAction("vision", `Vision ${pendingId} oauth auto failed`)
-                  dialog.clear()
-                  return
-                }
-                await sync.refreshProviders()
-                didPick = true
-                setSelectedOcrModel(pendingId)
-                setSelectedOcrModelIndex(1)
-                logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change (auto after OAuth)`)
-                dialog.clear()
-              })()
-              return
-            }
-            // Fallback: treat as connected
-            await sync.refreshProviders()
-            didPick = true
-            setSelectedOcrModel(pendingId)
-            setSelectedOcrModelIndex(1)
-            logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change (auto after OAuth)`)
-            dialog.clear()
-            return
-          } else {
-            // API key method for OAuth-capable provider — prompt for key
-            logAction("vision", `Vision ${pendingId} needs ${requiresKey} — prompting`)
-            const key = await new Promise<string | null>((resolve) => {
-              dialog.replace(
-                () => (
-                  <DialogPrompt
-                    title={`${providerId} API key`}
-                    placeholder="Paste API key"
-                    onConfirm={(v) => resolve(v)}
-                  />
-                ),
-                () => resolve(null),
-              )
-            })
-            if (!key) {
-              logAction("vision", `Vision ${pendingId} cancelled — no key entered`)
-              dialog.clear()
-              return
-            }
-            process.env[requiresKey] = key
-            if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
-            try {
-              await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
-              await sync.refreshProviders()
-            } catch {}
-            logAction("vision", `Vision ${pendingId} key saved for ${providerId}`)
-            didPick = true
-            setSelectedOcrModel(pendingId)
-            setSelectedOcrModelIndex(1)
-            logAction("vision", `Picked vision model ${pendingId} — press Continue or reclick to change`)
-            dialog.clear()
-            return
-          }
-        }
-        // API-key-only provider (openrouter) — prompt for key
-        logAction("vision", `Vision ${id} needs ${requiresKey} — prompting`)
-        const key = await new Promise<string | null>((resolve) => {
-          dialog.replace(() => (
-            <DialogPrompt
-              title={`${providerId} API key`}
-              placeholder="Paste API key"
-              onConfirm={(v) => resolve(v)}
-            />
-          ), () => resolve(null))
-        })
-        if (!key) {
-          logAction("vision", `Vision ${id} cancelled — no key entered`)
-          dialog.clear()
-          return
-        }
-        process.env[requiresKey] = key
-        if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
-        try {
-          await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
-          await sync.refreshProviders()
-        } catch {}
-        logAction("vision", `Vision ${id} key saved for ${providerId}`)
+      const authed = isVisionProviderAvailable(providerId)
+        ? true
+        : await ensureProviderAuth(providerId).catch((e) => {
+            logAction("vision", `Vision auth sequence failed for ${id}: ${e instanceof Error ? e.message : String(e)}`)
+            return false
+          })
+      if (!authed) {
+        logAction("vision", `Vision ${id} auth cancelled — keeping ${prevChosenId}`)
+        restorePrev()
+        dialog.clear()
+        return
+      }
+      // No dummy probe in production: auth is done, the first real file
+      // transcription is the validation (auth failures pause with re-auth,
+      // empty results skip — see onVisionFailure).
+      if (dialog.stack.length === 0) {
+        // Dismissed during auth: never confirm behind their back.
+        logAction("vision", `Vision auth dismissed for ${id} — keeping ${prevChosenId}`)
+        restorePrev()
+        return
       }
       didPick = true
       setSelectedOcrModel(id)
@@ -719,15 +505,16 @@ export function Onboarding() {
       logAction("vision", `Picked vision model ${id} — press Continue or reclick to change`)
       dialog.clear()
     }} />, () => {
+      if (visionAuth.wasSuppressedCancel()) return
       if (!didPick) {
-        const opts = ocrModelOptions()
-        const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
-        if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
-        else setSelectedOcrModelIndex(prevFocused)
+        restorePrev()
         logAction("vision", `Vision picker cancelled — keeping ${prevChosenId}`)
       }
     })
   }
+  // Kernel vision transcribe callback — sends only provider/model/prompt/mime+base64, never API keys
+  const transcribeVision = createVisionTranscriber(sdk)
+
   const [focusedSource, setFocusedSource] = createSignal(0);
   const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>();
   const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([]);
@@ -746,7 +533,6 @@ export function Onboarding() {
   const [processingFile, setProcessingFile] = createSignal("");
   const [visionError, setVisionError] = createSignal<string | undefined>(undefined);
   const [visionPaused, setVisionPaused] = createSignal(false);
-  let visionFailedResolve: ((action: "retry" | "skip" | "abort") => void) | undefined;
   const [progressFiles, setProgressFiles] = createSignal<
     ImportFileProgressItem[]
   >([]);
@@ -761,32 +547,6 @@ export function Onboarding() {
     if (key === "warning") return theme.warning;
     return theme.success;
   });
-  const updateProgressFileStatus = (
-    relPath: string,
-    status: ImportFileProgressItem["status"],
-  ) => {
-    setProgressFiles((previous) => {
-      const next = applyImportProgressStatus(previous, relPath, status);
-      const counts = countImportProgress(next);
-      setProgTotal(next.length > 0 ? next.length : 1);
-      setProgCurrent(counts.succeeded + counts.failed);
-      return next;
-    });
-  };
-  const appendProgressQueue = (rels: string[]) => {
-    if (rels.length === 0) return;
-    setProgressFiles((previous) => {
-      const known = new Set(previous.map((item) => item.rel));
-      const next = [
-        ...previous,
-        ...seedImportQueue(rels).filter((item) => !known.has(item.rel)),
-      ];
-      const counts = countImportProgress(next);
-      setProgTotal(next.length > 0 ? next.length : 1);
-      setProgCurrent(counts.succeeded + counts.failed);
-      return next;
-    });
-  };
   const [scanningFile, setScanningFile] = createSignal("");
   const [scanCount, setScanCount] = createSignal(0);
   const [processingStatus, setProcessingStatus] = createSignal("");
@@ -825,8 +585,11 @@ export function Onboarding() {
   const [gateLabel, setGateLabel] = createSignal("");
   const [gateAction, setGateAction] = createSignal<() => void>(() => {});
   const [waitingForGate, setWaitingForGate] = createSignal(false);
+  // Phase gates auto-press after 30s; the terminal "Go to the workspace"
+  // gate must NOT (launching without consent). View picks the component.
+  const [gateAutoPress, setGateAutoPress] = createSignal(true);
+  // Pre-run cancellation flag for scan phase (the run itself is service-owned).
   let abortProcessing = false;
-  let gateResolve: (() => void) | undefined;
   let sourceInput: TextareaRenderable | undefined;
   let pendingPaths: string[] | undefined =
     resumeSourcePath && resumeSourceAccepted ? [resumeSourcePath] : undefined;
@@ -914,7 +677,6 @@ export function Onboarding() {
 
   const workflow = createWorkflowGuard();
   const activeWork = createActiveWorkTracker();
-  let activeJob: ImportJobHandle | undefined;
   const pathSnapshot = new Map<number, string>(
     resumeSourceLocation ? [[0, resumeSourceLocation]] : [],
   );
@@ -991,14 +753,11 @@ export function Onboarding() {
   const stopActiveWork = () => {
     setStopping(true);
     spinOn();
-    if (gateResolve) {
-      gateResolve();
-      gateResolve = undefined;
-    }
+    // The background service owns gates/pauses now; Back aborts the run
+    // unless it was explicitly detached to the home monitor.
+    if (bg.active() && !bg.background()) bg.cancel();
     workflow.bump();
     abortProcessing = true;
-    activeJob?.cancel();
-    activeJob = undefined;
     setBusy(false);
     setWaitingForGate(false);
   };
@@ -1045,9 +804,14 @@ export function Onboarding() {
       setStep("path");
       return;
     }
-    if (from === "vision") {
+    if (from === "imports") {
       logAction("back", `from ${from} to scan`);
       setStep("scan");
+      return;
+    }
+    if (from === "vision") {
+      logAction("back", `from ${from} to imports`);
+      setStep("imports");
       return;
     }
     if (
@@ -1062,13 +826,10 @@ export function Onboarding() {
       return;
     }
     if (from === "provider") {
-      setGateLabel("Choose provider");
-      setGateAction(() => () => {
-        setWaitingForGate(false);
-        setStep("provider");
-      });
-      setWaitingForGate(true);
-      setStep("verification");
+      // Back out of provider returns straight to provider selection — no
+      // fake gate (a gate here would sit on a 30s auto-press timer).
+      logAction("back", "from provider to provider");
+      setStep("provider");
       return;
     }
     if (from === "startup") {
@@ -1161,24 +922,6 @@ export function Onboarding() {
     return `${icon} ${check.label} — ${check.status}${detail}`;
   };
 
-  const generateToolCheckLines = (): ToolCheckResult[] => [
-    {
-      label: "Tesseract OCR",
-      status: "checking",
-      detail: "Scanned PDFs (ita+eng+fra, 300dpi)",
-    },
-    {
-      label: "MarkItDown",
-      status: "checking",
-      detail: "Office docs, EPUB, HTML, text PDFs",
-    },
-    {
-      label: "PDF.js",
-      status: "checking",
-      detail: "PDF text extraction and page rendering",
-    },
-  ];
-
   const toolActionDeps = {
     setToolChecks,
     setStep,
@@ -1201,7 +944,7 @@ export function Onboarding() {
     const toolsReady = checks.every(
       (t) => t.status === "available" || t.status === "unsupported",
     );
-    if (needsRepair) {
+    if (needsRepair && !onlyLocalOcrMissing(checks)) {
       logAction(
         "repair-tools",
         `${checks.filter((t) => t.status === "missing").length} tools missing`,
@@ -1219,8 +962,10 @@ export function Onboarding() {
           setBusy(false)
         }
       })
-    } else if (toolsReady) {
-      logAction("start-scan", "All tools ready");
+    } else if (toolsReady || onlyLocalOcrMissing(checks)) {
+      // Tesseract-only absence never blocks: the OCR-engine choice comes
+      // later, and vision/none flows never touch local OCR.
+      logAction("start-scan", onlyLocalOcrMissing(checks) ? "Continuing without local OCR" : "All tools ready");
       void startScan();
     }
   };
@@ -1288,6 +1033,11 @@ export function Onboarding() {
   };
 
   const continueFromImports = () => {
+    if (importOptions().length === 0) {
+      // Empty scan: stay put with guidance instead of dead-ending to error.
+      appendLogLine("No importable files found — go back and pick a different source.");
+      return;
+    }
     if (selectedExtensions().length === 0) {
       appendLogLine("Select at least one file type to continue.");
       logError("continueFromImports", "No file types selected");
@@ -1328,43 +1078,10 @@ export function Onboarding() {
       void activeWork.run(startProcessing)
       return
     }
-    // If vision model needs API key and provider not yet branched/connected, prompt for key
-    if (chosenOpt?.requiresKey) {
-      const keyEnv = chosenOpt.requiresKey
-      const hasKey = Boolean(process.env[keyEnv])
-      // Check if provider is already in catalog (branched)
-      const providerBranched = sync.data.provider.some((p) => p.id === chosenOpt.provider)
-      if (!hasKey) {
-        if (!providerBranched) {
-          // Open provider connect dialog — same as /model → Connect provider
-          logAction("vision", `Provider ${chosenOpt.provider} not branched — opening connect dialog`);
-          // Keep vision selection but let user connect first
-          dialog.replace(() => <DialogProvider />)
-          appendLogLine(`Connect ${chosenOpt.provider} to use ${chosenOpt.label} — set ${keyEnv} or pick Tesseract.`)
-          return
-        }
-        // Provider branched but key missing (e.g. env not set) — warn and stay
-        appendLogLine(`API key ${keyEnv} missing for ${chosenOpt.label} — set ${keyEnv} in env or choose Tesseract.`)
-      }
-    }
     setSelectedOcrModel(chosen);
     logAction("continue", `Vision → Processing (ocrModel=${chosen})`);
     void activeWork.run(startProcessing);
   };
-
-  const gate = (label = "Continue") =>
-    new Promise<void>((resolve) => {
-      gateResolve = resolve;
-      logGate(label);
-      setGateLabel(label);
-      setGateAction(() => () => {
-        logAction("gate-click", label);
-        setWaitingForGate(false);
-        gateResolve = undefined;
-        resolve();
-      });
-      setWaitingForGate(true);
-    });
 
   const startProcessing = async () => {
     if (busy()) return;
@@ -1386,11 +1103,8 @@ export function Onboarding() {
     setProgressFiles([]);
     setVerifyStatus("");
     setProcessingStatus("Starting...");
-    abortProcessing = false;
-    const generation = workflow.bump();
-    gateResolve = undefined;
-    spinOn();
-    await delay(200);
+    // Hand-off happens after the workspace path is planned (service needs
+    // it for the home chip + detach navigation). See below.
     const extensions = selectedExtensions().join(",");
     const primarySource = resolved[0]!;
     const plannedWorkspace =
@@ -1398,49 +1112,32 @@ export function Onboarding() {
       preview()?.workspacePath ??
       suggestWorkspacePath(primarySource);
     if (plannedWorkspace) setCreatedWorkspace(plannedWorkspace);
-    const job = createImportJob({
-      kind: "import",
+    // Hand the run to the background-capable service (single-flight: a
+    // second start while one is active is refused).
+    const started = bg.start({
+      kind: "onboarding",
       title: "Onboarding import",
-      directory: plannedWorkspace ?? sdk.directory,
+      directory: sdk.directory,
+      workspacePath: plannedWorkspace,
+      modelId: selectedOcrModel(),
       publish: sdk.publishJobEvent,
       localEmit: (event) => sdk.event.emit("event", event),
+      credentialNote: (providerId) => visionCredentialNote(providerId),
     });
-    activeJob = job;
-    const shouldAbort = () =>
-      abortProcessing || !workflow.active(generation) || job.shouldAbort();
-    job.start();
+    if (!started) {
+      appendLogLine("An import is already running — finish or cancel it first.");
+      setBusy(false);
+      return;
+    }
+    const { job, shouldAbort } = started;
+    // (service owns the job from here; local `job` alias keeps the tail readable)
     const sharedProg = job.prog;
-    sharedProg.on((e) => {
-      if (e.relPath && e.status === "processing") setProcessingFile(e.relPath);
-      else if (e.relPath && (e.status === "done" || e.status === "failed" || e.status === "error")) {
-        // Clear stale processing label when file reaches terminal state;
-        // otherwise `fileName` fallback would keep a phantom `›` after phase ends
-        // (e.g. survey-results.csv) while OCR files remain queued.
-        if (e.relPath === processingFile()) setProcessingFile("");
-      }
-      if (e.status && e.relPath) {
-        updateProgressFileStatus(e.relPath, e.status);
-      } else if (e.phase === "setup") {
-        setProgTotal(e.total > 0 ? e.total : 1);
-        setProgCurrent(Math.max(0, e.current));
-      }
-    });
-    const onPhaseLog = job.wrapLog((msg: string) => {
-      if (msg.startsWith("  ")) {
-        const label = msg.trim();
-        // Surface vision provider errors immediately in reserved Step 9 area
-        if (label.includes("Vision ") && label.includes(" error ") && step() === "markitdown") {
-          setVisionError(label.replace(/^.*Vision /, "Vision ").slice(0, 160))
-        }
-        setProcessingStatus(label);
-        return;
-      }
-      // Also catch top-level vision unavailable (missing key) during markitdown
-      if (msg.includes("Vision model") && msg.includes("unavailable") && step() === "markitdown") {
-        setVisionError(msg.slice(0, 160))
-      }
-      appendLogLine(msg);
-    });
+    sharedProg.on((e) => bg.reportProgress(e));
+    const onPhaseLog = job.wrapLog((msg: string) => bg.reportPhaseLog(msg, formatImportProgressStatus));
+    bg.setPhase("setup");
+    bg.reportStatus("Starting...");
+    spinOn();
+    await delay(200);
 
     try {
       setStep("setup");
@@ -1457,14 +1154,14 @@ export function Onboarding() {
         "Writing setup files",
       ];
       let setupDone = 0;
-      setProgTotal(setupSteps.length);
-      setProgCurrent(0);
+      bg.setProgTotal(setupSteps.length);
+      bg.setProgCurrent(0);
       const setupProgress = (msg: string) => {
-        appendLogLine(msg);
-        setProcessingStatus(msg);
+        bg.appendLog(msg);
+        bg.reportStatus(msg);
         if (setupSteps.some((s) => msg.startsWith(s))) {
           setupDone = Math.min(setupSteps.length, setupDone + 1);
-          setProgCurrent(setupDone);
+          bg.setProgCurrent(setupDone);
           sharedProg.file("setup", setupDone, setupSteps.length, msg);
         }
       };
@@ -1477,19 +1174,19 @@ export function Onboarding() {
         extensions,
         sourcePaths: resolved,
         onProgress: setupProgress,
-        onRecover: (message) => appendLogLine(`Note: ${message}`),
+        onRecover: (message) => bg.appendLog(`Note: ${message}`),
         shouldAbort,
         appendLogLine,
       });
       if (preparation.kind === "aborted") return;
       if (preparation.kind === "error") {
-        appendLogLine(preparation.message);
+        bg.appendLog(preparation.message);
         setStep("error");
         return;
       }
       const { frameworkRoot, context: ctx } = preparation;
 
-      setProcessingStatus("Preparing import plan...");
+      bg.reportStatus("Preparing import plan...");
       // The scan selector merges extensions from every source. Re-apply that
       // selection after the primary workspace scan so extra-source-only
       // extensions do not cause the primary batch to fall back to select-all.
@@ -1500,22 +1197,32 @@ export function Onboarding() {
         ctx.batches,
         undefined,
         shouldAbort,
-        selectedOcrModel(),
+        bg.getModel(),
       );
       if (!classified) {
         setStep("error");
         return;
       }
+      // Resume: drop already-imported files (unchanged fingerprint + route)
+      // so re-runs only process new, changed, re-routed, or failed files.
+      // Already-done rows render done immediately for truthful progress.
+      const resume = applyResumeFilter(classified, classified.logsDir, {
+        modelId: bg.getModel(),
+        onLog: (m) => bg.appendLog(m),
+      });
+      for (const rel of resume.skippedUnchanged) bg.reportProgress({ relPath: rel, status: "done" });
       const totalMd = classified.markitdownFiles.length;
+      const totalVision = (classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles?.length ?? 0;
       const totalOcr = classified.ocrFiles.length;
       const totalDirect = classified.directFiles.length;
-      appendProgressQueue([
+      bg.seedQueue([
         ...classified.directFiles,
         ...classified.markitdownFiles,
+        ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
         ...classified.ocrFiles,
       ].map((file) => file.rel));
-      appendLogLine(
-        `[diag] direct=${totalDirect} markitdown=${classified.markitdownFiles.length} ocr=${classified.ocrFiles.length}`,
+      bg.appendLog(
+        `[diag] direct=${totalDirect} markitdown=${classified.markitdownFiles.length} vision=${totalVision} ocr=${classified.ocrFiles.length}`,
       );
 
       const phases = await runImportWorkflow(classified, {
@@ -1524,110 +1231,107 @@ export function Onboarding() {
         shouldAbort,
         signal: job.registered.signal,
         onChild: job.registerChild,
-        ocrModelId: () => selectedOcrModel(),
-        onVisionFailure: async (rel, modelId, error) => {
-          setVisionError(`Vision ${modelId} error for ${rel} — ${error.slice(0,120)} — queue paused — Change model to retry this file or Back to abort`)
-          setVisionPaused(true)
-          const action = await new Promise<"retry" | "skip" | "abort">((resolve) => {
-            visionFailedResolve = resolve
-            const checkAbort = setInterval(() => {
-              if (shouldAbort()) {
-                clearInterval(checkAbort)
-                visionFailedResolve = undefined
-                resolve("abort")
-              }
-            }, 200)
-            // Wrap resolve to clear interval
-            const orig = resolve
-            visionFailedResolve = (a) => {
-              clearInterval(checkAbort)
-              visionFailedResolve = undefined
-              orig(a)
-            }
-          })
-          setVisionPaused(false)
-          // Keep error visible until retry succeeds or user changes model
-          if (action === "retry") setVisionError(undefined)
-          return action
-        },
+        ocrModelId: () => bg.getModel(),
+        transcribeVision,
+        // Shared service policy: empty results skip, auth/other errors pause
+        // until the wizard red button or the home monitor resolves.
+        onVisionFailure: (rel, modelId, error) => bg.onVisionFailure(rel, modelId, error),
         onRetry: (attempt, reason) => {
-          setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`);
+          bg.reportStatus(`Retrying file (attempt ${attempt}): ${reason}`);
         },
         onRename: (original, renamed) => {
-          appendLogLine(`  renamed (name too long): ${original} → ${renamed}`);
+          bg.appendLog(`  renamed (name too long): ${original} → ${renamed}`);
         },
         beforePhase: async (id, count) => {
           if (id === "direct") {
             setStep("direct");
-            setProcessingStatus(`Copying text-based files to raw — ${count} files`);
+            bg.setPhase("direct");
+            bg.reportStatus(`Copying text-based files to raw — ${count} files`);
             await delay(500);
             return true;
           }
           if (id === "markitdown") {
             setBusy(false);
-            await gate("Convert office docs & text PDFs");
+            // Foreground: wizard Continue UI (30s auto-press) resolves the
+            // service gate. Background: auto-passed, no UI.
+            if (!await bg.requestGate(id, count, "Convert office docs")) return false;
             if (shouldAbort()) return false;
             setBusy(true);
             setStep("markitdown");
-            setVisionError(undefined)
-            // Images are only in markitdown when vision (provider/model) is selected;
-            // with tesseract/none they are copy-only and not counted here.
-            const hasVision = selectedOcrModel().includes("/")
-            const simpleHint = hasVision ? ` (images via vision:${selectedOcrModel().split("/").pop()})` : ""
-            setProcessingStatus(`Converting via MarkItDown — ${count} files${simpleHint} — Back to change model`);
+            bg.setPhase("markitdown");
+            bg.setVisionError(undefined)
+            bg.reportStatus(`Converting via MarkItDown — ${count} files — Back to change model`);
+            await delay(500);
+            return true;
+          }
+          if (id === "vision") {
+            setBusy(false);
+            if (!await bg.requestGate(id, count, `Transcribe images & scanned PDFs via Vision Model`)) return false;
+            if (shouldAbort()) return false;
+            setBusy(true);
+            setStep("markitdown");
+            bg.setPhase("vision");
+            bg.setVisionError(undefined)
+            bg.reportStatus(`Transcribing images & scanned PDFs via Vision Model — ${count} files — Back to change model`);
             await delay(500);
             return true;
           }
           setBusy(false);
-          await gate("OCR scanned PDFs with Tesseract");
+          if (!await bg.requestGate(id, count, "OCR scanned PDFs with Tesseract")) return false;
           if (shouldAbort()) return false;
           setBusy(true);
           setStep("ocr");
-          // OCR phase handles only scanned PDFs (ita+eng+fra 300dpi); images already via markitdown/copy
-          setProcessingStatus(`Running Tesseract on scanned PDFs — ${count} files — Back to change vision model`);
+          bg.setPhase("ocr");
+          // OCR phase handles only scanned PDFs (ita+eng+fra 300dpi); images via vision/copy now externalized
+          bg.reportStatus(`Running Tesseract on scanned PDFs — ${count} files — Back to change vision model`);
           await delay(500);
           return true;
         },
         afterPhase: async (id, result) => {
           if (id === "direct") {
-            setProcessingStatus(`Text-based files copied — ${result.converted} files`);
+            bg.reportStatus(`Text-based files copied — ${result.converted} files`);
             await delay(500);
           }
           if (id === "markitdown") {
-            const visionFailed = result.failed > 0 && selectedOcrModel().includes("/")
-            const hasVision = selectedOcrModel().includes("/")
+            bg.setVisionError(undefined)
+            bg.reportStatus(
+              `Office docs converted — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+            );
+            await delay(500);
+          }
+          if (id === "vision") {
+            const visionFailed = result.failed > 0
             if (visionFailed) {
-              setVisionError(`Vision ${selectedOcrModel()} failed for ${result.failed} file(s) — check provider/key or rate limit. You can change model and retry.`)
-              setProcessingStatus(
-                `MarkItDown — ${result.converted} ok, ${result.failed} failed (vision ${selectedOcrModel()} — see error below)`
+              bg.setVisionError(`Vision ${bg.getModel()} failed for ${result.failed} file(s) — check provider/key or rate limit. You can change model and retry.`)
+              bg.reportStatus(
+                `Vision SDK — ${result.converted} ok, ${result.failed} failed (vision ${bg.getModel()} — see error below)`
               );
             } else {
-              setVisionError(undefined)
-              setProcessingStatus(
-                hasVision
-                  ? `Office docs, text PDFs & images via vision — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`
-                  : `Office docs & text PDFs converted — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+              bg.setVisionError(undefined)
+              bg.reportStatus(
+                `Images & scanned PDFs via vision — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
               );
             }
-            // Dwell longer when vision failed so provider error is readable before verify
             await delay(visionFailed ? 2500 : 500);
           }
           if (id === "ocr") {
-            setProcessingStatus(
+            bg.reportStatus(
               result.failed > 0
                 ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed — Back to change vision model`
                 : `Scanned PDFs via Tesseract — ${result.converted} files`,
             );
-            // Dwell so failure-first 100% results are readable before verify.
             await delay(1000);
           }
         },
       });
       if (classified.markitdownFiles.length === 0) {
-        appendLogLine("MarkItDown: 0 files to convert — skipping");
+        bg.appendLog("MarkItDown: 0 files to convert — skipping");
+      }
+      if (((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles?.length ?? 0) === 0) {
+        bg.appendLog("Vision: 0 images/PDFs to transcribe — skipping");
       }
       if (classified.ocrFiles.length === 0) {
-        appendLogLine("OCR: 0 files to convert — skipping");
+        bg.appendLog("OCR: 0 files to convert — skipping");
       }
       if (shouldAbort()) {
         spinOff();
@@ -1637,6 +1341,7 @@ export function Onboarding() {
 
       const dr = phases.direct;
       const mr = phases.markitdown;
+      const vr = (phases as unknown as { vision?: typeof mr }).vision ?? { converted: 0, skipped: 0, failed: 0, renamed: 0, recoverable: [] as typeof mr.recoverable };
       const or = phases.ocr;
 
       const mergePhase = (target: typeof dr, addition: typeof dr) => {
@@ -1653,10 +1358,10 @@ export function Onboarding() {
         stillMissingFiles?: string[];
       }) => {
         for (const file of verification.recoveredFiles ?? []) {
-          updateProgressFileStatus(file, "done");
+          bg.reportProgress({ relPath: file, status: "done" });
         }
         for (const file of verification.stillMissingFiles ?? []) {
-          updateProgressFileStatus(file, "failed");
+          bg.reportProgress({ relPath: file, status: "failed" });
         }
       };
 
@@ -1665,22 +1370,30 @@ export function Onboarding() {
       for (let i = 1; i < resolved.length; i++) {
         const source = resolved[i]!;
         const sourceFolder = `source-${i + 1}`;
-        appendLogLine(`Processing: ${source} → ${sourceFolder}/`);
+        bg.appendLog(`Processing: ${source} → ${sourceFolder}/`);
         const extraClassified = await scanAndClassifySource(
           source,
           ctx.rawDir,
           ctx.batches,
           sourceFolder,
           shouldAbort,
+          bg.getModel(),
         );
         if (!extraClassified) {
-          appendLogLine(`No importable files in: ${source}`);
+          bg.appendLog(`No importable files in: ${source}`);
           continue;
         }
 
-        appendProgressQueue([
+        const extraResume = applyResumeFilter(extraClassified, extraClassified.logsDir, {
+          modelId: bg.getModel(),
+          onLog: (m) => bg.appendLog(m),
+        });
+        for (const rel of extraResume.skippedUnchanged) bg.reportProgress({ relPath: rel, status: "done" });
+
+        bg.seedQueue([
           ...extraClassified.directFiles,
           ...extraClassified.markitdownFiles,
+          ...((extraClassified as unknown as { visionFiles?: typeof extraClassified.markitdownFiles }).visionFiles ?? []),
           ...extraClassified.ocrFiles,
         ].map((file) => file.rel));
 
@@ -1690,43 +1403,26 @@ export function Onboarding() {
           shouldAbort,
           signal: job.registered.signal,
           onChild: job.registerChild,
-          ocrModelId: () => selectedOcrModel(),
-          onVisionFailure: async (rel, modelId, error) => {
-            setVisionError(`Vision ${modelId} error for ${rel} — ${error.slice(0,120)} — queue paused — Change model to retry this file or Back to abort`)
-            setVisionPaused(true)
-            const action = await new Promise<"retry" | "skip" | "abort">((resolve) => {
-              visionFailedResolve = resolve
-              const checkAbort = setInterval(() => {
-                if (shouldAbort()) {
-                  clearInterval(checkAbort)
-                  visionFailedResolve = undefined
-                  resolve("abort")
-                }
-              }, 200)
-              const orig = resolve
-              visionFailedResolve = (a) => {
-                clearInterval(checkAbort)
-                visionFailedResolve = undefined
-                orig(a)
-              }
-            })
-            setVisionPaused(false)
-            if (action === "retry") setVisionError(undefined)
-            return action
-          },
+          ocrModelId: () => bg.getModel(),
+          transcribeVision,
+          onVisionFailure: (rel, modelId, error) => bg.onVisionFailure(rel, modelId, error),
           onRetry: (attempt, reason) => {
-            setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`);
+            bg.reportStatus(`Retrying file (attempt ${attempt}): ${reason}`);
           },
           onRename: (original, renamed) => {
-            appendLogLine(`  renamed (name too long): ${original} → ${renamed}`);
+            bg.appendLog(`  renamed (name too long): ${original} → ${renamed}`);
           },
           beforePhase: async (id, count) => {
+            // Extra sources skip gates (primary run already gated); still
+            // track phase truthfully for the monitor + BG availability.
+            if (shouldAbort()) return false;
             setStep(id);
-            setProcessingStatus(`${sourceFolder}: ${id} — ${count} files`);
+            bg.setPhase(id);
+            bg.reportStatus(`${sourceFolder}: ${id} — ${count} files`);
             return true;
           },
           afterPhase: async (id, result) => {
-            setProcessingStatus(
+            bg.reportStatus(
               `${sourceFolder}: ${id} complete — ${result.converted} delivered`+
               (result.failed > 0 ? `, ${result.failed} failed` : ""),
             );
@@ -1734,6 +1430,7 @@ export function Onboarding() {
         });
         mergePhase(dr, extraPhases.direct);
         mergePhase(mr, extraPhases.markitdown);
+        mergePhase(vr, (extraPhases as unknown as { vision?: typeof mr }).vision ?? { converted: 0, skipped: 0, failed: 0, renamed: 0, recoverable: [] as typeof mr.recoverable });
         mergePhase(or, extraPhases.ocr);
 
         const extraVerify = await verifyAndRecoverImport(
@@ -1746,6 +1443,8 @@ export function Onboarding() {
           shouldAbort,
           ctx.rawDir,
           sourceFolder,
+          undefined,
+          bg.getModel(),
         );
         totalRecovered += extraVerify.recovered;
         totalStillMissing += extraVerify.stillMissing;
@@ -1755,24 +1454,26 @@ export function Onboarding() {
 
       // Summary accounting must cover every namespaced source, not only the
       // primary source scanned while creating the workspace.
-      ctx.copyableCount = progressFiles().length;
+      ctx.copyableCount = bg.snapshot().files.length;
 
       // Phase C: Finalize (verification). Keep last-phase progressFiles, bar
       // counters, and phase status so the results panel stays accurate during verify.
-      setProcessingFile("");
       setVerifyStatus("Verifying import...");
       setStep("verification");
+      bg.setPhase("verification");
+      bg.reportStatus("Verifying import...");
       const result = await completeOnboarding(
         ctx,
-        { direct: dr, markitdown: mr, ocr: or },
+        { direct: dr, markitdown: mr, vision: vr, ocr: or },
         {
           workspacePath: ctx.workspacePath,
           frameworkRoot,
           sourcePath: ctx.sourcePath,
           projectTitle: ctx.projectTitle,
+          ocrModelId: bg.getModel(),
           onPhase: (_phase, msg) => {
             setVerifyStatus(msg);
-            appendLogLine(msg);
+            bg.appendLog(msg);
           },
           shouldAbort,
           additionalRecovered: totalRecovered,
@@ -1787,59 +1488,120 @@ export function Onboarding() {
       }
 
       if (result.success) {
-        const counts = countImportProgress(progressFiles());
+        const counts = countImportProgress(bg.snapshot().files);
         const directTotal = dr.converted + dr.skipped + dr.failed;
         const markitdownTotal = mr.converted + mr.skipped + mr.failed;
+        const visionTotal = vr.converted + vr.skipped + vr.failed;
         const ocrTotal = or.converted + or.skipped + or.failed;
         const totalFailed = counts.failed;
-        const totalRenamed = dr.renamed + mr.renamed + or.renamed;
+        const totalRenamed = dr.renamed + mr.renamed + vr.renamed + or.renamed;
         setFailedCount(totalFailed);
         setStillMissingCount(totalStillMissing);
         const summary =
-          `${dr.converted + dr.skipped}/${directTotal} copied · ${mr.converted + mr.skipped}/${markitdownTotal} markitdown · ${or.converted + or.skipped}/${ocrTotal} ocr` +
+          `${dr.converted + dr.skipped}/${directTotal} copied · ${mr.converted + mr.skipped}/${markitdownTotal} markitdown · ${vr.converted + vr.skipped}/${visionTotal} vision · ${or.converted + or.skipped}/${ocrTotal} ocr` +
           (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
           (totalFailed > 0 ? ` · ${totalFailed} failed` : "") +
           (totalRecovered > 0 ? ` · ${totalRecovered} recovered` : "") +
           (totalStillMissing > 0 && totalFailed === 0 ? ` · ${totalStillMissing} still missing` : "");
+        const ok = totalFailed === 0 && totalStillMissing === 0;
+        if (bg.background()) {
+          // Headless finish: no wizard summary screen — the monitor dialog
+          // and home chip carry the result (chip toasts on completion).
+          bg.finish({
+            converted: dr.converted + mr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + vr.skipped + or.skipped,
+            failed: totalFailed,
+            renamed: totalRenamed,
+            recovered: totalRecovered,
+            stillMissing: totalStillMissing,
+            text: summary,
+            success: ok,
+          });
+          persistImportWizardLogLines(bg.snapshot().logs, "onboarding-import");
+          setBusy(false);
+          spinOff();
+          return;
+        }
         setImportSummary(summary);
         setProcessingDone(true);
         setProcessingStatus("All done");
-        if (totalFailed > 0 || totalStillMissing > 0) {
-          persistImportWizardLogLines(logLines(), "onboarding-import");
-          job.finish("error", summary);
+        if (!ok) {
+          persistImportWizardLogLines(bg.snapshot().logs, "onboarding-import");
+          bg.finish({
+            converted: dr.converted + mr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + vr.skipped + or.skipped,
+            failed: totalFailed,
+            renamed: totalRenamed,
+            recovered: totalRecovered,
+            stillMissing: totalStillMissing,
+            text: summary,
+            success: false,
+          });
         } else {
-          job.finish("completed", summary);
+          bg.finish({
+            converted: dr.converted + mr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + vr.skipped + or.skipped,
+            failed: totalFailed,
+            renamed: totalRenamed,
+            recovered: totalRecovered,
+            stillMissing: totalStillMissing,
+            text: summary,
+            success: true,
+          });
         }
         setGateLabel("Go to the workspace");
         setGateAction(() => () => {
           setWaitingForGate(false);
           void finishProvider("spinosa");
         });
+        setGateAutoPress(false);
         setWaitingForGate(true);
       } else {
-        const counts = countImportProgress(progressFiles());
+        const counts = countImportProgress(bg.snapshot().files);
         setFailedCount(counts.failed);
         setStillMissingCount(totalStillMissing);
+        bg.finish({
+          converted: 0,
+          skipped: 0,
+          failed: counts.failed,
+          renamed: 0,
+          recovered: totalRecovered,
+          stillMissing: totalStillMissing,
+          text: "No files were delivered to the workspace.",
+          success: false,
+        });
+        if (bg.background()) {
+          setBusy(false);
+          spinOff();
+          return;
+        }
         setImportSummary("No files were delivered to the workspace.");
         setProcessingDone(true);
-        job.finish("error", "Onboarding import failed");
         setStep("error");
       }
     } catch (err) {
       if (isSpinosaCancellationError(err) || shouldAbort()) {
-        appendLogLine("Spinosa import cancelled.");
-        setProcessingStatus("Cancelled.");
-        job.cancel();
+        bg.appendLog("Spinosa import cancelled.");
+        bg.reportStatus("Cancelled.");
+        bg.cancel();
         return;
       }
-      appendLogLine(
+      bg.appendLog(
         `Error: ${err instanceof Error ? err.message : String(err)}`,
       );
-      job.finish("error", err instanceof Error ? err.message : String(err));
-      setStep("error");
+      bg.finish({
+        converted: 0,
+        skipped: 0,
+        failed: 0,
+        renamed: 0,
+        recovered: 0,
+        stillMissing: 0,
+        text: err instanceof Error ? err.message : String(err),
+        success: false,
+      });
+      if (!bg.background()) setStep("error");
     } finally {
-      if (shouldAbort() && !processingDone()) job.cancel();
-      if (activeJob === job) activeJob = undefined;
+      if (shouldAbort() && !processingDone() && !bg.background()) bg.cancel();
       spinOff();
       setBusy(false);
     }
@@ -2014,6 +1776,21 @@ export function Onboarding() {
         return;
       }
 
+      // Slow-phase shortcuts (run phases keep busy() true, so these precede
+      // the busy guard; no text inputs exist while a run is active).
+      if (!sourceInputFocused()) {
+        if (event.name === "b" && backgroundAvailable()) {
+          detachToBackground();
+          consume();
+          return;
+        }
+        if (event.name === "v" && bg.active() && !bg.done() && (bg.phase() === "vision" || bg.phase() === "ocr")) {
+          openMidRunVisionPicker();
+          consume();
+          return;
+        }
+      }
+
       if (busy()) return;
 
       if (
@@ -2059,6 +1836,20 @@ export function Onboarding() {
             setFocusedSource((v) => Math.min(pathsLen + 1, v + 1));
             consume();
             return;
+          }
+          if (event.name === "backspace") {
+            // Delete the focused source row (not while editing its text).
+            const entries = sourcePaths();
+            const entry = entries[Math.min(focusedSource(), entries.length - 1)];
+            if (entry && entries.length > 1) {
+              removeSourcePath(entry.id);
+              const nextIdx = Math.min(focusedSource(), sourcePaths().length - 1);
+              setFocusedSource(nextIdx);
+              const next = sourcePaths()[nextIdx];
+              if (next) focusSourceEntry(next.id);
+              consume();
+              return;
+            }
           }
           if (event.name === "return") {
             const focus = focusedSource();
@@ -2249,6 +2040,48 @@ export function Onboarding() {
     value.traits = { status: "NAME" };
   };
 
+  // Mid-run model switch (red Vision button + `v` shortcut): overlay picker,
+  // never aborts — the current file keeps the old model, next uses the new.
+  const openMidRunVisionPicker = () => {
+    logAction("change-vision", `from ${step()} picker opened — current task continues with ${bg.getModel()}, next file will use new model`)
+    // Don't abort — keep current markitdown file running with old model; dialog is overlay on step 9.
+    // Same order as the vision-step picker: select → auth if needed → confirm.
+    dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
+      const id = `${providerId}/${modelId}`
+      const forceReauth = bg.lastAuthFailedProvider() === providerId
+      const needsAuth = !isVisionProviderAvailable(providerId) || forceReauth
+      const authed = !needsAuth
+        ? true
+        : await ensureProviderAuth(providerId).catch((e) => {
+            logAction("vision", `Vision auth sequence failed for ${id}: ${e instanceof Error ? e.message : String(e)}`)
+            return false
+          })
+      if (!authed) {
+        logAction("vision", `Vision ${id} auth cancelled`)
+        dialog.clear()
+        return
+      }
+      // No dummy probe in production: the first real file transcription
+      // is the validation (see onVisionFailure for the failure order).
+      if (dialog.stack.length === 0) {
+        // Dismissed during auth: never confirm behind their back.
+        logAction("vision", `Vision auth dismissed for ${id} — keeping ${bg.getModel()}`)
+        dialog.clear()
+        return
+      }
+      bg.setModel(id)
+      setSelectedOcrModelIndex(1)
+      logAction("vision", `Picked vision model ${id} — will apply at next file (current continues with old model)`)
+      if (bg.snapshot().visionPause) {
+        bg.resolvePause("retry")
+      }
+      dialog.clear()
+    }} />, () => {
+      // Escape mid-picker just closes; selection and queue are untouched.
+      logAction("vision", "Mid-run model picker cancelled")
+    })
+  };
+
   const viewProps = {
     theme,
     dimensions,
@@ -2316,6 +2149,7 @@ export function Onboarding() {
     handleToolAction,
     continueFromImports,
     ocrModelOptions,
+    ocrEngineHint: () => OCR_ENGINE_HINT_LINE,
     selectedOcrModelIndex,
     setSelectedOcrModelIndex,
     selectedOcrModel,
@@ -2324,252 +2158,24 @@ export function Onboarding() {
     continueFromVision,
     visionError,
     visionPaused,
-    onChangeVisionModel: () => {
-      logAction("change-vision", `from ${step()} picker opened — current task continues with ${selectedOcrModel()}, next file will use new model`)
-      // Don't abort — keep current markitdown file running with old model; dialog is overlay on step 9
-      dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
-        const id = `${providerId}/${modelId}`
-        const requiresKey = providerId === "openrouter" ? "OPENROUTER_API_KEY" : providerId === "google" ? "GOOGLE_GENERATIVE_AI_API_KEY" : `${providerId.toUpperCase()}_API_KEY`
-        const hasEnvKey = Boolean(process.env[requiresKey] ?? (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY" ? process.env.GEMINI_API_KEY : undefined))
-        const isProviderAvailable = sync.data.provider.some((p) => p.id === providerId)
-        const isConnected = sync.data.provider_next.connected.includes(providerId)
-        const providerAuth = (sync.data as unknown as { provider_auth?: Record<string, Array<{ type: string }>> }).provider_auth?.[providerId]
-        const hasOauth = providerAuth?.some((m) => m.type === "oauth")
-        if (!hasEnvKey && !isProviderAvailable && !isConnected) {
-          if (hasOauth) {
-            const pendingId = id
-            const methods = providerAuth as Array<{ type: string; label: string; prompts?: Array<{ key: string; message: string; placeholder?: string; type?: string; options?: Array<{ label: string; value: string; hint?: string }>; when?: { key: string; op: string; value: string } }> }>
-            let methodIndex: number | null = 0
-            if (methods.length > 1) {
-              methodIndex = await new Promise<number | null>((resolve) => {
-                dialog.replace(
-                  () => (
-                    <DialogSelect
-                      title="Select auth method"
-                      options={methods.map((x, idx) => ({ title: x.label, value: idx }))}
-                      onSelect={(option) => resolve(option.value as number)}
-                    />
-                  ),
-                  () => resolve(null),
-                )
-              })
-              if (methodIndex == null) {
-                logAction("vision", `Vision ${pendingId} auth method selection cancelled`)
-                return
-              }
-            }
-            const method = methods[methodIndex!]
-            if (method.type === "oauth") {
-              let inputs: Record<string, string> | undefined
-              const prompts = (method as any).prompts as Array<any> | undefined
-              if (prompts?.length) {
-                inputs = {}
-                for (const prompt of prompts) {
-                  if (prompt.when) {
-                    const v = inputs[prompt.when.key]
-                    if (v === undefined) continue
-                    const matches = prompt.when.op === "eq" ? v === prompt.when.value : v !== prompt.when.value
-                    if (!matches) continue
-                  }
-                  if (prompt.type === "select") {
-                    const val = await new Promise<string | null>((resolve) => {
-                      dialog.replace(
-                        () => (
-                          <DialogSelect
-                            title={prompt.message}
-                            options={prompt.options.map((x: any) => ({ title: x.label, value: x.value, description: x.hint }))}
-                            onSelect={(option) => resolve(option.value as string)}
-                          />
-                        ),
-                        () => resolve(null),
-                      )
-                    })
-                    if (val == null) return
-                    inputs[prompt.key] = val
-                    continue
-                  }
-                  const val = await new Promise<string | null>((resolve) => {
-                    dialog.replace(
-                      () => (
-                        <DialogPrompt title={prompt.message} placeholder={prompt.placeholder} onConfirm={(v) => resolve(v)} />
-                      ),
-                      () => resolve(null),
-                    )
-                  })
-                  if (val == null) return
-                  inputs[prompt.key] = val
-                }
-              }
-              const result = await sdk.client.provider.oauth.authorize({ providerID: providerId, method: methodIndex!, inputs })
-              if ((result as any).error) {
-                logAction("vision", `Vision ${pendingId} oauth failed: ${JSON.stringify((result as any).error)}`)
-                dialog.clear()
-                return
-              }
-              const data = (result as any).data as { method: string; url: string; instructions: string } | undefined
-              if (data?.method === "code") {
-                dialog.replace(() => (
-                  <DialogPrompt
-                    title={method.label}
-                    placeholder="Authorization code"
-                    onConfirm={async (value) => {
-                      const { error } = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex!, code: value })
-                      if (!error) {
-                        await sync.refreshProviders()
-                        setSelectedOcrModel(pendingId)
-                        setSelectedOcrModelIndex(1)
-                        setVisionError(undefined)
-                        logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
-                        if (visionPaused() && visionFailedResolve) {
-                          const r = visionFailedResolve
-                          visionFailedResolve = undefined
-                          r("retry")
-                        }
-                      }
-                      dialog.clear()
-                    }}
-                    description={() => (
-                      <box gap={1}>
-                        <text fg={theme.textMuted}>{data.instructions}</text>
-                        <text fg={theme.primary}>{data.url}</text>
-                      </box>
-                    )}
-                  />
-                ))
-                return
-              }
-              if (data?.method === "auto") {
-                dialog.replace(() => (
-                  <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-                    <box flexDirection="row" justifyContent="space-between">
-                      <text fg={theme.text} attributes={TextAttributes.BOLD}>{method.label}</text>
-                      <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>esc</text>
-                    </box>
-                    <box gap={1}>
-                      <text fg={theme.primary}>{data.url}</text>
-                      <text fg={theme.textMuted}>{data.instructions}</text>
-                    </box>
-                    <text fg={theme.textMuted}>Waiting for authorization...</text>
-                  </box>
-                ))
-                void (async () => {
-                  const cb = await sdk.client.provider.oauth.callback({ providerID: providerId, method: methodIndex! })
-                  if ((cb as any).error) {
-                    logAction("vision", `Vision ${pendingId} oauth auto failed`)
-                    dialog.clear()
-                    return
-                  }
-                  await sync.refreshProviders()
-                  setSelectedOcrModel(pendingId)
-                  setSelectedOcrModelIndex(1)
-                  setVisionError(undefined)
-                  logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
-                  if (visionPaused() && visionFailedResolve) {
-                    const r = visionFailedResolve
-                    visionFailedResolve = undefined
-                    r("retry")
-                  }
-                  dialog.clear()
-                })()
-                return
-              }
-              await sync.refreshProviders()
-              setSelectedOcrModel(pendingId)
-              setSelectedOcrModelIndex(1)
-              setVisionError(undefined)
-              logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
-              if (visionPaused() && visionFailedResolve) {
-                const r = visionFailedResolve
-                visionFailedResolve = undefined
-                r("retry")
-              }
-              dialog.clear()
-              return
-            } else {
-              logAction("vision", `Vision ${pendingId} needs ${requiresKey} — prompting`)
-              const key = await new Promise<string | null>((resolve) => {
-                dialog.replace(
-                  () => (
-                    <DialogPrompt
-                      title={`${providerId} API key`}
-                      placeholder="Paste API key"
-                      onConfirm={(v) => resolve(v)}
-                    />
-                  ),
-                  () => resolve(null),
-                )
-              })
-              if (!key) {
-                logAction("vision", `Vision ${pendingId} cancelled — no key entered`)
-                dialog.clear()
-                return
-              }
-              process.env[requiresKey] = key
-              if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
-              try {
-                await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
-                await sync.refreshProviders()
-              } catch {}
-              logAction("vision", `Vision ${pendingId} key saved for ${providerId}`)
-              setSelectedOcrModel(pendingId)
-              setSelectedOcrModelIndex(1)
-              setVisionError(undefined)
-              logAction("vision", `Picked vision model ${pendingId} — will apply at next file (auto after OAuth)`)
-              if (visionPaused() && visionFailedResolve) {
-                const r = visionFailedResolve
-                visionFailedResolve = undefined
-                r("retry")
-              }
-              dialog.clear()
-              return
-            }
-          }
-          logAction("vision", `Vision ${id} needs ${requiresKey} — prompting`)
-          const key = await new Promise<string | null>((resolve) => {
-            dialog.replace(() => (
-              <DialogPrompt
-                title={`${providerId} API key`}
-                placeholder="Paste API key"
-                onConfirm={(v) => resolve(v)}
-              />
-            ), () => resolve(null))
-          })
-          if (!key) {
-            logAction("vision", `Vision ${id} cancelled — no key entered`)
-            dialog.clear()
-            return
-          }
-          process.env[requiresKey] = key
-          if (requiresKey === "GOOGLE_GENERATIVE_AI_API_KEY") process.env.GEMINI_API_KEY = key
-          try {
-            await sdk.client.auth.set({ providerID: providerId, auth: { type: "api", key } })
-            await sync.refreshProviders()
-          } catch {}
-          logAction("vision", `Vision ${id} key saved for ${providerId}`)
-        }
-        setSelectedOcrModel(id)
-        setSelectedOcrModelIndex(1)
-        setVisionError(undefined)
-        logAction("vision", `Picked vision model ${id} — will apply at next file (current continues with old model)`)
-        if (visionPaused() && visionFailedResolve) {
-          const r = visionFailedResolve
-          visionFailedResolve = undefined
-          r("retry")
-        }
-        dialog.clear()
-      }} />)
-    },
+    onChangeVisionModel: openMidRunVisionPicker,
+    backgroundAvailable,
+    onBackground: detachToBackground,
     selectedVisionLabel: createMemo(() => {
       const opts = ocrModelOptions()
       const idx = selectedOcrModelIndex()
       const picked = selectedOcrModel()
       const opt = opts[idx]
-      if (picked.includes("/") && !opts.some(o => o.id === picked)) return picked
+      // Top-right button carries the concrete model name so the selection is
+      // always visible. Visibility gating uses hasVisionModel(), never this text.
+      if (picked.includes("/") && !opts.some((o) => o.id === picked)) return picked
       return opt?.label ?? picked
     }),
+    hasVisionModel: createMemo(() => hasVisionModel()),
     waitingForGate,
     gateLabel,
     gateAction,
+    gateAutoPress,
     cliOptions: CLI_OPTIONS,
     selectedCli,
     setSelectedCli,

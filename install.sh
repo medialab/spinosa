@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.1.0-beta.15"
+PINNED_VERSION="1.1.0-beta.17.8"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 DEFAULT_VERIFY_TIMEOUT_SECONDS="180"
@@ -625,8 +625,174 @@ preflight_tools() {
     || die "No SHA-256 tool found (sha256sum or shasum)"
 }
 
-prompt_install_repair() {
-  local detail="${1:-Something in the Spinosa install needs fixing.}"
+# ══════════════════════════════════════════════════════════════════════════════
+# BUNDLED OCR TOOLS (tesseract + pdftoppm + tessdata eng/ita/fra)
+# Layout: $SPINOSA_HOME/tools/<platform>/{bin,tessdata} + TOOLS_MANIFEST.json
+# The runtime prefers this dir over host PATH, so installs are self-contained.
+# Best effort throughout: OCR is optional and must never break the install.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Pinned tessdata_fast (tesseract-ocr/tessdata_fast, 2026-09-11). Update with
+# new SHAs when refreshing language data.
+TESSDATA_FAST_BASE="https://github.com/tesseract-ocr/tessdata_fast/raw/main"
+TESSDATA_SHA_eng="7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+TESSDATA_SHA_fra="ced037562e8c80c13122dece28dd477d399af80911a28791a66a63ac1e3445ca"
+TESSDATA_SHA_ita="b8f89e1e785118dac4d51ae042c029a64edb5c3ee42ef73027a6d412748d8827"
+
+tools_platform_dir() {
+  [ -n "${PLATFORM:-}" ] || return 1
+  printf '%s/tools/%s' "$SPINOSA_HOME" "$PLATFORM"
+}
+
+tools_tessdata_complete() {
+  local dir="$1" lang
+  [ -n "$dir" ] || return 1
+  for lang in eng ita fra; do
+    [ -f "$dir/$lang.traineddata" ] || return 1
+  done
+  return 0
+}
+
+# True when host tesseract + pdftoppm exist with all three languages.
+host_ocr_complete() {
+  command -v tesseract >/dev/null 2>&1 || return 1
+  command -v pdftoppm >/dev/null 2>&1 || return 1
+  local langs lang
+  langs="$(tesseract --list-langs 2>/dev/null || true)"
+  for lang in eng ita fra; do
+    case "$langs" in
+      *"$lang"*) ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+write_tools_manifest() {
+  local source="$1" manifest dir
+  dir="$(tools_platform_dir)" || return 1
+  manifest="${SPINOSA_HOME}/tools/TOOLS_MANIFEST.json"
+  mkdir -p "$(dirname "$manifest")" "$dir/bin" "$dir/tessdata" 2>/dev/null || true
+  cat > "$manifest" <<EOF_JSON
+{"platform":"${PLATFORM}","source":"${source}","tesseract":"$([ -x "$dir/bin/tesseract" ] && echo bundled || echo host)","pdftoppm":"$([ -x "$dir/bin/pdftoppm" ] && echo bundled || echo host)","tessdata":"$(tools_tessdata_complete "$dir/tessdata" && echo bundled || echo host)","installed_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF_JSON
+}
+
+# Tier 1: prebuilt per-platform tarball from the release (populated by CI;
+# absent today → skip without fetching, never fatal).
+try_tools_tarball() {
+  local checksums_file="$1" base tmpdir tarball asset
+  base="$(release_asset_base)"
+  asset="spinosa-tools-${PLATFORM}.tar.gz"
+  # No checksum entry yet (CI hasn't published tarballs) → refuse to install
+  # unverified binaries, fall through to the next tier.
+  if ! grep -q " ${asset}\$" "$checksums_file" 2>/dev/null; then
+    return 1
+  fi
+  tmpdir="$(mktemp -d "${SPINOSA_STAGING_DIR}/tools.XXXXXX")" || return 1
+  tarball="${tmpdir}/${asset}"
+  if ! download "${base}/${asset}" "$tarball" 2>/dev/null; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+  verify_asset_checksum "$tarball" "$asset" "$checksums_file" "OCR tools bundle" || { rm -rf "$tmpdir"; return 1; }
+  mkdir -p "$SPINOSA_HOME/tools" || { rm -rf "$tmpdir"; return 1; }
+  if ! tar -xzf "$tarball" -C "$SPINOSA_HOME/tools"; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+  rm -rf "$tmpdir"
+  vinfo "OCR tools bundle installed from release tarball"
+  return 0
+}
+
+# Tier 2: system package manager (trusted distro binaries).
+try_package_manager_tools() {
+  local os sudo=""
+  os="$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo="sudo"
+    else
+      vinfo "No passwordless sudo — skipping package-manager OCR install"
+      return 1
+    fi
+  fi
+  case "$os" in
+    darwin)
+      command -v brew >/dev/null 2>&1 || return 1
+      $sudo brew install tesseract poppler tesseract-lang 2>/dev/null || return 1
+      ;;
+    linux)
+      if command -v apt-get >/dev/null 2>&1; then
+        $sudo apt-get install -y tesseract-ocr tesseract-ocr-ita tesseract-ocr-fra poppler-utils 2>/dev/null || return 1
+      elif command -v dnf >/dev/null 2>&1; then
+        $sudo dnf install -y tesseract tesseract-langpack-ita tesseract-langpack-fra poppler-utils 2>/dev/null || return 1
+      elif command -v pacman >/dev/null 2>&1; then
+        $sudo pacman -S --noconfirm tesseract tesseract-data-ita tesseract-data-fra poppler 2>/dev/null || return 1
+      else
+        return 1
+      fi
+      ;;
+    *) return 1 ;;
+  esac
+  host_ocr_complete
+}
+
+# Tier 3: language data top-up — binaries exist but langs missing (e.g. no
+# sudo). Pinned SHAs, verified before install, into the bundled tools dir.
+ensure_bundled_tessdata() {
+  local dir lang file expected
+  dir="$(tools_platform_dir)/tessdata" || return 1
+  tools_tessdata_complete "$dir" && return 0
+  mkdir -p "$dir" || return 1
+  for lang in eng ita fra; do
+    file="${dir}/${lang}.traineddata"
+    [ -f "$file" ] && continue
+    case "$lang" in
+      eng) expected="$TESSDATA_SHA_eng" ;;
+      fra) expected="$TESSDATA_SHA_fra" ;;
+      ita) expected="$TESSDATA_SHA_ita" ;;
+    esac
+    download "${TESSDATA_FAST_BASE}/${lang}.traineddata" "$file" 2>/dev/null || { rm -f "$file"; return 1; }
+    verify_checksum "$file" "$expected" || { rm -f "$file"; vinfo "tessdata $lang checksum mismatch — skipped"; return 1; }
+  done
+  tools_tessdata_complete "$dir"
+}
+
+install_bundled_tools() {
+  local checksums_file="$1"
+  if [ "${SPINOSA_SKIP_BUNDLED_TOOLS:-0}" = "1" ]; then
+    vinfo "Skipping bundled OCR tools (SPINOSA_SKIP_BUNDLED_TOOLS=1)"
+    return 0
+  fi
+  if host_ocr_complete; then
+    info "Host provides tesseract + pdftoppm + tessdata (eng/ita/fra) — using host tools."
+    write_tools_manifest "host" 2>/dev/null || true
+    return 0
+  fi
+  if try_tools_tarball "$checksums_file"; then
+    info "Bundled OCR tools installed into $(tools_platform_dir)."
+    write_tools_manifest "tarball" 2>/dev/null || true
+    return 0
+  fi
+  if try_package_manager_tools; then
+    info "OCR tools installed via system package manager."
+    write_tools_manifest "package-manager" 2>/dev/null || true
+    return 0
+  fi
+  if ensure_bundled_tessdata; then
+    vnote "tessdata (eng/ita/fra) staged in Spinosa tools dir — install tesseract + poppler for offline OCR."
+    write_tools_manifest "tessdata-only" 2>/dev/null || true
+    return 0
+  fi
+  vnote "OCR tools unavailable: install tesseract + poppler + tessdata (eng/ita/fra) for offline OCR, or re-run the installer later."
+  vnote "Manual: macOS 'brew install tesseract poppler tesseract-lang' · Debian/Ubuntu 'sudo apt-get install tesseract-ocr tesseract-ocr-ita tesseract-ocr-fra poppler-utils'."
+  write_tools_manifest "none" 2>/dev/null || true
+  return 0
+}
+
+prompt_install_repair() {  local detail="${1:-Something in the Spinosa install needs fixing.}"
   printf '\n' >&2
   printf '%s %s\n' "${R}●${RESET}" "Installation needs repair." >&2
   printf '%s\n' "$detail" >&2
@@ -1062,7 +1228,9 @@ init_global_metadata() {
 
 config_set_key() {
   local config="$1" key="$2" value="$3"
-  local tmp="${config}.tmp.$$"
+  local tmp
+  tmp="$(mktemp "${config}.tmp.XXXXXX")" || die "Cannot create temp file for ${config}"
+  trap 'rm -f "$tmp"' RETURN
   awk -v key="$key" -v value="$value" '
     BEGIN { found = 0 }
     index($0, key ":") == 1 { print key ": " value; found = 1; next }
@@ -1070,14 +1238,18 @@ config_set_key() {
     END { if (!found) print key ": " value }
   ' "$config" > "$tmp"
   mv "$tmp" "$config"
+  trap - RETURN
 }
 
 config_delete_key() {
   local config="$1" key="$2"
   [ -f "$config" ] || return 0
-  local tmp="${config}.tmp.$$"
+  local tmp
+  tmp="$(mktemp "${config}.tmp.XXXXXX")" || die "Cannot create temp file for ${config}"
+  trap 'rm -f "$tmp"' RETURN
   awk -v key="$key" 'index($0, key ":") != 1 { print }' "$config" > "$tmp"
   mv "$tmp" "$config"
+  trap - RETURN
 }
 
 write_install_metadata() {
@@ -1089,7 +1261,9 @@ write_install_metadata() {
     CONFIG_BACKUP="${SPINOSA_STAGING_DIR}/config.backup.$$"
     cp "$config" "$CONFIG_BACKUP" 2>/dev/null || CONFIG_BACKUP=""
   fi
-  local install_tmp="${SPINOSA_METADATA_DIR}/install.yaml.tmp.$$"
+  local install_tmp
+  install_tmp="$(mktemp "${SPINOSA_METADATA_DIR}/install.yaml.tmp.XXXXXX")" || die "Cannot stage install.yaml"
+  trap 'rm -f "$install_tmp"' RETURN
   cat > "$install_tmp" << EOF
 # Install state — machine-generated
 install_root: "${SPINOSA_HOME}"
@@ -1100,9 +1274,12 @@ EOF
     restore_binary_backup_if_needed
     die "Failed to write install.yaml"
   fi
+  trap - RETURN
 
   if [ ! -f "$config" ]; then
-    local config_tmp="${config}.tmp.$$"
+    local config_tmp
+    config_tmp="$(mktemp "${config}.tmp.XXXXXX")" || die "Cannot stage spinosa config"
+    trap 'rm -f "$config_tmp"' RETURN
     cat > "$config_tmp" << CONFIG_EOF
 # Spinosa installation marker — do not remove
 spinosa: true
@@ -1118,6 +1295,7 @@ CONFIG_EOF
       printf 'legacy_source_runtime: true\n' >> "$config_tmp"
     fi
     mv "$config_tmp" "$config"
+    trap - RETURN
   else
     config_set_key "$config" "spinosa" "true"
     config_set_key "$config" "beta" "$(installer_beta_toggle)"
@@ -2151,6 +2329,12 @@ main() {
   [[ "$VERBOSE" == "1" ]] && section "Activate"
   run_timed_step "Installing" 30 _install_activate \
     || die "Installation failed — see $(spinosa_log_file)"
+
+  # Bundled OCR tools (tesseract/pdftoppm/tessdata) into $SPINOSA_HOME/tools/.
+  # Best effort: OCR is optional and must never fail the install.
+  section "OCR tools"
+  install_bundled_tools "$checksums_file" \
+    || warn "OCR tools step failed — offline OCR unavailable until tesseract + poppler + tessdata (eng/ita/fra) are installed; see $(spinosa_log_file)"
 
   INSTALL_COMPLETED=1
   ACTIVATION_STARTED=0
