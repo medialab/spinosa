@@ -196,8 +196,11 @@ export async function importRouteForFile(
         }
         return "copy"
       }
-      // PDFs: vision model → vision page transcription; tesseract (or legacy
-      // unset) → tesseract OCR, which extracts digital PDFs via pdf.js first.
+      // PDFs never take the MarkItDown route: text pages extract via pdf.js
+      // and image pages transcribe via vision/OCR in the owning phase
+      // (per-page hybrid). The phase, not the router, splits the pages.
+      // Vision model → vision page transcription; tesseract (or legacy
+      // unset) → tesseract OCR.
       if (modelId && modelId !== "tesseract-local") {
         if (isVisionModelId(modelId)) return "vision"
         try {
@@ -274,39 +277,66 @@ function splitExt(name: string): { stem: string; ext: string } {
 // disambiguator appended, so neither `Report.txt` silently overwrites
 // `report.txt` nor the reverse.
 export function safeRelPaths(relPaths: string[]): string[] {
-  const seenLevels = new Map<string, Set<string>>()
-  const seenInsensitiveLevels = new Map<string, Set<string>>()
+  // Occupied OUTPUT paths, lowercased: default macOS/Windows volumes are
+  // case-insensitive, so `Report.txt` and `report.txt` would clobber.
+  const taken = new Set<string>()
+  // Exact input prefix (dir or full path) -> chosen output name. Identical
+  // input directories reuse the same output directory — without this, the
+  // second file in every folder mints `folder_1`, the third `folder_2`,
+  // shredding the source tree into one folder per file.
+  const prefixOut = new Map<string, string>()
+  // Lowercased input prefix -> output name: detects case-variant twins
+  // (`Docs/` vs `docs/`) which stay disambiguated conservatively.
+  const prefixOutFolded = new Map<string, string>()
+
+  const claimFree = (outDir: string, stem: string, ext: string): string => {
+    const extBytes = Buffer.byteLength(ext, "utf8")
+    const budget = MAX_NAME_BYTES - extBytes
+    let candidate = truncateUtf8ByBytes(stem, Math.max(1, budget)) + ext
+    let i = 1
+    while (taken.has(`${outDir}/${candidate}`.toLowerCase()) && i < 9999) {
+      const suffix = `_${i}`
+      candidate =
+        truncateUtf8ByBytes(stem, Math.max(1, budget - Buffer.byteLength(suffix, "utf8"))) + suffix + ext
+      i++
+    }
+    return candidate
+  }
 
   return relPaths.map((relPath) => {
     const parts = relPath.split("/")
     const out: string[] = []
-    for (const raw of parts) {
+    const inPrefix: string[] = []
+    for (let depth = 0; depth < parts.length; depth++) {
+      const raw = parts[depth]!
+      const isLast = depth === parts.length - 1
+      let { stem, ext } = splitExt(raw)
       let name = raw
       if (Buffer.byteLength(raw, "utf8") > MAX_NAME_BYTES) {
-        const { stem, ext } = splitExt(raw)
         name = truncateUtf8ByBytes(stem, Math.max(1, MAX_NAME_BYTES - Buffer.byteLength(ext, "utf8"))) + ext
+        const re = splitExt(name)
+        stem = re.stem
+        ext = re.ext
       }
-      const dirKey = out.join("/")
-      const seen = seenLevels.get(dirKey) ?? new Set<string>()
-      const seenInsensitive = seenInsensitiveLevels.get(dirKey) ?? new Set<string>()
-      const collides = (candidate: string) => seen.has(candidate) || seenInsensitive.has(candidate.toLowerCase())
-      if (collides(name)) {
-        let i = 1
-        let candidate = name
-        const { stem, ext } = splitExt(name)
-        const extBytes = Buffer.byteLength(ext, "utf8")
-        const budget = MAX_NAME_BYTES - extBytes
-        while (collides(candidate) && i < 9999) {
-          const suffix = `_${i}`
-          candidate = truncateUtf8ByBytes(stem, Math.max(1, budget - Buffer.byteLength(suffix, "utf8"))) + suffix + ext
-          i++
+      inPrefix.push(raw)
+      const key = inPrefix.join("/")
+      const outDir = out.join("/")
+      if (!isLast && prefixOut.has(key)) {
+        // Same input directory as an earlier path — rejoin it, never fork.
+        name = prefixOut.get(key)!
+      } else if (!isLast && prefixOutFolded.has(key.toLowerCase())) {
+        // Case-variant of a known directory (`Docs/` vs `docs/`): fork
+        // conservatively so neither overwrites the other.
+        name = claimFree(outDir, stem, ext)
+        prefixOut.set(key, name)
+      } else {
+        name = claimFree(outDir, stem, ext)
+        if (!isLast) {
+          prefixOut.set(key, name)
+          prefixOutFolded.set(key.toLowerCase(), name)
         }
-        name = candidate
       }
-      seen.add(name)
-      seenInsensitive.add(name.toLowerCase())
-      seenLevels.set(dirKey, seen)
-      seenInsensitiveLevels.set(dirKey, seenInsensitive)
+      taken.add(`${outDir}/${name}`.toLowerCase())
       out.push(name)
     }
     return out.join("/")

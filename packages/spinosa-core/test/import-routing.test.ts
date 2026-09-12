@@ -9,6 +9,8 @@ import { addFiles } from "../src/commands/add"
 import type { ClassifiedEntry } from "../src/import/pipeline"
 
 const VISION_ID = "openai/gpt-4o-mini"
+const DIGITAL_FIXTURE = path.join(import.meta.dir, "fixtures", "digital-3p.pdf")
+const MIXED_FIXTURE = path.join(import.meta.dir, "fixtures", "mixed-3p.pdf")
 
 /** Minimal valid PDF with programmatic xref. Text pages carry /Font + Tj text (digital); rect pages carry no text (scanned-style). */
 function makePdf(pageBodies: string[], withFont: boolean): Buffer {
@@ -43,8 +45,54 @@ function makePdf(pageBodies: string[], withFont: boolean): Buffer {
 const digitalPdf = () => makePdf([`BT /F1 24 Tf 50 150 Td (Hello digital world) Tj ET`], true)
 const scannedPdf = (pages = 2) =>
   makePdf(Array.from({ length: pages }, () => `0.5 g 50 50 200 200 re f`), false)
+/**
+ * True raster pages: 8x8 1-bit inline image drawn at 250x250pt on a 300x300
+ * page (~69% coverage, above IMAGE_COVERAGE_MIN). 0x55 bytes are ASCII-safe
+ * through the utf-8 join in makePdf. Vector-only pages carry no image
+ * XObjects, so only this variant exercises the vision path — matching real
+ * scans, where the raster dominates the page.
+ */
+const scannedImagePdf = (pages = 2) =>
+  makePdf(
+    Array.from(
+      { length: pages },
+      () => `q 250 0 0 250 25 25 cm BI /W 8 /H 8 /CS /G /BPC 1 ID \x55\x55\x55\x55\x55\x55\x55\x55 EI Q`,
+    ),
+    false,
+  )
 
-describe("importRouteForFile — PDF/image triage by OCR selection", () => {
+describe("importRouteForFile — PDFs never take the MarkItDown route", () => {
+  test("digital, mixed, and scanned PDFs route by engine, never markitdown", async () => {
+    for (const fixture of [DIGITAL_FIXTURE, MIXED_FIXTURE]) {
+      expect(await importRouteForFile(fixture, { ocrChoice: true, ocrModelId: VISION_ID })).toBe("vision")
+      expect(await importRouteForFile(fixture, { ocrChoice: true, ocrModelId: "none" })).toBe("copy")
+      expect(await importRouteForFile(fixture, { ocrChoice: true, ocrModelId: "tesseract-local" })).toBe("ocr")
+      expect(await importRouteForFile(fixture, { ocrChoice: true })).toBe("ocr")
+    }
+  })
+
+  test("processMarkitdown rejects PDFs instead of converting them", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "spinosa-mdpdf-"))
+    const logsDir = path.join(root, ".logs")
+    mkdirSync(logsDir, { recursive: true })
+    const src = path.join(root, "digital.pdf")
+    writeFileSync(src, digitalPdf())
+    const files: ClassifiedEntry[] = [{ src, rel: "digital.pdf", dest: path.join(root, "raw", "digital__pdf.md") }]
+    const logs: string[] = []
+    try {
+      const res = await processMarkitdown(files, logsDir, undefined, (m) => logs.push(m), undefined, {
+        inProcess: true,
+        ocrModelId: "tesseract-local",
+      })
+      expect(res.converted).toBe(0)
+      expect(res.failed).toBe(1)
+      expect(existsSync(files[0]!.dest)).toBe(false)
+      expect(logs.some((l) => l.includes("skipped in MarkItDown phase") && l.includes("re-run import"))).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("images: vision → vision, tesseract/none/legacy → copy", async () => {
     expect(await importRouteForFile("/s/a.png", { ocrChoice: true, ocrModelId: VISION_ID })).toBe("vision")
     expect(await importRouteForFile("/s/a.png", { ocrChoice: true, ocrModelId: "tesseract-local" })).toBe("copy")
@@ -157,7 +205,7 @@ describe("processVisionInProcess — scanned PDF page transcription", () => {
     const logsDir = path.join(root, ".logs")
     mkdirSync(logsDir, { recursive: true })
     const src = path.join(root, "scan.pdf")
-    writeFileSync(src, scannedPdf(2))
+    writeFileSync(src, scannedImagePdf(2))
     const dest = path.join(root, "raw", "scan__pdf.md")
     const files: ClassifiedEntry[] = [{ src, rel: "scan.pdf", dest }]
     const seen: string[] = []
@@ -190,7 +238,7 @@ describe("processVisionInProcess — scanned PDF page transcription", () => {
     const logsDir = path.join(root, ".logs")
     mkdirSync(logsDir, { recursive: true })
     const src = path.join(root, "scan.pdf")
-    writeFileSync(src, scannedPdf(2))
+    writeFileSync(src, scannedImagePdf(2))
     const dest = path.join(root, "raw", "scan__pdf.md")
     const files: ClassifiedEntry[] = [{ src, rel: "scan.pdf", dest }]
     let calls = 0
@@ -252,6 +300,25 @@ describe("verifyAndRecoverImport — vision route", () => {  function makeSource
     }
   })
 
+  test("mixed PDF recovery stays page-level and never accepts whole-file MarkItDown", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "spinosa-verifymixed-"))
+    const source = path.join(root, "source")
+    const raw = path.join(root, "raw")
+    mkdirSync(source, { recursive: true })
+    mkdirSync(raw, { recursive: true })
+    writeFileSync(path.join(source, "mixed.pdf"), readFileSync(MIXED_FIXTURE))
+    const logs: string[] = []
+    try {
+      const res = await verifyAndRecoverImport(source, raw, undefined, true, true, (m) => logs.push(m), undefined, raw, undefined, undefined, VISION_ID)
+      expect(res.recovered).toBe(0)
+      expect(res.stillMissing).toBe(1)
+      expect(logs.some((line) => line.includes("route=vision"))).toBe(true)
+      expect(logs.some((line) => line.includes("Recovered (markitdown-ts)"))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("none selection: PDF recovered via copy as-is", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "spinosa-verifynone-"))
     const source = path.join(root, "source")
@@ -292,9 +359,28 @@ describe("addFiles single-file — digital PDF via pdf.js, never MarkItDown", ()
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  test("single mixed PDF keeps direct pages and OCRs only image pages", async () => {
+    const { tesseractAvailable } = await import("../src/import/tesseract-ocr")
+    if (!tesseractAvailable()) return
+    const root = mkdtempSync(path.join(tmpdir(), "spinosa-addsingle-mixed-"))
+    const workspace = path.join(root, "ws")
+    mkdirSync(workspace, { recursive: true })
+    const logs: string[] = []
+    try {
+      const res = await addFiles({ workspacePath: workspace, sourcePath: MIXED_FIXTURE, onProgress: (m) => logs.push(m) })
+      expect(res.ocrConverted).toBe(1)
+      expect(res.failed).toBe(0)
+      const dest = path.join(workspace, "raw", "mixed-3p__pdf.md")
+      expect(readFileSync(dest, "utf-8")).toContain("embedded digital text")
+      expect(logs.some((line) => line.includes("mixed PDF"))).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 120_000)
 })
 
-describe("processMarkitdown — PDF fallback respects OCR selection", () => {
+describe("processMarkitdown — PDFs are rejected, never converted", () => {
   function makePdfEntry(): { root: string; files: ClassifiedEntry[]; logsDir: string } {
     const root = mkdtempSync(path.join(tmpdir(), "spinosa-mdfallback-"))
     const logsDir = path.join(root, ".logs")
@@ -305,7 +391,7 @@ describe("processMarkitdown — PDF fallback respects OCR selection", () => {
     return { root, files, logsDir }
   }
 
-  test("vision selection: misrouted PDF fails honestly, no tesseract", async () => {
+  test("vision selection: PDF fails honestly with a reroute pointer, no tesseract", async () => {
     const { root, files, logsDir } = makePdfEntry()
     const logs: string[] = []
     try {
@@ -315,8 +401,25 @@ describe("processMarkitdown — PDF fallback respects OCR selection", () => {
       })
       expect(res.converted).toBe(0)
       expect(res.failed).toBe(1)
-      expect(logs.some((l) => l.includes("vision") && l.includes("no tesseract fallback"))).toBe(true)
+      expect(logs.some((l) => l.includes("skipped in MarkItDown phase") && l.includes("re-run import"))).toBe(true)
       expect(logs.some((l) => l.includes("tesseract OCR fallback succeeded"))).toBe(false)
+      expect(existsSync(files[0]!.dest)).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("tesseract selection: PDF still fails honestly (tesseract owns it via OCR)", async () => {
+    const { root, files, logsDir } = makePdfEntry()
+    const logs: string[] = []
+    try {
+      const res = await processMarkitdown(files, logsDir, undefined, (m) => logs.push(m), undefined, {
+        inProcess: true,
+        ocrModelId: "tesseract-local",
+      })
+      expect(res.converted).toBe(0)
+      expect(res.failed).toBe(1)
+      expect(existsSync(files[0]!.dest)).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

@@ -214,7 +214,7 @@ test("Spinosa app route E2E boots and navigates key workspace flows", async () =
 
   const onboardingFrame = await renderRouteFrame("onboarding")
   expect(onboardingFrame).toContain("Create Spinosa workspace")
-  expect(onboardingFrame).toContain("Paste the corpus folder path")
+  expect(onboardingFrame).toContain("Paste your documents folder path")
 
   const addFilesFrame = await renderRouteFrame("add-files")
   expect(addFilesFrame).toContain("Import files into workspace")
@@ -436,6 +436,13 @@ test("a present incomplete Recent workspace resumes at Step 2 and bottom Back re
         const x = lines[y]!.indexOf("importing-demo") + 1
         await setup.mockMouse.moveTo(x, y)
         await setup.mockMouse.click(x, y)
+        // Incomplete import interstitial: confirm to resume onboarding.
+        const interstitial = await waitForText(setup, "Unfinished import")
+        const interstitialLines = interstitial.split("\n")
+        const continueY = interstitialLines.findIndex((line) => line.includes("Continue import"))
+        const continueX = interstitialLines[continueY]!.indexOf("Continue import") + 1
+        await setup.mockMouse.moveTo(continueX, continueY)
+        await setup.mockMouse.click(continueX, continueY)
         await waitForText(setup, "Resume Spinosa workspace")
         const resumedFrame = await waitForText(setup, "Workspace name")
         expect(resumedFrame).not.toContain("Source folders")
@@ -485,6 +492,12 @@ test("New workspace after leaving resumed onboarding starts fresh create flow", 
         const recentX = recentLines[recentY]!.indexOf("dbg") + 1
         await setup.mockMouse.moveTo(recentX, recentY)
         await setup.mockMouse.click(recentX, recentY)
+        const interstitial = await waitForText(setup, "Unfinished import")
+        const interstitialLines = interstitial.split("\n")
+        const continueY = interstitialLines.findIndex((line) => line.includes("Continue import"))
+        const continueX = interstitialLines[continueY]!.indexOf("Continue import") + 1
+        await setup.mockMouse.moveTo(continueX, continueY)
+        await setup.mockMouse.click(continueX, continueY)
         await waitForText(setup, "Resume Spinosa workspace")
 
         const resumedFrame = await waitForText(setup, "Workspace name")
@@ -539,6 +552,12 @@ test("the top arrow exits resumed onboarding to global home", async () => {
         const recentX = recentLines[recentY]!.indexOf("arrow-back-demo") + 1
         await setup.mockMouse.moveTo(recentX, recentY)
         await setup.mockMouse.click(recentX, recentY)
+        const interstitialArrow = await waitForText(setup, "Unfinished import")
+        const interstitialArrowLines = interstitialArrow.split("\n")
+        const continueArrowY = interstitialArrowLines.findIndex((line) => line.includes("Continue import"))
+        const continueArrowX = interstitialArrowLines[continueArrowY]!.indexOf("Continue import") + 1
+        await setup.mockMouse.moveTo(continueArrowX, continueArrowY)
+        await setup.mockMouse.click(continueArrowX, continueArrowY)
 
         const resumedFrame = await waitForText(setup, "Workspace name")
         const resumedLines = resumedFrame.split("\n")
@@ -583,6 +602,12 @@ test("an incomplete workspace with an invalid saved source resumes at Step 1", a
         const x = lines[y]!.indexOf("invalid-source-demo") + 1
         await setup.mockMouse.moveTo(x, y)
         await setup.mockMouse.click(x, y)
+        const interstitialInvalid = await waitForText(setup, "Unfinished import")
+        const interstitialInvalidLines = interstitialInvalid.split("\n")
+        const continueInvalidY = interstitialInvalidLines.findIndex((line) => line.includes("Continue import"))
+        const continueInvalidX = interstitialInvalidLines[continueInvalidY]!.indexOf("Continue import") + 1
+        await setup.mockMouse.moveTo(continueInvalidX, continueInvalidY)
+        await setup.mockMouse.click(continueInvalidX, continueInvalidY)
         await waitForText(setup, "Resume Spinosa workspace")
         await waitForText(setup, "Source folders")
       },
@@ -591,6 +616,57 @@ test("an incomplete workspace with an invalid saved source resumes at Step 1", a
     expect(frame).toContain("Source folders")
     expect(frame).toContain(path.basename(missingSource))
     expect(frame).not.toContain("Workspace name")
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
+test("incomplete import interstitial can delete the workspace instead", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "spinosa-delete-importing-"))
+  const home = path.join(root, "home")
+  const source = path.join(root, "importing-source")
+  mkdirSync(home, { recursive: true })
+  mkdirSync(source, { recursive: true })
+  await Bun.write(path.join(source, "paper.md"), "partial import\n")
+  try {
+    await createRegisteredWorkspace({
+      root,
+      home,
+      projectName: "delete-me-demo",
+      setupStatus: "importing",
+      sourceLocation: source,
+    })
+    await createRegisteredWorkspace({
+      root,
+      home,
+      projectName: "keeper-demo",
+      setupStatus: "workspace_started",
+    })
+    const frame = await renderRouteFrame("global", {
+      home,
+      act: async (setup) => {
+        const recentFrame = await waitForText(setup, "delete-me-demo")
+        const lines = recentFrame.split("\n")
+        const y = lines.findIndex((line) => line.includes("delete-me-demo"))
+        const x = lines[y]!.indexOf("delete-me-demo") + 1
+        await setup.mockMouse.moveTo(x, y)
+        await setup.mockMouse.click(x, y)
+        await waitForText(setup, "Unfinished import")
+        // Keyboard like the remove flow: Tab to Delete, Enter to arm,
+        // Enter to confirm.
+        setup.mockInput.pressTab()
+        setup.mockInput.pressEnter()
+        await waitForText(setup, "Confirm delete")
+        setup.mockInput.pressEnter()
+        await waitForTextToDisappear(setup, "Unfinished import")
+        await waitForText(setup, "Recent workspaces")
+      },
+    })
+
+    expect(frame).toContain("Recent workspaces")
+    expect(frame).not.toContain("delete-me-demo")
+    expect(frame).not.toContain("Unfinished import")
+    expect(await Bun.file(path.join(home, ".spinosa", "metadata", "workspaces.json")).text()).not.toContain("delete-me-demo")
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

@@ -9,7 +9,6 @@ import {
 import type { Binding } from "@opentui/keymap"
 import { useTheme, selectedForeground } from "../context/theme"
 import {
-  countDialogRows,
   filterDialogOptions,
   flattenDialogOptions,
   groupDialogOptions,
@@ -175,10 +174,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
 
   const flat = createMemo(() => flattenDialogOptions(grouped()))
 
-  const rows = createMemo(() => countDialogRows(grouped(), flat()))
-
   const dimensions = useTerminalDimensions()
-  const height = createMemo(() => Math.min(rows(), Math.floor(dimensions().height / 2) - 6))
+  // Fixed height per viewport — never derived from the filtered row count,
+  // so typing in the filter no longer resizes (and jumps) the dialog.
+  // Short lists render in stable space; the empty fallback covers zero rows.
+  const height = createMemo(() => Math.max(4, Math.floor(dimensions().height / 2) - 6))
 
   const selected = createMemo(() => flat()[store.selected])
 
@@ -582,7 +582,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             scrollbarOptions={{ visible: false }}
             scrollAcceleration={scrollAcceleration()}
             ref={(r: ScrollBoxRenderable) => (scroll = r)}
-            maxHeight={height()}
+            height={height()}
           >
             <For each={grouped()}>
               {([category, options], index) => (

@@ -9,6 +9,7 @@ import {
   type ImportOption,
   LogScrollbox,
   ProgressBar,
+  ToolChecksList,
   WizardActionButton,
   WizardActionRow,
   WizardGateButton,
@@ -21,7 +22,7 @@ import {
   type ImportFileProgressItem,
 } from "../../spinosa/import-progress-ui"
 
-export type WizardStep = "path" | "tools" | "scan" | "direct" | "markitdown" | "ocr" | "done" | "error"
+export type WizardStep = "path" | "tools" | "scan" | "direct" | "markitdown" | "pdf" | "ocr" | "done" | "error"
 export type ToolCheckResult = {
   label: string
   status: "checking" | "available" | "missing" | "unsupported"
@@ -205,19 +206,19 @@ export function AddFilesView(props: AddFilesViewProps) {
             {step() === "path" ? " — choosing source folders" : ""}
             {step() === "tools" ? " — checking your document tools" : ""}
             {step() === "scan" ? " — scanning your source" : ""}
-            {step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : ""}
+            {step() === "direct" ? " — copying text-based files" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "pdf" ? " — processing PDFs (text direct, image pages via engine)" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : ""}
             {step() === "done" ? " — import complete" : ""}
             {step() === "error" ? " — fixing the issue and retrying" : ""}
           </text>
-          <Show when={sourceIsCloud() && (step() === "scan" || step() === "direct" || step() === "markitdown" || step() === "ocr")}>
-            <text fg={theme.error}>  ⚠ cloud folder — scans & copies can be slow due to sync latency</text>
+          <Show when={sourceIsCloud() && (step() === "scan" || step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr")}>
+            <text fg={theme.error}>  ⚠ cloud folder — scans run slower here. Keep the folder open.</text>
           </Show>
 
           <Show when={step() === "path"}>
-            <WizardPanel theme={theme} accent>
+            <WizardPanel theme={theme} accent viewportHeight={dimensions().height}>
               <text fg={theme.textMuted}>Source folders</text>
               <text fg={theme.textMuted}>
-                Add one or more source folders. Spinosa scans them, then imports the file types you choose into this workspace.
+                Add one or more source folders. Spinosa scans them. Then Spinosa imports the file types you select.
               </text>
               <text fg={theme.textMuted}>Click a path to edit · ↑↓ move between paths</text>
               <box flexDirection="column" gap={1} paddingTop={1}>
@@ -311,35 +312,11 @@ export function AddFilesView(props: AddFilesViewProps) {
             </WizardActionRow>
           </Show>
 
-          <Show when={step() === "tools" || step() === "scan" || step() === "direct" || step() === "markitdown" || step() === "ocr"}>
-            <WizardPanel theme={theme}>
+          <Show when={step() === "tools" || step() === "scan" || step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr"}>
+            <WizardPanel theme={theme} viewportHeight={dimensions().height}>
               <Show when={step() === "tools"}>
                 <text fg={theme.textMuted}>Document processing tools</text>
-                <box flexDirection="column" gap={1} paddingTop={1}>
-                  <For each={toolChecks()}>
-                    {(check) => {
-                      const icon =
-                        check.status === "available" || check.status === "unsupported"
-                          ? "●"
-                          : check.status === "missing"
-                            ? "●"
-                            : wavePulse(spinIdx())
-                      const color =
-                        check.status === "available"
-                          ? theme.success
-                          : check.status === "missing"
-                            ? theme.error
-                            : theme.textMuted
-                      return (
-                        <box flexDirection="row" gap={1} alignItems="center" paddingLeft={1} paddingRight={1}>
-                          <text fg={color} attributes={check.status === "checking" ? undefined : TextAttributes.BOLD}>{icon}</text>
-                          <text fg={check.status === "checking" ? theme.textMuted : theme.text}> {check.label}</text>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{check.detail ?? ""}</text>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </box>
+                <ToolChecksList theme={theme} checks={toolChecks()} spinIdx={spinIdx()} wavePulse={wavePulse} />
                 <Show when={logLines().length > 0}>
                   <box height={1} />
                   <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
@@ -370,7 +347,7 @@ export function AddFilesView(props: AddFilesViewProps) {
                   <text fg={theme.textMuted}>↑↓ move · space toggle · a toggle all · enter continue</text>
                 </Show>
               </Show>
-              <Show when={step() === "direct" || step() === "markitdown" || step() === "ocr"}>
+              <Show when={step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr"}>
                 <Show when={!processingDone()}>
                   <ProgressBar
                     theme={theme}
@@ -393,7 +370,7 @@ export function AddFilesView(props: AddFilesViewProps) {
                       <WizardActionButton theme={theme} label="Skip file" onPress={() => props.onVisionSkip()} />
                       <WizardActionButton theme={theme} label="Open monitor" onPress={() => props.onOpenMonitor()} />
                     </box>
-                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>r retry · s skip · m monitor</text>
+                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>r retry · s skip (file stays out) · m monitor</text>
                   </Show>
                 </Show>
               </Show>
@@ -417,7 +394,7 @@ export function AddFilesView(props: AddFilesViewProps) {
                   onPress={() => void continueFromScan()}
                 />
               </Show>
-              <Show when={step() === "direct" || step() === "markitdown" || step() === "ocr"}>
+              <Show when={step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr"}>
                 <Show when={waitingForGate()}>
                   <WizardGateButton theme={theme} label={gateLabel()} action={() => gateAction()()} />
                 </Show>
@@ -427,18 +404,17 @@ export function AddFilesView(props: AddFilesViewProps) {
                     label="Continue in background"
                     onPress={() => props.onBackground()}
                   />
-                  <text fg={theme.textMuted} attributes={TextAttributes.DIM}>b background</text>
                 </Show>
               </Show>
             </WizardActionRow>
           </Show>
 
           <Show when={step() === "done" || step() === "error"}>
-            <WizardPanel theme={theme}>
+            <WizardPanel theme={theme} viewportHeight={dimensions().height}>
               <Show when={step() === "done"}>
                 <box gap={1}>
                   <text fg={importOutcomeFg()}>{importOutcomeHeading(importOutcome())}</text>
-                  <text fg={theme.textMuted}>Import finished. Review the summary and file list below.</text>
+                  <text fg={theme.textMuted}>Import complete. Review the summary and file list below.</text>
                   <Show when={progressFiles().length > 0}>
                     <ProgressBar
                       theme={theme}
@@ -458,7 +434,7 @@ export function AddFilesView(props: AddFilesViewProps) {
                   </Show>
                   <Show when={failedCount() > 0}>
                     <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — originals copied to raw/_failed_files/ when possible</text>
+                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — Spinosa kept the originals. See raw/_failed_files/.</text>
                     </box>
                   </Show>
                   <Show when={shouldShowImportDetailLogHint(importOutcome())}>
@@ -504,7 +480,7 @@ export function AddFilesView(props: AddFilesViewProps) {
               <Show when={step() === "error"}>
                 <WizardActionButton theme={theme} label="Back" onPress={handleBackPress} />
                 <box flexGrow={1} />
-                <WizardActionButton theme={theme} label="Retry" primary onPress={() => void continueFromPath()} />
+                <WizardActionButton theme={theme} label="Start over" primary onPress={() => void continueFromPath()} />
               </Show>
             </WizardActionRow>
           </Show>

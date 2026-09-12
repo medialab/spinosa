@@ -29,6 +29,7 @@ import { WorkspaceUpdateCommand } from "./cli/cmd/workspace-update"
 import { WorkspaceStatusCommand } from "./cli/cmd/workspace-status"
 import { WorkspaceListCommand } from "./cli/cmd/workspace-list"
 import { DoctorCommand } from "./cli/cmd/doctor"
+import { McpCommand } from "./cli/cmd/mcp"
 import { StartupAutocleanCommand } from "./cli/cmd/startup-autoclean"
 import { VersionCommand } from "./cli/cmd/version"
 import { InternalCommand } from "./cli/cmd/internal"
@@ -150,7 +151,7 @@ const cli = yargs(args)
   })
   .usage("")
   // --- Curated Spinosa help: keep core workflow visible, hide advanced, eliminate opencode fork internals ---
-  // Visible (13): TUI default + new/add/update/status/list/doctor/providers/models/agent/upgrade/uninstall/version
+  // Visible (14): TUI default + new/add/update/status/list/doctor/providers/models/agent/mcp/upgrade/uninstall/version
   .command(TuiThreadCommand)
   .command(WorkspaceNewCommand)
   .command(WorkspaceAddCommand)
@@ -160,6 +161,7 @@ const cli = yargs(args)
   .command(DoctorCommand)
   .command(ProvidersCommand)
   .command(AgentCommand)
+  .command(McpCommand)
   .command(UpgradeCommand)
   .command(UninstallCommand)
   .command(ModelsCommand)

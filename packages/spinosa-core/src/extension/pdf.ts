@@ -1,7 +1,18 @@
 import { readFile } from "node:fs/promises"
 
 const QUICK_SCAN_LEN = 262144
-const PDFJS_TIMEOUT_MS = 5000
+const CENSUS_BASE_TIMEOUT_MS = 5000
+
+/**
+ * Census budget scales with file size for the same reason as the doc-load
+ * budget: slow-to-parse must never read as has-no-text. A big digital PDF
+ * that blows a fixed 5s budget lands in vision/OCR — slow, expensive, and
+ * lower fidelity than its own embedded text.
+ */
+export function pdfCensusTimeoutMs(sizeBytes: number): number {
+  const sizeMB = Math.max(0, sizeBytes / 1048576)
+  return Math.min(60_000, CENSUS_BASE_TIMEOUT_MS + Math.ceil(sizeMB * 1000))
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -91,7 +102,7 @@ export async function isTextBasedPdf(pdfPath: string): Promise<boolean> {
     const m = await pdfJs()
     return await withTimeout(
       m.withPdfDocument(pdfPath, (doc) => m.pdfDocumentTextPagesMeetThreshold(doc)),
-      PDFJS_TIMEOUT_MS,
+      pdfCensusTimeoutMs(data.byteLength),
     )
   } catch {
     return false

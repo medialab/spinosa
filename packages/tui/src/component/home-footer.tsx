@@ -6,7 +6,6 @@ import { useToast } from "../ui/toast"
 import { useSpinosaWorkspace } from "../context/spinosa-workspace"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { DialogSpinosaSettings } from "./dialog-spinosa-settings"
-import { DialogAgent } from "./dialog-agent"
 import { DialogSessionList } from "./dialog-session-list"
 import { DialogModel } from "./dialog-model"
 import { DialogProvider } from "./dialog-provider"
@@ -31,7 +30,7 @@ export function HomeFooter() {
     const confirmed = await DialogConfirm.show(
       dialog,
       "Delete workspace",
-      "Do you really want to delete the workspace folder and its contents?",
+      "Do you really want to delete this workspace? The folder moves to Trash.",
       {
         confirmLabel: "Yes, delete",
         cancelLabel: "No, keep it",
@@ -45,7 +44,7 @@ export function HomeFooter() {
       await deleteWorkspace(workspacePath)
       spinosa.useGenericMode()
       spinosa.showPicker()
-      toast.show({ variant: "success", message: "Workspace deleted." })
+      toast.show({ variant: "success", message: "Workspace moved to Trash." })
     } catch (error) {
       toast.show({
         variant: "error",
@@ -60,7 +59,6 @@ export function HomeFooter() {
   const buttons = createMemo<Shortcut[]>(() => {
     const items: Shortcut[] = [
       { id: "S", key: "shift+s", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
-      { id: "A", key: "shift+a", label: "Agents", action: () => dialog.replace(() => <DialogAgent />) },
       { id: "P", key: "shift+p", label: "Provider", action: () => dialog.replace(() => <DialogProvider />) },
       { id: "M", key: "shift+m", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
     ]
@@ -126,12 +124,57 @@ export function HomeFooter() {
   // Footer Enter is intentionally not bound — recent list's Enter takes precedence
   // when both are visible. Footer actions are mouse-only on Home; in chat use /commands.
 
+  // Workspace chat keeps the prompt's keyboard, so footer buttons are
+  // mouse-only there (no shortcuts registered). Rendered so Settings/Models
+  // stay one click away even with text in the prompt box — where `/model`
+  // mid-text intentionally does not trigger slash commands.
+  const chatButtons = createMemo<Shortcut[]>(() => [
+    { id: "S", key: "shift+s", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
+    { id: "M", key: "shift+m", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
+  ])
+
+  const renderButton = (item: Shortcut) => (
+    <box
+      paddingX={1}
+      onMouseOver={() => {
+        setHovered(item.id)
+        const idx = buttons().findIndex((b) => b.id === item.id)
+        if (idx >= 0) setFooterSelected(idx)
+      }}
+      onMouseOut={() => setHovered(undefined)}
+      onMouseUp={item.action}
+    >
+      <text
+        fg={
+          hovered() === item.id
+            ? (item.danger ? theme.error : theme.text)
+            : (item.danger ? theme.error : theme.textMuted)
+        }
+        attributes={hovered() === item.id ? TextAttributes.BOLD : undefined}
+      >
+        {item.label}
+      </text>
+    </box>
+  )
+
   return (
     <box width="100%" maxWidth={MAIN_CONTENT_MAX_WIDTH} flexDirection="row" justifyContent="center" gap={0}>
       <Show
         when={isHomePicker()}
         fallback={
-          <text fg={theme.textMuted}>Type / for commands · tab agents · ctrl+p palette</text>
+          <box flexDirection="row" alignItems="center">
+            <For each={chatButtons()}>
+              {(item, i) => (
+                <>
+                  <Show when={i() > 0}>
+                    <text fg={theme.textMuted}>{" · "}</text>
+                  </Show>
+                  {renderButton(item)}
+                </>
+              )}
+            </For>
+            <text fg={theme.textMuted}>{" · "}Type / for commands · tab agents · ctrl+p palette</text>
+          </box>
         }
       >
         <For each={buttons()}>
@@ -140,27 +183,7 @@ export function HomeFooter() {
               <Show when={i() > 0}>
                 <text fg={theme.textMuted}>{" · "}</text>
               </Show>
-              <box
-                paddingX={1}
-                onMouseOver={() => {
-                  setHovered(item.id)
-                  const idx = buttons().findIndex((b) => b.id === item.id)
-                  if (idx >= 0) setFooterSelected(idx)
-                }}
-                onMouseOut={() => setHovered(undefined)}
-                onMouseUp={item.action}
-              >
-                <text
-                  fg={
-                    hovered() === item.id
-                      ? (item.danger ? theme.error : theme.text)
-                      : (item.danger ? theme.error : theme.textMuted)
-                  }
-                  attributes={hovered() === item.id ? TextAttributes.BOLD : undefined}
-                >
-                  {item.label}
-                </text>
-              </box>
+              {renderButton(item)}
             </>
           )}
         </For>

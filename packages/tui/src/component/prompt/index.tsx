@@ -74,6 +74,7 @@ import {
   prepareSpinosaSubmit,
   shouldPrepareSpinosaSubmit,
 } from "../../spinosa/orchestrator"
+import { setRouteProgress, SPINOSA_ROUTE_METADATA } from "../../spinosa/route-badge"
 import { readStartupPrompt } from "../../spinosa/service"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { fadeColor, getEditorRangeLabel, hasEditorRangeSelection, randomIndex } from "./helpers"
@@ -1219,9 +1220,32 @@ export function Prompt(props: PromptProps) {
     const admitAfterPrepare = async (targetSessionID: string) => {
     let outboundText = inputText
     let preparedSpinosa: Awaited<ReturnType<typeof prepareSpinosaSubmit>> | undefined
-    if (shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: store.prompt.forceAgent })) {
+    // WP7: route normal prompts through the workflow router. Shell, slash
+    // commands and forceAgent bypass routing (same predicate as the dispatch
+    // branches below, evaluated on the raw input before preparation).
+    const isSlashCommand =
+      inputText.startsWith("/") &&
+      sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
+    const shouldRoute =
+      currentMode === "normal" &&
+      !isSlashCommand &&
+      !store.prompt.forceAgent &&
+      Boolean(sessionDirectory)
+    if (shouldRoute && shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: store.prompt.forceAgent })) {
       try {
-        const prepared = await prepareSpinosaSubmit(sessionDirectory!, inputText)
+        const fileParts = nonTextParts.filter((x) => x.type === "file") as Array<{ type: "file"; name?: string; mime?: string; path?: string }>
+        const prepared = await prepareSpinosaSubmit(sessionDirectory!, inputText, {
+          parentSessionID: targetSessionID,
+          client: sdk.client,
+          model: { providerID: selectedModel.providerID, modelID: selectedModel.modelID },
+          references: {
+            fileCount: fileParts.length,
+            fileNames: fileParts.map((p) => p.name ?? p.path ?? "attachment"),
+            mimeTypes: fileParts.map((p) => p.mime ?? "application/octet-stream"),
+            hasSelectedRange: editorParts.length > 0,
+          },
+          explicitAgent: store.prompt.forceAgent ?? undefined,
+        })
         preparedSpinosa = prepared
         outboundText = prepared.text
       } catch (error) {
@@ -1269,6 +1293,22 @@ export function Prompt(props: PromptProps) {
       })
     } else if (preparedSpinosa?.framed) {
       move.startSubmit()
+      // Route badge: stamp the workflow identity onto the (ignored) user
+      // message so the transcript manifests the orchestrated path + steps.
+      const routeMeta =
+        preparedSpinosa.kind === "workflow" && preparedSpinosa.decision.mode === "orchestrated"
+          ? {
+              [SPINOSA_ROUTE_METADATA]: {
+                kind: "workflow",
+                workflowID: preparedSpinosa.workflowID ?? "workflow",
+                operation: preparedSpinosa.decision.operation,
+                strategy: preparedSpinosa.decision.strategy,
+                runID: preparedSpinosa.sessionId ?? "",
+                ...(preparedSpinosa.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
+                confidence: preparedSpinosa.decision.confidence,
+              },
+            }
+          : {}
       void sdk.client.session
         .prompt(
           {
@@ -1280,7 +1320,7 @@ export function Prompt(props: PromptProps) {
             noReply: true,
             parts: [
               ...editorParts,
-              { type: "text", text: outboundText, ignored: true },
+              { type: "text", text: outboundText, ignored: true, metadata: routeMeta },
               ...nonTextParts,
             ],
           },
@@ -1297,6 +1337,7 @@ export function Prompt(props: PromptProps) {
             },
             publish: sdk.publishJobEvent,
             localEmit: (event) => sdk.event.emit("event", event),
+            onProgress: (progress) => setRouteProgress(progress.runID, progress),
           }),
         )
         .catch((error) => {
@@ -1309,11 +1350,26 @@ export function Prompt(props: PromptProps) {
       if (editorParts.length > 0) editor.markSelectionSent()
     } else {
       move.startSubmit()
+      // Route badge: fast-path requests carry their decision so the
+      // transcript shows ⚡ fast (V1 transport preserves part metadata).
+      const directMeta =
+        preparedSpinosa?.kind === "direct" && preparedSpinosa.decision.mode === "fast"
+          ? {
+              [SPINOSA_ROUTE_METADATA]: {
+                kind: "direct",
+                action: preparedSpinosa.decision.action,
+                reason: preparedSpinosa.decision.reason,
+                ...(preparedSpinosa.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
+                confidence: preparedSpinosa.decision.confidence,
+              },
+            }
+          : {}
       const promptParts = [
         ...editorParts,
         {
           type: "text" as const,
           text: outboundText,
+          ...(Object.keys(directMeta).length > 0 ? { metadata: directMeta } : {}),
         },
         ...nonTextParts,
       ]

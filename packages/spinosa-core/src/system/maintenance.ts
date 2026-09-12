@@ -5,13 +5,19 @@ import path from "node:path"
 import { resolveFrameworkRoot } from "../framework/discovery"
 
 const STALE_INSTALL_DIRECTORY = /^\.\d[\w.+-]*\.(?:staging|backup)\.(\d+)$/
-/** Temp dirs Spinosa creates and may abandon on crash/kill. */
+/** Temp entries Spinosa creates and may abandon on crash/kill. */
 const STALE_TEMP_DIR_PREFIXES = [
   "spinosa-launch-",
   "spinosa-upgrade-",
   "spinosa-upgrade-err-",
   "spinosa-install.",
   "spinosa-pack-",
+  // Import-pipeline and update leftovers (each OCR/vision run owns one dir;
+  // worker payloads are single files). Age gate + live-PID guard apply.
+  "spinosa-tess-",
+  "spinosa-vision-pdf-",
+  "spinosa-update-backup-",
+  "spinosa-worker-payload-",
 ] as const
 
 export const MIN_STALE_INSTALL_AGE_MS = 60 * 60 * 1000

@@ -10,6 +10,68 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.17.16] — 2026-09-12
+
+### Changed
+
+- PDFs run in a dedicated import step. Every PDF lands there regardless of engine. Text pages extract direct and image pages transcribe via the selected engine. Vision keeps images only. Code: `packages/spinosa-core/src/import/pipeline.ts`, `packages/spinosa-core/src/import/processors.ts`, `packages/spinosa-core/src/import/import-workflow.ts`, `packages/tui/src/routes/spinosa/onboarding.tsx`, `packages/tui/src/routes/spinosa/add-files.tsx`.
+
+## [1.1.0-beta.17.15] — 2026-09-12
+
+### Changed
+
+- PDFs never route through MarkItDown. Text pages extract via pdf.js and image pages transcribe via vision/OCR in the owning phase. The MarkItDown phase rejects PDFs loudly instead of dropping image pages silently. Code: `packages/spinosa-core/src/import/pipeline.ts`, `packages/spinosa-core/src/extension/classifier.ts`.
+- The shared import workflow runs the copy-as-is phase. Kept files show in the file list, count in totals, and land in `_failed_files` on failure. Code: `packages/spinosa-core/src/import/import-workflow.ts`, `packages/spinosa-core/src/import/processors.ts`, `packages/tui/src/routes/spinosa/onboarding.tsx`, `packages/tui/src/routes/spinosa/add-files.tsx`.
+
+### Fixed
+
+- Over-long destinations resolve to the path actually written. Converters return the written path and every caller checks it. Code: `packages/spinosa-core/src/import/tesseract-ocr.ts`, `packages/spinosa-core/src/import/pipeline.ts`, `packages/spinosa-core/src/commands/add.ts`.
+
+## [1.1.0-beta.17.14] — 2026-09-12
+
+### Fixed
+
+- Recover digital PDFs with pdf.js when MarkItDown returns only page markers. A MarkItDown failure no longer implies a scanned PDF. Embedded text is extracted before OCR is queued. Code: `packages/spinosa-core/src/import/pipeline.ts`.
+
+## [1.1.0-beta.17.13] — 2026-09-12
+
+### Changed
+
+- Move deleted workspaces to the OS trash. The folder stays recoverable. Registry entry still removed. macOS uses `~/.Trash`, Linux uses freedesktop Trash with restore info. Code: `packages/spinosa-core/src/utils/trash.ts`, `packages/tui/src/spinosa/service.ts`.
+
+## [1.1.0-beta.17.12] — 2026-09-12
+
+### Added
+
+- Show the live PDF page during vision transcription. The current file line reads `memo.pdf (PG: 3)`. The marker clears when the file finishes. Code: `packages/spinosa-core/src/import/vision-transcribe.ts`, `packages/tui/src/spinosa/import-progress-ui.ts`, `packages/tui/src/routes/spinosa/wizard-ui.tsx`.
+- Show a vertical scrollbar in every wizard list. Users see when options, logs, and files scroll. Code: `packages/tui/src/routes/spinosa/wizard-ui.tsx`, `packages/tui/src/routes/spinosa/onboarding-launch-view.tsx`.
+
+### Changed
+
+- Enlarge the wizard panel to 23 rows on tall screens. Option lists scale to 12 rows. Layout stays responsive to terminal height. Code: `packages/tui/src/routes/spinosa/wizard-ui.tsx`.
+- Fix the file list height during runs. The area keeps one size while files stream in. The panel no longer jumps. Code: `packages/tui/src/routes/spinosa/wizard-ui.tsx`.
+- Remove the background shortcut hint from the wizard. The `Continue in background` button stays. Code: `packages/tui/src/routes/spinosa/onboarding-view.tsx`, `packages/tui/src/routes/spinosa/add-files-view.tsx`.
+
+## [1.1.0-beta.17.11] — 2026-09-12
+
+### Changed
+
+- Hide the background shortcut hint on the vision step. The step keeps its own keys. Other steps still show the hint. Code: `packages/tui/src/routes/spinosa/onboarding-view.tsx`.
+
+## [1.1.0-beta.17.10] — 2026-09-12
+
+### Changed
+
+- Rename the engine to `Tesseract` in checks, options, buttons, and statuses. One name replaces `Tesseract OCR`, `local OCR`, and `Vision Model`. Code: `packages/tui/src/routes/spinosa/onboarding-helpers.ts`, `packages/tui/src/spinosa/onboarding-preview.ts`.
+- Rewrite transcription choice details in plain words. Each option states cost, needs, and result. No codes, no binary names, no SDK terms. Code: `packages/tui/src/routes/spinosa/onboarding-helpers.ts`.
+- Unify outcome headings on the verb `complete`. `Import complete with failures` and `Import complete with missing files` replace the `finished` variants. Code: `packages/tui/src/spinosa/import-progress-ui.ts`, `packages/tui/src/component/background-import-chip.tsx`, `packages/tui/src/component/dialog-background-import.tsx`.
+- Rename error-step `Retry` to `Start over`. The button restarts the scan from folders. It never retries single files. Code: `packages/tui/src/routes/spinosa/add-files-view.tsx`, `packages/tui/src/routes/spinosa/onboarding-result-view.tsx`.
+- Rewrite failure lines with an actor. `Spinosa kept the originals` replaces the passive form. The path stays visible. Code: `packages/tui/src/routes/spinosa/onboarding-view.tsx`, `packages/tui/src/routes/spinosa/add-files-view.tsx`, `packages/tui/src/routes/spinosa/onboarding-result-view.tsx`.
+- Simplify setup progress lines. `Saving workspace settings` and `Registering the workspace` replace metadata terms. Code: `packages/spinosa-core/src/commands/create.ts`, `packages/tui/src/routes/spinosa/onboarding.tsx`.
+- Shorten wizard descriptions to one idea per sentence. Each sentence stays under 20 words. Voice stays active. Code: `packages/tui/src/routes/spinosa/onboarding-view.tsx`, `packages/tui/src/routes/spinosa/add-files-view.tsx`, `packages/tui/src/routes/spinosa/onboarding-launch-view.tsx`.
+
+## [1.1.0-beta.17.9] — 2026-09-12
+
 ### Added
 
 - Add bundled OCR tools. Installer provisions tesseract, pdftoppm, and tessdata into `$SPINOSA_HOME/tools/`. Runtime prefers bundled tools over host tools. Doctor shows bundled or host source. Code: `packages/spinosa-core/src/distribution/tools.ts`, `install.sh`.

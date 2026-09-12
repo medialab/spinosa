@@ -2,14 +2,16 @@ import type { ChildProcess } from "node:child_process"
 import type { ProgressEmitter } from "../progress/progress"
 import {
   processDirectCopy,
+  processImageCopy,
   processMarkitdown,
   processOcr,
+  processPdf,
   type PhaseResult,
   type ClassifiedEntry,
 } from "./pipeline"
 import { processVisionInProcess } from "./vision-transcribe"
 
-export type ImportProcessorId = "direct" | "markitdown" | "vision" | "ocr"
+export type ImportProcessorId = "direct" | "copy" | "markitdown" | "pdf" | "vision" | "ocr"
 
 export type ImportProcessorContext = {
   files: ClassifiedEntry[]
@@ -66,7 +68,22 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
       processMarkitdown(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
         onChild: ctx.onChild,
         signal: ctx.signal,
+        ocrModelId: ctx.ocrModelId,
       }),
+  },
+  copy: {
+    id: "copy",
+    label: "Copy as-is",
+    phase: "copy",
+    run: async (ctx) =>
+      processImageCopy(
+        ctx.files,
+        ctx.prog,
+        ctx.onLog,
+        ctx.overwrite,
+        ctx.shouldAbort,
+        ctx.logsDir,
+      ),
   },
   vision: {
     id: "vision",
@@ -79,6 +96,16 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
         signal: ctx.signal,
         onVisionFailure: ctx.onVisionFailure,
         onChild: ctx.onChild,
+      }),
+  },
+  pdf: {
+    id: "pdf",
+    label: "PDF",
+    phase: "PDF",
+    run: async (ctx) =>
+      processPdf(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
+        signal: ctx.signal,
+        ocrModelId: ctx.ocrModelId,
       }),
   },
   ocr: {
@@ -94,7 +121,7 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
 }
 
 export function listImportProcessors(): ImportProcessor[] {
-  return [importProcessors.direct, importProcessors.markitdown, importProcessors.vision, importProcessors.ocr]
+  return [importProcessors.direct, importProcessors.copy, importProcessors.markitdown, importProcessors.pdf, importProcessors.vision, importProcessors.ocr]
 }
 
 export async function runImportProcessor(

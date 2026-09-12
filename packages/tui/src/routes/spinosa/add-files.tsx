@@ -77,7 +77,7 @@ import {
 } from "../../spinosa/import-progress-ui"
 import { AddFilesView } from "./add-files-view"
 
-type WizardStep = "path" | "tools" | "scan" | "direct" | "markitdown" | "ocr" | "done" | "error"
+type WizardStep = "path" | "tools" | "scan" | "direct" | "markitdown" | "pdf" | "ocr" | "done" | "error"
 
 type ToolCheckResult = {
   label: string
@@ -89,7 +89,7 @@ type SourcePathEntry = {
   id: number
 }
 
-const CANCELABLE_STEPS = ["tools", "direct", "markitdown", "ocr"] as const
+const CANCELABLE_STEPS = ["tools", "direct", "markitdown", "pdf", "ocr"] as const
 
 let nextSourceId = 1
 
@@ -235,16 +235,17 @@ export function AddFiles() {
     return checks.length > 0 && checks.every((t) => t.status === "available" || t.status === "unsupported")
   })
 
-  const totalSteps = 7
+  const totalSteps = 8
   const stepIndex = createMemo(() => {
     if (step() === "path") return 1
     if (step() === "tools") return 2
     if (step() === "scan") return 3
     if (step() === "direct") return 4
     if (step() === "markitdown") return 5
-    if (step() === "ocr") return 6
-    if (step() === "done") return 7
-    return 7
+    if (step() === "pdf") return 6
+    if (step() === "ocr") return 7
+    if (step() === "done") return 8
+    return 8
   })
 
   const hasValidPaths = createMemo(() => {
@@ -369,7 +370,7 @@ export function AddFiles() {
     if (from === "done") { spinosa.refresh(); goToWorkspace(); return }
     if (from === "tools") { logAction("back", "tools to path"); setStep("path"); return }
     if (from === "scan") { logAction("back", "scan to tools"); setStep("tools"); return }
-    if (from === "direct" || from === "markitdown" || from === "ocr") { logAction("back", `${from} to scan`); setStep("scan"); return }
+    if (from === "direct" || from === "markitdown" || from === "pdf" || from === "ocr") { logAction("back", `${from} to scan`); setStep("scan"); return }
     if (from === "error") {
       setStep(importOptions().length > 0 ? "scan" : "path")
     }
@@ -471,7 +472,7 @@ export function AddFiles() {
       logAction("start-scan", onlyLocalOcrMissing(checks) ? "Continuing without local OCR" : "All tools ready")
       startScan().catch((err) => {
         logError("startScan-top", err)
-        appendLogLine(`Fatal: ${err instanceof Error ? err.message : String(err)}`)
+        appendLogLine(`Failed: ${err instanceof Error ? err.message : String(err)}`)
         setStep("error")
       })
     } else {
@@ -511,7 +512,7 @@ export function AddFiles() {
       if (reinstallResult.exitCode === 0) {
         appendLogLine("Tool repair complete.")
       } else {
-        appendLogLine(`Tool repair finished with errors (exit ${reinstallResult.exitCode}) — retry or check logs.`)
+        appendLogLine(`Tool repair complete with errors (exit ${reinstallResult.exitCode}). Retry or check the logs.`)
       }
     } catch (err) {
       logError("runToolRepair", err)
@@ -632,10 +633,12 @@ export function AddFiles() {
     let totalRenamed = 0
     let totalDirect = 0
     let totalMd = 0
+    let totalPdf = 0
     let totalVision = 0
     let totalOcr = 0
     let dirConverted = 0
     let mdConverted = 0
+    let pdfConverted = 0
     let visionConverted = 0
     let ocrConverted = 0
     const attemptedEntries: ClassifiedEntry[] = []
@@ -662,12 +665,14 @@ export function AddFiles() {
         for (const rel of resume.skippedUnchanged) bg.reportProgress({ relPath: rel, status: "done" });
         attemptedEntries.push(
           ...classified.directFiles,
+          ...((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []),
           ...classified.markitdownFiles,
           ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
           ...classified.ocrFiles,
         )
         bg.seedQueue([
           ...classified.directFiles,
+          ...((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []),
           ...classified.markitdownFiles,
           ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
           ...classified.ocrFiles,
@@ -700,29 +705,50 @@ export function AddFiles() {
               await delay(500)
               return true
             }
+            if (id === "copy") {
+              setStep("direct")
+              bg.setPhase("copy")
+              bg.reportStatus(`Copying ${count} files as-is (no OCR engine selected)`)
+              totalDirect += count
+              await delay(500)
+              return true
+            }
             if (id === "markitdown") {
               setBusy(false)
-              if (!await bg.requestGate(id, count, "Convert office docs")) return false
+              if (!await bg.requestGate(id, count, "Converting office docs")) return false
               setBusy(true)
               if (shouldAbort()) return false
               setStep("markitdown")
               bg.setPhase("markitdown")
               bg.setVisionError(undefined)
-              bg.reportStatus("Converting office docs via MarkItDown...")
+              bg.reportStatus(`Converting office docs via MarkItDown — ${count} files`)
               totalMd += count
               await delay(500)
               return true
             }
             if (id === "vision") {
               setBusy(false)
-              if (!await bg.requestGate(id, count, `Transcribe images & scanned PDFs via Vision Model`)) return false
+              if (!await bg.requestGate(id, count, `Transcribe images via Vision model`)) return false
               setBusy(true)
               if (shouldAbort()) return false
               setStep("markitdown")
               bg.setPhase("vision")
               bg.setVisionError(undefined)
-              bg.reportStatus(`Transcribing images & scanned PDFs via Vision Model — ${count} files`)
+              bg.reportStatus(`Transcribing images via Vision model — ${count} files`)
               totalVision += count
+              await delay(500)
+              return true
+            }
+            if (id === "pdf") {
+              setBusy(false)
+              if (!await bg.requestGate(id, count, "Process PDFs (text pages direct, image pages via engine)")) return false
+              setBusy(true)
+              if (shouldAbort()) return false
+              setStep("pdf")
+              bg.setPhase("pdf")
+              bg.setVisionError(undefined)
+              bg.reportStatus(`Processing PDFs — ${count} files`)
+              totalPdf += count
               await delay(500)
               return true
             }
@@ -732,7 +758,7 @@ export function AddFiles() {
             if (shouldAbort()) return false
             setStep("ocr")
             bg.setPhase("ocr")
-            bg.reportStatus("Running Tesseract on scanned PDFs...")
+              bg.reportStatus(`Running Tesseract on scanned PDFs — ${count} files`)
             totalOcr += count
             await delay(500)
             return true
@@ -744,6 +770,11 @@ export function AddFiles() {
               bg.reportStatus(`Text-based files copied — ${result.converted} files`)
               await delay(500)
             }
+            if (id === "copy") {
+              dirConverted += result.converted
+              bg.reportStatus(`Files copied as-is — ${result.converted} files`)
+              await delay(500)
+            }
             if (id === "markitdown") {
               mdConverted += result.converted
               bg.reportStatus(`Office docs converted — ${result.converted} files`)
@@ -751,7 +782,12 @@ export function AddFiles() {
             }
             if (id === "vision") {
               visionConverted += result.converted
-              bg.reportStatus(`Images & scanned PDFs via Vision — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`)
+              bg.reportStatus(`Images via Vision model — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`)
+              await delay(500)
+            }
+            if (id === "pdf") {
+              pdfConverted += result.converted
+              bg.reportStatus(`PDFs processed — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`)
               await delay(500)
             }
             if (id === "ocr") {
@@ -767,21 +803,25 @@ export function AddFiles() {
           },
         })
         if (classified.markitdownFiles.length === 0) {
-          bg.appendLog("No files require MarkItDown conversion.")
+          bg.appendLog("MarkItDown: 0 files to convert — skipping")
         }
         const visionLen = ((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []).length
         if (visionLen === 0 && bg.getModel().includes("/")) {
-          bg.appendLog("Vision: 0 images/PDFs to transcribe — skipping")
+          bg.appendLog("Vision: 0 images to transcribe — skipping")
         }
         if (classified.ocrFiles.length === 0) {
-          bg.appendLog("No files require OCR.")
+          bg.appendLog("OCR: 0 files to convert — skipping")
+        }
+        const copyLen = ((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []).length
+        if (copyLen === 0) {
+          bg.appendLog("Copy: 0 files to keep as-is — skipping")
         }
         void phases
         if (shouldAbort()) { spinOff(); setBusy(false); return }
       }
 
       if (attemptedEntries.length === 0) {
-        bg.appendLog("No selected files could be imported.")
+        bg.appendLog("No selected files to import.")
         bg.finish({
           converted: 0,
           skipped: 0,
@@ -789,7 +829,7 @@ export function AddFiles() {
           renamed: 0,
           recovered: 0,
           stillMissing: 0,
-          text: "No selected files could be imported.",
+          text: "No selected files to import.",
           success: false,
         })
         if (bg.background()) {
@@ -797,7 +837,7 @@ export function AddFiles() {
           spinOff()
           return
         }
-        setImportSummary("No selected files could be imported.")
+        setImportSummary("No selected files to import.")
         setProcessingDone(true)
         setStep("error")
         return
@@ -812,12 +852,12 @@ export function AddFiles() {
       const counts = countImportProgress(bg.snapshot().files)
       setFailedCount(counts.failed)
       const summary =
-        `${dirConverted}/${totalDirect} copied · ${mdConverted}/${totalMd} markitdown · ${visionConverted}/${totalVision} vision · ${ocrConverted}/${totalOcr} ocr` +
+        `${dirConverted}/${totalDirect} copied · ${mdConverted}/${totalMd} markitdown · ${pdfConverted}/${totalPdf} pdf · ${visionConverted}/${totalVision} vision · ${ocrConverted}/${totalOcr} ocr` +
         (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
         (counts.failed > 0 ? ` · ${counts.failed} failed` : "")
       const ok = counts.failed === 0 && preserved.failedFilePaths.length === 0
       bg.finish({
-        converted: dirConverted + mdConverted + visionConverted + ocrConverted,
+        converted: dirConverted + mdConverted + pdfConverted + visionConverted + ocrConverted,
         skipped: 0,
         failed: counts.failed,
         renamed: totalRenamed,
@@ -843,7 +883,7 @@ export function AddFiles() {
     } catch (err) {
       if (isSpinosaCancellationError(err) || shouldAbort()) {
         bg.appendLog("Spinosa import cancelled.")
-        bg.reportStatus("Cancelled.")
+        bg.reportStatus("Import cancelled.")
         bg.cancel()
         return
       }
@@ -999,7 +1039,7 @@ export function AddFiles() {
 
       if (busy()) return
 
-      if (waitingForGate() && (step() === "direct" || step() === "markitdown" || step() === "ocr") && event.name === "return") {
+      if (waitingForGate() && (step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr") && event.name === "return") {
         gateAction()()
         consume(); return
       }

@@ -68,9 +68,9 @@ export function waveRow(frame: number, width: number): string {
 export function initialToolChecks(): ToolCheckResult[] {
   return [
     {
-      label: "Tesseract OCR",
+      label: "Tesseract",
       status: "checking",
-      detail: "Scanned PDFs (ita+eng+fra, 300dpi)",
+      detail: "Italian, English and French scans",
     },
     {
       label: "MarkItDown",
@@ -80,7 +80,7 @@ export function initialToolChecks(): ToolCheckResult[] {
     {
       label: "PDF.js",
       status: "checking",
-      detail: "PDF text extraction and page rendering",
+      detail: "Text and pages from readable PDFs",
     },
   ];
 }
@@ -97,13 +97,13 @@ export function toolCheckResults(
 ): ToolCheckResult[] {
   return [
     {
-      label: "Tesseract OCR",
+      label: "Tesseract",
       status: status.ocr
         ? "available"
         : status.ocrUnsupportedReason
           ? "unsupported"
           : "missing",
-      detail: status.ocrUnsupportedReason ?? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm + tesseract)",
+      detail: status.ocrUnsupportedReason ?? "Italian, English and French scans (free, offline)",
     },
     {
       label: "MarkItDown",
@@ -113,7 +113,7 @@ export function toolCheckResults(
     {
       label: "PDF.js",
       status: status.pdfjs ? "available" : "missing",
-      detail: "PDF text extraction and page rendering",
+      detail: "Text and pages from readable PDFs",
     },
   ];
 }
@@ -125,7 +125,7 @@ export function toolActionLabel(checks: readonly ToolCheckResult[]): string {
     // Tesseract is optional: vision-model and copy-as-is flows never touch
     // it, so its absence must not block the wizard behind a useless
     // reinstall loop. Any other missing tool still needs repair.
-    if (onlyLocalOcrMissing(checks)) return "Continue without local OCR";
+    if (onlyLocalOcrMissing(checks)) return "Continue without Tesseract";
     return "Reinstall missing tools";
   }
   return "Scan source folders";
@@ -139,7 +139,7 @@ export function onlyLocalOcrMissing(checks: readonly ToolCheckResult[]): boolean
   const missing = checks.filter((check) => check.status === "missing");
   return (
     missing.length > 0 &&
-    missing.every((check) => check.label === "Tesseract OCR")
+    missing.every((check) => check.label === "Tesseract")
   );
 }
 
@@ -175,7 +175,7 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
     id: "tesseract-local",
     label: "Tesseract (offline)",
-    detail: "Suitable for documents; handwritten quality may be poor · Scanned PDFs via pdftoppm + tesseract (ita+eng+fra, 300dpi) · images copied",
+    detail: "Free and offline. Best for typed pages. Poor for handwriting. Reads Italian, English and French scans. Photos copy without text.",
     kind: "tesseract",
     vision: false,
     cost: "offline",
@@ -183,15 +183,15 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
     id: "vision:provider-picker",
     label: "Vision model (provider / model)",
-    detail: "Choose a provider and a vision-capable model — images and scanned PDFs transcribed via SDK (needs API key, e.g. OPENROUTER_API_KEY)",
+    detail: "Paid online model. Needs internet and an API key. Transcribes scans and photos.",
     kind: "vision",
     vision: true,
     cost: "paid",
   },
   {
     id: "none",
-    label: "Don't OCR, just copy files as-is",
-    detail: "Images and scanned PDFs copied to raw/ unchanged · no text extracted · no model needed",
+    label: "Copy files only, no transcription",
+    detail: "Copies scans and photos unchanged. No text and no search. Needs nothing.",
     kind: "none",
     vision: false,
     cost: "offline",
@@ -201,8 +201,8 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
 /** Short per-engine hints for the selector footer. Single source — the
     OcrModelSelector hint line composes from here, so copy can't drift. */
 export const OCR_ENGINE_HINTS = {
-  tesseract: "Tesseract: local PDFs (images copied)",
-  vision: "Vision: SDK transcription (needs key)",
+  tesseract: "Tesseract: free offline reading (photos copied)",
+  vision: "Vision: paid online transcription (needs key)",
   none: "None: copy only",
 } as const
 

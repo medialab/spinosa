@@ -265,3 +265,14 @@ Run this agent when **all** of the following hold:
   - Before a major new research direction / after significant corpus expansion / coverage imbalance suspicion.
 
 Do **not** run because startup finished, because indexing is slow, or as part of `startup-prompt.md`.
+
+## Workflow Step Contract
+
+You are executing one bounded Spinosa workflow step.
+
+Do not call the Task tool.
+Do not dispatch another agent.
+Do not choose the next workflow phase.
+Use only the supplied scope and artifact paths.
+Write the exact requested artifact.
+Stop after returning its path and completion signals.

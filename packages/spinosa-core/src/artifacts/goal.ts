@@ -1,29 +1,61 @@
 import path from "node:path"
-import { chainForRoute, classifyPrompt, isNonFastPath, type RouteClass } from "@spinosa/runtime"
-import { generateSessionId } from "../session-id"
+import type { OrchestratedDecision, WorkflowPlan } from "@spinosa/runtime"
 import { writeTextAtomic } from "../utils/fs"
 
-export function buildGoalArtifactBody(input: {
-  sessionId: string
+// WP10: legacy Q goal writers removed. New runs use buildWorkflowGoalBody /
+// writeWorkflowGoalArtifact below. Legacy goal *parsing* stays in parser.ts
+// so old workspaces remain readable.
+
+// --- WP3: V2 workflow goal artifact (human-readable mirror of run.json) ---
+// run.json remains the control plane; this Markdown is inspectable research
+// state. Covers Cleaned Prompt, Route Decision, Objective, Scope/Denominator,
+// Success Criteria, Workflow Plan, Artifact Paths, Step Decisions, Blockers.
+
+export function buildWorkflowGoalBody(input: {
+  runID: string
   cleanedPrompt: string
-  route: RouteClass
+  decision: OrchestratedDecision
+  plan: WorkflowPlan
+  goalPath: string
   now?: Date
 }): string {
   const created = (input.now ?? new Date()).toISOString()
-  const chain = chainForRoute(input.route)
-  const firstAgent =
-    input.route === "Q4"
-      ? "spinosa-janitor"
-      : input.route === "Q5"
-        ? "spinosa-overseer"
-        : "spinosa-searcher"
-
+  const d = input.decision
+  const rows = input.plan.nodes
+    .map((n) => {
+      const agent = n.kind === "agent" ? n.agent : "—"
+      const out =
+        n.kind === "agent"
+          ? n.expectedArtifacts.map((a) => a.kind).join(", ")
+          : n.kind === "system"
+            ? n.operation
+            : n.kind === "gate"
+              ? `gate:${n.gate}`
+              : n.kind === "approval"
+                ? `approval:${n.approval}`
+                : `fanout:${(n as { templateKey: string }).templateKey}`
+      return `| ${n.id} | ${n.kind} | ${agent} | ${(n.dependsOn as readonly string[]).join(", ") || "—"} | ${out} |`
+    })
+    .join("\n")
+  const artifactRows = input.plan.nodes
+    .filter((n) => n.kind === "agent")
+    .flatMap((n) =>
+      (n as Extract<WorkflowPlan["nodes"][number], { kind: "agent" }>).expectedArtifacts.map(
+        (a) => `| ${a.kind} | \`${a.pathTemplate}\` |`,
+      ),
+    )
+    .join("\n")
   return `---
 type: goal
-route: ${input.route === "fast_path" ? "fast_path" : "non-fast-path"}
-session_id: ${input.sessionId}
-created_at: ${created}
-status: in_progress
+run_id: ${input.runID}
+workflow_id: ${input.plan.id}
+workflow_version: ${input.plan.version}
+operation: ${d.operation}
+strategy: ${d.strategy}
+scope: ${d.scope}
+coverage: ${d.coverage}
+verification: ${d.verification}
+status: running
 ---
 
 # Goal Artifact
@@ -32,88 +64,97 @@ status: in_progress
 
 ${input.cleanedPrompt.trim()}
 
-## Goal Statement
+## Route Decision
 
-Deliver a verified Spinosa report for this request when the route completes.
+- mode: ${d.mode}
+- operation: ${d.operation}
+- strategy: ${d.strategy}
+- scope: ${d.scope}
+- coverage: ${d.coverage}
+- verification: ${d.verification}
+- reason: ${d.reason}
+- confidence: ${d.confidence}
+
+## Research Objective
+
+Deliver a verified Spinosa report for this request when the workflow completes.
+
+## Scope and Denominator
+
+- scope: ${d.scope}
+- coverage: ${d.coverage}
+- outputs: ${d.outputs.join(", ")}
 
 ## Success Criteria
 
 - Evidence and claims trace to approved source paths
 - Terminal report exists under agent_reports/NN_*.md
-- Verifier and evaluator gates recorded under Route Decisions
+- Verifier and evaluator gates recorded under Step Decisions
 
-## Planned Chain
+## Workflow Plan
 
-${chain}
+| Step | Kind | Agent | Depends on | Expected output |
+|------|------|-------|------------|-----------------|
+${rows}
 
-## First Agent
-
-\`${firstAgent}\`
-
-## First Output Gate
-
-Searcher returns an evidence packet with source paths and quotes, or a documented blocker.
-
-## Artifact Paths (session-scoped)
+## Artifact Paths
 
 | Role | Path |
 |------|------|
-| Goal | \`agent_reports/g_${input.sessionId}.md\` |
-| Evidence | \`agent_reports/evidence_packet_${input.sessionId}.md\` |
-| Analysis | \`agent_reports/analysis_${input.sessionId}.md\` |
-| Serendipity | \`agent_reports/serendipity_${input.sessionId}.md\` |
-| Report | \`agent_reports/NN_descriptive-name.md\` |
-| Evaluator | \`agent_reports/e_${input.sessionId}.md\` |
+| Goal | \`${input.goalPath}\` |
+${artifactRows}
 
-## Route Decisions
+## Step Decisions
 
-- ${created.slice(0, 16).replace("T", " ")} — Goal framed in TUI → ${firstAgent}
+- ${created.slice(0, 16).replace("T", " ")} — Workflow planned → ${input.plan.id} v${input.plan.version}
 
-## Sub-Agent Handoffs
+## Blockers and Limitations
 
-\`\`\`spinosa-subagent
-agent: ${firstAgent}
-role: ${firstAgent.replace("spinosa-", "")}
-task: Execute first pipeline phase for the cleaned prompt.
-inputs:
-  - goal_artifact_path
-  - session_id
-outputs:
-  - agent_reports/evidence_packet_${input.sessionId}.md
-\`\`\`
+- None yet.
 `
 }
 
-export async function writeGoalArtifact(
+export async function writeWorkflowGoalArtifact(
   workspacePath: string,
-  cleanedPrompt: string,
-  options?: { sessionId?: string; route?: RouteClass },
-): Promise<{ sessionId: string; route: RouteClass; goalPath: string }> {
-  const sessionId = options?.sessionId ?? generateSessionId()
-  const route = options?.route ?? classifyPrompt(cleanedPrompt)
-  const body = buildGoalArtifactBody({ sessionId, cleanedPrompt, route })
-  const relative = path.join("agent_reports", `g_${sessionId}.md`)
-  const absolute = path.join(workspacePath, relative)
-  writeTextAtomic(absolute, body)
-  return { sessionId, route, goalPath: relative }
+  input: { runID: string; cleanedPrompt: string; decision: OrchestratedDecision; plan: WorkflowPlan },
+): Promise<{ goalPath: string }> {
+  const relative = path.join("agent_reports", `g_${input.runID}.md`)
+  const body = buildWorkflowGoalBody({ ...input, goalPath: relative })
+  writeTextAtomic(path.join(workspacePath, relative), body)
+  return { goalPath: relative }
 }
 
-export function orchestratorPreamble(input: {
+/** Bounded step contract injected per workflow step (replaces Q-route preamble). */
+export function workflowStepPreamble(input: {
   workspacePath: string
-  route: RouteClass
-  sessionId?: string
+  workflowID: string
+  stepID: string
+  agent: string
+  runID: string
   goalPath?: string
+  coverage?: string
+  scope?: string
 }): string {
   const lines = [
-    "Spinosa runtime is scheduling this request.",
-    "Execute only the assigned phase. Do not call the Task tool or dispatch subagents; the runtime owns the chain.",
+    "You are executing one bounded Spinosa workflow step.",
+    "Do not call the Task tool.",
+    "Do not dispatch another agent.",
+    "Do not choose the next workflow phase.",
+    "Use only the supplied scope and artifact paths.",
+    "Write the exact requested artifact.",
+    "Stop after returning its path and completion signals.",
     `Workspace: ${input.workspacePath}`,
-    `Route class: ${input.route}`,
+    `Workflow: ${input.workflowID} step ${input.stepID} (run ${input.runID})`,
+    `Assigned agent: ${input.agent}`,
   ]
-  if (input.sessionId) lines.push(`session_id: ${input.sessionId}`)
   if (input.goalPath) lines.push(`Goal artifact: ${input.goalPath}`)
-  if (isNonFastPath(input.route)) {
-    lines.push("Do not paste long reports into chat — write agent_reports/NN_*.md and point to the verified file.")
+  if (input.scope) lines.push(`Scope: ${input.scope}`)
+  if (input.coverage) {
+    lines.push(`Coverage contract: ${input.coverage}`)
+    if (input.coverage === "exhaustive") {
+      lines.push("Coverage is exhaustive: do NOT early-stop after two sources. Account for every corpus partition and denominator unit.")
+    }
   }
+  lines.push("Do not paste long reports into chat — write the artifact file and point to it.")
   return lines.join("\n")
 }

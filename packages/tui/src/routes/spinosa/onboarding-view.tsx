@@ -12,6 +12,7 @@ import {
   LogScrollbox,
   LogoSummary,
   ProgressBar,
+  ToolChecksList,
   wizardScrollboxMaxHeight,
   WizardActionButton,
   WizardActionRow,
@@ -139,7 +140,7 @@ export function OnboardingView(props: OnboardingViewProps) {
               <span style={{ bold: true }}>{busy() ? `${waveString(spinIdx())} ` : ""}{resumeWorkspacePath ? "Resume Spinosa workspace" : "Create Spinosa workspace"}</span>
             </text>
             <box flexGrow={1} />
-            <Show when={(step() === "markitdown" || step() === "verification" || step() === "error" || step() === "ocr" || step() === "direct" || step() === "setup") && props.hasVisionModel()}>
+            <Show when={step() === "vision"}>
               <box
                 paddingLeft={2}
                 paddingRight={2}
@@ -173,22 +174,22 @@ export function OnboardingView(props: OnboardingViewProps) {
             {step() === "tools" ? " — checking your document tools" : ""}
             {step() === "scan" && !scanDone() ? " — scanning your source" : ""}
             {(step() === "imports" || (step() === "scan" && scanDone())) ? " — selecting file types to import" : ""}
-            {step() === "vision" ? " — selecting OCR engine for images & scanned PDFs" : ""}
-            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files to raw/" : step() === "markitdown" ? (props.hasVisionModel() ? " — converting docs via MarkItDown + transcribing images & scanned PDFs via Vision" : " — converting via MarkItDown") : step() === "ocr" ? " — running Tesseract on scanned PDFs" : step() === "verification" ? " — verifying the import" : ""}
+            {step() === "vision" ? " — choosing how to transcribe scans & photos" : ""}
+            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "pdf" ? " — processing PDFs (text direct, image pages via engine)" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : step() === "verification" ? " — verifying the import" : ""}
             {step() === "provider" ? " — choosing your LLM provider" : ""}
             {step() === "startup" ? " — preparing your startup" : ""}
             {step() === "done" ? " — your workspace is ready" : ""}
             {step() === "error" ? " — fixing the issue and retrying" : ""}
           </text>
-          <Show when={sourceIsCloud() && (step() === "scan" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification")}>
-            <text fg={theme.error}>  ⚠ cloud folder — scans & copies can be slow due to sync latency</text>
+          <Show when={sourceIsCloud() && (step() === "scan" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr" || step() === "verification")}>
+            <text fg={theme.error}>  ⚠ cloud folder — scans run slower here. Keep the folder open.</text>
           </Show>
 
           <Show when={step() === "path"}>
-            <WizardPanel theme={theme} accent>
+            <WizardPanel theme={theme} accent viewportHeight={dimensions().height}>
               <text fg={theme.textMuted}>Source folders</text>
               <text fg={theme.textMuted}>
-                Add one or more source folders. Spinosa scans them, lets you choose file types, then creates a workspace beside the first folder and imports the selected files.
+                Add one or more source folders. Spinosa scans them. You select file types. Spinosa creates the workspace and imports.
               </text>
               <box flexDirection="column" gap={1} paddingTop={1}>
                 <For each={sourcePaths()}>
@@ -215,7 +216,7 @@ export function OnboardingView(props: OnboardingViewProps) {
                         <textarea
                           ref={(value: TextareaRenderable) => registerSourceInput(entry.id, value, index() === 0)}
                           initialValue={pathSnapshot.get(entry.id) ?? ""}
-                          placeholder="Paste the corpus folder path"
+                          placeholder="Paste your documents folder path"
                           placeholderColor={theme.textMuted}
                           textColor={theme.text}
                           focusedTextColor={theme.text}
@@ -290,10 +291,10 @@ export function OnboardingView(props: OnboardingViewProps) {
           </Show>
 
           <Show when={step() === "name"}>
-            <WizardPanel theme={theme} accent>
+            <WizardPanel theme={theme} accent viewportHeight={dimensions().height}>
               <text fg={theme.textMuted}>Workspace name</text>
               <text fg={theme.textMuted}>
-                The workspace folder is created beside the first source folder using this name.
+                Spinosa creates the workspace beside the first source folder with this name.
               </text>
               <box paddingTop={1} alignItems="stretch">
                 <textarea
@@ -325,35 +326,11 @@ export function OnboardingView(props: OnboardingViewProps) {
               />
             </WizardActionRow>
           </Show>
-          <Show when={step() === "tools" || step() === "scan" || step() === "imports" || step() === "vision" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification"}>
-            <WizardPanel theme={theme}>
+          <Show when={step() === "tools" || step() === "scan" || step() === "imports" || step() === "vision" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr" || step() === "verification"}>
+            <WizardPanel theme={theme} viewportHeight={dimensions().height}>
               <Show when={step() === "tools"}>
                 <text fg={theme.textMuted}>Document processing tools</text>
-                <box flexDirection="column" gap={1} paddingTop={1}>
-                  <For each={toolChecks()}>
-                    {(check) => {
-                      const icon =
-                        check.status === "available" || check.status === "unsupported"
-                          ? "●"
-                          : check.status === "missing"
-                            ? "●"
-                            : wavePulse(spinIdx())
-                      const color =
-                        check.status === "available"
-                          ? theme.success
-                          : check.status === "missing"
-                            ? theme.error
-                            : theme.textMuted
-                      return (
-                        <box flexDirection="row" gap={1} alignItems="center" paddingLeft={1} paddingRight={1}>
-                          <text fg={color} attributes={check.status === "checking" ? undefined : TextAttributes.BOLD}>{icon}</text>
-                          <text fg={check.status === "checking" ? theme.textMuted : theme.text}> {check.label}</text>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{check.detail ?? ""}</text>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </box>
+                <ToolChecksList theme={theme} checks={toolChecks()} spinIdx={spinIdx()} wavePulse={wavePulse} />
                 <Show when={logLines().length > 0}>
                   <box height={1} />
                   <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
@@ -386,14 +363,14 @@ export function OnboardingView(props: OnboardingViewProps) {
                       <text fg={theme.textMuted}>↑↓ move · space toggle · a toggle all · enter continue</text>
                     </>
                   }>
-                    <text fg={theme.text}>No importable files found in these folders.</text>
-                    <text fg={theme.textMuted}>Go back and pick a different source, or add files with supported types.</text>
+                    <text fg={theme.text}>Spinosa found no files to import in these folders.</text>
+                    <text fg={theme.textMuted}>Go back and select a different source. Or add files such as PDF, DOCX, MD or JPG.</text>
                   </Show>
                 </Show>
               </Show>
               <Show when={step() === "vision"}>
-                <text fg={theme.text}>Select OCR engine for images & scanned PDFs</text>
-                <text fg={theme.textMuted}>Digital PDFs extract directly. The chosen model transcribes images and scanned PDFs into Markdown. Tesseract runs locally; vision models need network + API key.</text>
+                <text fg={theme.text}>Select transcription engine for images & scanned PDFs</text>
+                <text fg={theme.textMuted}>Readable PDFs copy directly. Your engine transcribes scans and photos. Tesseract is free and offline. Vision models need internet and a paid key.</text>
                 <OcrModelSelector
                   theme={theme}
                   options={props.ocrModelOptions()}
@@ -408,7 +385,7 @@ export function OnboardingView(props: OnboardingViewProps) {
                   }}
                 />
               </Show>
-              <Show when={step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr"}>
+              <Show when={step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr"}>
                 <Show when={!processingDone()}>
                   <ProgressBar
                     theme={theme}
@@ -423,12 +400,12 @@ export function OnboardingView(props: OnboardingViewProps) {
                 </Show>
                 {/* Vision errors render inline (no reserved blank space — the
                     error box appears only when there is an error). */}
-                <Show when={step() === "markitdown" && props.visionError()}>
+                <Show when={(step() === "markitdown" || step() === "pdf") && props.visionError()}>
                   <box flexDirection="column" gap={1} paddingTop={1}>
                     <box flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel} border={["left"]} borderColor={theme.error}>
                       <text fg={theme.error} wrapMode="word">{props.visionError()}</text>
                       <Show when={props.visionPaused()}>
-                        <text fg={theme.warning} wrapMode="word">Queue paused — pick a new model via the red Vision ▼ top-right to retry this file, or Back to abort.</text>
+                        <text fg={theme.warning} wrapMode="word">Spinosa paused the queue. Select a new model to retry this file. Or go back to abort.</text>
                       </Show>
                     </box>
                   </box>
@@ -459,12 +436,12 @@ export function OnboardingView(props: OnboardingViewProps) {
                   </Show>
                   <Show when={failedCount() > 0}>
                     <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — originals copied to raw/_failed_files/ when possible</text>
+                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — Spinosa kept the originals. See raw/_failed_files/.</text>
                     </box>
                   </Show>
                   <Show when={stillMissingCount() > 0 && failedCount() === 0}>
                     <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.warning}>{stillMissingCount()} file{stillMissingCount() === 1 ? "" : "s"} still missing after verify/recover</text>
+                      <text fg={theme.warning}>{stillMissingCount()} file{stillMissingCount() === 1 ? "" : "s"} still missing after verification</text>
                     </box>
                   </Show>
                   <Show when={shouldShowImportDetailLogHint(importOutcome())}>
@@ -515,7 +492,6 @@ export function OnboardingView(props: OnboardingViewProps) {
                   label="Continue in background"
                   onPress={() => props.onBackground()}
                 />
-                <text fg={theme.textMuted} attributes={TextAttributes.DIM}>b background · v model</text>
               </Show>
             </WizardActionRow>
           </Show>

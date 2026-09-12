@@ -23,6 +23,7 @@ import { useTheme } from "../context/theme"
 import type { Theme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { DialogSpinosaStartupChoice } from "../component/dialog-spinosa-startup-choice"
+import { DialogSpinosaIncompleteImport } from "../component/dialog-spinosa-incomplete-import"
 import { DialogSpinosaMissingWorkspace } from "../component/dialog-spinosa-missing-workspace"
 import { getWorkspaceLaunchDecision } from "../spinosa/workspace-launch"
 import { setupStatusLabel, setupStatusThemeKey } from "../spinosa/status-labels"
@@ -381,6 +382,25 @@ export function Home() {
           workspaceName={launch.workspaceName}
           prompt={launch.prompt}
           onBack={() => dialog.clear()}
+        />
+      ))
+      return
+    }
+    if (launch.type === "incomplete-import") {
+      dialog.replace(() => (
+        <DialogSpinosaIncompleteImport
+          workspacePath={launch.workspacePath}
+          workspaceName={launch.workspaceName}
+          onBack={() => dialog.clear()}
+          onContinued={async () => {
+            dialog.clear()
+            // openWorkspace routes `importing` workspaces to onboarding.
+            await spinosa.openWorkspace(launch.workspacePath)
+          }}
+          onRemoved={async () => {
+            dialog.clear()
+            await loadRecentWorkspaces()
+          }}
         />
       ))
       return

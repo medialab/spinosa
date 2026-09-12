@@ -5,6 +5,30 @@ import type { FileProgressStatus } from "@spinosa/core/progress/progress"
 export type ImportFileProgressItem = {
   rel: string
   status: FileProgressStatus
+  /** Current PDF page being transcribed (from a "rel (page N[/M])" event). Cleared on terminal events. */
+  page?: number
+  /** Total PDF pages, when known (from a "rel (page N/M)" event). */
+  pageTotal?: number
+}
+
+/**
+ * Split a per-page progress rel ("memo.pdf (page 2)" or "memo.pdf (page 2/12)")
+ * into its file base, page number, and optional page total. Non-page rels
+ * return the input as base with no page.
+ */
+export function splitPageSuffix(relPath: string): { base: string; page?: number; total?: number } {
+  const match = /^(.*) \(page (\d+)(?:\/(\d+))?\)$/.exec(relPath)
+  if (!match) return { base: relPath }
+  return {
+    base: match[1]!,
+    page: Number(match[2]),
+    ...(match[3] !== undefined ? { total: Number(match[3]) } : {}),
+  }
+}
+
+/** Blue page marker shown next to the filename while a page transcribes. */
+export function formatPageMarker(page: number, total?: number): string {
+  return ` (PG: ${page}${total !== undefined ? `/${total}` : ""})`
 }
 
 /** Product log dir: `$SPINOSA_HOME/logs` or `~/.spinosa/logs`. */
@@ -25,7 +49,7 @@ export function displaySpinosaLogsDir(logsDir = resolveSpinosaLogsDir()): string
 
 /** Short pointer when verify/done has failures or gaps — no verbose LogScrollbox dump. */
 export function formatImportDetailLogHint(logsDirDisplay = displaySpinosaLogsDir()): string {
-  return `Details saved in ${logsDirDisplay}/`
+  return `Spinosa saved details in ${logsDirDisplay}/`
 }
 
 export function shouldShowImportDetailLogHint(opts: {
@@ -234,7 +258,7 @@ export function importOutcomeHeading(opts: {
   stillMissing?: number
 }): string {
   const key = importOutcomeAccentKey(opts)
-  if (key === "error") return "● Import finished with failures"
-  if (key === "warning") return "● Import finished with gaps"
+  if (key === "error") return "● Import complete with failures"
+  if (key === "warning") return "● Import complete with missing files"
   return "● Import complete"
 }

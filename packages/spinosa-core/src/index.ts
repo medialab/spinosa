@@ -64,8 +64,12 @@ export * from "./commands/update"
 export * from "./commands/upgrade"
 export * from "./commands/preflight"
 
-// --- application
-export * from "./application/research-run-service"
+// --- application (WP10: ResearchRunService removed; WorkflowRunService is the only control path)
+export * from "./application/router-service"
+export * from "./application/workflow-run-service"
+export * from "./application/workflow-operations"
+export * from "./artifacts/contracts"
+export * from "./artifacts/validate"
 
 // --- system
 export * from "./system/channels"

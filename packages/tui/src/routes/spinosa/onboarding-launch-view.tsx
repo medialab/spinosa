@@ -38,12 +38,12 @@ export function OnboardingLaunchView(props: OnboardingLaunchProps) {
   return (
     <>
           <Show when={step() === "provider"}>
-            <WizardPanel theme={theme}>
-              <text fg={theme.textMuted}>Choose how to launch startup</text>
+            <WizardPanel theme={theme} viewportHeight={dimensions().height}>
+              <text fg={theme.textMuted}>Choose what opens after import</text>
               <text fg={theme.textMuted}>
-                Choose the tool Spinosa will use after import. Spinosa opens Chat with the setup brief ready; other tools launch with the prompt.
+                Select a tool for the next step. Spinosa opens Chat with the setup brief ready. Other tools open with the prompt.
               </text>
-               <scrollbox maxHeight={wizardScrollboxMaxHeight(dimensions().height, { min: 4, ratio: 0.5, max: 12 })}>
+               <scrollbox maxHeight={wizardScrollboxMaxHeight(dimensions().height, { min: 4, ratio: 0.5, max: 12 })} verticalScrollbarOptions={{ visible: true }} horizontalScrollbarOptions={{ visible: false }}>
                 <For each={cliOptions}>
                   {(item, index) => (
                     <box
@@ -68,7 +68,7 @@ export function OnboardingLaunchView(props: OnboardingLaunchProps) {
           </Show>
 
           <Show when={step() === "startup"}>
-            <WizardPanel theme={theme}>
+            <WizardPanel theme={theme} viewportHeight={dimensions().height}>
               <text fg={theme.textMuted}>Launching startup</text>
               <text fg={startupError() ? theme.error : theme.text}>
                 <span style={{ bold: true }}>{startupError() ? "Startup failed" : startupMessage()}</span>

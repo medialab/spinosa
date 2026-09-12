@@ -354,7 +354,7 @@ async function addSingleFile(
       const fileName = path.basename(srcFile)
       const stem = fileName.replace(/\.[^.]+$/, "")
       const destName = `${stem}__${fileExt(fileName)}.md`
-      const destFile = path.join(rawDir, destName)
+      let destFile = path.join(rawDir, destName)
       failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
@@ -370,13 +370,17 @@ async function addSingleFile(
       let restored = true
       const tmpDest = destFile + `.spinosa-part-${process.pid}-${crypto.randomUUID()}`
 
-      // PDFs: pdf.js census first — digital PDFs extract directly (no OCR
-      // engine needed); scanned PDFs fall through to tesseract below.
+      // PDFs: pdf.js census + per-page hybrid — all-digital extracts directly;
+      // mixed documents keep direct text pages and tesseract only imageless
+      // pages; unknown/scanned fall through to tesseract below.
       // MarkItDown never handles PDFs (office docs only).
       try {
-        const { isTextBasedPdf } = await import("../extension/pdf")
-        if (await isTextBasedPdf(srcFile)) {
-          await convertTextPdf(srcFile, destFile, relPath, shouldAbort)
+        const { classifyPdfPages, hasEmbeddedTextPdfPages, isDigitalPdfPages } = await import("../import/pdf-pages")
+        const classes = await classifyPdfPages(srcFile)
+        throwIfSpinosaCancelled(shouldAbort)
+        if (isDigitalPdfPages(classes)) {
+          destFile = await convertTextPdf(srcFile, destFile, relPath, shouldAbort)
+          failedDest = destFile
           throwIfSpinosaCancelled(shouldAbort)
           if (convertedOutputExists(destFile)) {
             injectColdFrontmatter(destFile)
@@ -385,18 +389,33 @@ async function addSingleFile(
             onProgress?.(`${fileName} → digital PDF, text extracted via pdf.js (no OCR)`)
             break
           }
+        } else if (hasEmbeddedTextPdfPages(classes)) {
+          const { convertPdfHybridTesseract } = await import("../import/tesseract-ocr")
+          const hybrid = await convertPdfHybridTesseract(srcFile, destFile, fileName, classes, { shouldAbort })
+          destFile = hybrid.destFile
+          failedDest = destFile
+          throwIfSpinosaCancelled(shouldAbort)
+          if (convertedOutputExists(destFile)) {
+            injectColdFrontmatter(destFile)
+            removeConvertedBackups(backups)
+            ocrConverted = 1
+            onProgress?.(`${fileName} → mixed PDF, direct text + tesseract on imageless pages`)
+            break
+          }
         }
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
+        try { rmSync(destFile, { force: true }) } catch { /* cleanup */ }
+        try { rmSync(destFile.slice(0, -3) + "_pages", { recursive: true, force: true }) } catch { /* cleanup */ }
         // fall through to tesseract
       }
 
       try {
         const { tesseractAvailable, ocrPdfViaTesseract } = await import("../import/tesseract-ocr")
         if (tesseractAvailable()) {
-          await ocrPdfViaTesseract(srcFile, tmpDest, fileName, { shouldAbort })
-          if (convertedOutputExists(tmpDest)) {
-            renameSync(tmpDest, destFile)
+          const tess = await ocrPdfViaTesseract(srcFile, tmpDest, fileName, { shouldAbort })
+          if (convertedOutputExists(tess.mdPath)) {
+            renameSync(tess.mdPath, destFile)
             ocrConverted = 1
             injectColdFrontmatter(destFile)
           } else {

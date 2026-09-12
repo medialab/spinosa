@@ -5,9 +5,12 @@
 import { createSpinosaClient } from "@spinosa/sdk/v2"
 import {
   SILENT_AGENT_OUTPUT_METADATA,
+  type AgentExecutionResult,
+  type CreateHarnessSessionInput,
   type HarnessCapabilities,
   type HarnessEvent,
   type HarnessSession,
+  type HarnessToolRule,
   type PermissionReply,
   type SpinosaHarness,
 } from "./contract"
@@ -78,12 +81,47 @@ function executionError(agent: string, executor: string, error: unknown): Error 
   return new Error(`Spinosa kernel could not execute "${agent}" (kernel agent "${executor}"): ${message}${details}`)
 }
 
+// Extract normalized text from kernel response parts (before silent deletion).
+function executionText(data: unknown): string {
+  const value = record(data)
+  const parts = Array.isArray(value.parts) ? value.parts : []
+  return parts
+    .filter(
+      (part): part is { type: "text"; text: string } =>
+        Boolean(
+          part &&
+          typeof part === "object" &&
+          "type" in part &&
+          (part as { type: unknown }).type === "text" &&
+          "text" in part &&
+          typeof (part as { text: unknown }).text === "string",
+        ),
+    )
+    .map((part) => part.text)
+    .join("\n")
+}
+
+// Map neutral tool policy to kernel permission rules (V1 session schema).
+function mapToolPolicy(policy: readonly HarnessToolRule[] | undefined): unknown {
+  if (!policy || policy.length === 0) return undefined
+  return policy.map((rule) => ({ tool: rule.tool, resource: rule.resource, effect: rule.effect }))
+}
+
 // A SpinosaHarness implementation that connects to the real spinosa kernel.
 // Use the static create factory method to build an instance with a kernel URL.
 // This implementation does not support direct tool execution.
 // It supports permission requests and cancellation.
 export class SpinosaKernelHarness implements SpinosaHarness {
-  readonly capabilities: HarnessCapabilities = { directToolExecution: false, permissions: true, cancellation: true }
+  // WP4: child sessions via parentID; parallel executions share the transport
+  // (kernel serializes per-session turns, fan-out uses one session per branch).
+  readonly capabilities: HarnessCapabilities = {
+    directToolExecution: false,
+    permissions: true,
+    cancellation: true,
+    childSessions: true,
+    parallelAgentExecutions: true,
+    scopedSessionPermissions: true,
+  }
 
   constructor(private readonly client: SpinosaKernelClient) {}
 
@@ -104,8 +142,18 @@ export class SpinosaKernelHarness implements SpinosaHarness {
 
   // Create a new session for a workspace.
   // The kernel creates the session and returns its identifier.
-  async createSession(input: { workspacePath: string; title?: string }): Promise<HarnessSession> {
-    const response = await this.client.session.create({ directory: input.workspacePath, title: input.title })
+  // parentSessionID keeps internal worker output out of the visible parent
+  // transcript; the TUI already hides sessions carrying a parentID from roots.
+  async createSession(input: CreateHarnessSessionInput): Promise<HarnessSession> {
+    const response = await this.client.session.create({
+      directory: input.workspacePath,
+      parentID: input.parentSessionID,
+      title: input.title,
+      agent: input.agent,
+      model: input.model ? { providerID: input.model.providerID, id: input.model.modelID } : undefined,
+      metadata: input.metadata,
+      permission: mapToolPolicy(input.toolPolicy),
+    })
     if (response.error) throw new Error("SpinosaKernel could not create a session")
     const data = record(response.data)
     return { id: requiredID(data, "session"), workspacePath: input.workspacePath, title: typeof data.title === "string" ? data.title : input.title }
@@ -122,7 +170,7 @@ export class SpinosaKernelHarness implements SpinosaHarness {
     synthetic?: boolean
     silent?: boolean
     model?: { providerID: string; modelID: string }
-  }): Promise<{ executionID: string }> {
+  }): Promise<AgentExecutionResult> {
     const executor = input.agent
     const response = await this.client.session.prompt({
       sessionID: input.sessionID,
@@ -137,12 +185,18 @@ export class SpinosaKernelHarness implements SpinosaHarness {
       }],
     })
     if (response.error) throw executionError(input.agent, executor, response.error)
+    const text = executionText(response.data)
+    let assistantMessageID: string | undefined
     if (input.silent) {
       const messageID = requiredID(record(response.data).info, "assistant message")
+      assistantMessageID = messageID
       const removed = await this.client.session.deleteMessage({ sessionID: input.sessionID, messageID })
       if (removed.error) throw new Error(`Spinosa kernel could not hide intermediate output from "${input.agent}"`)
+    } else {
+      const info = record(record(response.data).info)
+      if (typeof info.id === "string") assistantMessageID = info.id
     }
-    return { executionID: input.sessionID }
+    return { executionID: input.sessionID, sessionID: input.sessionID, assistantMessageID, text }
   }
 
   // Direct tool execution is not supported by this harness.

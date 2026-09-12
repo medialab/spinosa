@@ -29,14 +29,49 @@ export type HarnessEvent = {
 // "reject" denies the request.
 export type PermissionReply = "allow" | "always" | "reject"
 
+// WP4: Neutral model + scoped tool policy (no kernel types leak here).
+export type HarnessModel = {
+  providerID: string
+  modelID: string
+}
+
+export type HarnessToolRule = {
+  tool: string
+  resource: string
+  effect: "allow" | "ask" | "deny"
+}
+
+export type CreateHarnessSessionInput = {
+  workspacePath: string
+  title?: string
+  parentSessionID?: string
+  agent?: string
+  model?: HarnessModel
+  metadata?: Record<string, unknown>
+  toolPolicy?: readonly HarnessToolRule[]
+}
+
+export type AgentExecutionResult = {
+  executionID: string
+  sessionID: string
+  assistantMessageID?: string
+  text: string
+}
+
 // The capabilities that a harness implementation supports.
 // directToolExecution: true if the harness can run tools directly.
 // permissions: true if the harness supports permission requests.
 // cancellation: true if the harness supports cancellation of executions.
+// childSessions: true if createSession supports parentSessionID isolation.
+// parallelAgentExecutions: true if concurrent executeAgent calls are safe.
+// scopedSessionPermissions: true if per-session toolPolicy is enforced.
 export type HarnessCapabilities = {
   directToolExecution: boolean
   permissions: boolean
   cancellation: boolean
+  childSessions: boolean
+  parallelAgentExecutions: boolean
+  scopedSessionPermissions: boolean
 }
 
 export const SILENT_AGENT_OUTPUT_METADATA = "spinosaSilent"
@@ -50,14 +85,16 @@ export interface SpinosaHarness {
 
   // Create a new session for a workspace.
   // The workspace path must point to an existing directory.
-  // The title is optional.
-  createSession(input: { workspacePath: string; title?: string }): Promise<HarnessSession>
+  // The title is optional. parentSessionID isolates internal worker output
+  // from the visible parent transcript; toolPolicy scopes permissions.
+  createSession(input: CreateHarnessSessionInput): Promise<HarnessSession>
 
   // Start an agent execution in a session.
   // The agent name selects the behavior for the execution.
   // The prompt contains the instructions for the agent.
   // The model is optional. When given, it selects the provider and model.
   // Silent executions remove their assistant message after completion.
+  // Returns normalized text extracted from response parts.
   executeAgent(input: {
     sessionID: string
     agent: string
@@ -66,7 +103,7 @@ export interface SpinosaHarness {
     synthetic?: boolean
     silent?: boolean
     model?: { providerID: string; modelID: string }
-  }): Promise<{ executionID: string }>
+  }): Promise<AgentExecutionResult>
 
   // Run a tool directly without an agent.
   // The tool name selects which tool to run.

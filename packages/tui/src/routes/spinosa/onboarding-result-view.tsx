@@ -60,12 +60,12 @@ export function OnboardingResultView(props: OnboardingResultProps) {
 
   return (
           <Show when={step() === "done" || step() === "error"}>
-            <WizardPanel theme={theme}>
+            <WizardPanel theme={theme} viewportHeight={dimensions().height}>
               <Show when={step() === "done"}>
                 <box gap={1}>
-                  <LogoSummary theme={theme} label="Workspace created." />
+                  <LogoSummary theme={theme} label="Spinosa created the workspace." />
                   <text fg={theme.textMuted}>
-                    Your files are imported. Open the workspace to continue with the setup brief.
+                    Spinosa imported your files. Open the workspace to continue with the setup brief.
                   </text>
                   <Show when={progressFiles().length > 0}>
                     <ProgressBar
@@ -83,7 +83,7 @@ export function OnboardingResultView(props: OnboardingResultProps) {
                     <text fg={theme.textMuted}>{importSummary()}</text>
                   </Show>
                   <Show when={failedCount() > 0}>
-                    <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — originals copied to raw/_failed_files/ when possible</text>
+                    <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — Spinosa kept the originals. See raw/_failed_files/.</text>
                   </Show>
                   <Show when={stillMissingCount() > 0 && failedCount() === 0}>
                     <text fg={theme.warning}>{stillMissingCount()} file{stillMissingCount() === 1 ? "" : "s"} still missing after verification</text>
@@ -129,7 +129,7 @@ export function OnboardingResultView(props: OnboardingResultProps) {
               <Show when={step() === "error"}>
                 <WizardActionButton theme={theme} label="Back" onPress={handleBackPress} />
                 <box flexGrow={1} />
-                <WizardActionButton theme={theme} label="Retry" primary onPress={() => void continueFromPath()} />
+                <WizardActionButton theme={theme} label="Start over" primary onPress={() => void continueFromPath()} />
               </Show>
             </WizardActionRow>
           </Show>

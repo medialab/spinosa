@@ -740,11 +740,14 @@ export function Autocomplete(props: {
     })
   })
 
+  // Fixed height per anchor position — never derived from the live option
+  // count. The popup is absolutely positioned above the anchor
+  // (top = anchor - height), so count-derived heights made it jump on every
+  // keystroke while filtering. Short lists scroll in stable space instead.
   const height = createMemo(() => {
-    const count = options().length || 1
-    if (!store.visible) return Math.min(10, count)
+    if (!store.visible) return 1
     positionTick()
-    return Math.min(10, count, Math.max(1, props.anchor().y))
+    return Math.min(10, Math.max(1, props.anchor().y))
   })
 
   let scroll: ScrollBoxRenderable
@@ -757,7 +760,10 @@ export function Autocomplete(props: {
       top={position().y - height()}
       left={position().x}
       width={position().width}
-      zIndex={100}
+      // Above all session chrome (prompt wrapper, message list, back/export
+      // buttons) so the dropdown never paints underneath the conversation.
+      // Dialogs (3000+), which-key (3500) and toasts (4000) still win.
+      zIndex={2000}
       {...SplitBorder}
       borderColor={theme.border}
     >

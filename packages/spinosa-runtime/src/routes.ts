@@ -1,5 +1,9 @@
 import { isStartupIndexingPrompt } from "./startup"
 
+// WP10: frozen legacy classifier. New runs use RouteDecision (routing.ts) +
+// deterministicRoute (router.ts). Kept because migration.ts decodes old
+// run.json files through agentsForRoute(), and the startup guard below
+// protects indexing prompts from coverage-audit misrouting.
 export type RouteClass = "fast_path" | "Q1" | "Q2" | "Q3" | "Q4" | "Q5"
 
 const FAST_PATH = [

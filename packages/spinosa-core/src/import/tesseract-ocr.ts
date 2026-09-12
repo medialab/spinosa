@@ -149,6 +149,155 @@ function cleanOcrBody(body: string): string {
   return cleaned || "[No text detected]"
 }
 
+/**
+ * OCR a subset of PDF pages (1-based) via range-grouped pdftoppm renders.
+ * Companion to the vision-path hybrid: text-bearing pages are handled by
+ * direct extraction, so tesseract only ever sees imageless pages. Returns
+ * cleaned text per requested page (missing entries mean render/OCR failure).
+ */
+export type PdfOcrPageTick = (page: number, total: number) => void | Promise<void>
+
+export async function ocrPdfPagesViaTesseract(
+  srcPath: string,
+  pages: readonly number[],
+  relPath: string,
+  options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void; signal?: AbortSignal; onPage?: PdfOcrPageTick; pageTotal?: number },
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>()
+  const wanted = [...new Set(pages)].filter((p) => Number.isFinite(p) && p >= 1)
+  if (wanted.length === 0) return out
+  throwIfSpinosaCancelled(options?.shouldAbort)
+  if (!tesseractAvailable()) throw new Error("tesseract not available (missing tesseract/pdftoppm or tessdata ita+eng+fra)")
+  const { contiguousRanges } = await import("./pdf-pages")
+  const tmpDir = await mkdtemp(path.join(tmpdir(), "spinosa-tess-"))
+  try {
+    const prefix = path.join(tmpDir, "page")
+    options?.onLog?.(`  ${relPath} → rendering ${wanted.length} page${wanted.length === 1 ? "" : "s"} (${wanted.join(", ")}) for tesseract OCR ...`)
+    for (const range of contiguousRanges(wanted)) {
+      const proc = Bun.spawn(
+        ["pdftoppm", "-png", "-r", "300", "-f", String(range.from), "-l", String(range.to), srcPath, prefix],
+        { stdout: "pipe", stderr: "pipe" },
+      )
+      const exit = await waitAbortableChild(proc, {
+        shouldAbort: options?.shouldAbort,
+        signal: options?.signal,
+        label: `pdftoppm ${relPath} pages ${range.from}-${range.to}`,
+      })
+      if (exit !== 0) {
+        const errText = await new Response(proc.stderr as unknown as ReadableStream).text().catch(() => "")
+        throw new Error(`pdftoppm failed (exit ${exit}): ${errText.slice(0, 400)}`)
+      }
+      throwIfSpinosaCancelled(options?.shouldAbort)
+    }
+    const pngs = readdirSync(tmpDir)
+      .filter((f) => f.endsWith(".png"))
+      .sort()
+    for (const png of pngs) {
+      // Range renders keep real page numbers (page-3.png for -f 3).
+      const page = Number((png.match(/page-(\d+)\.png$/) ?? [])[1])
+      if (!Number.isFinite(page) || !wanted.includes(page)) continue
+      throwIfSpinosaCancelled(options?.shouldAbort)
+      const txtBase = path.join(tmpDir, `out-${page}`)
+      const tessProc = Bun.spawn(
+        ["tesseract", path.join(tmpDir, png), txtBase, "-l", "ita+eng+fra", "--psm", "6", "--oem", "1"],
+        { stdout: "pipe", stderr: "pipe" },
+      )
+      await waitAbortableChild(tessProc, {
+        shouldAbort: options?.shouldAbort,
+        signal: options?.signal,
+        label: `tesseract ${relPath} page ${page}`,
+      })
+      const txtPath = `${txtBase}.txt`
+      let pageText = ""
+      try {
+        pageText = existsSync(txtPath) ? readFileSync(txtPath, "utf-8") : ""
+      } catch {
+        pageText = ""
+      }
+      out.set(page, cleanOcrBody(pageText))
+      await options?.onPage?.(page, options?.pageTotal ?? wanted.length)
+      await new Promise<void>((r) => setTimeout(r, 0))
+    }
+    return out
+  } finally {
+    try {
+      rmSync(tmpDir, { recursive: true, force: true })
+    } catch { /* cleanup */ }
+  }
+}
+
+/**
+ * Hybrid PDF conversion for mixed documents: pages with embedded digital
+ * text keep direct extraction; only imageless pages go through tesseract.
+ * Output format mirrors ocrPdfViaTesseract (title + ## Page N + page splits
+ * with frontmatter) so downstream is identical. Returns OCR'd page count.
+ */
+export async function convertPdfHybridTesseract(
+  srcFile: string,
+  destFile: string,
+  relPath: string,
+  classes: readonly { page: number; kind: string; text?: string }[],
+  options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void; signal?: AbortSignal; onPage?: PdfOcrPageTick },
+): Promise<{ pages: number; ocrPages: number; destFile: string }> {
+  const title = titleFromRel(relPath)
+  const total = classes.length > 0 ? Math.max(...classes.map((c) => c.page)) : 0
+  if (total === 0) throw new Error("no pages to convert")
+  const direct = new Map<number, string>()
+  const imagePages: number[] = []
+  for (const c of classes) {
+    if (c.kind === "text" && typeof c.text === "string") direct.set(c.page, c.text)
+    else imagePages.push(c.page)
+  }
+  throwIfSpinosaCancelled(options?.shouldAbort)
+  if (imagePages.length > 0) {
+    options?.onLog?.(`  ${relPath} → ${direct.size}/${total} pages have embedded text, tesseract transcribes ${imagePages.length} imageless page(s) ...`)
+  }
+  const ocr = await ocrPdfPagesViaTesseract(srcFile, imagePages, relPath, { ...options, pageTotal: total })
+  const pageTexts: string[] = []
+  for (let p = 1; p <= total; p++) {
+    const d = direct.get(p)
+    if (d !== undefined) pageTexts.push(d.trim())
+    else if (ocr.has(p)) pageTexts.push((ocr.get(p) ?? "").trim() || "[No text detected on this page]")
+    else pageTexts.push("[No text detected on this page]")
+  }
+  const combined = `# ${title}\n\n${pageTexts.map((t, idx) => `## Page ${idx + 1}\n\n${t}`).join("\n\n")}\n`
+  mkdirSync(path.dirname(destFile), { recursive: true })
+  // Truncation-safe: everything downstream (splits, images, callers) must use
+  // the path actually written, not the requested one (finding: ENAMETOOLONG
+  // reported "no output" while a truncated file sat on disk).
+  const actualDest = writeTextAtomicSafe(destFile, combined)
+  injectColdFrontmatter(actualDest)
+  if (pageTexts.length > 1) {
+    const pageDir = actualDest.endsWith(".md") ? actualDest.slice(0, -3) : `${actualDest}_pages`
+    try {
+      if (existsSync(pageDir)) rmSync(pageDir, { recursive: true, force: true })
+      mkdirSync(pageDir, { recursive: true })
+      for (const [i, text] of pageTexts.entries()) {
+        const pageFile = path.join(pageDir, `page-${String(i + 1).padStart(3, "0")}.md`)
+        writeTextAtomicSafe(
+          pageFile,
+          [
+            "---",
+            `source_document: "${path.basename(relPath).replace(/"/g, '\\"')}"`,
+            `page: ${i + 1}`,
+            `page_count: ${pageTexts.length}`,
+            "---",
+            "",
+            `# ${title} - Page ${i + 1}`,
+            "",
+            text.trim() || "[No text detected on this page]",
+            "",
+          ].join("\n"),
+        )
+        injectColdFrontmatter(pageFile)
+      }
+    } catch {
+      // ignore split page failures
+    }
+  }
+  return { pages: total, ocrPages: imagePages.length, destFile: actualDest }
+}
+
 export class TesseractLowConfidenceError extends Error {
   constructor(
     message: string,
@@ -173,7 +322,7 @@ export async function ocrPdfViaTesseract(
   srcPath: string,
   destFile: string,
   relPath: string,
-  options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void; signal?: AbortSignal },
+  options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void; signal?: AbortSignal; onPage?: PdfOcrPageTick },
 ): Promise<TesseractOcrResult> {
   throwIfSpinosaCancelled(options?.shouldAbort)
   if (!tesseractAvailable()) throw new Error("tesseract not available (missing tesseract/pdftoppm or tessdata ita+eng+fra)")
@@ -205,6 +354,7 @@ export async function ocrPdfViaTesseract(
       .filter((f) => f.endsWith(".png"))
       .sort()
     if (pngs.length === 0) throw new Error("pdftoppm produced no pages")
+    options?.onLog?.(`  ${relPath} → splitting into ${pngs.length} page${pngs.length === 1 ? "" : "s"}, extracting text via tesseract OCR ...`)
     const pageTexts: string[] = []
     const pageConfs: number[] = []
     const pageLowCounts: number[] = []
@@ -285,6 +435,7 @@ export async function ocrPdfViaTesseract(
         pageWordCounts.push(0)
       }
       // Yield to event loop so TUI can paint
+      await options?.onPage?.(i + 1, pngs.length)
       await new Promise<void>((r) => setTimeout(r, 0))
     }
     // Per-page low confidence → garbaged placeholder (instead of whole-file discard)
@@ -292,44 +443,8 @@ export async function ocrPdfViaTesseract(
     const avgConf = totalWords > 0 ? pageConfs.reduce((a, c, i) => a + c * pageWordCounts[i]!, 0) / totalWords : 0
     const totalLow = pageLowCounts.reduce((a, b) => a + b, 0)
     const lowPct = totalWords > 0 ? (totalLow / totalWords) * 100 : 100
-    // Keep page PNGs for garbaged pages so further agents (network OCR) can work on them
-    const pageImageDests: (string | null)[] = []
-    for (let i = 0; i < pageTexts.length; i++) {
-      const n = pageWordCounts[i] ?? 0
-      const avg = pageConfs[i] ?? 0
-      const low = pageLowCounts[i] ?? 0
-      const lowPctPage = n > 0 ? (low / n) * 100 : 100
-      const len = (pageTexts[i] ?? "").trim().length
-      const isLow = n === 0 || avg < 60 || lowPctPage > 25 || len < 30
-      if (isLow) {
-        options?.onLog?.(`  ${relPath} page ${i + 1} low confidence (avg ${avg.toFixed(1)}, low ${lowPctPage.toFixed(1)}%, len ${len}) → [Garbaged] + keep image`)
-        // Mark page as garbaged in markdown, keep image for network OCR
-        const pngSrc = path.join(tmpDir, pngs[i]!)
-        // Image dest: for single page → destFile.png, for multi → pageDir/page-001.png
-        let imgDest: string | null = null
-        if (pageTexts.length === 1) {
-          imgDest = destFile.replace(/\.md$/, ".png")
-        } else {
-          const pageDir = destFile.endsWith(".md") ? destFile.slice(0, -3) : `${destFile}_pages`
-          imgDest = path.join(pageDir, `page-${String(i + 1).padStart(3, "0")}.png`)
-        }
-        try {
-          if (pngSrc && imgDest) {
-            mkdirSync(path.dirname(imgDest), { recursive: true })
-            const data = readFileSync(pngSrc)
-            writeFileSync(imgDest, data)
-            pageImageDests[i] = imgDest
-          }
-        } catch {}
-        const imgRel = imgDest ? path.basename(imgDest) : `page-${String(i + 1).padStart(3, "0")}.png`
-        // For single page, img is sibling of md; for multi, it's in pageDir
-        const imgLink = pageTexts.length === 1 ? `./${path.basename(imgDest!)}` : `${path.basename(path.dirname(imgDest!))}/${imgRel}`
-        pageTexts[i] = `[Garbaged — low confidence, original kept as image pending network OCR]\n\n![Page ${i + 1} original](${imgLink})`
-      } else {
-        pageImageDests[i] = null
-      }
-    }
-
+    // Combined dest first: image/split paths below derive from the path
+    // actually written (truncation-safe), never the requested one.
     let combined: string
     if (pageTexts.length === 1) {
       combined = `# ${title}\n\n${pageTexts[0]}\n`
@@ -341,18 +456,63 @@ export async function ocrPdfViaTesseract(
         .join("\n\n")
       combined = `# ${title}\n\n${pagesWithHeader}\n`
     }
+    // Keep page PNGs for garbaged pages so further agents (network OCR) can work on them
+    const garbaged = new Set<number>()
+    for (let i = 0; i < pageTexts.length; i++) {
+      const n = pageWordCounts[i] ?? 0
+      const avg = pageConfs[i] ?? 0
+      const low = pageLowCounts[i] ?? 0
+      const lowPctPage = n > 0 ? (low / n) * 100 : 100
+      const len = (pageTexts[i] ?? "").trim().length
+      const isLow = n === 0 || avg < 60 || lowPctPage > 25 || len < 30
+      if (isLow) {
+        options?.onLog?.(`  ${relPath} page ${i + 1} low confidence (avg ${avg.toFixed(1)}, low ${lowPctPage.toFixed(1)}%, len ${len}) → [Garbaged] + keep image`)
+        garbaged.add(i)
+      }
+    }
+
     mkdirSync(path.dirname(destFile), { recursive: true })
-    writeTextAtomicSafe(destFile, combined)
-    injectColdFrontmatter(destFile)
+    const actualDest = writeTextAtomicSafe(destFile, combined)
+    injectColdFrontmatter(actualDest)
+
+    // Image dest: for single page → sibling .png, for multi → pageDir/page-001.png
+    const actualPageDir = actualDest.endsWith(".md") ? actualDest.slice(0, -3) : `${actualDest}_pages`
+    for (const i of garbaged) {
+      const pngSrc = path.join(tmpDir, pngs[i]!)
+      const imgDest = pageTexts.length === 1
+        ? actualDest.replace(/\.md$/, ".png")
+        : path.join(actualPageDir, `page-${String(i + 1).padStart(3, "0")}.png`)
+      try {
+        if (pngSrc && imgDest) {
+          mkdirSync(path.dirname(imgDest), { recursive: true })
+          const data = readFileSync(pngSrc)
+          writeFileSync(imgDest, data)
+        }
+      } catch {}
+      const imgRel = path.basename(imgDest)
+      // For single page, img is sibling of md; for multi, it's in pageDir
+      const imgLink = pageTexts.length === 1 ? `./${imgRel}` : `${path.basename(actualPageDir)}/${imgRel}`
+      pageTexts[i] = `[Garbaged — low confidence, original kept as image pending network OCR]\n\n![Page ${i + 1} original](${imgLink})`
+    }
+    if (garbaged.size > 0) {
+      // Rewrite with garbaged placeholders now that image links are known.
+      let rewritten: string
+      if (pageTexts.length === 1) {
+        rewritten = `# ${title}\n\n${pageTexts[0]}\n`
+      } else {
+        rewritten = `# ${title}\n\n${pageTexts.map((t, idx) => `## Page ${idx + 1}\n\n${t}`).join("\n\n")}\n`
+      }
+      writeTextAtomicSafe(actualDest, rewritten)
+      combined = rewritten
+    }
 
     // Also write split pages (optional, extra navigability)
     if (pageTexts.length > 1) {
-      const pageDir = destFile.endsWith(".md") ? destFile.slice(0, -3) : `${destFile}_pages`
       try {
-        if (existsSync(pageDir)) rmSync(pageDir, { recursive: true, force: true })
-        mkdirSync(pageDir, { recursive: true })
+        if (existsSync(actualPageDir)) rmSync(actualPageDir, { recursive: true, force: true })
+        mkdirSync(actualPageDir, { recursive: true })
         for (let i = 0; i < pageTexts.length; i++) {
-          const pageFile = path.join(pageDir, `page-${String(i + 1).padStart(3, "0")}.md`)
+          const pageFile = path.join(actualPageDir, `page-${String(i + 1).padStart(3, "0")}.md`)
           const pageContent = [
             "---",
             `source_document: "${path.basename(relPath).replace(/"/g, '\\"')}"`,
@@ -374,7 +534,7 @@ export async function ocrPdfViaTesseract(
       }
     }
 
-    return { mdPath: destFile, pages: pngs.length, text: combined, avgConf, lowPct }
+    return { mdPath: actualDest, pages: pngs.length, text: combined, avgConf, lowPct }
   } finally {
     try {
       rmSync(tmpDir, { recursive: true, force: true })

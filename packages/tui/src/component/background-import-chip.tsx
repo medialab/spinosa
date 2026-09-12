@@ -72,7 +72,7 @@ export function BackgroundImportChip() {
       notifiedDone.add(key)
       toast.show({
         variant: s.success ? "success" : "error",
-        message: s.success ? "Background import complete." : "Background import finished with failures — open the import chip.",
+        message: s.success ? "Background import complete." : "Background import complete with failures — open the import chip.",
       })
     }
   })
@@ -90,7 +90,7 @@ export function BackgroundImportChip() {
   }
   const label = () => {
     const s = bg.snapshot()
-    if (s.done) return s.success ? "Import complete — details" : "Import finished with failures — details"
+    if (s.done) return s.success ? "Import complete — details" : "Import complete with failures — details"
     if (s.visionPause) return `Import paused — action needed (${pct()}%)`
     return `Import running — ${s.phaseLabel || s.phase} ${pct()}%`
   }

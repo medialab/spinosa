@@ -123,3 +123,8 @@ workspace-template/raw/*.jsonl
 
 # Compiled JS output alongside TS sources
 *.js
+
+# Local real-file test corpus (built by scripts/anonymize-fixtures.ts from
+# personal files; contains redacted-but-real data — NEVER commit)
+packages/spinosa-core/test/fixtures-real/
+packages/spinosa-core/test/fixtures-real-staging/

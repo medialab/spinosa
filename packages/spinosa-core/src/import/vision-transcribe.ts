@@ -123,8 +123,12 @@ async function prepareImagePayload(
 }
 
 /**
- * Render every PDF page to PNG (pdftoppm, 300dpi) and prepare payloads.
+ * Render PDF pages to PNG (pdftoppm, 300dpi) and prepare payloads.
  * Mirrors the tesseract phase renderer so vision sees the same pages.
+ *
+ * `onlyPages` (1-based) restricts rendering to imageless pages: pdftoppm
+ * `-f/-l` runs once per contiguous range, and each payload carries its real
+ * page number (pdftoppm names outputs `prefix-<N>.png` for the range).
  */
 async function renderPdfPagesToPayloads(
   srcPath: string,
@@ -132,46 +136,97 @@ async function renderPdfPagesToPayloads(
   shouldAbort: (() => boolean) | undefined,
   onLog?: (msg: string) => void,
   signal?: AbortSignal,
-): Promise<PagePayload[]> {
+  onlyPages?: readonly number[],
+  onPage?: (page: number, total?: number) => void,
+  totalPages?: number,
+): Promise<Array<{ page: number; payload: PagePayload }>> {
   if (!pdftoppmPresent()) {
     throw new Error(
       "PDF page rendering needs pdftoppm (poppler-utils), which is not installed — install it or pick Tesseract for scanned PDFs",
     )
   }
+  const { contiguousRanges } = await import("./pdf-pages")
+  const ranges = onlyPages && onlyPages.length > 0
+    ? contiguousRanges(onlyPages)
+    : undefined
   const tmpDir = mkdtempSync(path.join(tmpdir(), "spinosa-vision-pdf-"))
+  // pdftoppm writes PNGs progressively but reports nothing per page — poll
+  // the output dir so the UI can show live "(PG: N)" motion during the
+  // silent render. Total stays unknown until the file list lands below.
+  const seenRenderPages = new Set<number>()
+  const renderPoll = setInterval(() => {
+    let names: string[] = []
+    try {
+      names = readdirSync(tmpDir)
+    } catch {
+      return
+    }
+    for (const name of names) {
+      const page = Number((name.match(/page-(\d+)\.png$/) ?? [])[1])
+      if (!Number.isFinite(page) || seenRenderPages.has(page)) continue
+      seenRenderPages.add(page)
+      try {
+        onPage?.(page, totalPages)
+      } catch {
+        /* progress-only */
+      }
+    }
+  }, 400)
   try {
     throwIfSpinosaCancelled(shouldAbort)
     if (signal?.aborted) throw new SpinosaCancellationError("Vision cancelled")
     const prefix = path.join(tmpDir, "page")
-    const proc = Bun.spawn(["pdftoppm", "-png", "-r", "300", srcPath, prefix], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const exit = await waitAbortableChild(proc, {
-      shouldAbort,
-      signal,
-      label: `pdftoppm ${rel}`,
-    })
-    if (exit !== 0) {
-      const errText = await new Response(proc.stderr as unknown as ReadableStream).text().catch(() => "")
-      throw new Error(`pdftoppm failed (exit ${exit}): ${errText.slice(0, 400)}`)
+    const runs = ranges ?? [{ from: 1, to: Number.MAX_SAFE_INTEGER }]
+    for (const range of runs) {
+      const args =
+        ranges
+          ? ["pdftoppm", "-png", "-r", "300", "-f", String(range.from), "-l", String(range.to), srcPath, prefix]
+          : ["pdftoppm", "-png", "-r", "300", srcPath, prefix]
+      const proc = Bun.spawn(args, {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const exit = await waitAbortableChild(proc, {
+        shouldAbort,
+        signal,
+        label: `pdftoppm ${rel}${ranges ? ` pages ${range.from}-${range.to}` : ""}`,
+      })
+      if (exit !== 0) {
+        const errText = await new Response(proc.stderr as unknown as ReadableStream).text().catch(() => "")
+        throw new Error(`pdftoppm failed (exit ${exit}): ${errText.slice(0, 400)}`)
+      }
+      throwIfSpinosaCancelled(shouldAbort)
     }
-    throwIfSpinosaCancelled(shouldAbort)
     const pngs = readdirSync(tmpDir)
       .filter((f) => f.endsWith(".png"))
       .sort()
     if (pngs.length === 0) throw new Error("pdftoppm produced no pages")
     onLog?.(`  ${rel} → rendered ${pngs.length} page${pngs.length === 1 ? "" : "s"} for vision`)
-    const payloads: PagePayload[] = []
-    for (const [i, png] of pngs.entries()) {
+    const out: Array<{ page: number; payload: PagePayload }> = []
+    const optimizeTotal = totalPages ?? pngs.length
+    for (const png of pngs) {
       throwIfSpinosaCancelled(shouldAbort)
+      // pdftoppm names range outputs with real page numbers (page-3.png…).
+      const page = Number((png!.match(/page-(\d+)\.png$/) ?? [])[1])
+      if (!Number.isFinite(page)) continue
+      // Per-page tick with known total so the UI shows "(PG: N/M)" while
+      // each page optimizes — the visible proof the render is proceeding.
+      if (optimizeTotal > 1) {
+        try {
+          onPage?.(page, optimizeTotal)
+        } catch {
+          /* progress-only */
+        }
+      }
       const buf = readFileSync(path.join(tmpDir, png!))
       // Label keeps the .png suffix so MIME detection sees the real format.
-      const payload = await prepareImagePayload(buf, `${rel}#page${i + 1}.png`, onLog)
-      payloads.push(payload)
+      const payload = await prepareImagePayload(buf, `${rel}#page${page}.png`, onLog)
+      out.push({ page, payload })
     }
-    return payloads
+    out.sort((a, b) => a.page - b.page)
+    return out
   } finally {
+    clearInterval(renderPoll)
     try {
       rmSync(tmpDir, { recursive: true, force: true })
     } catch {}
@@ -283,7 +338,10 @@ export async function processVisionInProcess(
   // the expensive pdftoppm re-render.
   const MAX_MANUAL_RETRIES = 3
   const manualRetries = new Map<string, number>()
-  const pageCache = new Map<string, PagePayload[]>()
+  type CachedPages =
+    | { kind: "image"; payloads: PagePayload[] }
+    | { kind: "pdf"; total: number; direct: Map<number, string>; vision: Array<{ page: number; payload: PagePayload }> }
+  const pageCache = new Map<string, CachedPages>()
   const noteManualRetry = (rel: string): boolean => {
     const n = (manualRetries.get(rel) ?? 0) + 1
     manualRetries.set(rel, n)
@@ -433,20 +491,96 @@ export async function processVisionInProcess(
 
     const startTime = Date.now()
 
-    // Build per-page payloads: a single image is one page; a scanned PDF is
-    // rendered page-by-page (same 300dpi pdftoppm renderer as tesseract).
+    // Per-page text census: embedded digital text is used directly and the
+    // vision model only ever sees imageless (scanned/photo) pages. A fully
+    // digital PDF costs zero model calls however large it is.
+    type PreparedPdf = {
+      total: number
+      direct: Map<number, string>
+      vision: Array<{ page: number; payload: PagePayload }>
+    }
     let pages: PagePayload[] | undefined
+    let preparedPdf: PreparedPdf | undefined
     let readErr: unknown
     const cached = pageCache.get(f.rel)
     if (cached) {
-      pages = cached
-      onLog?.(`  ${f.rel} → reusing prepared pages (retry, no re-render)`)
+      if (cached.kind === "image") {
+        pages = cached.payloads
+        onLog?.(`  ${f.rel} → reusing prepared pages (retry, no re-render)`)
+      } else {
+        preparedPdf = cached
+        onLog?.(`  ${f.rel} → reusing prepared pages + text census (retry, no re-render)`)
+      }
     } else {
       try {
         if (isPdfFile) {
-          onLog?.(`  ${f.rel} → rendering PDF pages…`)
-          await yieldToEL()
-          pages = await renderPdfPagesToPayloads(f.src, f.rel, shouldAbort, onLog, hooks.signal)
+          const { classifyPdfPages } = await import("./pdf-pages")
+          let classes: Array<{ page: number; kind: string; text?: string }> = []
+          try {
+            classes = await classifyPdfPages(f.src)
+          } catch (e) {
+            if (isSpinosaCancellationError(e)) throw e
+            classes = []
+          }
+          throwIfSpinosaCancelled(shouldAbort)
+          const direct = new Map<number, string>()
+          const imagePages: number[] = []
+          for (const c of classes) {
+            if (c.kind === "text" && typeof c.text === "string") direct.set(c.page, c.text)
+            else imagePages.push(c.page)
+          }
+          // File-level total for progress events (the page count below shadows `total`).
+          const fileTotal = total
+          const pageCount = classes.length > 0
+            ? Math.max(...classes.map((c) => c.page))
+            : 0
+          if (classes.length > 0 && imagePages.length === 0) {
+            onLog?.(`  ${f.rel} → digital PDF, embedded text on all ${pageCount} pages used directly (no vision calls)`)
+            await yieldToEL()
+            preparedPdf = { total: pageCount, direct, vision: [] }
+            pageCache.set(f.rel, { kind: "pdf", ...preparedPdf })
+          } else if (classes.length === 0) {
+            // pdf.js could not census this file at all: refuse to render
+            // every page into vision calls blind. A hiccup on one file must
+            // never turn into hundreds of model calls — fail honestly so the
+            // operator sees it and can retry just this file.
+            readErr = readErr ?? new Error("pdf.js census failed — file may be corrupt or encrypted; refusing blind vision transcription")
+          } else {
+            // Non-empty census here (empty means honest failure above), so
+            // only imageless pages render — text pages never cost a call.
+            const subset = imagePages
+            onLog?.(
+              `  ${f.rel} → ${direct.size}/${pageCount} pages have embedded text, vision transcribes ${imagePages.length} imageless page(s)…`,
+            )
+            await yieldToEL()
+            const pageTotal = pageCount > 0 ? pageCount : undefined
+            const rendered = await renderPdfPagesToPayloads(
+              f.src,
+              f.rel,
+              shouldAbort,
+              onLog,
+              hooks.signal,
+              subset,
+              (page, knownTotal) => {
+                const tickTotal = knownTotal ?? pageTotal
+                // Total is always known here (non-empty census) — motion proves
+                // the render is proceeding. Single pages stay quiet.
+                if (tickTotal !== undefined && tickTotal <= 1) return
+                prog?.file(
+                  "Vision",
+                  processed,
+                  fileTotal,
+                  `${f.rel} (page ${page}${tickTotal !== undefined ? `/${tickTotal}` : ""})`,
+                  "processing",
+                )
+              },
+              pageTotal,
+            )
+            await yieldToEL()
+            throwIfSpinosaCancelled(shouldAbort)
+            preparedPdf = { total: pageCount || Math.max(0, ...rendered.map((r) => r.page)), direct, vision: rendered }
+            pageCache.set(f.rel, { kind: "pdf", ...preparedPdf })
+          }
         } else {
           onLog?.(`  ${f.rel} → preparing image…`)
           await yieldToEL()
@@ -457,12 +591,13 @@ export async function processVisionInProcess(
         }
         await yieldToEL()
         throwIfSpinosaCancelled(shouldAbort)
-        if (pages) pageCache.set(f.rel, pages)
+        if (pages) pageCache.set(f.rel, { kind: "image", payloads: pages })
       } catch (e) {
         readErr = e
       }
     }
-    if (readErr !== undefined || !pages || pages.length === 0) {
+    const pdfReady = !isPdfFile || preparedPdf !== undefined
+    if (readErr !== undefined || !pdfReady || (!isPdfFile && (!pages || pages.length === 0))) {
       if (readErr && isSpinosaCancellationError(readErr)) throw readErr
       const errMsg = readErr instanceof Error ? readErr.message : String(readErr)
       onLog?.(`Vision failed: ${f.rel} — failed to read ${isPdfFile ? "PDF" : "image"}: ${errMsg}`)
@@ -492,35 +627,56 @@ export async function processVisionInProcess(
     // Attempt transcription with retry, timeout, cancellation (per page).
     // A blank single image fails the file (TUI skip-flow); a blank PDF page
     // becomes a placeholder so one empty page never kills the document.
+    // PDF pages with embedded digital text skip the model entirely and are
+    // merged below from the census.
     let lastErr: unknown
-    const pageTexts: string[] = []
-    for (const [pageIdx, page] of pages.entries()) {
+    const transcribedByPage = new Map<number, string>()
+    const visionUnits: Array<{ label: string; page?: number; payload: PagePayload }> = isPdfFile
+      ? (preparedPdf?.vision ?? []).map(({ page, payload }) => ({
+          label: `page ${page}/${preparedPdf?.total ?? page}`,
+          page,
+          payload,
+        }))
+      : (pages ?? []).map((payload) => ({ label: "image", payload }))
+    for (const unit of visionUnits) {
       throwIfSpinosaCancelled(shouldAbort)
+      // Live page marker: the TUI shows "(PG: N/M)" so users see which page
+      // of a multi-page PDF is transcribing. Counts stay file-level — the
+      // TUI maps the suffix back to the file row (no phantom rows).
+      const pdfTotal = preparedPdf?.total ?? 0
+      if (unit.page !== undefined && pdfTotal > 1) {
+        prog?.file("Vision", processed, total, `${f.rel} (page ${unit.page}/${pdfTotal})`, "processing")
+        await yieldToEL()
+      }
       try {
-        const pageLabel = pages.length > 1 ? `page ${pageIdx + 1}/${pages.length}` : "image"
         const text = await transcribeImagePayload(
           hooks.transcribeVision,
           request.providerID,
           request.modelID,
           currentId,
-          page,
+          unit.payload,
           f.rel,
-          pageLabel,
+          unit.label,
           hooks.signal,
           shouldAbort,
           onLog,
         )
-        pageTexts.push(text.trim())
-        if (pages.length === 1 && !isPdfFile && !pageTexts[0]!.trim()) {
+        if (unit.page !== undefined) transcribedByPage.set(unit.page, text.trim())
+        else transcribedByPage.set(0, text.trim())
+        if (visionUnits.length === 1 && !isPdfFile && ![...transcribedByPage.values()][0]!.trim()) {
           throw new Error("Vision model returned no text")
         }
       } catch (e) {
         if (isSpinosaCancellationError(e)) throw e
         const msg = e instanceof Error ? e.message : String(e)
-        if (pages.length > 1 && msg === "Vision model returned no text") {
+        if (visionUnits.length === 1 && !isPdfFile) {
+          lastErr = e
+          break
+        }
+        if (msg === "Vision model returned no text") {
           // One blank page must not kill the document — keep a placeholder.
-          onLog?.(`  ${f.rel} → page ${pageIdx + 1}/${pages.length} returned no text — keeping placeholder`)
-          pageTexts.push("[No text detected on this page]")
+          onLog?.(`  ${f.rel} → ${unit.label} returned no text — keeping placeholder`)
+          if (unit.page !== undefined) transcribedByPage.set(unit.page, "[No text detected on this page]")
           continue
         }
         lastErr = e
@@ -528,9 +684,26 @@ export async function processVisionInProcess(
       }
     }
 
+    // Merge in page order: embedded digital text first, vision transcripts
+    // for imageless pages, placeholder only when neither produced text.
+    let pageTexts: string[] = []
+    let visionCalls = visionUnits.length
+    if (!isPdfFile) {
+      pageTexts = [...transcribedByPage.values()]
+    } else {
+      const pp = preparedPdf!
+      visionCalls = pp.vision.length
+      for (let p = 1; p <= pp.total; p++) {
+        const d = pp.direct.get(p)
+        if (d !== undefined) pageTexts.push(d.trim() || "[No text detected on this page]")
+        else if (transcribedByPage.has(p)) pageTexts.push(transcribedByPage.get(p)!)
+        else pageTexts.push("[No text detected on this page]")
+      }
+    }
+
     let successText: string | undefined
-    if (lastErr === undefined && pageTexts.length === pages.length) {
-      if (pages.length === 1 && !isPdfFile) {
+    if (lastErr === undefined && (isPdfFile || pageTexts.length === (pages ?? []).length)) {
+      if (!isPdfFile && (pages ?? []).length <= 1) {
         successText = pageTexts[0]!.trim()
       } else {
         // PDF transcripts mirror the tesseract combine format (# title + ## Page N)
@@ -545,7 +718,11 @@ export async function processVisionInProcess(
         mkdirSync(path.dirname(f.dest), { recursive: true })
         writeTextAtomicSafe(f.dest, successText.trim() + "\n")
         injectColdFrontmatter(f.dest)
-        if (pages.length > 1) {
+        const totalPages = isPdfFile ? (preparedPdf?.total ?? pageTexts.length) : (pages ?? []).length
+        // Engine honesty: "pdfjs" when the model saw zero pages (fully
+        // digital PDF), otherwise the vision model id that did the work.
+        const engineTag = !isPdfFile || visionCalls > 0 ? `vision:${currentId}` : "pdfjs"
+        if (totalPages > 1) {
           // Split pages for deep links (mirrors tesseract multi-page output)
           const title = titleFromRel(f.rel)
           const pageDir = f.dest.endsWith(".md") ? f.dest.slice(0, -3) : `${f.dest}_pages`
@@ -576,14 +753,14 @@ export async function processVisionInProcess(
         converted++
         await emitDone(f.rel)
         recoverable.push({ src: f.src, dest: f.dest })
-        recordVisionResult(logsDir, f, "done", `vision:${currentId}`, currentId)
+        recordVisionResult(logsDir, f, "done", engineTag, currentId)
         appendNdjson(visionLog, {
           ts: isoNow(),
           status: "ok",
           source: f.rel,
           output: markitdownOutputRelPath(f.rel),
-          engine: `vision:${currentId}`,
-          pages: isPdfFile ? String(pages.length) : "",
+          engine: engineTag,
+          pages: isPdfFile ? String(totalPages) : "",
           duration_s: (Date.now() - startTime) / 1000,
           model: currentId,
         })

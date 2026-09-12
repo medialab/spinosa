@@ -4,7 +4,7 @@ import type { Theme } from "../../context/theme"
 import type { ImportOption, OcrModelOption } from "./wizard-ui"
 import type { ImportFileProgressItem } from "../../spinosa/import-progress-ui"
 
-export type WizardStep = "path" | "name" | "tools" | "scan" | "imports" | "vision" | "setup" | "direct" | "markitdown" | "ocr" | "verification" | "provider" | "startup" | "done" | "error"
+export type WizardStep = "path" | "name" | "tools" | "scan" | "imports" | "vision" | "setup" | "direct" | "markitdown" | "pdf" | "ocr" | "verification" | "provider" | "startup" | "done" | "error"
 export type ToolCheckResult = {
   label: string
   status: "checking" | "available" | "missing" | "unsupported"
@@ -100,6 +100,8 @@ export type OnboardingViewProps = {
   gateAutoPress: Accessor<boolean>
   backgroundAvailable: Accessor<boolean>
   onBackground: () => void
+  /** Live `v` shortcut state (mid-run vision/model picker). The hint only shows it when it works. */
+  visionShortcutAvailable: Accessor<boolean>
   cliOptions: CliOption[]
   selectedCli: Accessor<number>
   setSelectedCli: Setter<number>

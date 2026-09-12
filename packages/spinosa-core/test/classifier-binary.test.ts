@@ -2,21 +2,20 @@ import { describe, expect, test } from "bun:test"
 import { BINARY_COPYABLE_EXTENSIONS } from "../src/constants"
 import { classifySourceFile, importRouteForFile, scanClassifySourceFile } from "../src/extension/classifier"
 
-// Regression for bug-audit M5: BINARY_COPYABLE_EXTENSIONS is intentionally empty,
-// but the classifier still handles the binary_copyable -> binary_copy route.
-// Previously left as "not tested" (dead-code / unreachable), this test makes the
-// invariant explicit: empty list must never produce binary_copyable, and the route
-// contract must remain correct if the list is populated.
-describe("binary_copyable route — dead-code gap left as not tested", () => {
-  test("current empty list never classifies as binary_copyable", async () => {
-    expect(BINARY_COPYABLE_EXTENSIONS).toEqual([])
-    // Any extension not in the other lists should be unknown, not binary_copyable.
-    expect(await scanClassifySourceFile("/tmp/file.bin")).toBe("unknown")
-    expect(await scanClassifySourceFile("/tmp/archive.dat")).toBe("unknown")
-    expect(await classifySourceFile("/tmp/file.bin")).toBe("unknown")
+// BINARY_COPYABLE_EXTENSIONS holds binary originals no converter can handle
+// (epub/xls/msg: markitdown-ts@0.0.10 throws "not supported" for each —
+// verified live 2026-09-12). They are kept byte-identical via the direct step.
+describe("binary_copyable route", () => {
+  test("unconvertible binaries classify as binary_copyable", async () => {
+    expect(BINARY_COPYABLE_EXTENSIONS).toEqual(expect.arrayContaining(["epub", "xls", "msg"]))
+    expect(await scanClassifySourceFile("/tmp/book.epub")).toBe("binary_copyable")
+    expect(await scanClassifySourceFile("/tmp/sheet.xls")).toBe("binary_copyable")
+    expect(await scanClassifySourceFile("/tmp/mail.msg")).toBe("binary_copyable")
+    expect(await classifySourceFile("/tmp/book.epub")).toBe("binary_copyable")
   })
 
-  test("importRouteForFile never returns binary_copy for current constants", async () => {
+  test("importRouteForFile maps binary_copyable to binary_copy", async () => {
+    expect(await importRouteForFile("/tmp/book.epub")).toBe("binary_copy")
     expect(await importRouteForFile("/tmp/file.bin")).toBeUndefined()
     expect(await importRouteForFile("/tmp/file.dat")).toBeUndefined()
   })

@@ -195,7 +195,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
 
     // ── Step 3: Write workspace metadata ───────────────────────────────
     const sourceFrameworkVersion = readFrameworkVersionFromRoot(frameworkRoot)
-    progress("Writing workspace metadata...")
+    progress("Saving workspace settings...")
     const workspaceID = reservation.resumed ? ensureWorkspaceID(workspacePath) : createWorkspaceID()
     if (!reservation.resumed) {
       const markerLines = [
@@ -211,7 +211,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
     }
 
     // ── Step 4: Register workspace ─────────────────────────────────────
-    progress("Registering in global registry...")
+    progress("Registering the workspace...")
     await registerWorkspace(workspacePath, projectName, recover, workspaceID)
     throwIfSpinosaCancelled(shouldAbort)
 

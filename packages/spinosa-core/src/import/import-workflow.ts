@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process"
 import type { ProgressEmitter } from "../progress/progress"
 import type { ClassifiedEntry, PhaseResult } from "./pipeline"
+import { fileExt } from "../constants"
 import { runImportProcessor, type ImportProcessorId } from "./processors"
 
 export type ClassifiedImportSources = {
@@ -14,7 +15,9 @@ export type ClassifiedImportSources = {
 
 export type ImportPhaseResults = {
   direct: PhaseResult
+  copy: PhaseResult
   markitdown: PhaseResult
+  pdf: PhaseResult
   vision: PhaseResult
   ocr: PhaseResult
 }
@@ -59,16 +62,33 @@ export async function runImportWorkflow(
 ): Promise<ImportPhaseResults> {
   const results: ImportPhaseResults = {
     direct: emptyPhase(),
+    copy: emptyPhase(),
     markitdown: emptyPhase(),
+    pdf: emptyPhase(),
     vision: emptyPhase(),
     ocr: emptyPhase(),
   }
 
+  // Scan buckets are already engine-correct (PDFs route to vision/ocr/copy
+  // at scan time; MarkItDown takes office docs only), so phases run directly.
+  // PDFs surface as their own step regardless of engine: vision-bucket and
+  // ocr-bucket PDFs merge here, images stay in the vision step.
+  const isPdfEntry = (f: ClassifiedEntry) => fileExt(f.src).toLowerCase() === "pdf"
+  const pdfFiles = [
+    ...(classified.visionFiles ?? []).filter(isPdfEntry),
+    ...classified.ocrFiles.filter(isPdfEntry),
+  ]
+  const imageFiles = (classified.visionFiles ?? []).filter((f) => !isPdfEntry(f))
+  const ocrRest = classified.ocrFiles.filter((f) => !isPdfEntry(f))
+
   const phases: Array<{ id: ImportProcessorId; files: ClassifiedEntry[] }> = [
     { id: "direct", files: classified.directFiles },
+    // "none" selections land here: kept byte-identical, never dropped.
+    { id: "copy", files: classified.copyFiles ?? [] },
     { id: "markitdown", files: classified.markitdownFiles },
-    { id: "vision", files: classified.visionFiles ?? [] },
-    { id: "ocr", files: classified.ocrFiles },
+    { id: "pdf", files: pdfFiles },
+    { id: "vision", files: imageFiles },
+    { id: "ocr", files: ocrRest },
   ]
 
   for (const { id, files } of phases) {

@@ -97,6 +97,7 @@ import { LocationProvider } from "../../context/location"
 import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
+import { RouteBadge, routeBadgeFromParts } from "../../spinosa/route-badge"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1754,6 +1755,8 @@ function UserMessage(props: {
   )
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
+  // Route badge: fast vs orchestrated identity stamped at submit time.
+  const routeInfo = createMemo(() => routeBadgeFromParts(props.parts))
 
   createEffect(() => {
     const current = delivery()
@@ -1815,7 +1818,17 @@ function UserMessage(props: {
               backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
               flexShrink={0}
             >
-              <box flexDirection="row" justifyContent="flex-end" width="100%" paddingBottom={1}>
+              <box
+                flexDirection="row"
+                width="100%"
+                paddingBottom={1}
+                justifyContent={routeInfo() ? "space-between" : "flex-end"}
+                alignItems="center"
+                gap={1}
+              >
+              <Show when={routeInfo()}>
+                {(info) => <RouteBadge info={info()} />}
+              </Show>
                 <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
                   {Locale.todayTimeOrDateTime(props.message.time.created)}
                 </text>

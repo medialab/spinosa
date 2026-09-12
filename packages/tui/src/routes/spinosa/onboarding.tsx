@@ -155,6 +155,7 @@ type WizardStep =
   | "setup"
   | "direct"
   | "markitdown"
+  | "pdf"
   | "ocr"
   | "verification"
   | "provider"
@@ -360,7 +361,7 @@ export function Onboarding() {
       // The name stays visible here and top-right; only gate/status copy stays generic.
       base[1] = {
         ...base[1]!,
-        label: `Vision Model: ${picked} ✓`,
+        label: `Vision model: ${picked} ✓`,
         detail: `Selected — ${prov}/${model} — press space to select, Continue to re-choose vision model`,
         id: "vision:provider-picker",
         kind: "vision",
@@ -602,7 +603,7 @@ export function Onboarding() {
       .map((item) => item.ext),
   );
 
-  const totalSteps = 12;
+  const totalSteps = 13;
   const stepIndex = createMemo(() => {
     if (step() === "path") return 1;
     if (step() === "name") return 2;
@@ -613,10 +614,11 @@ export function Onboarding() {
     if (step() === "setup") return 7;
     if (step() === "direct") return 8;
     if (step() === "markitdown") return 9;
-    if (step() === "ocr") return 10;
-    if (step() === "verification") return 11;
-    if (step() === "provider") return 12;
-    if (step() === "startup") return 12;
+    if (step() === "pdf") return 10;
+    if (step() === "ocr") return 11;
+    if (step() === "verification") return 12;
+    if (step() === "provider") return 13;
+    if (step() === "startup") return 13;
     if (step() === "done") return totalSteps;
     return totalSteps;
   });
@@ -818,6 +820,7 @@ export function Onboarding() {
       from === "setup" ||
       from === "direct" ||
       from === "markitdown" ||
+      from === "pdf" ||
       from === "ocr" ||
       from === "verification"
     ) {
@@ -1148,9 +1151,9 @@ export function Onboarding() {
         "Creating workspace directory",
         "Resuming interrupted workspace",
         "Copying workspace template",
-        "Creating user-state directories",
-        "Writing workspace metadata",
-        "Registering in global registry",
+        "Creating workspace folders",
+        "Saving workspace settings",
+        "Registering the workspace",
         "Writing setup files",
       ];
       let setupDone = 0;
@@ -1217,12 +1220,13 @@ export function Onboarding() {
       const totalDirect = classified.directFiles.length;
       bg.seedQueue([
         ...classified.directFiles,
+        ...((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []),
         ...classified.markitdownFiles,
         ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
         ...classified.ocrFiles,
       ].map((file) => file.rel));
       bg.appendLog(
-        `[diag] direct=${totalDirect} markitdown=${classified.markitdownFiles.length} vision=${totalVision} ocr=${classified.ocrFiles.length}`,
+        `[diag] direct=${totalDirect} markitdown=${classified.markitdownFiles.length} vision=${totalVision} ocr=${classified.ocrFiles.length} copy=${((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []).length}`,
       );
 
       const phases = await runImportWorkflow(classified, {
@@ -1250,11 +1254,18 @@ export function Onboarding() {
             await delay(500);
             return true;
           }
+          if (id === "copy") {
+            setStep("direct");
+            bg.setPhase("copy");
+            bg.reportStatus(`Copying ${count} files as-is (no OCR engine selected)`);
+            await delay(500);
+            return true;
+          }
           if (id === "markitdown") {
             setBusy(false);
             // Foreground: wizard Continue UI (30s auto-press) resolves the
             // service gate. Background: auto-passed, no UI.
-            if (!await bg.requestGate(id, count, "Convert office docs")) return false;
+            if (!await bg.requestGate(id, count, "Converting office docs")) return false;
             if (shouldAbort()) return false;
             setBusy(true);
             setStep("markitdown");
@@ -1266,13 +1277,25 @@ export function Onboarding() {
           }
           if (id === "vision") {
             setBusy(false);
-            if (!await bg.requestGate(id, count, `Transcribe images & scanned PDFs via Vision Model`)) return false;
+            if (!await bg.requestGate(id, count, `Transcribe images via Vision model`)) return false;
             if (shouldAbort()) return false;
             setBusy(true);
             setStep("markitdown");
             bg.setPhase("vision");
             bg.setVisionError(undefined)
-            bg.reportStatus(`Transcribing images & scanned PDFs via Vision Model — ${count} files — Back to change model`);
+            bg.reportStatus(`Transcribing images via Vision model — ${count} files — Back to change model`);
+            await delay(500);
+            return true;
+          }
+          if (id === "pdf") {
+            setBusy(false);
+            if (!await bg.requestGate(id, count, `Process PDFs (text pages direct, image pages via engine)`)) return false;
+            if (shouldAbort()) return false;
+            setBusy(true);
+            setStep("pdf");
+            bg.setPhase("pdf");
+            bg.setVisionError(undefined)
+            bg.reportStatus(`Processing PDFs — ${count} files — Back to change model`);
             await delay(500);
             return true;
           }
@@ -1292,6 +1315,10 @@ export function Onboarding() {
             bg.reportStatus(`Text-based files copied — ${result.converted} files`);
             await delay(500);
           }
+          if (id === "copy") {
+            bg.reportStatus(`Files copied as-is — ${result.converted} files`);
+            await delay(500);
+          }
           if (id === "markitdown") {
             bg.setVisionError(undefined)
             bg.reportStatus(
@@ -1299,17 +1326,25 @@ export function Onboarding() {
             );
             await delay(500);
           }
+          if (id === "pdf") {
+            bg.setVisionError(undefined)
+            bg.reportStatus(
+              `PDFs processed — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+            );
+            await delay(500);
+          }
           if (id === "vision") {
             const visionFailed = result.failed > 0
             if (visionFailed) {
-              bg.setVisionError(`Vision ${bg.getModel()} failed for ${result.failed} file(s) — check provider/key or rate limit. You can change model and retry.`)
+              const failedNoun = result.failed === 1 ? "file" : "files"
+              bg.setVisionError(`Vision ${bg.getModel()} failed on ${result.failed} ${failedNoun}. Check the provider key or rate limit. Then change the model and retry.`)
               bg.reportStatus(
-                `Vision SDK — ${result.converted} ok, ${result.failed} failed (vision ${bg.getModel()} — see error below)`
+                `Vision model — ${result.converted} transcribed, ${result.failed} failed. See the error below.`
               );
             } else {
               bg.setVisionError(undefined)
               bg.reportStatus(
-                `Images & scanned PDFs via vision — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+                `Images & scanned PDFs via Vision model — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
               );
             }
             await delay(visionFailed ? 2500 : 500);
@@ -1328,10 +1363,21 @@ export function Onboarding() {
         bg.appendLog("MarkItDown: 0 files to convert — skipping");
       }
       if (((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles?.length ?? 0) === 0) {
-        bg.appendLog("Vision: 0 images/PDFs to transcribe — skipping");
+        bg.appendLog("Vision: 0 images to transcribe — skipping");
       }
       if (classified.ocrFiles.length === 0) {
         bg.appendLog("OCR: 0 files to convert — skipping");
+      }
+      {
+        const pdfCount =
+          ((classified as unknown as { visionFiles?: { src: string }[] }).visionFiles ?? []).filter((f) => f.src.toLowerCase().endsWith(".pdf")).length +
+          classified.ocrFiles.filter((f) => f.src.toLowerCase().endsWith(".pdf")).length;
+        if (pdfCount === 0) {
+          bg.appendLog("PDF: 0 files to process — skipping");
+        }
+      }
+      if ((((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []).length) === 0) {
+        bg.appendLog("Copy: 0 files to keep as-is — skipping");
       }
       if (shouldAbort()) {
         spinOff();
@@ -1341,6 +1387,7 @@ export function Onboarding() {
 
       const dr = phases.direct;
       const mr = phases.markitdown;
+      const pr = phases.pdf;
       const vr = (phases as unknown as { vision?: typeof mr }).vision ?? { converted: 0, skipped: 0, failed: 0, renamed: 0, recoverable: [] as typeof mr.recoverable };
       const or = phases.ocr;
 
@@ -1351,6 +1398,8 @@ export function Onboarding() {
         target.renamed += addition.renamed;
         target.recoverable.push(...addition.recoverable);
       };
+      // Copy-as-is counts ride with direct ("copied" family) in totals.
+      mergePhase(dr, phases.copy);
       let totalRecovered = 0;
       let totalStillMissing = 0;
       const applyVerification = (verification: {
@@ -1392,6 +1441,7 @@ export function Onboarding() {
 
         bg.seedQueue([
           ...extraClassified.directFiles,
+          ...((extraClassified as unknown as { copyFiles?: typeof extraClassified.markitdownFiles }).copyFiles ?? []),
           ...extraClassified.markitdownFiles,
           ...((extraClassified as unknown as { visionFiles?: typeof extraClassified.markitdownFiles }).visionFiles ?? []),
           ...extraClassified.ocrFiles,
@@ -1415,8 +1465,9 @@ export function Onboarding() {
           beforePhase: async (id, count) => {
             // Extra sources skip gates (primary run already gated); still
             // track phase truthfully for the monitor + BG availability.
+            // Copy rides the direct step visuals (same "copied as-is" family).
             if (shouldAbort()) return false;
-            setStep(id);
+            setStep(id === "copy" ? "direct" : id);
             bg.setPhase(id);
             bg.reportStatus(`${sourceFolder}: ${id} — ${count} files`);
             return true;
@@ -1429,7 +1480,9 @@ export function Onboarding() {
           },
         });
         mergePhase(dr, extraPhases.direct);
+        mergePhase(dr, extraPhases.copy);
         mergePhase(mr, extraPhases.markitdown);
+        mergePhase(pr, extraPhases.pdf);
         mergePhase(vr, (extraPhases as unknown as { vision?: typeof mr }).vision ?? { converted: 0, skipped: 0, failed: 0, renamed: 0, recoverable: [] as typeof mr.recoverable });
         mergePhase(or, extraPhases.ocr);
 
@@ -1464,7 +1517,7 @@ export function Onboarding() {
       bg.reportStatus("Verifying import...");
       const result = await completeOnboarding(
         ctx,
-        { direct: dr, markitdown: mr, vision: vr, ocr: or },
+        { direct: dr, markitdown: mr, pdf: pr, vision: vr, ocr: or },
         {
           workspacePath: ctx.workspacePath,
           frameworkRoot,
@@ -1491,14 +1544,15 @@ export function Onboarding() {
         const counts = countImportProgress(bg.snapshot().files);
         const directTotal = dr.converted + dr.skipped + dr.failed;
         const markitdownTotal = mr.converted + mr.skipped + mr.failed;
+        const pdfTotal = pr.converted + pr.skipped + pr.failed;
         const visionTotal = vr.converted + vr.skipped + vr.failed;
         const ocrTotal = or.converted + or.skipped + or.failed;
         const totalFailed = counts.failed;
-        const totalRenamed = dr.renamed + mr.renamed + vr.renamed + or.renamed;
+        const totalRenamed = dr.renamed + mr.renamed + pr.renamed + vr.renamed + or.renamed;
         setFailedCount(totalFailed);
         setStillMissingCount(totalStillMissing);
         const summary =
-          `${dr.converted + dr.skipped}/${directTotal} copied · ${mr.converted + mr.skipped}/${markitdownTotal} markitdown · ${vr.converted + vr.skipped}/${visionTotal} vision · ${or.converted + or.skipped}/${ocrTotal} ocr` +
+          `${dr.converted + dr.skipped}/${directTotal} copied · ${mr.converted + mr.skipped}/${markitdownTotal} markitdown · ${pr.converted + pr.skipped}/${pdfTotal} pdf · ${vr.converted + vr.skipped}/${visionTotal} vision · ${or.converted + or.skipped}/${ocrTotal} ocr` +
           (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
           (totalFailed > 0 ? ` · ${totalFailed} failed` : "") +
           (totalRecovered > 0 ? ` · ${totalRecovered} recovered` : "") +
@@ -1508,8 +1562,8 @@ export function Onboarding() {
           // Headless finish: no wizard summary screen — the monitor dialog
           // and home chip carry the result (chip toasts on completion).
           bg.finish({
-            converted: dr.converted + mr.converted + vr.converted + or.converted,
-            skipped: dr.skipped + mr.skipped + vr.skipped + or.skipped,
+            converted: dr.converted + mr.converted + pr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + pr.skipped + vr.skipped + or.skipped,
             failed: totalFailed,
             renamed: totalRenamed,
             recovered: totalRecovered,
@@ -1528,8 +1582,8 @@ export function Onboarding() {
         if (!ok) {
           persistImportWizardLogLines(bg.snapshot().logs, "onboarding-import");
           bg.finish({
-            converted: dr.converted + mr.converted + vr.converted + or.converted,
-            skipped: dr.skipped + mr.skipped + vr.skipped + or.skipped,
+            converted: dr.converted + mr.converted + pr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + pr.skipped + vr.skipped + or.skipped,
             failed: totalFailed,
             renamed: totalRenamed,
             recovered: totalRecovered,
@@ -1539,8 +1593,8 @@ export function Onboarding() {
           });
         } else {
           bg.finish({
-            converted: dr.converted + mr.converted + vr.converted + or.converted,
-            skipped: dr.skipped + mr.skipped + vr.skipped + or.skipped,
+            converted: dr.converted + mr.converted + pr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + pr.skipped + vr.skipped + or.skipped,
             failed: totalFailed,
             renamed: totalRenamed,
             recovered: totalRecovered,
@@ -1549,7 +1603,7 @@ export function Onboarding() {
             success: true,
           });
         }
-        setGateLabel("Go to the workspace");
+        setGateLabel("Open workspace");
         setGateAction(() => () => {
           setWaitingForGate(false);
           void finishProvider("spinosa");
@@ -1567,7 +1621,7 @@ export function Onboarding() {
           renamed: 0,
           recovered: totalRecovered,
           stillMissing: totalStillMissing,
-          text: "No files were delivered to the workspace.",
+          text: "Spinosa found nothing to import.",
           success: false,
         });
         if (bg.background()) {
@@ -1575,14 +1629,14 @@ export function Onboarding() {
           spinOff();
           return;
         }
-        setImportSummary("No files were delivered to the workspace.");
+        setImportSummary("Spinosa found nothing to import.");
         setProcessingDone(true);
         setStep("error");
       }
     } catch (err) {
       if (isSpinosaCancellationError(err) || shouldAbort()) {
         bg.appendLog("Spinosa import cancelled.");
-        bg.reportStatus("Cancelled.");
+        bg.reportStatus("Import cancelled.");
         bg.cancel();
         return;
       }
@@ -2161,6 +2215,9 @@ export function Onboarding() {
     onChangeVisionModel: openMidRunVisionPicker,
     backgroundAvailable,
     onBackground: detachToBackground,
+    // Same condition as the `v` key handler: the hint must never advertise a
+    // shortcut that does nothing on the current step.
+    visionShortcutAvailable: () => bg.active() && !bg.done() && (bg.phase() === "vision" || bg.phase() === "ocr"),
     selectedVisionLabel: createMemo(() => {
       const opts = ocrModelOptions()
       const idx = selectedOcrModelIndex()

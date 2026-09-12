@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.1.0-beta.17.8"
+PINNED_VERSION="1.1.0-beta.17.16"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 DEFAULT_VERIFY_TIMEOUT_SECONDS="180"

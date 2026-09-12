@@ -34,7 +34,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         borderSubtle: "#3c3c3c",
         text: "#eeeeee",
         muted: "#808080",
-        primary: "#fab283",
+        primary: "#6cb2f5",
         onPrimary: "#0a0a0a",
         error: "#e06c75",
         success: "#7fd88f",

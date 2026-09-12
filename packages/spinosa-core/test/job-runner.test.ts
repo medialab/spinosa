@@ -86,9 +86,9 @@ describe("waitForOcrChild cancel race", () => {
 })
 
 describe("import processor registry", () => {
-  test("exposes direct, markitdown, vision, and ocr processors", () => {
+  test("exposes direct, copy, markitdown, pdf, vision, and ocr processors", () => {
     const ids = listImportProcessors().map((p) => p.id)
-    expect(ids).toEqual(["direct", "markitdown", "vision", "ocr"])
+    expect(ids).toEqual(["direct", "copy", "markitdown", "pdf", "vision", "ocr"])
   })
 
   test("ocr processor respects shouldAbort before work", async () => {

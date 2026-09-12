@@ -31,12 +31,13 @@ describe("onboarding delivery accounting", () => {
     const acc: PhaseAccumulator = {
       direct: phase({ skipped: 2 }),
       markitdown: phase({ skipped: 1 }),
+      pdf: phase({ converted: 1 }),
       vision: phase({ skipped: 0 }),
       ocr: phase({ skipped: 3 }),
     };
 
-    expect(countDeliveredImportFiles(acc, 0)).toBe(6);
-    expect(countDeliveredImportFiles(acc, 2)).toBe(8);
+    expect(countDeliveredImportFiles(acc, 0)).toBe(7);
+    expect(countDeliveredImportFiles(acc, 2)).toBe(9);
   });
 
   test("preserves failed source files under the review directory", async () => {

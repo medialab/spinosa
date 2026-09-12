@@ -46,7 +46,7 @@ describe("onboarding helpers", () => {
     });
     // Tesseract is optional (vision/none flows never touch it), so its lone
     // absence continues the wizard instead of looping a useless reinstall.
-    expect(toolActionLabel(missing)).toBe("Continue without local OCR");
+    expect(toolActionLabel(missing)).toBe("Continue without Tesseract");
     expect(onlyLocalOcrMissing(missing)).toBe(true);
     expect(toolChecksReady(missing)).toBe(false);
 

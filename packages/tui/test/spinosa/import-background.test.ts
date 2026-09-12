@@ -92,7 +92,30 @@ describe("background import service", () => {
       svc.resolvePause("skip")
       await expect(second).resolves.toBe("skip")
       // Skip keeps the error visible for the next file.
-      expect(svc.visionError()).toContain("Vision openai/gpt-4o error")
+      expect(svc.visionError()).toContain("Vision openai/gpt-4o failed")
+    } finally {
+      dispose()
+    }
+  })
+
+  test("page-suffixed progress maps to the file row without phantom rows", () => {
+    const { svc, dispose } = makeService()
+    try {
+      startRun(svc)
+      svc.seedQueue(["memo.pdf"])
+      svc.reportProgress({ relPath: "memo.pdf", status: "processing" })
+      svc.reportProgress({ relPath: "memo.pdf (page 2)", status: "processing" })
+      svc.reportProgress({ relPath: "memo.pdf (page 3/12)", status: "processing" })
+      // One row only: page ticks update the file row in place.
+      expect(svc.snapshot().files).toEqual([{ rel: "memo.pdf", status: "processing", page: 3, pageTotal: 12 }])
+      // The live current file keeps the full rel so the UI shows (PG: 3/12).
+      expect(svc.currentFile()).toBe("memo.pdf (page 3/12)")
+      // A tick without a total keeps the previously known total.
+      svc.reportProgress({ relPath: "memo.pdf (page 4)", status: "processing" })
+      expect(svc.snapshot().files).toEqual([{ rel: "memo.pdf", status: "processing", page: 4, pageTotal: 12 }])
+      svc.reportProgress({ relPath: "memo.pdf", status: "done" })
+      expect(svc.snapshot().files).toEqual([{ rel: "memo.pdf", status: "done" }])
+      expect(svc.currentFile()).toBe("")
     } finally {
       dispose()
     }

@@ -6,17 +6,29 @@ export const MARKDOWN_EXTENSIONS = [
   "css", "js", "ts", "py", "rb", "sh", "log",
   "ini", "cfg", "conf", "tex", "bib", "org", "adoc", "rst",
   "tiddlywiki", "logseq", "roam", "obsidian",
+  // Data-as-text: markitdown-ts rejects these (application/json,
+  // application/xml are not text/* MIME), so direct copy keeps them
+  // byte-identical instead of failing the markitdown step.
+  "json", "xml",
 ]
 
 export const NATIVE_EXTENSIONS = ["md"]
 
-export const BINARY_COPYABLE_EXTENSIONS: string[] = [] // intentionally empty for now — extension point
+// Binary originals no converter can handle: kept byte-identical via the
+// direct step (no fake markdown, no step failure). Populated 2026-09-12 after
+// proving markitdown-ts@0.0.10 throws "not supported" for each of these.
+export const BINARY_COPYABLE_EXTENSIONS: string[] = ["epub", "xls", "msg"]
 
-// PowerPoint (.pptx) is intentionally omitted: markitdown-ts does not implement
-// a PowerPoint converter and rejects with "The .pptx are not supported."
+// Verified against markitdown-ts@0.0.10 converters (PlainText text/* only,
+// Html, Docx, Xlsx (.xlsx only), Pdf, Image, Wav/Mp3, Zip, Ipynb, web).
+// Upstream Python MarkItDown supports more (pptx, epub, xls, msg, eml...)
+// but we run the TS port: only list what it provably converts.
+// PowerPoint (.pptx) omitted: "The .pptx are not supported."
+// json/xml/csv note: csv passes via PlainText (text/csv); json
+// (application/json) and xml (application/xml) throw — routed direct.
 export const MARKITDOWN_EXTENSIONS = [
-  "docx", "xlsx", "xls", "epub",
-  "html", "htm", "msg", "zip", "json", "csv", "xml",
+  "docx", "xlsx",
+  "html", "htm", "zip", "csv",
 ]
 
 export const IMAGE_EXTENSIONS = [
@@ -34,6 +46,8 @@ export const SPINOSA_REGISTRY = "workspaces.json"
 export const SPINOSA_CONFIG = "config.yaml"
 export const WORKSPACE_MARKER = ".spinosa/workspace"
 
+// WP5: spinosa-router is the hidden constrained router (zero tools).
+// It ships the same adapter mirrors so template-integrity stays green.
 export const SPINOSA_AGENT_FILES = [
   "spinosa-searcher.md",
   "spinosa-mapper.md",
@@ -45,6 +59,7 @@ export const SPINOSA_AGENT_FILES = [
   "spinosa-evolver.md",
   "spinosa-janitor.md",
   "spinosa-overseer.md",
+  "spinosa-router.md",
 ]
 
 const MAX_EXTENSION_FILENAME_LENGTH = 255

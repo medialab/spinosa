@@ -5,6 +5,7 @@ import { logAction } from "./log"
 import type { ImportProcessorId } from "@spinosa/core/import/processors"
 import type { FileProgressStatus } from "@spinosa/core/progress/progress"
 import type { ImportFileProgressItem } from "./import-progress-ui"
+import { splitPageSuffix } from "./import-progress-ui"
 
 export type BgVisionAction = "retry" | "skip" | "abort"
 export type BgRunKind = "onboarding" | "add-files"
@@ -162,20 +163,38 @@ export function createBackgroundImportService() {
   }
 
   function reportProgress(e: { relPath?: string; status?: FileProgressStatus; phase?: string; current?: number; total?: number }) {
+    // The live current file keeps the full rel (including a " (page N)"
+    // suffix) so the UI can show which page is transcribing. File rows are
+    // keyed by the stripped base so page ticks never spawn phantom rows.
     if (e.relPath && e.status === "processing") setCurrentFile(e.relPath)
     else if (e.relPath && (e.status === "done" || e.status === "failed" || e.status === "error")) {
-      if (e.relPath === currentFile()) setCurrentFile("")
+      if (splitPageSuffix(e.relPath).base === splitPageSuffix(currentFile()).base) setCurrentFile("")
     }
     if (e.status && e.relPath) {
-      const key = e.relPath
+      const { base, page, total } = splitPageSuffix(e.relPath)
+      const key = base
       setFiles((prev) => {
         const idx = prev.findIndex((i) => i.rel === key)
         if (idx >= 0) {
           const next = prev.slice()
-          next[idx] = { ...next[idx]!, status: e.status! }
+          const updated: ImportFileProgressItem = { ...next[idx]!, status: e.status! }
+          if (page !== undefined) {
+            updated.page = page
+            // A tick without a total keeps the previously known total.
+            if (total !== undefined) updated.pageTotal = total
+          } else {
+            delete updated.page
+            delete updated.pageTotal
+          }
+          next[idx] = updated
           return next
         }
-        return [...prev, { rel: key, status: e.status! }]
+        const item: ImportFileProgressItem = { rel: key, status: e.status! }
+        if (page !== undefined) {
+          item.page = page
+          if (total !== undefined) item.pageTotal = total
+        }
+        return [...prev, item]
       })
     } else if (e.phase === "setup" && e.total !== undefined && e.current !== undefined) {
       setProgTotal(e.total > 0 ? e.total : 1)
@@ -236,12 +255,12 @@ export function createBackgroundImportService() {
     if (isAuth) {
       setLastAuthFailedProvider(prov)
       setVisionError(
-        `Authentication failed for ${prov} (${failureModelId}) — ${error.slice(0, 150)}${credentialNote?.(prov) ?? ""} — Please re-authenticate the provider, then retry. Queue paused.`,
+        `Authentication failed for ${prov} (${failureModelId}): ${error.slice(0, 150)}${credentialNote?.(prov) ?? ""} Re-authenticate the provider, then retry.`,
       )
     } else {
       setLastAuthFailedProvider(undefined)
       setVisionError(
-        `Vision ${failureModelId} error for ${rel} — ${error.slice(0, 180)} — queue paused — Pick a new model to retry, skip the file, or cancel the run.`,
+        `Vision ${failureModelId} failed on ${rel}: ${error.slice(0, 180)}. The queue is paused.`,
       )
     }
     setVisionPause({ rel, modelId: failureModelId, error, isAuth })
@@ -448,7 +467,7 @@ export const { provider: BackgroundImportProvider, use: useBackgroundImport } = 
 export function isBackgroundAvailable(bg: BackgroundImportService): boolean {
   if (!bg.active() || bg.done() || bg.background()) return false
   const ph = bg.phase()
-  return ph === "vision" || ph === "ocr"
+  return ph === "vision" || ph === "ocr" || ph === "pdf"
 }
 
 /**

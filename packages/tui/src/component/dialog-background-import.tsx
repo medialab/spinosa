@@ -10,7 +10,7 @@ import { createVisionAuthFlow } from "../spinosa/vision-auth-flow"
 import { DialogVisionModel } from "./dialog-vision"
 import { ProgressBar } from "../routes/spinosa/wizard-ui"
 import { WizardActionButton } from "../routes/spinosa/wizard-ui"
-import { selectImportResultsWindow } from "../spinosa/import-progress-ui"
+import { displayImportFilePath, formatPageMarker, selectImportResultsWindow, splitPageSuffix } from "../spinosa/import-progress-ui"
 import { logAction, logError } from "../spinosa/log"
 
 function shortWorkspace(path: string | undefined): string {
@@ -62,7 +62,7 @@ export function DialogBackgroundImport() {
   const snap = () => bg.snapshot()
   const header = createMemo(() => {
     const s = snap()
-    if (s.done) return s.success ? "Import complete" : s.cancelled ? "Import cancelled" : "Import finished with failures"
+    if (s.done) return s.success ? "Import complete" : s.cancelled ? "Import cancelled" : "Import complete with failures"
     if (s.visionPause) return "Import paused — action needed"
     return "Importing"
   })
@@ -201,11 +201,16 @@ export function DialogBackgroundImport() {
         </text>
         <scrollbox maxHeight={10}>
           <For each={shownFiles()}>
-            {(f) => (
-              <text fg={f.status === "done" ? theme.textMuted : f.status === "processing" || f.status === "queued" ? theme.text : theme.error} wrapMode="none" overflow="hidden">
-                {f.status === "done" ? "✓" : f.status === "failed" || f.status === "error" ? "✕" : "·"} {f.rel}
-              </text>
-            )}
+            {(f) => {
+              const parsed = splitPageSuffix(f.rel)
+              const page = f.page ?? parsed.page
+              const total = f.pageTotal ?? parsed.total
+              return (
+                <text fg={f.status === "done" ? theme.textMuted : f.status === "processing" || f.status === "queued" ? theme.text : theme.error} wrapMode="none" overflow="hidden">
+                  {f.status === "done" ? "✓" : f.status === "failed" || f.status === "error" ? "✕" : "·"} {displayImportFilePath(parsed.base)}{page !== undefined ? <span style={{ fg: theme.primary }}>{formatPageMarker(page, total)}</span> : ""}
+                </text>
+              )
+            }}
           </For>
         </scrollbox>
         <Show when={hiddenFileCount() > 0}>

@@ -135,10 +135,10 @@ function buildScanRows(totals: { markdown: number; markitdown: number; native: n
   const push = (count: number, label: string) => {
     if (count > 0) rows.push({ label, status: `${count} file${count === 1 ? "" : "s"}` })
   }
-  push(totals.markdown, "Text-based files to rename")
+  push(totals.markdown, "Text-based files to copy")
   push(totals.markitdown, "Office docs / HTML / EPUB")
   push(totals.native, "Native Markdown to copy")
-  push(totals.ocr, "PDFs + images (routed by OCR engine choice)")
+  push(totals.ocr, "Scanned PDFs + images (engine selected later)")
   push(totals.video, "Videos")
   push(totals.audio, "Audio")
   if (totals.unknown > 0) rows.push({ label: "Unknown files", status: `${pluralCount(totals.unknown, "file")} unsupported`, tone: "muted" })
@@ -173,9 +173,9 @@ function buildPreflightRows(workspacePath: string, toolStatus: ToolStatus): Onbo
   const ocrStatus = toolStatus.ocr ? "available" : toolStatus.ocrUnsupportedReason ? "unsupported" : "missing"
   const ocrTone = toolStatus.ocr ? "success" : toolStatus.ocrUnsupportedReason ? "muted" : "error"
   rows.push({
-    label: "Tesseract OCR",
+    label: "Tesseract",
     status: ocrStatus,
-    detail: toolStatus.ocrUnsupportedReason ?? (toolStatus.ocr ? "Scanned PDFs (ita+eng+fra, 300dpi via pdftoppm)" : "Install tesseract + poppler + tessdata ita/eng/fra"),
+    detail: toolStatus.ocrUnsupportedReason ?? (toolStatus.ocr ? "Italian, English and French scans (free, offline)" : "Install tesseract + poppler + language data (French, Italian, English)"),
     tone: ocrTone,
   })
   rows.push({ label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", tone: toolStatus.markitdown ? "success" : "error" })

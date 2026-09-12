@@ -8,6 +8,15 @@ import { resolveTemplateRootFromFrameworkRoot } from "../framework/discovery"
 export const STARTUP_PROGRESS_THRESHOLD_MS = 2_000
 export const STARTUP_PROGRESS_INTERVAL_MS = 500
 
+// WP8: Short explicit trigger for native startup indexing. The workflow
+// definition (corpus.startup_index) — not this text — owns the sequence.
+// Recognized by isStartupIndexingPrompt() → routes to corpus.startup_index.
+// Stage 1 keeps the forceAgent=build + full-prompt TUI interaction; once the
+// workflow proves stable, native callers submit this trigger instead.
+// generateStartupPrompt()/generateAddPrompt() remain as portable fallback
+// protocols for external CLIs that cannot call WorkflowRunService.
+export const STARTUP_WORKFLOW_TRIGGER = "Run Spinosa startup indexing for this workspace."
+
 export function formatStartupProgressMessage(elapsedMs: number): string {
   if (elapsedMs < STARTUP_PROGRESS_THRESHOLD_MS) return "Running workspace startup..."
   return `Running workspace startup... (${(elapsedMs / 1_000).toFixed(1)}s)`

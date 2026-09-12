@@ -165,7 +165,7 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean; onWorkspace
     const confirmed = await DialogConfirm.show(
       dialog,
       "Delete workspace",
-      "Are you sure you want to delete this workspace?",
+      "Are you sure you want to delete this workspace? The folder moves to Trash.",
       { confirmLabel: "Yes", cancelLabel: "No", defaultChoice: "cancel" },
     )
     if (!confirmed) return
@@ -173,7 +173,7 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean; onWorkspace
       await deleteWorkspace(workspacePath)
       await props.onWorkspaceDeleted?.()
       spinosa.useGenericMode()
-      toast.show({ variant: "success", message: "Workspace deleted." })
+      toast.show({ variant: "success", message: "Workspace moved to Trash." })
     } catch (error) {
       toast.show({
         variant: "error",
