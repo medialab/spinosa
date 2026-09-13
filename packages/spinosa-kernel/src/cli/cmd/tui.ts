@@ -108,6 +108,28 @@ export function resolveThreadDirectory(project?: string, envPWD = process.env.PW
   return resolvedCwd
 }
 
+/**
+ * Auto-route a `--session` continue to the session's own directory.
+ * Sessions are stored globally, but file tools, editors, and workspace
+ * scoping all root at the process directory — so continuing `ses_X` from an
+ * unrelated cwd silently operates on the wrong tree. An explicit `--project`
+ * always wins; otherwise the session record's directory is authoritative.
+ * Missing/blank/relative values fall back to the current directory (relative
+ * paths resolve against it — session directories are absolute in practice).
+ */
+export function resolveSessionDirectory(input: {
+  explicitProject?: string
+  currentDirectory: string
+  sessionDirectory?: string
+}): string {
+  if (input.explicitProject) return input.currentDirectory
+  const dir = input.sessionDirectory?.trim()
+  if (!dir) return input.currentDirectory
+  return path.isAbsolute(dir)
+    ? Filesystem.resolve(dir)
+    : Filesystem.resolve(path.join(input.currentDirectory, dir))
+}
+
 export const TuiThreadCommand = cmd({
   command: "$0 [project]",
   describe: "start the Spinosa TUI",
@@ -130,7 +152,7 @@ export const TuiThreadCommand = cmd({
       .option("session", {
         alias: ["s"],
         type: "string",
-        describe: "session id to continue",
+        describe: "session id to continue (project auto-detected when omitted)",
       })
       .option("fork", {
         type: "boolean",
@@ -250,7 +272,7 @@ export const TuiThreadCommand = cmd({
         UI.error("Failed to change directory to " + next)
         return
       }
-      const cwd = Filesystem.resolve(process.cwd())
+      let cwd = Filesystem.resolve(process.cwd())
 
       // Launch preflight before spawning the worker so an accepted upgrade does not
       // start background infrastructure from the previous installation. Also offers
@@ -314,20 +336,44 @@ export const TuiThreadCommand = cmd({
         url: transport.url,
       })
 
+      let validatedSessionDirectory: string | undefined
       try {
-        await validateSession({
+        const validated = await validateSession({
           url: transport.url,
           sessionID: args.session,
           directory: cwd,
           fetch: transport.fetch,
           headers,
         })
+        validatedSessionDirectory = validated.directory
         bootLog("tui.session", "session validated", { sessionID: args.session ?? undefined })
       } catch (error) {
         bootLog("tui.session.error", "session validation failed", { error: String(error) })
         UI.error(errorMessage(error))
         process.exitCode = 1
         return
+      }
+
+      // Auto-route: `spinosa -s ses_X` with no explicit project continues in
+      // the session's own directory instead of the invocation cwd. A deleted
+      // session directory falls back to cwd (never fatal — the TUI still
+      // bounces unknown sessions Home as before).
+      if (args.session && !args.project && validatedSessionDirectory) {
+        const routed = resolveSessionDirectory({ currentDirectory: cwd, sessionDirectory: validatedSessionDirectory })
+        if (routed !== cwd) {
+          try {
+            process.chdir(routed)
+            cwd = Filesystem.resolve(process.cwd())
+            bootLog("tui.session.routed", "session auto-routed to its directory", {
+              sessionID: args.session,
+              directory: cwd,
+            })
+          } catch (error) {
+            bootLog("tui.session.route.error", "session auto-route failed, staying in cwd", {
+              error: String(error),
+            })
+          }
+        }
       }
 
       try {

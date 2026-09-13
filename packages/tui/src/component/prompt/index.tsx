@@ -71,10 +71,27 @@ import { pasteInputText as pasteInputTextWith, type PasteAttachment } from "./pa
 import {
   cancelSpinosaSubmit,
   executeSpinosaSubmit,
+  hasActiveWorkflowRun,
   prepareSpinosaSubmit,
   shouldPrepareSpinosaSubmit,
 } from "../../spinosa/orchestrator"
 import { setRouteProgress, SPINOSA_ROUTE_METADATA } from "../../spinosa/route-badge"
+import {
+  abortOutbound,
+  enqueueOutbound,
+  evaluatingKeys,
+  hasEvaluating,
+  isOutboundPumping,
+  markOutboundEvaluating,
+  peekOutbound,
+  removeOutbound,
+  setOutboundController,
+  setOutboundPumping,
+  shouldRestoreCancelledText,
+  type DispatchContext,
+  type OutboundSnapshot,
+} from "../../spinosa/outbound-queue"
+import { RouterAbortedError } from "@spinosa/core"
 import { readStartupPrompt } from "../../spinosa/service"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { fadeColor, getEditorRangeLabel, hasEditorRangeSelection, randomIndex } from "./helpers"
@@ -428,19 +445,21 @@ export function Prompt(props: PromptProps) {
           const sessionID = props.sessionID
           if (!sessionID) return
 
-          setStore("interrupt", store.interrupt + 1)
-
-          setTimeout(() => {
-            setStore("interrupt", 0)
-          }, 5000)
-
-          if (store.interrupt >= 2) {
-            void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
-              if (handled) return
-              return sdk.client.session.abort({ sessionID }).then(() => undefined)
-            })
-            setStore("interrupt", 0)
+          // Single Esc acts immediately. Evaluating (routing) cancels first:
+          // only the silent router turn can be running, the dispatcher only
+          // evaluates while idle.
+          if (hasEvaluating(sessionID)) {
+            for (const key of evaluatingKeys(sessionID)) abortOutbound(key)
+            dialog.clear()
+            return
           }
+
+          void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
+            if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
+          }).finally(() => {
+            // Aborting frees the session — queued prompts dispatch in turn.
+            void pumpOutbound(sessionID)
+          })
           dialog.clear()
         },
       },
@@ -1038,6 +1057,94 @@ export function Prompt(props: PromptProps) {
   })
 
   let submitting = false
+
+  // Dispatch bridge: dispatchEntry is defined per-submit (it closes over
+  // nothing submit-local anymore, but lives in submitInner for minimal
+  // diff). The pump runs outside submits (idle effect, interrupt), so it
+  // reaches the latest dispatcher through this ref.
+  type DispatchFn = (
+    targetSessionID: string,
+    entry: { snapshot: OutboundSnapshot; dispatch: DispatchContext },
+    opts?: { signal?: AbortSignal },
+  ) => Promise<{ completion?: Promise<unknown> }>
+  const dispatchRef: { fn: DispatchFn | undefined } = { fn: undefined }
+
+  function isDispatchIdle(sessionID: string): boolean {
+    const st = resolveSessionRuntimeStatus(
+      sync.data.session_status?.[sessionID],
+      sessionID ? sync.session.status(sessionID) : undefined,
+    )
+    // Server drain idle AND no workflow engine run: the same-session router
+    // turn is then the only thing that can run, so Esc-cancel and the
+    // timeout orphan-kill can never hit a real conversation turn.
+    return st.type === "idle" && !hasActiveWorkflowRun(sessionID)
+  }
+
+  // FIFO dispatcher for the outbound queue: evaluate the head entry when
+  // idle, send it, then continue while idle. Single-flight per session.
+  async function pumpOutbound(sessionID: string): Promise<void> {
+    if (isOutboundPumping(sessionID)) return
+    if (!peekOutbound(sessionID)) return
+    const dispatchFn = dispatchRef.fn
+    if (!dispatchFn) return
+    setOutboundPumping(sessionID, true)
+    try {
+      for (;;) {
+        const head = peekOutbound(sessionID)
+        if (!head) return
+        if (!isDispatchIdle(sessionID)) return
+        if (!markOutboundEvaluating(sessionID, head.key)) continue
+        const controller = new AbortController()
+        setOutboundController(head.key, controller)
+        try {
+          const result = await dispatchFn(
+            sessionID,
+            { snapshot: head.snapshot, dispatch: head.dispatch },
+            { signal: controller.signal },
+          )
+          // Sent: the server echo takes over the transcript row.
+          removeOutbound(sessionID, head.key)
+          // Workflow runs execute outside the server drain — await the
+          // engine so queued prompts behind it dispatch strictly FIFO.
+          // Direct sends resolve at admission.
+          if (result.completion) await result.completion.catch(() => {})
+        } catch (err) {
+          removeOutbound(sessionID, head.key)
+          if (err instanceof RouterAbortedError || controller.signal.aborted) {
+            // Esc during evaluating: nothing was sent. Restore the text
+            // only when the box is still empty — never clobber fresh input.
+            if (shouldRestoreCancelledText(head.text, store.prompt.input)) {
+              input.setText(head.text)
+              setStore("prompt", "input", head.text)
+            }
+          } else {
+            toast.show({
+              title: "Couldn’t send prompt",
+              message: errorMessage(err),
+              variant: "error",
+            })
+            if (shouldRestoreCancelledText(head.text, store.prompt.input)) {
+              input.setText(head.text)
+              setStore("prompt", "input", head.text)
+            }
+          }
+        } finally {
+          abortOutbound(head.key)
+        }
+      }
+    } finally {
+      setOutboundPumping(sessionID, false)
+    }
+  }
+
+  // Run completions surface as status flips (busy → idle): queued prompts
+  // dispatch in turn with no further interaction.
+  createEffect(() => {
+    const s = status()
+    const sid = props.sessionID
+    if (s.type === "idle" && sid && peekOutbound(sid)) void pumpOutbound(sid)
+  })
+
   async function submit(options?: { preferQueue?: boolean; preferSteer?: boolean }) {
     // Prevent overlapping invocations (e.g. a double-pressed Enter, or the
     // input's native onSubmit racing another dispatch). Without this guard,
@@ -1217,24 +1324,42 @@ export function Prompt(props: PromptProps) {
       })
     }
 
-    const admitAfterPrepare = async (targetSessionID: string) => {
-    let outboundText = inputText
+    // Dispatch one prompt through the full send pipeline (shell / slash /
+    // workflow / direct). Queued entries arrive here FIFO via pumpOutbound;
+    // immediate submits call directly. `entry` carries the submit-time
+    // snapshot so a queued prompt sends exactly what the user submitted.
+    // Returns a completion handle the pump awaits to preserve FIFO across
+    // workflow runs (direct sends resolve at admission).
+    const dispatchEntry = async (
+      targetSessionID: string,
+      entry: { snapshot: OutboundSnapshot; dispatch: DispatchContext },
+      opts?: { signal?: AbortSignal },
+    ): Promise<{ completion?: Promise<unknown> }> => {
+    const { snapshot, dispatch } = entry
+    const { sessionDirectory, variant } = dispatch
+    const agentName = dispatch.agentName
+    const selectedModel = dispatch.model
+    let outboundText = snapshot.text
     let preparedSpinosa: Awaited<ReturnType<typeof prepareSpinosaSubmit>> | undefined
     // WP7: route normal prompts through the workflow router. Shell, slash
     // commands and forceAgent bypass routing (same predicate as the dispatch
     // branches below, evaluated on the raw input before preparation).
+    // Leading whitespace is ignored: a command still counts when the first
+    // non-whitespace token is "/<command>". A "/token" with real text before
+    // it stays literal message text — never executed.
+    const commandFirstLine = snapshot.text.replace(/^\s+/, "").split("\n")[0]
     const isSlashCommand =
-      inputText.startsWith("/") &&
-      sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
+      commandFirstLine.startsWith("/") &&
+      sync.data.command.some((x) => x.name === commandFirstLine.split(" ")[0].slice(1))
     const shouldRoute =
-      currentMode === "normal" &&
+      dispatch.mode === "normal" &&
       !isSlashCommand &&
-      !store.prompt.forceAgent &&
+      !dispatch.forceAgent &&
       Boolean(sessionDirectory)
-    if (shouldRoute && shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: store.prompt.forceAgent })) {
+    if (shouldRoute && shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: dispatch.forceAgent })) {
       try {
-        const fileParts = nonTextParts.filter((x) => x.type === "file") as Array<{ type: "file"; name?: string; mime?: string; path?: string }>
-        const prepared = await prepareSpinosaSubmit(sessionDirectory!, inputText, {
+        const fileParts = snapshot.nonTextParts.filter((x) => x.type === "file") as Array<{ type: "file"; name?: string; mime?: string; path?: string }>
+        const prepared = await prepareSpinosaSubmit(sessionDirectory!, snapshot.text, {
           parentSessionID: targetSessionID,
           client: sdk.client,
           model: { providerID: selectedModel.providerID, modelID: selectedModel.modelID },
@@ -1242,13 +1367,17 @@ export function Prompt(props: PromptProps) {
             fileCount: fileParts.length,
             fileNames: fileParts.map((p) => p.name ?? p.path ?? "attachment"),
             mimeTypes: fileParts.map((p) => p.mime ?? "application/octet-stream"),
-            hasSelectedRange: editorParts.length > 0,
+            hasSelectedRange: snapshot.editorParts.length > 0,
           },
-          explicitAgent: store.prompt.forceAgent ?? undefined,
+          explicitAgent: dispatch.forceAgent ?? undefined,
+          ...(opts?.signal ? { signal: opts.signal } : {}),
         })
         preparedSpinosa = prepared
         outboundText = prepared.text
       } catch (error) {
+        // Esc during evaluating aborts the router turn: propagate with no
+        // toast — the pump treats it as cancelled, never as a verdict.
+        if (error instanceof RouterAbortedError || opts?.signal?.aborted) throw error
         console.log("Spinosa submit preparation failed:", error)
         toast.show({
           title: "Couldn’t prepare your request",
@@ -1258,11 +1387,14 @@ export function Prompt(props: PromptProps) {
       }
     }
 
-    if (currentMode === "shell") {
+    // Slash dispatch tolerates leading whitespace (same rule as isSlashCommand
+    // above); the command is parsed from the trimmed text.
+    const outboundCommandText = outboundText.replace(/^\s+/, "")
+    if (dispatch.mode === "shell") {
       move.startSubmit()
-      void sdk.client.session.shell({
+      const completion = sdk.client.session.shell({
         sessionID: targetSessionID,
-        agent: agent.name,
+        agent: agentName,
         model: {
           providerID: selectedModel.providerID,
           modelID: selectedModel.modelID,
@@ -1270,27 +1402,29 @@ export function Prompt(props: PromptProps) {
         command: outboundText,
       })
       setStore("mode", "normal")
+      return { completion }
     } else if (
-      outboundText.startsWith("/") &&
-      sync.data.command.some((x) => x.name === outboundText.split("\n")[0].split(" ")[0].slice(1))
+      outboundCommandText.startsWith("/") &&
+      sync.data.command.some((x) => x.name === outboundCommandText.split("\n")[0].split(" ")[0].slice(1))
     ) {
       move.startSubmit()
       // Parse command from first line, preserve multi-line content in arguments
-      const firstLineEnd = outboundText.indexOf("\n")
-      const firstLine = firstLineEnd === -1 ? outboundText : outboundText.slice(0, firstLineEnd)
+      const firstLineEnd = outboundCommandText.indexOf("\n")
+      const firstLine = firstLineEnd === -1 ? outboundCommandText : outboundCommandText.slice(0, firstLineEnd)
       const [command, ...firstLineArgs] = firstLine.split(" ")
-      const restOfInput = firstLineEnd === -1 ? "" : outboundText.slice(firstLineEnd + 1)
+      const restOfInput = firstLineEnd === -1 ? "" : outboundCommandText.slice(firstLineEnd + 1)
       const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
 
-      void sdk.client.session.command({
+      const completion = sdk.client.session.command({
         sessionID: targetSessionID,
         command: command.slice(1),
         arguments: args,
-        agent: agent.name,
+        agent: agentName,
         model: `${selectedModel.providerID}/${selectedModel.modelID}`,
         variant,
-        parts: nonTextParts.filter((x) => x.type === "file"),
+        parts: snapshot.nonTextParts.filter((x) => x.type === "file"),
       })
+      return { completion }
     } else if (preparedSpinosa?.framed) {
       move.startSubmit()
       // Route badge: stamp the workflow identity onto the (ignored) user
@@ -1309,19 +1443,19 @@ export function Prompt(props: PromptProps) {
               },
             }
           : {}
-      void sdk.client.session
+      const completion = sdk.client.session
         .prompt(
           {
             sessionID: targetSessionID,
             ...selectedModel,
-            agent: agent.name,
+            agent: agentName,
             model: selectedModel,
             variant,
             noReply: true,
             parts: [
-              ...editorParts,
+              ...snapshot.editorParts,
               { type: "text", text: outboundText, ignored: true, metadata: routeMeta },
-              ...nonTextParts,
+              ...snapshot.nonTextParts,
             ],
           },
           { throwOnError: true },
@@ -1347,7 +1481,11 @@ export function Prompt(props: PromptProps) {
             variant: "error",
           })
         })
-      if (editorParts.length > 0) editor.markSelectionSent()
+      if (snapshot.editorParts.length > 0) editor.markSelectionSent()
+      // The workflow engine runs outside the server drain: the pump awaits
+      // this chain so queued prompts dispatch strictly FIFO behind it.
+      // dispatchEntry itself returns at kickoff (legacy timing unchanged).
+      return { completion }
     } else {
       move.startSubmit()
       // Route badge: fast-path requests carry their decision so the
@@ -1365,19 +1503,19 @@ export function Prompt(props: PromptProps) {
             }
           : {}
       const promptParts = [
-        ...editorParts,
+        ...snapshot.editorParts,
         {
           type: "text" as const,
           text: outboundText,
           ...(Object.keys(directMeta).length > 0 ? { metadata: directMeta } : {}),
         },
-        ...nonTextParts,
+        ...snapshot.nonTextParts,
       ]
       const busy = status().type !== "idle"
       const delivery = resolvePromptDelivery({
         busy,
-        preferQueue: options?.preferQueue === true,
-        preferSteer: options?.preferSteer === true,
+        preferQueue: entry.dispatch.preferQueue === true,
+        preferSteer: entry.dispatch.preferSteer === true,
       })
       const submit = useV2SessionPrompt()
         ? (async () => {
@@ -1395,7 +1533,7 @@ export function Prompt(props: PromptProps) {
                   },
                 })
                 .catch(() => undefined)
-              await sdk.client.v2.session.switchAgent({ sessionID: targetSessionID, agent: agent.name }).catch(() => undefined)
+              await sdk.client.v2.session.switchAgent({ sessionID: targetSessionID, agent: agentName }).catch(() => undefined)
             }
             await sdk.client.v2.session.prompt(
               {
@@ -1410,7 +1548,7 @@ export function Prompt(props: PromptProps) {
             {
               sessionID: targetSessionID,
               ...selectedModel,
-              agent: agent.name,
+              agent: agentName,
               model: selectedModel,
               variant,
               parts: promptParts,
@@ -1424,19 +1562,62 @@ export function Prompt(props: PromptProps) {
           variant: "error",
         })
       })
-      if (editorParts.length > 0) editor.markSelectionSent()
+      if (snapshot.editorParts.length > 0) editor.markSelectionSent()
+      // Direct sends resolve at admission: the pump awaits this so queued
+      // prompts behind it dispatch in order. Toast stays on the shared
+      // handler above (legacy timing unchanged).
+      return { completion: submit }
     }
     }
 
     // New-session: create + navigate already happened — prepare/admit must not block submit return.
+    // Snapshot the submit-time send context: queued entries must send
+    // exactly what the user submitted.
+    const dispatchBase: DispatchContext = {
+      agentName: agent.name,
+      model: { providerID: selectedModel.providerID, modelID: selectedModel.modelID },
+      variant,
+      sessionDirectory,
+      forceAgent: store.prompt.forceAgent,
+      mode: currentMode,
+      preferQueue: options?.preferQueue,
+      preferSteer: options?.preferSteer,
+    }
+    const snapshot: OutboundSnapshot = { text: inputText, nonTextParts, editorParts }
+    // Same routing predicate as dispatchEntry (kept in sync): normal routed
+    // prompts go through the outbound queue — visible instantly, evaluated
+    // FIFO at dispatch. Shell / slash / forceAgent send immediately as today.
+    const submitFirstLine = inputText.replace(/^\s+/, "").split("\n")[0]
+    const submitIsSlash =
+      submitFirstLine.startsWith("/") &&
+      sync.data.command.some((x) => x.name === submitFirstLine.split(" ")[0].slice(1))
+    const routeNeed =
+      currentMode === "normal" &&
+      !submitIsSlash &&
+      !store.prompt.forceAgent &&
+      Boolean(sessionDirectory) &&
+      shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: store.prompt.forceAgent })
+    dispatchRef.fn = dispatchEntry
     if (isNewSession) {
       if (!sessionID) return false
       if (finishMoveProgress) move.finishSubmit()
-      void admitAfterPrepare(sessionID)
+      if (routeNeed) {
+        enqueueOutbound(sessionID, snapshot, dispatchBase)
+        void pumpOutbound(sessionID)
+        return true
+      }
+      void dispatchEntry(sessionID, { snapshot, dispatch: dispatchBase })
       return true
     }
 
-    await admitAfterPrepare(sessionID!)
+    if (routeNeed && sessionID) {
+      enqueueOutbound(sessionID, snapshot, dispatchBase)
+      clearPromptUi()
+      if (finishMoveProgress) move.finishSubmit()
+      void pumpOutbound(sessionID)
+      return true
+    }
+    await dispatchEntry(sessionID!, { snapshot, dispatch: dispatchBase })
     clearPromptUi()
     if (finishMoveProgress) move.finishSubmit()
     return true
@@ -1849,11 +2030,9 @@ export function Prompt(props: PromptProps) {
                   </box>
                 </box>
                 <box paddingRight={2}>
-                  <text fg={store.interrupt > 0 ? theme.primary : theme.text} wrapMode="none">
+                  <text fg={theme.text} wrapMode="none">
                     esc{" "}
-                    <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>
-                      {store.interrupt > 0 ? "again to interrupt" : "interrupt"}
-                    </span>
+                    <span style={{ fg: theme.textMuted }}>interrupt</span>
                   </text>
                 </box>
               </box>

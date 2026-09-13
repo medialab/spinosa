@@ -24,6 +24,10 @@ export type RouteBadgeInfo =
       routedBy?: "rules" | "model"
       confidence?: number
     }
+  // Transient TUI-local states for the outbound queue (never persisted to
+  // part metadata — the badge flips to direct/workflow once routed).
+  | { kind: "queued" }
+  | { kind: "evaluating" }
 
 export type RouteStepProgress = {
   done: number
@@ -133,6 +137,8 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
 
   const tone = () => {
     if (props.info.kind === "direct") return theme.textMuted
+    if (props.info.kind === "queued") return theme.textMuted
+    if (props.info.kind === "evaluating") return theme.warning
     const p = progress()
     if (!p) return theme.primary
     if (p.status === "done" && p.done >= p.total && p.total > 0) return theme.success
@@ -141,32 +147,23 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
   }
 
   const label = () => {
-    if (props.info.kind === "direct") return `⚡ fast · ${props.info.action}`
+    if (props.info.kind === "direct") return "⚡ fast"
+    if (props.info.kind === "queued") return "○ queued"
+    if (props.info.kind === "evaluating") return "⏳ evaluating"
     return `◈ ${shortWorkflow(props.info.workflowID)}`
   }
 
-  /** Routing provenance: declares whether a model call classified this. */
-  const via = () => {
-    if (props.info.routedBy === "model") {
-      const conf =
-        props.info.confidence !== undefined ? ` · ${props.info.confidence.toFixed(2)}` : ""
-      return `via model${conf}`
-    }
-    if (props.info.routedBy === "rules") return "via rules"
-    return undefined
-  }
-
+  // Badge shows state only — never why the model decided. No reasons, no
+  // via-model/rules provenance, no confidence. The single exception is live
+  // workflow step progress (run-state signaling, not an explanation).
   const detail = () => {
-    if (props.info.kind === "direct") {
-      return [props.info.reason, via()].filter(Boolean).join(" · ") || undefined
-    }
-    const base = (() => {
-      const p = progress()
-      if (!p || p.total === 0) return `${props.info.operation} · ${props.info.strategy}`
-      const done = p.status === "done" && p.done >= p.total ? "✓ " : ""
-      return `${done}${p.done}/${p.total} · ${shortAgent(p.stepID)}`
-    })()
-    return [base, via()].filter(Boolean).join(" · ")
+    if (props.info.kind === "queued") return "waiting for its turn"
+    if (props.info.kind === "evaluating") return "routing your prompt"
+    if (props.info.kind === "direct") return undefined
+    const p = progress()
+    if (!p || p.total === 0) return undefined
+    const done = p.status === "done" && p.done >= p.total ? "✓ " : ""
+    return `${done}${p.done}/${p.total} · ${shortAgent(p.stepID)}`
   }
 
   return (

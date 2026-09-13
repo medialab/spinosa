@@ -23,6 +23,11 @@ const activeWorkflowRuns = new Map<string, ActiveWorkflowRun>()
 // Legacy alias kept for the cutover (WP10 removes).
 export const activeResearchRuns = activeWorkflowRuns
 
+/** True while a workflow engine run owns the session (dispatcher treats it as busy). */
+export function hasActiveWorkflowRun(sessionID: string): boolean {
+  return activeWorkflowRuns.has(sessionID)
+}
+
 export type PreparedSubmit = {
   text: string
   kind: "direct" | "workflow"
@@ -65,6 +70,10 @@ export async function prepareSpinosaSubmit(
      * to deterministic heuristics only.
      */
     client?: unknown
+    /** AbortSignal for Esc-during-evaluating (aborts the router turn). */
+    signal?: AbortSignal
+    /** Override for the Stage-2 router call (tests). */
+    routerTimeoutMs?: number
   },
 ): Promise<PreparedSubmit> {
   const harness =
@@ -79,6 +88,8 @@ export async function prepareSpinosaSubmit(
     references: opts?.references,
     explicitAgent: opts?.explicitAgent,
     command: opts?.command,
+    ...(opts?.signal ? { signal: opts.signal } : {}),
+    ...(opts?.routerTimeoutMs !== undefined ? { routerTimeoutMs: opts.routerTimeoutMs } : {}),
   })
   if (prepared.kind === "direct") {
     return { text: prepared.text, kind: "direct", decision: prepared.decision, framed: false, routedBy: prepared.routedBy }

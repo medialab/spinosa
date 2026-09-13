@@ -88,6 +88,17 @@ describe("WorkflowRunService.execute", () => {
   test("completes the targeted chain with synthesized artifacts", async () => {
     const root = await workspace()
     const harness = new MockHarness()
+    // Garbage router output falls back to generic (plain answer), so script
+    // an explicit orchestrated verdict: this test covers execute(), not routing.
+    harness.scriptedOutputs.set(
+      "spinosa-router",
+      JSON.stringify({
+        mode: "orchestrated", operation: "research", strategy: "targeted_evidence",
+        scope: "subset", coverage: "sufficient", outputs: ["report"],
+        mutation: "none", verification: "normal", evaluation: "always",
+        reason: "scripted verdict", confidence: 0.9,
+      }),
+    )
     const service = new WorkflowRunService(new FileWorkflowRunRepository(), undefined, harness)
     const prepared = await service.prepare({
       workspacePath: root, parentSessionID: "p1", prompt: "Find source-grounded evidence for interviews",

@@ -97,7 +97,8 @@ import { LocationProvider } from "../../context/location"
 import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
-import { RouteBadge, routeBadgeFromParts } from "../../spinosa/route-badge"
+import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
+import { outboundForSession, type OutboundEntry } from "../../spinosa/outbound-queue"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1425,6 +1426,9 @@ const resolveExportPath = (filename: string): string => {
                     </Switch>
                   )}
                 </For>
+                <For each={outboundForSession(route.sessionID ?? "")}>
+                  {(entry) => <OptimisticUserRow entry={entry} />}
+                </For>
               </scrollbox>
               <box flexShrink={0}>
                 <Show when={permissions().length > 0 || questions().length > 0}>
@@ -1897,6 +1901,53 @@ function UserMessage(props: {
         </TranscriptRow>
       </Show>
     </>
+  )
+}
+
+/**
+ * Optimistic outbound row: a queued/evaluating prompt rendered instantly at
+ * Enter, before any server round-trip. Same transcript chrome as a user
+ * message; the badge slot shows the transient state (muted "queued" behind
+ * other work, orange "evaluating" while routing) and flips to the real
+ * fast/workflow badge when the server echo arrives and this row is dropped.
+ */
+function OptimisticUserRow(props: { entry: OutboundEntry }) {
+  const { theme } = useTheme()
+  const badge = (): RouteBadgeInfo => ({ kind: props.entry.state })
+  const border = () => (props.entry.state === "evaluating" ? theme.warning : theme.textMuted)
+  return (
+    <TranscriptRow id={props.entry.key}>
+      <box
+        border={["left"]}
+        borderColor={border()}
+        customBorderChars={SplitBorder.customBorderChars}
+        marginTop={1}
+      >
+        <box
+          paddingTop={1}
+          paddingBottom={1}
+          paddingLeft={2}
+          paddingRight={2}
+          backgroundColor={theme.backgroundPanel}
+          flexShrink={0}
+        >
+          <box
+            flexDirection="row"
+            width="100%"
+            paddingBottom={1}
+            justifyContent="space-between"
+            alignItems="center"
+            gap={1}
+          >
+            <RouteBadge info={badge()} />
+            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+              {Locale.todayTimeOrDateTime(props.entry.createdAt)}
+            </text>
+          </box>
+          <text fg={theme.text}>{stripAnsi(props.entry.text)}</text>
+        </box>
+      </box>
+    </TranscriptRow>
   )
 }
 

@@ -63,6 +63,17 @@ describe("routeBadgeFromParts", () => {
     expect(routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "workflow" } } }])).toBeUndefined()
     expect(routeBadgeFromParts([{ type: "text", text: "x", metadata: "nope" }])).toBeUndefined()
   })
+
+  test("transient outbound states never parse from server parts", () => {
+    // queued/evaluating are TUI-local optimistic states rendered from the
+    // outbound queue — they must never arrive via persisted part metadata.
+    expect(
+      routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "evaluating" } } }]),
+    ).toBeUndefined()
+    expect(
+      routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "queued" } } }]),
+    ).toBeUndefined()
+  })
 })
 
 describe("shortStepLabel", () => {

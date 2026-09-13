@@ -22,6 +22,7 @@ import {
   startStep,
   type AgentNode,
   type FastDecision,
+  type GenericDecision,
   type OrchestratedDecision,
   type RouteInput,
   type StepOutcome,
@@ -38,7 +39,7 @@ import { routeRequest } from "./router-service"
 import { SYSTEM_OPERATIONS } from "./workflow-operations"
 
 export type PreparedRequest =
-  | { kind: "direct"; text: string; decision: FastDecision; routedBy?: "rules" | "model" }
+  | { kind: "direct"; text: string; decision: FastDecision | GenericDecision; routedBy?: "rules" | "model" }
   | {
       kind: "workflow"
       text: string
@@ -111,6 +112,10 @@ export class WorkflowRunService {
     references?: { fileCount: number; fileNames: readonly string[]; mimeTypes: readonly string[]; hasSelectedRange: boolean }
     explicitAgent?: string
     command?: string
+    /** AbortSignal for Esc-during-evaluating (aborts the router turn). */
+    signal?: AbortSignal
+    /** Override for the Stage-2 router call (tests). */
+    routerTimeoutMs?: number
   }): Promise<PreparedRequest> {
     const text = stripPreamble(input.prompt)
     const marker = await readWorkspaceMarker(input.workspacePath).catch(() => ({ setupStatus: "unknown" as const }))
@@ -134,9 +139,14 @@ export class WorkflowRunService {
       harness: this.harness,
       sessionID: input.parentSessionID,
       ...(input.model ? { model: input.model } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
+      ...(input.routerTimeoutMs !== undefined ? { timeoutMs: input.routerTimeoutMs } : {}),
     })
     const { decision } = routed
-    if (decision.mode === "fast") {
+    // Fast and generic both execute as a plain conversation turn: fast
+    // carries an action badge, generic is just a normal answer (no badge).
+    // Neither frames a workflow, writes a goal, nor touches the engine.
+    if (decision.mode === "fast" || decision.mode === "generic") {
       return { kind: "direct", text, decision, routedBy: routed.via }
     }
     const definition = this.registry.resolve(decision)

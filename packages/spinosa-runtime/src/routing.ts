@@ -2,7 +2,7 @@
 // Legacy Q routes remain in routes.ts behind legacyRouteDecision() until WP10.
 // This module is pure: no filesystem, TUI, or kernel imports.
 
-export type ExecutionMode = "fast" | "orchestrated"
+export type ExecutionMode = "fast" | "orchestrated" | "generic"
 
 export type FastAction = "answer" | "retrieve" | "transform" | "visualize"
 
@@ -50,6 +50,17 @@ export type FastDecision = {
   confidence: number
 }
 
+/**
+ * Generic fallback: no verdict — just answer normally with the default
+ * agent loop. No fast-action framing, no workflow engine, no badge.
+ * Used whenever routing produces nothing usable (model unavailable,
+ * garbage output, low confidence, timeout), and offered to the router
+ * model as the explicit "none of the above" verdict.
+ */
+export type GenericDecision = {
+  mode: "generic"
+}
+
 export type OrchestratedDecision = {
   mode: "orchestrated"
   operation: OperationFamily
@@ -64,7 +75,7 @@ export type OrchestratedDecision = {
   confidence: number
 }
 
-export type RouteDecision = FastDecision | OrchestratedDecision
+export type RouteDecision = FastDecision | OrchestratedDecision | GenericDecision
 
 export function isOrchestratedDecision(decision: RouteDecision): decision is OrchestratedDecision {
   return decision.mode === "orchestrated"
@@ -72,6 +83,10 @@ export function isOrchestratedDecision(decision: RouteDecision): decision is Orc
 
 export function isFastDecision(decision: RouteDecision): decision is FastDecision {
   return decision.mode === "fast"
+}
+
+export function isGenericDecision(decision: RouteDecision): decision is GenericDecision {
+  return decision.mode === "generic"
 }
 
 /** Deterministic fallback when the router agent is unavailable or low-confidence. */
