@@ -50,7 +50,7 @@ import { useDialog } from "../../ui/dialog"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
-import { isConversationShellReady, shouldBounceMissingSession, shouldConfirmLeaveBusySession } from "./conversation-shell-ready"
+import { isConversationShellReady, shouldBounceMissingSession, shouldConfirmLeaveBusySession, resolveBackNavigation } from "./conversation-shell-ready"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
@@ -1247,6 +1247,16 @@ const resolveExportPath = (filename: string): string => {
               onMouseOver={() => setBackHover(true)}
               onMouseOut={() => setBackHover(false)}
               onMouseUp={async () => {
+                // Sub-agent (child) view: Back behaves exactly like the
+                // Parent button — return to the parent conversation at once.
+                // The child keeps running in background; never confirm,
+                // never abort.
+                const viewed = session()
+                const dest = resolveBackNavigation(viewed)
+                if (dest.type === "workspace") {
+                  navigate(dest)
+                  return
+                }
                 const currentID = route.sessionID
                 const busy =
                   !!currentID &&
@@ -1265,9 +1275,7 @@ const resolveExportPath = (filename: string): string => {
                   if (!leave) return
                   await sdk.client.session.abort({ sessionID: currentID }).catch(() => {})
                 }
-                const s = session()
-                if (s?.parentID) navigate({ type: "workspace", sessionID: s.parentID })
-                else navigate({ type: "global" })
+                navigate(dest)
               }}
               paddingLeft={2}
               paddingRight={2}
