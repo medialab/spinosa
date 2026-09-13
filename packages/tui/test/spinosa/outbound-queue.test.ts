@@ -6,13 +6,17 @@ import {
   evaluatingKeys,
   hasEvaluating,
   isOutboundPumping,
+  kickPump,
   markOutboundEvaluating,
   outboundForSession,
   peekOutbound,
+  registerPump,
   removeOutbound,
   setOutboundController,
   setOutboundPumping,
   shouldRestoreCancelledText,
+  steerOutbound,
+  unregisterPump,
   type DispatchContext,
   type OutboundSnapshot,
 } from "../../src/spinosa/outbound-queue"
@@ -86,6 +90,33 @@ describe("outbound queue", () => {
     expect(peekOutbound("ses-queue-b")?.text).toBe("b")
     clearOutbound("ses-queue-a")
     clearOutbound("ses-queue-b")
+  })
+
+  test("steer moves a queued entry to the front, preserving the rest", () => {
+    const sid = "ses-queue-steer"
+    enqueueOutbound(sid, snapshot("a"), dispatch())
+    const b = enqueueOutbound(sid, snapshot("b"), dispatch())
+    enqueueOutbound(sid, snapshot("c"), dispatch())
+    expect(steerOutbound(sid, b)).toBe(true)
+    expect(outboundForSession(sid).map((e) => e.text)).toEqual(["b", "a", "c"])
+    // Steering the head or an unknown key is a no-op success/failure pair.
+    const head = peekOutbound(sid)?.key ?? ""
+    expect(steerOutbound(sid, head)).toBe(true)
+    expect(steerOutbound(sid, "missing")).toBe(false)
+    clearOutbound(sid)
+  })
+
+  test("pump registry kicks the registered session pump", () => {
+    const sid = "ses-queue-kick"
+    let kicks = 0
+    registerPump(sid, () => {
+      kicks += 1
+    })
+    kickPump(sid)
+    expect(kicks).toBe(1)
+    unregisterPump(sid)
+    kickPump(sid)
+    expect(kicks).toBe(1)
   })
 })
 

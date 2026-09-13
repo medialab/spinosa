@@ -138,6 +138,7 @@ export class WorkflowRunService {
       routeInput,
       harness: this.harness,
       sessionID: input.parentSessionID,
+      workspacePath: input.workspacePath,
       ...(input.model ? { model: input.model } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       ...(input.routerTimeoutMs !== undefined ? { timeoutMs: input.routerTimeoutMs } : {}),

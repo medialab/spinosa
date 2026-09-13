@@ -15,6 +15,10 @@ const AMBIGUOUS: RouteInput = {
 
 const MODEL = { providerID: "opencode", modelID: "conversation-model" }
 
+function childID(harness: MockHarness): string | undefined {
+  return [...harness.sessionMeta].find(([, meta]) => meta.parentSessionID === "parent-1")?.[0]
+}
+
 describe("routeRequest Stage 2", () => {
   test("router call reuses the supplied conversation model", async () => {
     const harness = new MockHarness()
@@ -28,20 +32,31 @@ describe("routeRequest Stage 2", () => {
       }),
     )
     const routed = await routeRequest({
-      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", model: MODEL,
+      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", model: MODEL,
     })
     expect(routed.via).toBe("model")
     expect(routed.decision).toMatchObject({ mode: "orchestrated", strategy: "comparative_synthesis" })
     expect(harness.executions[0]?.agent).toBe("spinosa-router")
     expect(harness.executions[0]?.model).toEqual(MODEL)
     expect(harness.executions[0]?.silent).toBe(true)
+    // Isolation: the router verdict runs in a child session, never the
+    // conversation — its Thought/JSON rows can never leak there.
+    expect(harness.executions[0]?.sessionID).not.toBe("parent-1")
+    expect(harness.sessionMeta.get(harness.executions[0]?.sessionID ?? "")?.parentSessionID).toBe("parent-1")
+  })
+
+  test("without a workspace path, Stage 2 is skipped (no model call)", async () => {
+    const harness = new MockHarness()
+    const routed = await routeRequest({ routeInput: AMBIGUOUS, harness, sessionID: "parent-1" })
+    expect(routed.via).toBe("rules")
+    expect(harness.executions).toHaveLength(0)
   })
 
   test("invalid router JSON falls back to generic (still model-consulted)", async () => {
     const harness = new MockHarness()
     harness.scriptedOutputs.set("spinosa-router", "not json at all")
     const routed = await routeRequest({
-      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", model: MODEL,
+      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", model: MODEL,
     })
     expect(routed.decision).toEqual({ mode: "generic" })
     expect(routed.via).toBe("model")
@@ -54,7 +69,7 @@ describe("routeRequest Stage 2", () => {
       JSON.stringify({ mode: "orchestrated", operation: "research", strategy: "corpus_census", confidence: 0.1 }),
     )
     const routed = await routeRequest({
-      routeInput: AMBIGUOUS, harness, sessionID: "parent-1",
+      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws",
     })
     expect(routed.decision).toEqual({ mode: "generic" })
     expect(routed.via).toBe("model")
@@ -64,7 +79,7 @@ describe("routeRequest Stage 2", () => {
     const harness = new MockHarness()
     harness.scriptedOutputs.set("spinosa-router", JSON.stringify({ mode: "generic" }))
     const routed = await routeRequest({
-      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", model: MODEL,
+      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", model: MODEL,
     })
     expect(routed.decision).toEqual({ mode: "generic" })
     expect(routed.via).toBe("model")
@@ -88,11 +103,15 @@ describe("routeRequest Stage 2", () => {
     const harness = new MockHarness()
     harness.delaysMs.set("spinosa-router", 150)
     const routed = await routeRequest({
-      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", timeoutMs: 20,
+      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", timeoutMs: 20,
     })
     expect(routed.decision).toEqual({ mode: "generic" })
     expect(routed.via).toBe("rules")
-    expect(harness.cancelled.has("parent-1")).toBe(true)
+    // Orphan-kill targets the child turn, never the conversation.
+    const child = childID(harness)
+    expect(child).toBeDefined()
+    expect(harness.cancelled.has(child ?? "")).toBe(true)
+    expect(harness.cancelled.has("parent-1")).toBe(false)
   })
 
   test("pre-aborted signal rejects without calling the model", async () => {
@@ -100,21 +119,25 @@ describe("routeRequest Stage 2", () => {
     const controller = new AbortController()
     controller.abort()
     await expect(
-      routeRequest({ routeInput: AMBIGUOUS, harness, sessionID: "parent-1", signal: controller.signal }),
+      routeRequest({ routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", signal: controller.signal }),
     ).rejects.toBeInstanceOf(RouterAbortedError)
     expect(harness.executions).toHaveLength(0)
+    expect(harness.sessions.size).toBe(0)
   })
 
-  test("mid-flight abort rejects and cancels the orphan turn", async () => {
+  test("mid-flight abort rejects and cancels the child turn", async () => {
     const harness = new MockHarness()
     harness.delaysMs.set("spinosa-router", 100)
     const controller = new AbortController()
     const pending = routeRequest({
-      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", signal: controller.signal, timeoutMs: 5000,
+      routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", signal: controller.signal, timeoutMs: 5000,
     })
     controller.abort()
     await expect(pending).rejects.toBeInstanceOf(RouterAbortedError)
-    expect(harness.cancelled.has("parent-1")).toBe(true)
+    const child = childID(harness)
+    expect(child).toBeDefined()
+    expect(harness.cancelled.has(child ?? "")).toBe(true)
+    expect(harness.cancelled.has("parent-1")).toBe(false)
   })
 
   test("router preamble + Thought dump still parses (preamble-tolerant)", async () => {
@@ -124,7 +147,7 @@ describe("routeRequest Stage 2", () => {
     })
     harness.scriptedOutputs.set("spinosa-router", `Ok go on\n- Thought: 12.5s\n${decision}\n`)
     const routed = await routeRequest({
-      routeInput: { ...AMBIGUOUS, text: "go on" }, harness, sessionID: "parent-1", model: MODEL,
+      routeInput: { ...AMBIGUOUS, text: "go on" }, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", model: MODEL,
     })
     expect(routed.via).toBe("model")
     expect(routed.decision).toMatchObject({ mode: "fast", action: "answer" })

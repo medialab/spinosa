@@ -98,7 +98,8 @@ import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
 import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
-import { outboundForSession, type OutboundEntry } from "../../spinosa/outbound-queue"
+import { kickPump, outboundForSession, steerOutbound, type OutboundEntry } from "../../spinosa/outbound-queue"
+import { cancelSpinosaSubmit } from "../../spinosa/orchestrator"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1786,6 +1787,14 @@ function UserMessage(props: {
         },
         { throwOnError: true },
       )
+      .then(() => {
+        // Steering to the front means now: stop the current run so the
+        // drain restarts into this item. De-steering leaves runs alone.
+        if (next !== "steer") return
+        void cancelSpinosaSubmit({ client: sdk.client, sessionID: props.message.sessionID }).then((handled) => {
+          if (!handled) return sdk.client.session.abort({ sessionID: props.message.sessionID }).then(() => undefined)
+        })
+      })
       .catch((error) => {
         setSteerPending(null)
         toast.show({
@@ -1913,8 +1922,19 @@ function UserMessage(props: {
  */
 function OptimisticUserRow(props: { entry: OutboundEntry }) {
   const { theme } = useTheme()
+  const sdk = useSDK()
+  const [steerHover, setSteerHover] = createSignal(false)
   const badge = (): RouteBadgeInfo => ({ kind: props.entry.state })
   const border = () => (props.entry.state === "evaluating" ? theme.warning : theme.textMuted)
+  // Steer: this queued prompt goes next — stop the current run first so
+  // the pump dispatches it immediately after the abort settles.
+  const steer = () => {
+    const { sessionID, key } = props.entry
+    if (!steerOutbound(sessionID, key)) return
+    void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
+      if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
+    }).finally(() => kickPump(sessionID))
+  }
   return (
     <TranscriptRow id={props.entry.key}>
       <box
@@ -1939,7 +1959,22 @@ function OptimisticUserRow(props: { entry: OutboundEntry }) {
             alignItems="center"
             gap={1}
           >
-            <RouteBadge info={badge()} />
+            <box flexDirection="row" gap={1} alignItems="center">
+              <RouteBadge info={badge()} />
+              <box
+                onMouseOver={() => setSteerHover(true)}
+                onMouseOut={() => setSteerHover(false)}
+                onMouseUp={(e: { stopPropagation?: () => void }) => {
+                  e.stopPropagation?.()
+                  steer()
+                }}
+                backgroundColor={buttonBackground(theme, steerHover())}
+                paddingLeft={1}
+                paddingRight={1}
+              >
+                <text fg={buttonText(theme, steerHover(), theme.primary)}>Steer</text>
+              </box>
+            </box>
             <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
               {Locale.todayTimeOrDateTime(props.entry.createdAt)}
             </text>

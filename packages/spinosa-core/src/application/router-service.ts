@@ -120,6 +120,8 @@ export async function routeRequest(input: {
   routeInput: RouteInput
   harness?: SpinosaHarness
   sessionID?: string
+  /** Workspace the router child session is created in (required for Stage 2). */
+  workspacePath?: string
   /** The conversation's selected model — the router call reuses it (CALL 1). */
   model?: { providerID: string; modelID: string }
   /** AbortSignal for Esc-during-evaluating. Aborts the router turn. */
@@ -133,10 +135,23 @@ export async function routeRequest(input: {
   // Stage 2: constrained router agent only when needed. Separate internal
   // call, same selected model; synthetic + silent so the raw JSON never hits
   // the transcript — the verdict is declared via `via` instead.
-  if (input.harness && input.sessionID) {
+  //
+  // Isolation: the router runs in a CHILD session, never the conversation
+  // itself. A same-session silent turn leaks its Thought/JSON row whenever
+  // the post-turn deleteMessage races the busy flag (the server rejects
+  // deletes while busy) — and aborting it would kill a real conversation
+  // turn. Child transcripts stay hidden; cancel/timeout target the child.
+  if (input.harness && input.sessionID && input.workspacePath) {
     if (input.signal?.aborted) throw new RouterAbortedError()
     const harness = input.harness
-    const sessionID = input.sessionID
+    const child = await harness.createSession({
+      workspacePath: input.workspacePath,
+      parentSessionID: input.sessionID,
+      agent: "spinosa-router",
+      title: "route",
+      ...(input.model ? { model: input.model } : {}),
+    })
+    const sessionID = child.id
     let consulted = false
     try {
       const verdict = harness.executeAgent({
@@ -162,6 +177,12 @@ export async function routeRequest(input: {
           ...(signal
             ? [
                 new Promise<{ status: "aborted" }>((_, reject) => {
+                  // The signal may have fired between session creation and
+                  // this attach (sync abort in tests, Esc racing the call).
+                  if (signal.aborted) {
+                    reject(new RouterAbortedError())
+                    return
+                  }
                   onAbort = () => reject(new RouterAbortedError())
                   signal.addEventListener("abort", onAbort, { once: true })
                 }),

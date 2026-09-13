@@ -82,19 +82,23 @@ import {
   evaluatingKeys,
   hasEvaluating,
   isOutboundPumping,
+  kickPump,
   markOutboundEvaluating,
   peekOutbound,
+  registerPump,
   removeOutbound,
   setOutboundController,
   setOutboundPumping,
   shouldRestoreCancelledText,
   type DispatchContext,
   type OutboundSnapshot,
+  unregisterPump,
 } from "../../spinosa/outbound-queue"
 import { RouterAbortedError } from "@spinosa/core"
 import { readStartupPrompt } from "../../spinosa/service"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { fadeColor, getEditorRangeLabel, hasEditorRangeSelection, randomIndex } from "./helpers"
+import { ESC_ARM_WINDOW_MS, escConfirmStop } from "./interrupt"
 
 export type PromptProps = {
   sessionID?: string
@@ -445,15 +449,32 @@ export function Prompt(props: PromptProps) {
           const sessionID = props.sessionID
           if (!sessionID) return
 
-          // Single Esc acts immediately. Evaluating (routing) cancels first:
-          // only the silent router turn can be running, the dispatcher only
-          // evaluates while idle.
+          // Single press cancels evaluating (routing): nothing was sent yet,
+          // so there is nothing to confirm.
           if (hasEvaluating(sessionID)) {
             for (const key of evaluatingKeys(sessionID)) abortOutbound(key)
             dialog.clear()
             return
           }
 
+          // Stopping a live run needs esc-warn-esc within 10s: the first
+          // press only arms (hint highlights), the second press stops. A
+          // lone Esc never kills a run by accident.
+          if (!escConfirmStop(store.interrupt)) {
+            if (interruptTimer) clearTimeout(interruptTimer)
+            setStore("interrupt", Date.now())
+            interruptTimer = setTimeout(() => {
+              setStore("interrupt", 0)
+              interruptTimer = undefined
+            }, ESC_ARM_WINDOW_MS)
+            dialog.clear()
+            return
+          }
+          if (interruptTimer) {
+            clearTimeout(interruptTimer)
+            interruptTimer = undefined
+          }
+          setStore("interrupt", 0)
           void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
             if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
           }).finally(() => {
@@ -1057,6 +1078,8 @@ export function Prompt(props: PromptProps) {
   })
 
   let submitting = false
+  // Armed-Esc window timer for stopping live runs (esc-warn-esc, 10s).
+  let interruptTimer: ReturnType<typeof setTimeout> | undefined
 
   // Dispatch bridge: dispatchEntry is defined per-submit (it closes over
   // nothing submit-local anymore, but lives in submitInner for minimal
@@ -1143,6 +1166,14 @@ export function Prompt(props: PromptProps) {
     const s = status()
     const sid = props.sessionID
     if (s.type === "idle" && sid && peekOutbound(sid)) void pumpOutbound(sid)
+  })
+
+  // Other views (steer buttons) kick the pump through the registry.
+  createEffect(() => {
+    const sid = props.sessionID
+    if (!sid) return
+    registerPump(sid, () => void pumpOutbound(sid))
+    onCleanup(() => unregisterPump(sid))
   })
 
   async function submit(options?: { preferQueue?: boolean; preferSteer?: boolean }) {
@@ -1573,12 +1604,17 @@ export function Prompt(props: PromptProps) {
     // New-session: create + navigate already happened — prepare/admit must not block submit return.
     // Snapshot the submit-time send context: queued entries must send
     // exactly what the user submitted.
+    // forceAgent is consume-once: capture it for this submit, then clear so
+    // later prompts route normally (/startup must not pin every follow-up
+    // to the orchestrator unrouted).
+    const submitForceAgent = store.prompt.forceAgent
+    if (submitForceAgent) setStore("prompt", "forceAgent", undefined)
     const dispatchBase: DispatchContext = {
       agentName: agent.name,
       model: { providerID: selectedModel.providerID, modelID: selectedModel.modelID },
       variant,
       sessionDirectory,
-      forceAgent: store.prompt.forceAgent,
+      forceAgent: submitForceAgent,
       mode: currentMode,
       preferQueue: options?.preferQueue,
       preferSteer: options?.preferSteer,
@@ -1594,9 +1630,9 @@ export function Prompt(props: PromptProps) {
     const routeNeed =
       currentMode === "normal" &&
       !submitIsSlash &&
-      !store.prompt.forceAgent &&
+      !submitForceAgent &&
       Boolean(sessionDirectory) &&
-      shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: store.prompt.forceAgent })
+      shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: submitForceAgent })
     dispatchRef.fn = dispatchEntry
     if (isNewSession) {
       if (!sessionID) return false
@@ -2030,9 +2066,11 @@ export function Prompt(props: PromptProps) {
                   </box>
                 </box>
                 <box paddingRight={2}>
-                  <text fg={theme.text} wrapMode="none">
+                  <text fg={store.interrupt > 0 ? theme.warning : theme.text} wrapMode="none">
                     esc{" "}
-                    <span style={{ fg: theme.textMuted }}>interrupt</span>
+                    <span style={{ fg: store.interrupt > 0 ? theme.warning : theme.textMuted }}>
+                      {store.interrupt > 0 ? "again to stop" : "interrupt"}
+                    </span>
                   </text>
                 </box>
               </box>

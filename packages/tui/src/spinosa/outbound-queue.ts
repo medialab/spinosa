@@ -139,6 +139,50 @@ export function hasEvaluating(sessionID: string): boolean {
   return (entriesBySession[sessionID] ?? []).some((e) => e.state === "evaluating")
 }
 
+/**
+ * Steer: move a queued entry to the front so the pump dispatches it next.
+ * FIFO order of the remaining entries is preserved. False when the entry
+ * is gone or already evaluating (it is already next).
+ */
+export function steerOutbound(sessionID: string, key: string): boolean {
+  const list = entriesBySession[sessionID]
+  if (!list) return false
+  const at = list.findIndex((e) => e.key === key)
+  if (at < 0) return false
+  if (list[at]?.state === "evaluating") return false
+  setEntriesBySession(
+    produce((draft) => {
+      const items = draft[sessionID]
+      if (!items) return
+      const idx = items.findIndex((e) => e.key === key)
+      if (idx > 0) {
+        const [entry] = items.splice(idx, 1)
+        if (entry) items.unshift(entry)
+      }
+    }),
+  )
+  return true
+}
+
+/** Pump registry: the prompt component owns dispatch; other views kick it. */
+const pumpHandlers = new Map<string, () => void>()
+
+export function registerPump(sessionID: string, kick: () => void): void {
+  pumpHandlers.set(sessionID, kick)
+}
+
+export function unregisterPump(sessionID: string): void {
+  pumpHandlers.delete(sessionID)
+}
+
+export function kickPump(sessionID: string): void {
+  try {
+    pumpHandlers.get(sessionID)?.()
+  } catch {
+    /* pump kicks never throw into views */
+  }
+}
+
 export function evaluatingKeys(sessionID: string): string[] {
   return (entriesBySession[sessionID] ?? []).filter((e) => e.state === "evaluating").map((e) => e.key)
 }
