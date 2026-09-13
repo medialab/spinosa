@@ -326,7 +326,6 @@ const resolveExportPath = (filename: string): string => {
         title,
         sessionID: session()?.id,
         spinosa: useArgs().spinosa,
-        projectDir: session()?.directory,
       }),
     )
   })

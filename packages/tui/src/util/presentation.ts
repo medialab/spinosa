@@ -40,12 +40,14 @@ function wordmark(pad = "") {
   })
 }
 
-export function sessionEpilogue(input: { title: string; sessionID?: string; spinosa?: boolean; projectDir?: string }) {
+export function sessionEpilogue(input: { title: string; sessionID?: string; spinosa?: boolean }) {
   const weak = (text: string) =>
     NO_COLOR || IS_DUMB_TERM ? text.padEnd(10, " ") : `${dim}${text.padEnd(10, " ")}${reset}`
   const title = NO_COLOR || IS_DUMB_TERM ? input.title : `${bold}${input.title}${reset}`
+  // No --project suffix: `spinosa -s` auto-routes to the session's own
+  // directory, so suggesting it is redundant (explicit --project still wins).
   const cont = NO_COLOR || IS_DUMB_TERM
-    ? `${input.spinosa ? "spinosa" : "opencode"} -s ${input.sessionID ?? ""}${input.projectDir ? ` --project ${input.projectDir}` : ""}`
-    : `${bold}${input.spinosa ? "spinosa" : "opencode"} -s ${input.sessionID ?? ""}${input.projectDir ? ` --project ${input.projectDir}` : ""}${reset}`
+    ? `${input.spinosa ? "spinosa" : "opencode"} -s ${input.sessionID ?? ""}`
+    : `${bold}${input.spinosa ? "spinosa" : "opencode"} -s ${input.sessionID ?? ""}${reset}`
   return [...wordmark("  "), "", `  ${weak("Session")}${title}`, `  ${weak("Continue")}${cont}`, ""].join("\n")
 }
