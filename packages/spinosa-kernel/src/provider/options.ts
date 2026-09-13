@@ -55,6 +55,7 @@ export function options(input: {
   }
 
   addGpt5Defaults(result, model, sessionID);
+  addOpenAIReasoningSummaryDefaults(result, model);
   addCacheKeys(result, model, sessionID, providerOptions);
   return result;
 }
@@ -181,6 +182,33 @@ function addGpt5Defaults(
     result.promptCacheKey = sessionID;
     result.include = [...INCLUDE_ENCRYPTED_REASONING];
     result.reasoningSummary = "auto";
+  }
+}
+
+// The Responses API only emits reasoning summary SSE events
+// (`response.reasoning_summary_text.delta`) when the request asks for them.
+// Without `reasoningSummary`, a reasoning model streams zero reasoning parts,
+// so the TUI renders no Thinking row to toggle — while chat-completions-based
+// providers stream reasoning_content by default. Request the summary (plus the
+// encrypted blob needed for stateless multi-turn continuity) for every
+// OpenAI-family reasoning model, not just gpt-5, so both surfaces match.
+// o1* predates summaries and gpt-5-chat is not a reasoning model.
+function addOpenAIReasoningSummaryDefaults(result: ProviderOptions, model: Provider.Model): void {
+  if (!model.capabilities.reasoning) return;
+  const modelId = model.api.id.toLowerCase();
+  if (modelId.startsWith("o1") || modelId.includes("gpt-5-chat")) return;
+  switch (model.api.npm) {
+    case "@ai-sdk/openai":
+    case "@ai-sdk/azure":
+    case "@ai-sdk/github-copilot":
+    case "@ai-sdk/amazon-bedrock/mantle":
+      break;
+    default:
+      return;
+  }
+  result.reasoningSummary ??= "auto";
+  if (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/amazon-bedrock/mantle") {
+    result.include ??= [...INCLUDE_ENCRYPTED_REASONING];
   }
 }
 
