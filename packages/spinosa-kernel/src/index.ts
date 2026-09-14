@@ -1,7 +1,7 @@
 /**
  * Product entry — stage canvas skia .node before the rest of the CLI graph loads
  * (Bun --compile extracts natives without reliable optional-dep require on Linux).
- * OCR is the Spinosa-owned bundled Tesseract; no companion-lib staging needed.
+ * No OCR engine ships; no companion-lib staging needed.
  */
 import { ensureCanvasNativeBinding } from "./native/canvas-native"
 import { installDomMatrixPolyfill } from "./native/dom-matrix-polyfill"

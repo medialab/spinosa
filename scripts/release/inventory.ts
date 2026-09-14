@@ -3,15 +3,14 @@
  * Release dependency inventory (release hardening #30).
  *
  * Generates a machine-readable inventory during build describing the compiled
- * runtime, external modules, bundled Tesseract version, bundled native libs,
- * tessdata versions/hashes, and PDF engine implementation. Unexpected runtime
- * externals fail the release (fail closed).
+ * runtime, external modules, bundled native libs, and PDF engine
+ * implementation. No OCR engine ships (no language data, no tools
+ * archives). Unexpected runtime externals fail the release (fail closed).
  *
  * Usage: bun scripts/release/inventory.ts [--check] [--out <path>]
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { SOURCE_PINS, TESSERACT_VERSION } from "./tools-target.ts"
 
 const root = path.resolve(import.meta.dir, "../..")
 
@@ -25,10 +24,8 @@ export type DependencyInventory = {
   externals: string[]
   bundledModules: string[]
   pdfEngine: "pdfjs-dist + @napi-rs/canvas (internal pdf/ subsystem, no poppler/pdftoppm)"
-  ocrEngine: "bundled-tesseract"
-  toolsBuild: { tesseract: string; leptonica: string }
+  ocrEngine: "removed"
   nativeBindings: string[]
-  tessdata: { commit: string; files: Record<string, string> }
 }
 
 function readBuildExternals(): string[] {
@@ -36,17 +33,6 @@ function readBuildExternals(): string[] {
   const match = buildTs.match(/external:\s*\[([^\]]*)\]/)
   if (!match) return []
   return [...match[1]!.matchAll(/["']([^"']+)["']/g)].map((m) => m[1]!)
-}
-
-function tessdataPins(): { commit: string; files: Record<string, string> } {
-  const installSh = readFileSync(path.join(root, "install.sh"), "utf-8")
-  const commit = installSh.match(/^TESSDATA_PIN_COMMIT="([^"]+)"/m)?.[1] ?? "unknown"
-  const files: Record<string, string> = {}
-  for (const lang of ["eng", "fra", "ita"] as const) {
-    const sha = installSh.match(new RegExp(`^TESSDATA_SHA_${lang}="([^"]+)"`, "m"))?.[1]
-    if (sha) files[`${lang}.traineddata`] = sha
-  }
-  return { commit, files }
 }
 
 export function buildInventory(): DependencyInventory {
@@ -59,13 +45,8 @@ export function buildInventory(): DependencyInventory {
     externals,
     bundledModules: [...BUNDLED_REQUIRED],
     pdfEngine: "pdfjs-dist + @napi-rs/canvas (internal pdf/ subsystem, no poppler/pdftoppm)",
-    ocrEngine: "bundled-tesseract",
-    toolsBuild: {
-      tesseract: TESSERACT_VERSION,
-      leptonica: SOURCE_PINS.find((p) => p.file.startsWith("leptonica-"))?.version ?? "unknown",
-    },
+    ocrEngine: "removed",
     nativeBindings: ["@napi-rs/canvas skia (per-platform)"],
-    tessdata: tessdataPins(),
   }
 }
 
@@ -79,12 +60,6 @@ export function assertInventoryClean(inv: DependencyInventory): void {
     if (inv.externals.includes(mod)) {
       throw new Error(`required bundled module is external: ${mod} — ZIP imports would fail from the shipped executable`)
     }
-  }
-  if (inv.tessdata.commit === "unknown" || inv.tessdata.commit.includes("main")) {
-    throw new Error("tessdata must pin an immutable commit SHA, never a mutable branch")
-  }
-  for (const [file, sha] of Object.entries(inv.tessdata.files)) {
-    if (!/^[0-9a-f]{64}$/i.test(sha)) throw new Error(`tessdata ${file} missing pinned SHA256`)
   }
 }
 

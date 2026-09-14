@@ -7,7 +7,6 @@ import { MarkItDown } from "@spinosa/markitdown"
 import stripAnsi from "strip-ansi"
 import { markitdownConvertFile } from "./markitdown-convert"
 import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
-import { TesseractLowConfidenceError } from "./tesseract-ocr"
 import {
   shouldSkipSourceFile,
   findSourceFiles,
@@ -26,8 +25,6 @@ import type { ImportBatchManager } from "./batch"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled, SpinosaCancellationError } from "./cancellation"
 import { isVisionModelId } from "./vision-helpers"
 import { ProgressEmitter, type FileProgressStatus } from "../progress/progress"
-import { ocrAvailable, tesseractAvailable } from "../tools/detection"
-import { ocrUnsupportedReason } from "../tools/ocr-support"
 import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
 import { decodeWorkerPayload, disposeWorkerPayload, encodeWorkerPayload } from "./worker-payload"
 import { terminateChild } from "../progress/child-kill"
@@ -117,7 +114,7 @@ export function applyResumeFilter(
     opts?.onLog?.(`Manifest: ${manifestPath(logsDir)} (${manifest.size} tracked files)`)
   }
   // Route/model drift: a done record under a different engine selection is
-  // stale by definition (e.g. tesseract transcript exists, user now wants vision).
+  // stale by definition (e.g. existing transcript exists, user now wants vision).
   const normModel = (id: string | undefined) => (id && isVisionModelId(id) ? id : "")
   const currentModel = normModel(opts?.modelId)
   // PDFs triaged to MarkItDown (route "markitdown") and PDFs extracted via
@@ -396,8 +393,9 @@ export async function scanAndClassifySource(
       copyFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, e.relPath) })
     } else {
       // PDFs: vision model → vision page transcription; "none" → copy as-is
-      // (never OCR, never drop); tesseract (or legacy unset) → tesseract OCR,
-      // which extracts digital PDFs via pdf.js before spending OCR.
+      // (never transcribed, never dropped); anything else (unset/unknown) →
+      // pdf phase, which extracts digital PDFs via pdf.js and keeps scanned
+      // originals + placeholders (no local OCR).
       if (ocrModelId === "none") {
         copyFiles.push({ src: e.filePath, rel: e.relPath, dest: path.join(destDir, e.relPath) })
       } else if (ocrModelId && (isVisionModelId(ocrModelId) || await isLegacyVisionModel(ocrModelId))) {
@@ -598,7 +596,7 @@ export type MarkitdownHooks = {
   ocrDetached?: boolean
   /** Force in-process (worker entry / tests). Default: spawn NDJSON child like OCR. */
   inProcess?: boolean
-  /** Engine selection for PDFs ("tesseract-local", "none", vision id, legacy unset = tesseract). */
+  /** Engine selection for PDFs ("none", vision id, legacy unset = pdf.js + copy fallback). */
   ocrModelId?: string | (() => string)
   /** Deprecated: vision failure now handled in vision phase. */
   onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
@@ -845,15 +843,16 @@ export async function processOcr(
     appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
       ts: isoNow(), status: "skip", source: ps.rel,
       output: ocrOutputRelPath(ps.rel),
-      engine: "tesseract", pages: "", duration_s: 0,
+      engine: "existing", pages: "", duration_s: 0,
     })
-    recordPhaseResult(logsDir, ps, "ocr", "done", "tesseract")
+    recordPhaseResult(logsDir, ps, "ocr", "done", "existing")
     prog?.file("OCR", ++processed, total, ps.rel, "done")
   }
 
-  // Pass 1 (no tesseract needed): digital PDFs carry an encoded text layer,
-  // extracted directly via the bundled pdf.js census (no API key, no OCR
-  // spend). Scanned/invalid PDFs collect into `remaining` for tesseract.
+  // Pass 1 (no local OCR needed): digital PDFs carry an encoded text layer,
+  // extracted directly via the bundled pdf.js census (no API key, no spend).
+  // Scanned/invalid PDFs collect into `remaining` for the copy fallback below
+  // (local OCR was removed — pick a vision model to transcribe, or keep the copy).
   // Images must never reach OCR — fail fast with a pointer to vision.
   const remaining: ClassifiedEntry[] = []
   for (const file of toProcess) {
@@ -864,29 +863,29 @@ export async function processOcr(
     const ext = fileExt(file.src).toLowerCase()
     // Images should have been split to copyFiles; if any slip through, treat as copy-fail not OCR
     if (extInList(ext, IMAGE_EXTENSIONS)) {
-      const err = "image files are copy-only (no tesseract for images — pick a vision model to transcribe them)"
+      const err = "image files are copy-only (local OCR removed — pick a vision model to transcribe them)"
       failed++
       appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-        ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
+        ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "copy", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
       })
       onLog?.(`  ${file.rel} → ${err}`)
       prog?.file("OCR", ++processed, total, file.rel, "failed")
-      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
+      recordPhaseResult(logsDir, file, "ocr", "failed", "copy")
       continue
     }
     if (ext !== "pdf") {
       const err = `unsupported OCR extension: ${ext}`
       failed++
       appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-        ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
+        ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "copy", pages: "", duration_s: (Date.now() - start) / 1000, error: err,
       })
       onLog?.(`  ${file.rel} → ${err}`)
       prog?.file("OCR", ++processed, total, file.rel, "failed")
-      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
+      recordPhaseResult(logsDir, file, "ocr", "failed", "copy")
       continue
     }
-    // Encoded-text census + per-page hybrid: all-digital → direct extract;
-    // mixed → direct text pages + tesseract on imageless pages only. Census
+    // Encoded-text census: all-digital → direct extract; anything else falls
+    // through to the copy fallback below (no local OCR engine). Census
     // timeouts scale with file size (slow-to-parse never reads as no-text).
     let digitalDone = false
     try {
@@ -912,167 +911,80 @@ export async function processOcr(
             digitalDone = true
           }
         } else if (hasEmbeddedTextPdfPages(classes)) {
-          // Mixed: direct text pages + tesseract on imageless pages only.
-          // All-image falls through to whole-file tesseract below (confidence
-          // tracking + garbaged-image keeping live there, not in the hybrid).
-          const { convertPdfHybridTesseract } = await import("./tesseract-ocr")
-          const hybrid = await convertPdfHybridTesseract(file.src, file.dest, file.rel, classes, {
-            shouldAbort,
-            onLog,
-            onPage: async (page, pageTotal) => {
-              prog?.file("OCR", processed, total, `${file.rel} (page ${page}/${pageTotal})`, "processing")
-              await yieldToEL()
-            },
-          })
-          file.dest = hybrid.destFile
-          throwIfSpinosaCancelled(shouldAbort)
-          if (convertedOutputExists(file.dest)) {
-            converted++
-            recoverable.push({ src: file.src, dest: file.dest })
-            appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-              ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "pdfjs+tesseract", pages: `${hybrid.ocrPages}/${hybrid.pages}`, duration_s: (Date.now() - start) / 1000,
-            })
-            onLog?.(`  ${file.rel} → mixed PDF, ${hybrid.pages - hybrid.ocrPages}/${hybrid.pages} pages direct + ${hybrid.ocrPages} via tesseract`)
-            prog?.file("OCR", ++processed, total, file.rel, "done")
-            recordPhaseResult(logsDir, file, "ocr", "done", "pdfjs+tesseract")
-            digitalDone = true
-          }
+          // Mixed (digital + scanned pages): local OCR was removed, so image
+          // pages can no longer be transcribed here. Fall through to the copy
+          // fallback below, which keeps the original + a placeholder pointing
+          // at vision/copy. (The dedicated pdf phase extracts direct pages
+          // via pdf.js when PDFs route there.)
         }
       }
     } catch (err) {
       if (isSpinosaCancellationError(err)) throw err
-      // fall through to tesseract below
+      // fall through to copy fallback below
     }
     if (!digitalDone) remaining.push(file)
   }
 
-  // Pass 2: tesseract for scanned leftovers (ita+eng+fra, 300dpi) — only engine.
-  // This phase only receives PDFs when Tesseract (or legacy unset) is the
-  // selected engine — vision/none route elsewhere.
-  if (tesseractAvailable() && remaining.length > 0) {
-    const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
+  // Pass 2: copy fallback for scanned leftovers (local OCR was removed).
+  // This phase only receives non-PDF leftovers in normal flow (PDFs route to
+  // the dedicated pdf phase); anything scanned that lands here keeps its
+  // original bytes + an honest placeholder — never dropped, never faked text.
+  // Pick a vision model and re-run import to transcribe; "none" keeps the copy.
+  if (remaining.length > 0) {
     for (const file of remaining) {
       throwIfSpinosaCancelled(shouldAbort)
       const start = Date.now()
       prog?.file("OCR", processed, total, file.rel, "processing")
       await yieldToEL()
       try {
-        const result = await ocrPdfViaTesseract(file.src, file.dest, file.rel, {
-          shouldAbort,
-          onLog,
-          onPage: async (page, pageTotal) => {
-            prog?.file("OCR", processed, total, `${file.rel} (page ${page}/${pageTotal})`, "processing")
-            await yieldToEL()
-          },
-        })
-        throwIfSpinosaCancelled(shouldAbort)
-        file.dest = result.mdPath
-        if (convertedOutputExists(file.dest)) {
-          converted++
-          recoverable.push({ src: file.src, dest: file.dest })
+        const binaryDest = path.join(path.dirname(file.dest), path.basename(file.src))
+        const copied = await safeCopyAsync(file.src, binaryDest)
+        const placeholder = [
+          "---",
+          `source_document: "${path.basename(file.rel).replace(/"/g, '\\"')}"`,
+          `ocr_status: local_ocr_removed`,
+          "---",
+          "",
+          `# ${path.basename(file.rel, path.extname(file.rel))} — transcription pending`,
+          "",
+          `Local OCR was removed. Original file kept as \`${path.basename(binaryDest)}\`.`,
+          "",
+          `To transcribe: re-run import with a vision model selected.`,
+          `To keep as-is: re-run import with copy (no transcription).`,
+          `Digital PDFs always extract via pdf.js with no model needed.`,
+          "",
+        ].join("\n")
+        try {
+          mkdirSync(path.dirname(file.dest), { recursive: true })
+          writeTextAtomicSafe(file.dest, placeholder)
+          injectColdFrontmatter(file.dest)
+        } catch {}
+        if (copied && convertedOutputExists(file.dest)) {
+          onLog?.(`  ${file.rel} → scanned, no local OCR — keeping original ${path.basename(binaryDest)} + placeholder (pick a vision model to transcribe)`)
+          // Placeholder only, no usable transcript → mark skipped so a
+          // later resume retries instead of trusting the placeholder.
+          recordPhaseResult(logsDir, file, "ocr", "skipped", "copy")
           appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-            ts: isoNow(), status: "ok", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: String(result.pages), duration_s: (Date.now() - start) / 1000,
+            ts: isoNow(), status: "skip", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "copy", pages: "", duration_s: (Date.now() - start) / 1000, error: "local OCR removed — original kept, pick vision to transcribe",
           })
-          onLog?.(`  ${file.rel} → tesseract OCR succeeded (${result.pages} pages)`)
           prog?.file("OCR", ++processed, total, file.rel, "done")
-          recordPhaseResult(logsDir, file, "ocr", "done", "tesseract")
-        } else {
-          throw new Error("tesseract produced no output")
+          skipped++
+          continue
         }
+        throw new Error("copy fallback produced no output")
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
-        if (err instanceof TesseractLowConfidenceError) {
-          // Low confidence → discard garbled md, keep original as binary + placeholder md
-          const binaryDest = path.join(path.dirname(file.dest), path.basename(file.src))
-          try { rmSync(file.dest, { force: true }); rmSync(`${file.dest.slice(0, -3)}_pages`, { recursive: true, force: true }) } catch {}
-          const copied = await safeCopyAsync(file.src, binaryDest)
-          // Create placeholder md so raw has an entry and future verify doesn't loop
-          const placeholder = [
-            "---",
-            `source_document: "${path.basename(file.rel).replace(/"/g, '\\"')}"`,
-            `ocr_status: low_confidence`,
-            `ocr_avg_conf: ${err.avgConf.toFixed(1)}`,
-            `ocr_low_pct: ${err.lowPct.toFixed(1)}`,
-            "---",
-            "",
-            `# ${path.basename(file.rel, path.extname(file.rel))} — OCR pending network`,
-            "",
-            `Original file kept as \`${path.basename(binaryDest)}\` pending network OCR (tesseract low confidence avg ${err.avgConf.toFixed(1)}, low ${err.lowPct.toFixed(1)}%).`,
-            "",
-            `> Garbled OCR discarded to avoid polluting raw.`,
-            "",
-          ].join("\n")
-          try {
-            mkdirSync(path.dirname(file.dest), { recursive: true })
-            writeTextAtomicSafe(file.dest, placeholder)
-            injectColdFrontmatter(file.dest)
-          } catch {}
-          if (copied) {
-            onLog?.(`  ${file.rel} → tesseract low confidence (avg ${err.avgConf.toFixed(1)}, low ${err.lowPct.toFixed(1)}%) — keeping original ${path.basename(binaryDest)} + placeholder md`)
-            // Placeholder only, no usable transcript → mark skipped so a
-            // later resume retries instead of trusting the placeholder.
-            recordPhaseResult(logsDir, file, "ocr", "skipped", "tesseract")
-            appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-              ts: isoNow(), status: "skip", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: `low confidence: ${err.message} — original kept`,
-            })
-            prog?.file("OCR", ++processed, total, file.rel, "done")
-            skipped++
-            continue
-          }
-        }
         const msg = err instanceof Error ? err.message : String(err)
         failed++
         appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-          ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: (Date.now() - start) / 1000, error: msg,
+          ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "copy", pages: "", duration_s: (Date.now() - start) / 1000, error: msg,
         })
-        onLog?.(`  ${file.rel} → tesseract failed: ${msg}`)
+        onLog?.(`  ${file.rel} → copy fallback failed: ${msg}`)
         prog?.file("OCR", ++processed, total, file.rel, "failed")
-        recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
+        recordPhaseResult(logsDir, file, "ocr", "failed", "copy")
       }
     }
     prog?.file("OCR", processed, total, "", "done")
-    return { converted, skipped, failed, renamed: 0, recoverable }
-  }
-
-  if (remaining.length > 0 && !tesseractAvailable()) {
-    const reason = ocrUnsupportedReason() ?? "OCR engine unavailable (tesseract missing)"
-    onLog?.(`OCR unavailable: ${reason}`)
-    for (const file of remaining) {
-      throwIfSpinosaCancelled(shouldAbort)
-      failed++
-      appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-        ts: isoNow(),
-        status: "fail",
-        source: file.rel,
-        output: ocrOutputRelPath(file.rel),
-        engine: "tesseract",
-        pages: "",
-        duration_s: 0,
-        error: reason,
-      })
-      onLog?.(`  ${file.rel} → OCR failed: ${reason}`)
-      prog?.file("OCR", ++processed, total, file.rel, "failed")
-      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
-      await yieldToEL()
-    }
-    return { converted, skipped, failed, renamed: 0, recoverable }
-  }
-
-  // Bundled Tesseract is the OCR engine — no fallback chain.
-  if (remaining.length > 0) {
-    // Any remaining files after tesseract block are unexpected (e.g. tesseract not available already handled)
-    // Mark them as failed with clear reason
-    for (const file of remaining) {
-      throwIfSpinosaCancelled(shouldAbort)
-      failed++
-      const err = "OCR failed: tesseract unavailable and no fallback"
-      onLog?.(`  ${file.rel} → ${err}`)
-      appendNdjson(path.join(logsDir, "ocr-processed.ndjson"), {
-        ts: isoNow(), status: "fail", source: file.rel, output: ocrOutputRelPath(file.rel), engine: "tesseract", pages: "", duration_s: 0, error: err,
-      })
-      prog?.file("OCR", ++processed, total, file.rel, "failed")
-      recordPhaseResult(logsDir, file, "ocr", "failed", "tesseract")
-    }
     return { converted, skipped, failed, renamed: 0, recoverable }
   }
 
@@ -1080,7 +992,7 @@ export async function processOcr(
 }
 
 export type PdfPhaseHooks = {
-  /** AbortSignal for immediate child cancel (tesseract spawns). */
+  /** AbortSignal for immediate child cancel. */
   signal?: AbortSignal
   ocrModelId?: string | (() => string)
 }
@@ -1088,9 +1000,9 @@ export type PdfPhaseHooks = {
 /**
  * Dedicated PDF step: every PDF lands here regardless of engine, so the TUI
  * shows one step for PDFs and vision keeps images only. Text pages extract
- * via pdf.js; image pages get tesseract transcription only when tesseract is
- * explicitly selected, otherwise an explicit placeholder (original kept for a
- * later vision pass). No vision calls are ever made here.
+ * via pdf.js; image pages keep an explicit placeholder (original kept for a
+ * later vision pass) — local OCR was removed, so no engine fills them here.
+ * No vision calls are ever made here.
  */
 export async function processPdf(
   files: ClassifiedEntry[],
@@ -1126,28 +1038,21 @@ export async function processPdf(
   const selectedOcrModelId =
     typeof hooks?.ocrModelId === "function" ? hooks.ocrModelId() : hooks?.ocrModelId
   // Manifest route mirrors scan routing so resume drift keeps working.
+  // (Unset/unknown model ids route to the pdf phase: digital text via
+  // pdf.js, scanned pages keep placeholders.)
   const stepRoute = selectedOcrModelId === "none"
     ? undefined
-    : selectedOcrModelId && selectedOcrModelId !== "tesseract-local" && isVisionModelId(selectedOcrModelId)
+    : selectedOcrModelId && isVisionModelId(selectedOcrModelId)
       ? "vision"
       : "ocr"
   const stepModel = typeof hooks?.ocrModelId === "string" ? hooks.ocrModelId : undefined
-  // Tesseract fills image pages only when explicitly selected — never behind
-  // the user's back under a vision selection.
-  const useTesseract =
-    (selectedOcrModelId === undefined || selectedOcrModelId === "tesseract-local") && tesseractAvailable()
   {
     const pdfJs = await import("../extension/pdf-js")
-    const tesseractWhy = useTesseract
-      ? "on"
-      : selectedOcrModelId !== undefined && selectedOcrModelId !== "tesseract-local"
-        ? `off (vision model selected: ${selectedOcrModelId} — image pages keep placeholders)`
-        : "off (tesseract binary unavailable — image pages keep placeholders)"
     onLog?.(
       `PDF step: pdf.js-only text extraction ` +
         `(mainThreadHandler=${pdfJs.isPdfJsMainThreadHandlerPublished() ? "ready" : "MISSING — every PDF will fail"}, ` +
         `bundle=${isCompiledBinaryDistribution() ? "binary" : "source"}, ` +
-        `selection=${selectedOcrModelId ?? "tesseract-local (default)"}, tesseractFill=${tesseractWhy})`,
+        `selection=${selectedOcrModelId ?? "none (default: copy-as-is, pdf.js still extracts digital text)"})`,
     )
   }
 
@@ -1218,59 +1123,14 @@ export async function processPdf(
         (failedPages.length > 0 ? ` [pages ${failedPages.map(({ page }) => page).join(",")}]` : ""),
     )
     // Fill state shared by the fully-scanned fast path below and the normal
-    // mixed-document path after it.
-    let filledViaTesseract = 0
-    let texts = pageTexts
+    // mixed-document path after it. Local OCR was removed: nothing fills
+    // image pages here — they keep placeholders for a later vision pass.
+    const texts = pageTexts
     if (!pageTexts.some(({ text }) => hasRealText(text))) {
-      // Fully scanned (or blank) document: with tesseract-local selected, OCR
-      // MUST be attempted first — never mark pending-vision without trying.
-      if (useTesseract) {
-        try {
-          const { ocrPdfPagesViaTesseract } = await import("./tesseract-ocr")
-          const allPages = pageTexts.map(({ page }) => page)
-          const ocr = await ocrPdfPagesViaTesseract(f.src, allPages, f.rel, {
-            shouldAbort,
-            onLog,
-            signal: hooks?.signal,
-            pageTotal: pageTexts.length,
-            onPage: (page, pageTotal) => tickPdfPage(f.rel, page, pageTotal),
-          })
-          throwIfSpinosaCancelled(shouldAbort)
-          const filled = pageTexts.map(({ page, text }) => {
-            const t = (ocr.get(page) ?? "").trim()
-            return { page, text: t || text }
-          })
-          if (filled.some(({ text }) => hasRealText(text))) {
-            // Tesseract recovered text: continue to the normal write path.
-            texts = filled
-            filledViaTesseract = [...ocr.values()].filter((t) => t.trim().length > 0).length
-          } else {
-            // Tesseract ran but recovered nothing: fail closed (not done,
-            // not silent placeholder-success). Keep original + explicit state.
-            const binaryDest = path.join(path.dirname(f.dest), path.basename(f.src))
-            try { rmSync(f.dest, { force: true }) } catch {}
-            await safeCopyAsync(f.src, binaryDest)
-            recordPhaseResult(logsDir, f, stepRoute, "failed", "tesseract", stepModel)
-            appendNdjson(pdfLog, {
-              ts: isoNow(), status: "fail", source: f.rel,
-              output: markitdownOutputRelPath(f.rel),
-              engine: "tesseract", pages: String(pageTexts.length),
-              duration_s: (Date.now() - startTime) / 1000,
-              error: "tesseract OCR attempted on fully scanned PDF but recovered no text",
-            })
-            failed++
-            await emitDone(f.rel, "failed")
-            continue
-          }
-        } catch (err) {
-          if (isSpinosaCancellationError(err)) throw err
-          await failPdfFile(f, `tesseract OCR failed on fully scanned PDF: ${err instanceof Error ? err.message : String(err)}`, err)
-          continue
-        }
-      } else {
-        // No text engine selected (vision or none): keep the original next
-        // to a placeholder so a later vision pass can pick it up; mark skipped
-        // so resume retries instead of trusting the placeholder.
+      // Fully scanned (or blank) document: keep the original next to a
+      // placeholder so a later vision pass can pick it up; mark skipped
+      // so resume retries instead of trusting the placeholder.
+      {
         const binaryDest = path.join(path.dirname(f.dest), path.basename(f.src))
         try { rmSync(f.dest, { force: true }) } catch {}
         const copied = await safeCopyAsync(f.src, binaryDest)
@@ -1280,12 +1140,12 @@ export async function processPdf(
         `pdf_status: no_extractable_text`,
         "---",
         "",
-        `# ${title} — scan pending vision OCR`,
+        `# ${title} — scan pending transcription`,
         "",
-        `No text could be extracted with pdf.js (${pageTexts.length} pages).`,
+        `No text could be extracted with pdf.js (${pageTexts.length} pages). Local OCR was removed.`,
         "",
         copied
-          ? `Original kept as \`${path.basename(binaryDest)}\` pending vision OCR.`
+          ? `Original kept as \`${path.basename(binaryDest)}\`. Re-run import with a vision model to transcribe, or keep the copy.`
           : `Original could not be kept (${path.basename(binaryDest)}).`,
         "",
       ].join("\n")
@@ -1294,56 +1154,32 @@ export async function processPdf(
         f.dest = writeTextAtomicSafe(f.dest, placeholder)
         injectColdFrontmatter(f.dest)
       } catch {}
-      onLog?.(`  ${f.rel} → no extractable text — original kept as ${path.basename(binaryDest)}, pending vision OCR`)
+      onLog?.(`  ${f.rel} → no extractable text — original kept as ${path.basename(binaryDest)} (pick a vision model to transcribe, or keep the copy)`)
       recordPhaseResult(logsDir, f, stepRoute, "skipped", "pdfjs", stepModel)
       appendNdjson(pdfLog, {
         ts: isoNow(), status: "skip", source: f.rel,
         output: markitdownOutputRelPath(f.rel),
         engine: "pdfjs", pages: String(pageTexts.length),
         duration_s: (Date.now() - startTime) / 1000,
-        error: "no extractable text — original kept, pending vision OCR",
+        error: "no extractable text — original kept (pick vision to transcribe, or keep copy)",
       })
       await emitDone(f.rel)
       skipped++
       continue
-      } // end else (no engine selected)
-    } // end fully-scanned fast path (tesseract success falls through with texts filled)
-    // Fill pages without real text via tesseract — only when selected.
-    // (Fully-scanned documents already returned above; this is the mixed path.
-    // When the fast path filled texts, needEngine is empty so this is a no-op.)
-    const needEngine = texts.filter(({ text }) => !hasRealText(text)).map(({ page }) => page)
-    if (needEngine.length > 0 && useTesseract) {
-      try {
-        const { ocrPdfPagesViaTesseract } = await import("./tesseract-ocr")
-        const ocr = await ocrPdfPagesViaTesseract(f.src, needEngine, f.rel, {
-          shouldAbort,
-          onLog,
-          signal: hooks?.signal,
-          pageTotal: pageTexts.length,
-          onPage: (page, pageTotal) => tickPdfPage(f.rel, page, pageTotal),
-        })
-        throwIfSpinosaCancelled(shouldAbort)
-        texts = texts.map(({ page, text }) => {
-          if (hasRealText(text)) return { page, text }
-          const t = (ocr.get(page) ?? "").trim()
-          if (t) filledViaTesseract++
-          return { page, text: t || text }
-        })
-      } catch (err) {
-        if (isSpinosaCancellationError(err)) throw err
-        await failPdfFile(f, `tesseract page fill failed: ${err instanceof Error ? err.message : String(err)}`, err)
-        continue
       }
-    } else if (needEngine.length > 0) {
-      onLog?.(`  ${f.rel} → ${needEngine.length}/${pageTexts.length} pages have no extractable text — placeholders kept (no engine selected for them)`)
+    } // end fully-scanned fast path (no local OCR — always placeholder + original)
+    // Pages without real text keep placeholders (no local engine to fill them).
+    const needEngine = texts.filter(({ text }) => !hasRealText(text)).map(({ page }) => page)
+    if (needEngine.length > 0) {
+      onLog?.(`  ${f.rel} → ${needEngine.length}/${pageTexts.length} pages have no extractable text — placeholders kept (pick a vision model to transcribe, or keep the copy)`)
     }
     try {
       mkdirSync(path.dirname(f.dest), { recursive: true })
       f.dest = await writePdfTextOutput(f.dest, title, f.rel, texts, (page, pageTotal) => tickPdfPage(f.rel, page, pageTotal), shouldAbort)
       throwIfSpinosaCancelled(shouldAbort)
       converted++
-      const engineLabel = filledViaTesseract > 0 ? "pdfjs+tesseract" : "pdfjs"
-      onLog?.(`  ${f.rel} → ${pageTexts.length - needEngine.length}/${pageTexts.length} pages direct via pdf.js${filledViaTesseract > 0 ? ` + ${filledViaTesseract} via tesseract` : ""}`)
+      const engineLabel = "pdfjs"
+      onLog?.(`  ${f.rel} → ${pageTexts.length - needEngine.length}/${pageTexts.length} pages direct via pdf.js${needEngine.length > 0 ? ` (${needEngine.length} without extractable text — placeholders kept)` : ""}`)
       await emitDone(f.rel)
       recoverable.push({ src: f.src, dest: f.dest })
       recordPhaseResult(logsDir, f, stepRoute, "done", engineLabel, stepModel)
@@ -2008,10 +1844,10 @@ export async function verifyAndRecoverImport(
       }
       case "vision": {
         // Vision transcripts are never auto-retried here: no MarkItDown
-        // recovery (it cannot transcribe images/scanned PDFs), no tesseract
-        // recovery (the user did not select it), and no source-copy onto the
-        // .md path (that poisons raw/ for agents). The source is preserved to
-        // _failed_files below; re-running import recovers it.
+        // recovery (it cannot transcribe images/scanned PDFs) and no
+        // source-copy onto the .md path (that poisons raw/ for agents).
+        // The source is preserved to _failed_files below; re-running
+        // import recovers it.
         spinosaLogWarn("vision", `verify recover left missing ${relPath}: vision transcript absent, no auto-retry`)
         onLog?.(`    Still missing (vision transcript absent — re-run import to retry, no auto-retry): ${relPath}`)
         break
@@ -2019,12 +1855,13 @@ export async function verifyAndRecoverImport(
       case "ocr": {
         let ocrConverted = 0
         let ocrError: string | undefined
-        // Mirror processOcr: digital PDFs extract via pdf.js (no tesseract
-        // needed); scanned PDFs retry tesseract. MarkItDown never handles PDFs.
+        // Mirror processOcr: digital PDFs extract via pdf.js (no engine
+        // needed); scanned PDFs have no local engine — leave missing with an
+        // honest message. MarkItDown never handles PDFs.
         try {
           {
             mkdirSync(path.dirname(destFile), { recursive: true })
-            const { classifyPdfPages, hasEmbeddedTextPdfPages, isDigitalPdfPages } = await import("./pdf-pages")
+            const { classifyPdfPages, isDigitalPdfPages } = await import("./pdf-pages")
             const classes = await classifyPdfPages(srcFile)
             throwIfSpinosaCancelled(shouldAbort)
             if (isDigitalPdfPages(classes)) {
@@ -2035,40 +1872,17 @@ export async function verifyAndRecoverImport(
                 ocrConverted = 1
                 onLog?.(`    Recovered (digital PDF via pdf.js): ${relPath}`)
               }
-            } else if (hasEmbeddedTextPdfPages(classes)) {
-              const { convertPdfHybridTesseract } = await import("./tesseract-ocr")
-              const hybridVerify = await convertPdfHybridTesseract(srcFile, destFile, relPath, classes, { shouldAbort, onLog })
-              recoveredDest = hybridVerify.destFile
-              throwIfSpinosaCancelled(shouldAbort)
-              if (convertedOutputExists(recoveredDest)) {
-                injectColdFrontmatter(recoveredDest)
-                ocrConverted = 1
-                onLog?.(`    Recovered (mixed PDF, direct + tesseract hybrid): ${relPath}`)
-              }
+            } else {
+              ocrError = "scanned PDF needs a vision model to transcribe (local OCR removed) — re-run import with vision selected, or copy as-is"
             }
           }
         } catch (err) {
           if (isSpinosaCancellationError(err)) throw err
-          // fall through to tesseract retry
-        }
-        if (ocrConverted === 0 && tesseractAvailable()) {
-          try {
-            const { ocrPdfViaTesseract } = await import("./tesseract-ocr")
-            const tessVerify = await ocrPdfViaTesseract(srcFile, destFile, relPath, { shouldAbort, onLog })
-            recoveredDest = tessVerify.mdPath
-            if (convertedOutputExists(recoveredDest)) ocrConverted = 1
-            else ocrError = "tesseract produced no convertible markdown"
-          } catch (err) {
-            if (isSpinosaCancellationError(err)) throw err
-            ocrError = err instanceof Error ? err.message : String(err)
-            onLog?.(`    tesseract failed: ${ocrError}`)
-          }
-        } else if (ocrConverted === 0) {
-          ocrError = ocrUnsupportedReason() ?? "OCR engine unavailable"
+          ocrError = err instanceof Error ? err.message : String(err)
         }
         if (ocrConverted > 0 && convertedOutputExists(recoveredDest)) {
           injectColdFrontmatter(recoveredDest)
-          onLog?.(`    Recovered (ocr retry): ${relPath}`)
+          onLog?.(`    Recovered (digital PDF via pdf.js): ${relPath}`)
           ok = true
         } else {
           // Never copy PDF/PNG/JPEG onto a `.md` path — that poisons raw/ for agents.

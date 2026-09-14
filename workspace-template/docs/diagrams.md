@@ -23,7 +23,7 @@ flowchart TB
         CLI --> SRC[Source scan + classify]
         SRC --> MD[Markdown-native\n.txt .csv .json .ts]
         SRC --> MKD[MarkItDown\n.docx .xlsx .html]
-        SRC --> OCR[Bundled Tesseract\nscanned PDF .jpg .png]
+        SRC --> OCR[Vision model / copy-as-is\nscanned PDF .jpg .png]
         SRC --> SKIP[Audio/video skipped]
         MD & MKD & OCR --> RAW[raw/ corpus .md]
         CLI --> CFG[system/configuration.md\nsetup_status: cli_started]
@@ -248,7 +248,7 @@ flowchart LR
     CLASS -->|.md| NATIVE[Native markdown\ncopy + YAML header]
     CLASS -->|.txt .csv .json .ts .py .yaml| MD_CONV[Markdown-convertible\nrenamed to .md]
     CLASS -->|.docx .xlsx .html .epub| MKD2[MarkItDown\n→ .md]
-    CLASS -->|scanned PDF .jpg .png| OCR2[Bundled Tesseract\n→ .md]
+    CLASS -->|scanned PDF .jpg .png| OCR2[Vision model / copy-as-is\n→ .md]
     CLASS -->|.mp4 .mov .mp3 .wav| SKIP2[Skipped\nby default]
     CLASS -->|.DS_Store ._*| IGNORE[Ignored]
 

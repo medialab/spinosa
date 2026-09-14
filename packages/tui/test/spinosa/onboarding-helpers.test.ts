@@ -44,11 +44,11 @@ describe("onboarding helpers", () => {
       markitdown: true,
       pdfjs: true,
     });
-    // Tesseract is optional (vision/none flows never touch it), so its lone
-    // absence continues the wizard instead of looping a useless reinstall.
-    expect(toolActionLabel(missing)).toBe("Continue without Tesseract");
-    expect(onlyLocalOcrMissing(missing)).toBe(true);
-    expect(toolChecksReady(missing)).toBe(false);
+    // Local OCR was removed: the ocr flag is ignored entirely (no OCR row).
+    // The wizard continues to scan; only markitdown/pdfjs absence blocks.
+    expect(toolActionLabel(missing)).toBe("Scan source folders");
+    expect(onlyLocalOcrMissing(missing)).toBe(false);
+    expect(toolChecksReady(missing)).toBe(true);
 
     const coreMissing = toolCheckResults({
       ocr: true,
@@ -60,7 +60,6 @@ describe("onboarding helpers", () => {
   });
 
   test("engine hint line composes from per-engine hints", () => {
-    expect(OCR_ENGINE_HINT_LINE).toContain(OCR_ENGINE_HINTS.tesseract);
     expect(OCR_ENGINE_HINT_LINE).toContain(OCR_ENGINE_HINTS.vision);
     expect(OCR_ENGINE_HINT_LINE).toContain(OCR_ENGINE_HINTS.none);
     expect(OCR_ENGINE_HINT_LINE).toContain("enter continue");

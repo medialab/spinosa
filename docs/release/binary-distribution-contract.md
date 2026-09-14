@@ -12,12 +12,12 @@ Typed source of truth: `packages/spinosa-core/src/distribution/contract.ts`.
 | `spinosa-darwin-x64` | macOS Intel executable |
 | `spinosa-linux-arm64` | Linux aarch64 glibc executable |
 | `spinosa-linux-x64` | Linux x86_64 glibc executable |
-| `spinosa-tools-darwin-arm64.tar.gz` | macOS Apple Silicon OCR tools (Tesseract + tessdata) |
-| `spinosa-tools-darwin-x64.tar.gz` | macOS Intel OCR tools (Tesseract + tessdata) |
-| `spinosa-tools-linux-arm64.tar.gz` | Linux aarch64 OCR tools (Tesseract + tessdata) |
-| `spinosa-tools-linux-x64.tar.gz` | Linux x86_64 OCR tools (Tesseract + tessdata) |
 | `checksums.txt` | SHA-256 for every immutable asset |
 | `build-manifest.json` | Version, channel, template pack ID, asset map |
+
+Local OCR was removed (no engine ships): no `spinosa-tools-<os>-<arch>.tar.gz`
+assets are published anymore. Legacy `$SPINOSA_HOME/tools/` dirs may still exist
+from older installs (removal manifest only); uninstall still removes them.
 
 No `spinosa-v*.tar.gz` product archive. Rolling channel (`beta` / `stable`) publishes only `install.sh` + `checksums.txt`.
 
@@ -134,7 +134,10 @@ See `docs/release/stable-promotion-gates.md`.
 
 ## Known cut notes (native packaging)
 
-- OCR is the Spinosa-owned bundled Tesseract: per-platform `spinosa-tools-<os>-<arch>.tar.gz` release assets (Tesseract binary + pinned `tessdata` eng/ita/fra) install under `$SPINOSA_HOME/tools/<os>-<arch>/` with checksums verified before extraction. No companion-lib staging, no `LD_LIBRARY_PATH` re-exec. Tarballs are built from pinned source per target (`bun scripts/build-tools-tarballs.ts` — static Tesseract 5.5.3 + Leptonica, system-libs-only on macOS, fully static on Linux): locally via Lima guests, or natively on CI matrix runners (macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04). No downloaded binaries anywhere in the chain; the release build stage fails closed when a tarball is missing.
+- No local OCR engine ships: scans transcribe via a selected
+  vision model or copy-as-is; digital PDFs extract via pdf.js with no model needed.
+  No OCR tools are bundled, staged, or verified at install/smoke time. Doctor
+  reports OCR unavailable as the contract (fail closed on any local-engine probe).
 - Canvas skia natives (`skia.<triple>.node`) are written under `src/generated/canvas-libs/<os>-<arch>/` via `canvas-native.gen.ts` and staged at start into `$SPINOSA_HOME/cache/canvas-native` (home → XDG → tmpdir fallback order). `NAPI_RS_NATIVE_LIBRARY_PATH` is set before any canvas import so nested loads work on Linux Bun `--compile` (optional `@napi-rs/canvas-*` `require()` fails there even when doctor's direct canvas import succeeds).
 - Host `darwin-arm64` strict smoke (`version` / `doctor` / `internal smoke native-imports`) is fail-closed: any smoke failure fails the release. `version`/`doctor` never dlopen the TUI natives; `native-imports` loads OpenTUI, FFF, watcher, node-pty, and canvas without starting an interactive UI.
 - pdfjs may warn that `@napi-rs/canvas` cannot load from some BunFS chunks while doctor still reports Canvas/PDF available. Non-blocking for CLI smoke; PDF raster follow-up tracked in the beta.10 checklist.

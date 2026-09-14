@@ -95,13 +95,13 @@ log("staged install.sh")
 
 const hostOs = process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : process.platform
 const hostArch = process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "x64" : process.arch
-for (const required of [`spinosa-${hostOs}-${hostArch}`, `spinosa-tools-${hostOs}-${hostArch}.tar.gz`, "install.sh", "build-manifest.json"]) {
+for (const required of [`spinosa-${hostOs}-${hostArch}`, "install.sh", "build-manifest.json"]) {
   if (!existsSync(path.join(outDir, required))) {
     throw new Error(`missing staged asset ${required} in ${outDir}`)
   }
 }
 const stagedFiles = ["install.sh", "build-manifest.json"]
-for (const target of [`spinosa-${hostOs}-${hostArch}`, `spinosa-tools-${hostOs}-${hostArch}.tar.gz`]) {
+for (const target of [`spinosa-${hostOs}-${hostArch}`]) {
   stagedFiles.push(target)
 }
 // Keep existing entries for other platforms when present (harmless, real hashes).
@@ -236,6 +236,17 @@ if (installerDone === "ok") {
 stop()
 
 // --- 5. Manual activation (mirrors install.sh _install_activate) -------------
+// Skipped when the installer completed on its own (it already activated).
+const activeBin = path.join(home, "bin", "spinosa")
+if (installerDone === "ok") {
+  const probed = Bun.spawnSync([activeBin, "version"], { timeout: 30_000 })
+  const out = `${probed.stdout ?? ""}`.trim() + `${probed.stderr ?? ""}`.trim()
+  if (probed.exitCode !== 0 || !out.includes(version)) {
+    throw new Error(`active binary failed version probe after installer run (want ${version}): ${out.slice(0, 200)}`)
+  }
+  log(`installer activated ${activeBin} (${version}) — nothing left to do`)
+  process.exit(0)
+}
 const hostBinary = `spinosa-${hostOs}-${hostArch}`
 const stagedBinary = path.join(stagingDir, hostBinary)
 if (!existsSync(stagedBinary)) {

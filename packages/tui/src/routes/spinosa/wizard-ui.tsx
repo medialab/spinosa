@@ -483,7 +483,7 @@ export type OcrModelOption = {
   id: string
   label: string
   detail: string
-  kind: "tesseract" | "vision" | "none"
+  kind: "vision" | "none"
   modelId?: string
   provider?: string
   vision: boolean
@@ -548,7 +548,7 @@ export function OcrModelSelector(props: {
           }}
         </For>
       </scrollbox>
-      <text fg={props.theme.textMuted}>{props.hint ?? "↑↓ move · space select · enter continue · Tesseract: free offline reading (photos copied) · Vision: paid online transcription (needs key) · None: copy only"}</text>
+      <text fg={props.theme.textMuted}>{props.hint ?? "↑↓ move · space select · enter continue · Vision: paid online transcription (needs key) · None: copy only"}</text>
     </box>
   )
 }

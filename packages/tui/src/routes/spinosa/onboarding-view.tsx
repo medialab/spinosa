@@ -175,7 +175,7 @@ export function OnboardingView(props: OnboardingViewProps) {
             {step() === "scan" && !scanDone() ? " — scanning your source" : ""}
             {(step() === "imports" || (step() === "scan" && scanDone())) ? " — selecting file types to import" : ""}
             {step() === "vision" ? " — choosing how to transcribe scans & photos" : ""}
-            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "pdf" ? " — processing PDFs (text direct, image pages via engine)" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : step() === "verification" ? " — verifying the import" : ""}
+            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying text-based files" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "pdf" ? " — processing PDFs (text direct, image pages via engine)" : step() === "ocr" ? " — copying scanned leftovers as-is" : step() === "verification" ? " — verifying the import" : ""}
             {step() === "provider" ? " — choosing your LLM provider" : ""}
             {step() === "startup" ? " — preparing your startup" : ""}
             {step() === "done" ? " — your workspace is ready" : ""}
@@ -370,7 +370,7 @@ export function OnboardingView(props: OnboardingViewProps) {
               </Show>
               <Show when={step() === "vision"}>
                 <text fg={theme.text}>Select transcription engine for images & scanned PDFs</text>
-                <text fg={theme.textMuted}>Readable PDFs copy directly. Your engine transcribes scans and photos. Tesseract is free and offline. Vision models need internet and a paid key.</text>
+                <text fg={theme.textMuted}>Readable PDFs extract directly via pdf.js. Vision models transcribe scans and photos (need internet and a paid key). Or copy files unchanged with no transcription.</text>
                 <OcrModelSelector
                   theme={theme}
                   options={props.ocrModelOptions()}
@@ -380,7 +380,7 @@ export function OnboardingView(props: OnboardingViewProps) {
                   hint={props.ocrEngineHint()}
                   onSelectIndex={props.setSelectedOcrModelIndex}
                   onSelect={(idx) => {
-                    if (idx === 1) props.openVisionPicker()
+                    if (idx === 0) props.openVisionPicker()
                     else props.selectOcrOption(idx)
                   }}
                 />

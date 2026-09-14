@@ -1,7 +1,7 @@
 /**
  * Single-document PDF processing: open once, walk pages in order.
  * Embedded text pages return {kind:"text"}; imageless pages return
- * {kind:"image", image} with an in-memory PNG buffer for Tesseract/Vision.
+ * {kind:"image", image} with an in-memory PNG buffer for Vision transcription.
  */
 import { withPdfDocument } from "../extension/pdf-js"
 import { extractPageText, isUsableText, type ClassifiedPdfPage } from "./text"

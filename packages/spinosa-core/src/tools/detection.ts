@@ -1,9 +1,5 @@
 import { createRequire } from "node:module"
-import { existsSync } from "node:fs"
-import * as path from "node:path"
 import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
-import { bundledTessdataDir, bundledToolPath } from "../distribution/tools"
-import { isOcrPlatformSupported } from "./ocr-support"
 
 const require = createRequire(import.meta.url)
 
@@ -50,77 +46,18 @@ export function detectLlmTools(): string[] {
 }
 
 let _ocrAvailable: boolean | undefined
-let _tesseractAvailable: boolean | undefined
 
-export function tesseractAvailable(): boolean {
-  if (_tesseractAvailable !== undefined) return _tesseractAvailable
-  try {
-    // Production: Spinosa-owned bundled Tesseract + tessdata first. Host PATH
-    // is never the production dependency mechanism (no silent Bun.which
-    // fallback, no pdftoppm/Poppler requirement — the internal pdf.js +
-    // Canvas renderer handles rasterization).
-    if (bundledToolPath("tesseract") && bundledTessdataDir()) {
-      _tesseractAvailable = true
-      return _tesseractAvailable
-    }
-    // Developer-only fallback behind an explicit flag.
-    if (process.env.SPINOSA_DEV_HOST_TOOLS === "1") {
-      const which = (cmd: string): string | null => {
-        if (typeof Bun !== "undefined" && (Bun as unknown as { which?: (c: string) => string | null }).which) {
-          return (Bun as unknown as { which: (c: string) => string | null }).which!(cmd)
-        }
-        return null
-      }
-      if (which("tesseract")) {
-        // Standalone contract: bundled tessdata first, then an explicit
-        // TESSDATA_PREFIX. Never host-system install locations.
-        const candidates = [
-          bundledTessdataDir(),
-          process.env.TESSDATA_PREFIX,
-        ].filter(Boolean) as string[]
-        for (const base of candidates) {
-          if (existsSync(base) && ["eng.traineddata", "ita.traineddata", "fra.traineddata"].every((f) => existsSync(path.join(base, f)))) {
-            _tesseractAvailable = true
-            return _tesseractAvailable
-          }
-        }
-        // Host tesseract knows its own tessdata location: ask it which
-        // languages are usable. Dev-only (this branch requires the explicit
-        // flag); production never probes the host binary.
-        try {
-          const proc = (Bun as unknown as { spawnSync?: (cmd: string[], opts?: unknown) => unknown }).spawnSync?.(["tesseract", "--list-langs"], { stdout: "pipe", stderr: "pipe" } as unknown as never) as unknown as { stdout?: Uint8Array; stderr?: Uint8Array } | undefined
-          if (proc) {
-            const out = String(proc.stdout ?? "") + String(proc.stderr ?? "")
-            if (out.includes("eng") && out.includes("ita") && out.includes("fra")) {
-              _tesseractAvailable = true
-              return _tesseractAvailable
-            }
-          }
-        } catch { /* ignore — fall through to unavailable */ }
-      }
-    }
-    _tesseractAvailable = false
-    return _tesseractAvailable
-  } catch {
-    _tesseractAvailable = false
-    return _tesseractAvailable
-  }
-}
-
-export function networkImageAvailable(): boolean {
-  // Placeholder for future network OCR provider (e.g. cloud). Currently always false → images stay copy-only.
-  return false
-}
-
+/**
+ * Local OCR engine availability — always false (no local engine ships).
+ * Vision transcription availability is decided by provider/auth state,
+ * not here.
+ */
 export function ocrAvailable(): boolean {
-  if (_ocrAvailable !== undefined) return _ocrAvailable
-  // Bundled Tesseract is the OCR engine.
-  _ocrAvailable = tesseractAvailable()
+  _ocrAvailable = false
   return _ocrAvailable
 }
 
 export function _resetDetectionCacheForTests(): void {
   _ocrAvailable = undefined
-  _tesseractAvailable = undefined
   _pdfjsAvailable = undefined
 }

@@ -196,9 +196,10 @@ export const InternalCommand = {
             process.stdout.write(`${JSON.stringify({ type: "error", message: unsupported })}\n`)
             process.exit(1)
           }
-          // ocr-worker is deprecated — OCR runs in-process via bundled Tesseract.
+          // ocr-worker is removed — no local OCR engine ships. Scans
+          // transcribe via a vision model, or copy as-is (pdf.js for digital PDFs).
           process.stdout.write(
-            `${JSON.stringify({ type: "error", message: "ocr-worker deprecated: OCR runs in-process via bundled Tesseract" })}\n`,
+            `${JSON.stringify({ type: "error", message: "ocr-worker removed: local OCR was removed — pick a vision model to transcribe scans, or copy files as-is" })}\n`,
           )
           process.exit(1)
         },

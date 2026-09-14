@@ -648,7 +648,7 @@ export async function processVisionInProcess(
       if (!isPdfFile && (pages ?? []).length <= 1) {
         successText = pageTexts[0]!.trim()
       } else {
-        // PDF transcripts mirror the tesseract combine format (# title + ## Page N)
+        // PDF transcripts mirror the combine format (# title + ## Page N)
         const title = titleFromRel(f.rel)
         successText = `# ${title}\n\n${pageTexts.map((t, idx) => `## Page ${idx + 1}\n\n${t}`).join("\n\n")}\n`
       }
@@ -665,7 +665,7 @@ export async function processVisionInProcess(
         // digital PDF), otherwise the vision model id that did the work.
         const engineTag = !isPdfFile || visionCalls > 0 ? `vision:${currentId}` : "pdfjs"
         if (totalPages > 1) {
-          // Split pages for deep links (mirrors tesseract multi-page output)
+          // Split pages for deep links (mirrors multi-page PDF output)
           const title = titleFromRel(f.rel)
           const pageDir = f.dest.endsWith(".md") ? f.dest.slice(0, -3) : `${f.dest}_pages`
           try {
@@ -726,7 +726,7 @@ export async function processVisionInProcess(
       if (isAuth) {
         onLog?.(`  Vision ${currentId} auth failed for ${f.rel} — open the provider menu to update credentials, then retry.`)
       } else {
-        onLog?.(`  Vision ${currentId} error for ${f.rel} — ${errMsg} — Back to change model or pick Tesseract/copy`)
+        onLog?.(`  Vision ${currentId} error for ${f.rel} — ${errMsg} — Back to change model or pick copy-as-is`)
       }
 
       // Auth failure pause handling

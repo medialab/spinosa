@@ -1,16 +1,19 @@
 /**
- * Legacy OCR model registry for short model ids (no "/").
+ * OCR model registry for short model ids (no "/").
  *
- * The TUI renders its own option list (onboarding-helpers); this registry
- * exists only so old persisted short ids still resolve to a kind via
- * findOcrModel. Do not add display copy here — it will drift.
+ * No local OCR engine ships: users transcribe scans via a vision
+ * model (provider/model) or copy files as-is; digital PDFs always extract
+ * via the internal pdf.js engine. The TUI renders its own option list
+ * (onboarding-helpers); this registry exists only so old persisted short
+ * ids still resolve to a kind via findOcrModel. Do not add display copy
+ * here — it will drift.
  * Provider wiring is via kernel `/provider/{providerID}/models/{modelID}/vision/transcribe`.
  */
 
-export type OcrModelKind = "tesseract" | "vision" | "none"
+export type OcrModelKind = "vision" | "none"
 
 export type OcrModelOption = {
-  /** Stable id persisted in workspace config (e.g. `tesseract-local`, `openrouter/qwen2.5-vl:free`). */
+  /** Stable id persisted in workspace config (e.g. `none`, `openrouter/qwen2.5-vl:free`). */
   id: string
   /** Human label shown in selector. */
   label: string
@@ -30,14 +33,6 @@ export type OcrModelOption = {
 }
 
 export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
-  {
-    id: "tesseract-local",
-    label: "Tesseract (offline)",
-    detail: "Suitable for documents; handwritten quality may be poor · Scanned PDFs via bundled tesseract (ita+eng+fra, internal render) · images copied",
-    kind: "tesseract",
-    vision: false,
-    cost: "offline",
-  },
   {
     id: "vision:provider-picker",
     label: "Vision model (provider / model)",

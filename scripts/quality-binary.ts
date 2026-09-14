@@ -10,7 +10,7 @@
 import { $ } from "bun"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
-import { productBinaryAssetName, productToolsAssetName, resolveProductBinaryTarget } from "../packages/spinosa-core/src/distribution/contract.ts"
+import { productBinaryAssetName, resolveProductBinaryTarget } from "../packages/spinosa-core/src/distribution/contract.ts"
 
 const root = path.resolve(import.meta.dir, "..")
 const version = (
@@ -71,24 +71,13 @@ await step("host product binary build", async () => {
 const hostTarget = resolveProductBinaryTarget({ os: process.platform, arch: process.arch })
 const hostAsset = productBinaryAssetName(hostTarget)
 const hostBinary = path.join(outDir, hostAsset)
-const hostTools = path.join(outDir, productToolsAssetName(hostTarget))
 
 await step("host binary smoke", async () => {
   if (!existsSync(hostBinary)) throw new Error(`missing host binary ${hostBinary}`)
   assertPortableBinary(hostBinary)
-  // Fail-closed standalone proof: doctor must pass WITHOUT the
-  // SPINOSA_DEV_HOST_TOOLS override. When a pin-verified host tools tarball
-  // sits next to the binary (CI matrix artifacts, or a local
-  // build-tools-tarballs --host-only --reuse-previous), stage it so doctor
-  // proves bundled OCR; otherwise doctor fails closed on missing tools.
-  const smokeArgs = ["--binary", hostBinary]
-  if (existsSync(hostTools)) {
-    console.log(`staging bundled tools ${path.basename(hostTools)} for smoke`)
-    smokeArgs.push("--tools", hostTools)
-  } else {
-    console.log(`no host tools tarball at ${hostTools} — doctor must still pass standalone (fail closed)`)
-  }
-  const result = await $`bun scripts/smoke-install.ts ${smokeArgs}`.cwd(root).nothrow()
+  // Local OCR was removed: doctor must pass standalone with no tools
+  // tarball and no SPINOSA_DEV_HOST_TOOLS override (fail closed).
+  const result = await $`bun scripts/smoke-install.ts --binary ${hostBinary}`.cwd(root).nothrow()
   // Release gates fail closed: smoke failures are always fatal (no
   // SPINOSA_BINARY_SMOKE_STRICT escape hatch).
   if (result.exitCode !== 0) {

@@ -653,105 +653,49 @@ preflight_tools() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BUNDLED OCR TOOLS (Spinosa-owned Tesseract + tessdata eng/ita/fra)
-# Layout: $SPINOSA_HOME/tools/<platform>/{bin,tessdata} + TOOLS_MANIFEST.json
-# Standalone contract (release hardening):
-#   1. Spinosa bundled dependency
-#   2. Explicit developer override (SPINOSA_DEV_HOST_TOOLS=1, dev only)
-#   3. unavailable
-# The production installer NEVER modifies the host system (no brew/apt/dnf/
-# pacman, no sudo) and NEVER depends on host tesseract/poppler/node/python.
+# LOCAL OCR — none ships. Users transcribe scans via a selected vision model,
+# or copy files as-is; digital PDFs always extract via the internal pdf.js
+# engine (no model needed). The installer provisions no OCR assets. Stale
+# $SPINOSA_HOME/tools/ dirs from previous versions are ignored (nothing reads
+# them) — safe to delete by hand. Function names below are kept so existing
+# tests/call sites keep working; every resolver reports absent and
+# install_bundled_tools is a no-op.
 # ══════════════════════════════════════════════════════════════════════════════
-
-# Immutable tessdata reference: tesseract-ocr/tessdata_fast pinned to a
-# specific commit SHA (never a mutable branch). Verified 2026-09-13: the
-# eng/fra/ita blobs at this commit hash to the pinned SHA256 below.
-TESSDATA_PIN_COMMIT="87416418657359cb625c412a48b6e1d6d41c29bd"
-TESSDATA_FAST_BASE="https://github.com/tesseract-ocr/tessdata_fast/raw/${TESSDATA_PIN_COMMIT}"
-TESSDATA_SHA_eng="7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
-TESSDATA_SHA_fra="ced037562e8c80c13122dece28dd477d399af80911a28791a66a63ac1e3445ca"
-TESSDATA_SHA_ita="b8f89e1e785118dac4d51ae042c029a64edb5c3ee42ef73027a6d412748d8827"
 
 tools_platform_dir() {
   [ -n "${PLATFORM:-}" ] || return 1
   printf '%s/tools/%s' "$SPINOSA_HOME" "$PLATFORM"
 }
 
-tools_tessdata_complete() {
-  local dir="$1" lang
-  [ -n "$dir" ] || return 1
-  for lang in eng ita fra; do
-    [ -f "$dir/$lang.traineddata" ] || return 1
-  done
-  return 0
+legacy_ocr_data_complete() {
+  # No local engine ships: language data is never provisioned, never complete.
+  return 1
 }
 
-# True when a Spinosa-bundled or developer-override host tesseract exists with
-# all three languages. Production resolution is bundled-first; host tools are
-#_development-only_ behind SPINOSA_DEV_HOST_TOOLS=1 and never installed here.
+# No local OCR engine ships: always absent (no host probing — nothing to complete).
 host_ocr_complete() {
-  if [ "${SPINOSA_DEV_HOST_TOOLS:-0}" = "1" ]; then
-    command -v tesseract >/dev/null 2>&1 || return 1
-    local langs lang
-    langs="$(tesseract --list-langs 2>/dev/null || true)"
-    for lang in eng ita fra; do
-      case "$langs" in
-        *"$lang"*) ;;
-        *) return 1 ;;
-      esac
-    done
-    return 0
-  fi
-  # Production: only bundled tools count.
-  local dir
-  dir="$(tools_platform_dir 2>/dev/null)/bin/tesseract" || return 1
-  [ -x "$dir" ] || return 1
-  tools_tessdata_complete "$(tools_platform_dir)/tessdata" || return 1
-  return 0
+  return 1
 }
 
 write_tools_manifest() {
   local source="$1" manifest dir
+  : "$source"
   dir="$(tools_platform_dir)" || return 1
   manifest="${SPINOSA_HOME}/tools/TOOLS_MANIFEST.json"
-  mkdir -p "$(dirname "$manifest")" "$dir/bin" "$dir/tessdata" 2>/dev/null || true
+  mkdir -p "$(dirname "$manifest")" "$dir/bin" 2>/dev/null || true
   cat > "$manifest" <<EOF_JSON
-{"platform":"${PLATFORM}","source":"${source}","tesseract":"$([ -x "$dir/bin/tesseract" ] && echo bundled || echo missing)","tessdata":"$(tools_tessdata_complete "$dir/tessdata" && echo bundled || echo missing)","tessdata_commit":"${TESSDATA_PIN_COMMIT}","installed_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+{"platform":"${PLATFORM}","source":"removed","ocr":"removed","note":"No local OCR engine ships — vision model or copy-as-is; digital PDFs via pdf.js","installed_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 EOF_JSON
 }
 
-# Tier 1: prebuilt per-platform tarball from the release (built locally by
-# scripts/build-tools-tarballs.ts from pinned source — no CI; absent →
-# skip without fetching, never fatal).
+# Tier 1 (REMOVED): no per-platform OCR tool archives are published anymore.
+# Kept as a fail-closed stub so any lingering call sites fail safe.
 try_tools_tarball() {
-  local checksums_file="$1" base tmpdir tarball asset
-  base="$(release_asset_base)"
-  asset="spinosa-tools-${PLATFORM}.tar.gz"
-  # No checksum entry yet (CI hasn't published tarballs) → refuse to install
-  # unverified binaries, fall through to the next tier.
-  if ! grep -q " ${asset}\$" "$checksums_file" 2>/dev/null; then
-    return 1
-  fi
-  tmpdir="$(mktemp -d "${SPINOSA_STAGING_DIR}/tools.XXXXXX")" || return 1
-  tarball="${tmpdir}/${asset}"
-  if ! download "${base}/${asset}" "$tarball" 2>/dev/null; then
-    rm -rf "$tmpdir"
-    return 1
-  fi
-  verify_asset_checksum "$tarball" "$asset" "$checksums_file" "OCR tools bundle" || { rm -rf "$tmpdir"; return 1; }
-  mkdir -p "$SPINOSA_HOME/tools" || { rm -rf "$tmpdir"; return 1; }
-  if ! tar -xzf "$tarball" -C "$SPINOSA_HOME/tools"; then
-    rm -rf "$tmpdir"
-    return 1
-  fi
-  rm -rf "$tmpdir"
-  vinfo "OCR tools bundle installed from release tarball"
-  return 0
+  return 1
 }
 
 # Tier 2 (REMOVED — standalone contract): the production installer must never
-# modify the host system. Historically this installed tesseract/poppler via
-# brew/apt/dnf/pacman with sudo. That path is deleted. Host tools are only
+# modify the host system. That path is deleted. Host tools are only
 # detected for development behind SPINOSA_DEV_HOST_TOOLS=1, never installed.
 # Kept as a fail-closed stub so any lingering call sites fail safe.
 try_package_manager_tools() {
@@ -760,69 +704,18 @@ try_package_manager_tools() {
   return 1
 }
 
-# Language data top-up into the bundled tools dir. Pinned immutable commit +
-# per-file SHA256, downloaded to a temp file, verified, then atomically moved.
-# Existence alone is never proof of validity.
-ensure_bundled_tessdata() {
-  local dir lang file expected tmp
-  dir="$(tools_platform_dir)/tessdata" || return 1
-  tools_tessdata_complete "$dir" && return 0
-  mkdir -p "$dir" || return 1
-  for lang in eng ita fra; do
-    file="${dir}/${lang}.traineddata"
-    if [ -f "$file" ]; then
-      case "$lang" in
-        eng) expected="$TESSDATA_SHA_eng" ;;
-        fra) expected="$TESSDATA_SHA_fra" ;;
-        ita) expected="$TESSDATA_SHA_ita" ;;
-      esac
-      if verify_checksum "$file" "$expected" 2>/dev/null; then
-        continue
-      fi
-      vinfo "tessdata $lang present but checksum mismatch — re-downloading"
-      rm -f "$file"
-    fi
-    case "$lang" in
-      eng) expected="$TESSDATA_SHA_eng" ;;
-      fra) expected="$TESSDATA_SHA_fra" ;;
-      ita) expected="$TESSDATA_SHA_ita" ;;
-    esac
-    tmp="${file}.tmp.$$"
-    rm -f "$tmp"
-    download "${TESSDATA_FAST_BASE}/${lang}.traineddata" "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
-    verify_checksum "$tmp" "$expected" || { rm -f "$tmp"; vinfo "tessdata $lang checksum mismatch — skipped"; return 1; }
-    mv "$tmp" "$file" || { rm -f "$tmp"; return 1; }
-  done
-  tools_tessdata_complete "$dir"
+# Language data top-up (REMOVED): no language data is provisioned anymore.
+# Kept as a fail-closed stub so any lingering call sites fail safe.
+ensure_bundled_ocr_data() {
+  vinfo "No local OCR engine ships — no language data to stage (vision model or copy-as-is; digital PDFs via pdf.js)."
+  return 1
 }
 
 install_bundled_tools() {
   local checksums_file="$1"
-  if [ "${SPINOSA_SKIP_BUNDLED_TOOLS:-0}" = "1" ]; then
-    vinfo "Skipping bundled OCR tools (SPINOSA_SKIP_BUNDLED_TOOLS=1)"
-    return 0
-  fi
-  # Resolution order: 1) Spinosa bundled tools tarball 2) explicit developer
-  # override (dev only) 3) unavailable. Never installs host packages.
-  if try_tools_tarball "$checksums_file"; then
-    info "Bundled OCR tools installed into $(tools_platform_dir)."
-    write_tools_manifest "tarball" 2>/dev/null || true
-    return 0
-  fi
-  if [ "${SPINOSA_DEV_HOST_TOOLS:-0}" = "1" ] && host_ocr_complete; then
-    info "Developer override: using host tesseract (SPINOSA_DEV_HOST_TOOLS=1). Production uses bundled tools."
-    write_tools_manifest "dev-host" 2>/dev/null || true
-    return 0
-  fi
-  if ensure_bundled_tessdata; then
-    vnote "tessdata (eng/ita/fra) staged in Spinosa tools dir from pinned commit ${TESSDATA_PIN_COMMIT}."
-    vnote "Tesseract binaries ship in spinosa-tools-<platform>.tar.gz release assets."
-    write_tools_manifest "tessdata-only" 2>/dev/null || true
-    return 0
-  fi
-  vnote "OCR tools unavailable: bundled Tesseract not yet installed for ${PLATFORM}."
-  vnote "Production OCR resolves only from \$SPINOSA_HOME/tools — the installer never uses brew/apt/dnf/pacman."
-  write_tools_manifest "none" 2>/dev/null || true
+  : "$checksums_file"
+  vinfo "No local OCR engine ships — skipping OCR tools (pick a vision model to transcribe scans, or copy files as-is)."
+  write_tools_manifest "removed" 2>/dev/null || true
   return 0
 }
 
@@ -2366,18 +2259,13 @@ main() {
     write_spinosa_env_file
     write_install_metadata
   }
-  # Bundled OCR tools (tesseract + tessdata) into $SPINOSA_HOME/tools/ — BEFORE
-  # staged verification. The staged doctor gate is fail-closed on missing OCR
-  # (standalone contract: production OCR resolves only from bundled tools), so
-  # the tools must exist before run_staged_binary_checks runs. The tools dir is
-  # version-independent ($SPINOSA_HOME/tools/<platform>), so provisioning
-  # pre-activation is safe; activation only swaps bin/spinosa.
-  # install_bundled_tools itself never aborts the install (it records a
-  # manifest source of tarball|tessdata-only|dev-host|none and returns 0);
-  # the doctor gate then decides fail-closed with an actionable message.
-  section "OCR tools"
+  # No local OCR engine ships: record the removal manifest
+  # BEFORE staged verification so the ordering invariant (tools step precedes
+  # verification) keeps holding. The staged doctor gate reports OCR as
+  # unsupported (by design), never a failure.
+  section "Local OCR (removed)"
   install_bundled_tools "$checksums_file" \
-    || warn "OCR tools step failed — offline OCR unavailable until tesseract + tessdata (eng/ita/fra) are installed; see $(spinosa_log_file)"
+    || warn "OCR tools step failed — continuing without local OCR (vision model or copy-as-is); see $(spinosa_log_file)"
 
   [[ "$VERBOSE" == "1" ]] && section "Stage checks"
   run_timed_step "Verifying package" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \

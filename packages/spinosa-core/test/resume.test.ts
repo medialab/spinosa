@@ -94,7 +94,7 @@ describe("import resume via manifest", () => {
       expect(loadManifest(path.join(root, ".logs")).records.has("img.png")).toBe(false)
 
       // Delete a delivered output by hand → re-processed (recovered).
-      // Text PDFs recover via the OCR digital path (pdf.js, no tesseract).
+      // Text PDFs recover via the OCR digital path (pdf.js, no local engine).
       rmSync(path.join(raw, "digital__pdf.md"))
       const recoverLogs: string[] = []
       const recovered = await runCopy(source, raw, recoverLogs)

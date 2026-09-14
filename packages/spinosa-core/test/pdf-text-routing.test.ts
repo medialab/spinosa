@@ -156,28 +156,10 @@ describe("isTextBasedPdf", () => {
   })
 })
 
-describe("tesseract hybrid on a mixed document", () => {
-  test("direct text pages kept, photo page OCR'd, order preserved", async () => {
-    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
-    // Dev machines exercise the real OCR path via the explicit developer
-    // override (production stays bundled-or-unavailable, never host PATH).
-    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
-    _resetTesseractAvailableCache()
-    if (!tesseractAvailable()) return
-    const { convertPdfHybridTesseract } = await import("../src/import/tesseract-ocr")
-    const dir = mkdtempSync(path.join(tmpdir(), "spinosa-pdf-hybrid-"))
-    const dest = path.join(dir, "mixed__pdf.md")
+describe("page census on a mixed document", () => {
+  test("direct text pages identified, photo page classified image, order preserved", async () => {
     const classes = await classifyPdfPages(MIXED_FIXTURE)
     expect(classes.map((c) => c.kind)).toEqual(["text", "image", "text"])
-    const result = await convertPdfHybridTesseract(MIXED_FIXTURE, dest, "mixed.pdf", classes)
-    expect(result).toMatchObject({ pages: 3, ocrPages: 1 })
-    const md = await Bun.file(dest).text()
-    expect(md).toContain("## Page 1")
-    expect(md).toContain("## Page 2")
-    expect(md).toContain("## Page 3")
-    expect(md).toContain("embedded digital text")
-    const split = await Bun.file(path.join(dir, "mixed__pdf", "page-002.md")).text()
-    expect(split).toContain("page: 2")
   }, 120_000)
 })
 

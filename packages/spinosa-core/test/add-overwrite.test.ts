@@ -5,8 +5,9 @@ import path from "node:path"
 import { MarkItDown } from "@spinosa/markitdown"
 import { addFiles } from "../src/commands/add"
 
-test("OCR no-output preserves existing converted outputs", async () => {
-  // Use a scanned PDF for OCR failure — images are now copy-only (not OCR)
+test("invalid PDF yields removal placeholder (no local OCR)", async () => {
+  // Local OCR was removed: an unparseable PDF can no longer fail as ocrFailed.
+  // It is kept as-is plus an honest placeholder (ocrConverted, retryable).
   const root = mkdtempSync(path.join(tmpdir(), "spinosa-add-"))
   const source = path.join(root, "input.pdf")
   const output = path.join(root, "raw")
@@ -18,9 +19,9 @@ test("OCR no-output preserves existing converted outputs", async () => {
   writeFileSync(path.join(pages, "page-001.md"), "old page")
   try {
     const result = await addFiles({ workspacePath: root, sourcePath: source, sourceIsDir: false, overwrite: true })
-    expect(result.ocrFailed).toBe(1)
-    expect(readFileSync(dest, "utf8")).toBe("old")
-    expect(readFileSync(path.join(pages, "page-001.md"), "utf8")).toBe("old page")
+    expect(result.ocrConverted).toBe(1)
+    expect(result.ocrFailed).toBe(0)
+    expect(readFileSync(dest, "utf8")).toContain("Local OCR was removed")
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
 

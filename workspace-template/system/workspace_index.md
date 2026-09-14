@@ -57,7 +57,7 @@ Maps are organized by the corpus's natural structure, discovered during startup.
 |---|---:|---|
 | [filled by startup] | | |
 | images | [filled by startup] | pending `images_pending_network_ocr` (copy-only, no OCR — network provider will replace with `.md`) |
-| scanned PDFs (tesseract) | [filled by startup] | bundled `tesseract -l ita+eng+fra --psm 6` over internal pdf.js + Canvas rendering |
+| scanned PDFs (vision/copy) | [filled by startup] | vision-model transcription when selected, else original kept + placeholder |
 | text-layer PDFs | [filled by startup] | internal pdf.js engine (no OCR) |
 
 ## Dictionary Status

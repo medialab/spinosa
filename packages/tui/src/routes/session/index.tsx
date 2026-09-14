@@ -1767,7 +1767,8 @@ function UserMessage(props: {
   )
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
-  // Route badge: fast vs orchestrated identity stamped at submit time.
+  // Route badge: workflow identity is stamped at submit time; general
+  // answers render like ordinary conversation messages.
   const routeInfo = createMemo(() => routeBadgeFromParts(props.parts))
 
   createEffect(() => {
@@ -1923,16 +1924,19 @@ function UserMessage(props: {
 /**
  * Optimistic outbound row: a queued/evaluating prompt rendered instantly at
  * Enter, before any server round-trip. Same transcript chrome as a user
- * message; the badge slot shows the transient state (muted "queued" behind
- * other work, orange "evaluating" while routing) and flips to the real
- * fast/workflow badge when the server echo arrives and this row is dropped.
+ * message; the badge slot shows each transient state, then disappears for a
+ * general answer or flips to workflow state when the server echo takes over.
  */
 function OptimisticUserRow(props: { entry: OutboundEntry }) {
   const { theme } = useTheme()
   const sdk = useSDK()
   const [steerHover, setSteerHover] = createSignal(false)
   const badge = (): RouteBadgeInfo => ({ kind: props.entry.state })
-  const border = () => (props.entry.state === "evaluating" ? theme.warning : theme.textMuted)
+  const border = () => {
+    if (props.entry.state === "interrupted") return theme.error
+    if (props.entry.state === "steered") return theme.primary
+    return theme.textMuted
+  }
   // Steer: this queued prompt goes next — stop the current run first so
   // the pump dispatches it immediately after the abort settles.
   const steer = () => {
@@ -1968,19 +1972,21 @@ function OptimisticUserRow(props: { entry: OutboundEntry }) {
           >
             <box flexDirection="row" gap={1} alignItems="center">
               <RouteBadge info={badge()} />
-              <box
-                onMouseOver={() => setSteerHover(true)}
-                onMouseOut={() => setSteerHover(false)}
-                onMouseUp={(e: { stopPropagation?: () => void }) => {
-                  e.stopPropagation?.()
-                  steer()
-                }}
-                backgroundColor={buttonBackground(theme, steerHover())}
-                paddingLeft={1}
-                paddingRight={1}
-              >
-                <text fg={buttonText(theme, steerHover(), theme.primary)}>Steer</text>
-              </box>
+              <Show when={props.entry.state === "queued"}>
+                <box
+                  onMouseOver={() => setSteerHover(true)}
+                  onMouseOut={() => setSteerHover(false)}
+                  onMouseUp={(e: { stopPropagation?: () => void }) => {
+                    e.stopPropagation?.()
+                    steer()
+                  }}
+                  backgroundColor={buttonBackground(theme, steerHover())}
+                  paddingLeft={1}
+                  paddingRight={1}
+                >
+                  <text fg={buttonText(theme, steerHover(), theme.primary)}>Steer</text>
+                </box>
+              </Show>
             </box>
             <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
               {Locale.todayTimeOrDateTime(props.entry.createdAt)}

@@ -6,7 +6,7 @@ import file_2 from "./template-blobs/41bdcd1d5f3ae39f0f99ce0abe2ac28ea5b9112e136
 import file_3 from "./template-blobs/6a22b84230184d256e8b12cedec3c5568d0d679e653356539ea5b97eabce9bf7.bin" with { type: "file" };
 import file_4 from "./template-blobs/5a733899edfd4f340a800ad9f9814daab22e5377aa2973440cba4b950af8c2ad.bin" with { type: "file" };
 import file_5 from "./template-blobs/4e146b3d194eeba4a1c9651c0931a15c7dd55e2c721a351843410cde9d2206d2.bin" with { type: "file" };
-import file_6 from "./template-blobs/d05bf4ac7519daeabadc2a882fcd960931e84965b71aae9d04d46786adedc2cc.bin" with { type: "file" };
+import file_6 from "./template-blobs/2325a45d465bcbc34e287ca40380d1eea86028f5583508597f95785f055a209a.bin" with { type: "file" };
 import file_7 from "./template-blobs/42f4e98f864cdfdef41dc76f31a838288573c93fcc8569ba53e9189571f2ca60.bin" with { type: "file" };
 import file_8 from "./template-blobs/34ba5e2494107479db0f6511fdbd9d483e3911a628c032a3b535efda228cbd97.bin" with { type: "file" };
 import file_9 from "./template-blobs/aee928e4f6854c0c92bc5b056d207c9ffffb9152e4f9593da64ee99ff6172a2d.bin" with { type: "file" };
@@ -51,7 +51,7 @@ import file_47 from "./template-blobs/6b19db6b667d229ffb7f5e619986395409a66bff31
 import file_48 from "./template-blobs/a7372f7dc8b13468c33d9fc691c775b6cb5dba00f10ce793f6a3bc44a5945d7e.bin" with { type: "file" };
 import file_49 from "./template-blobs/cbff02a1fa67b156019c4464e3a14fde303b0c492fc433e273e7a3f99ac88e92.bin" with { type: "file" };
 import file_50 from "./template-blobs/680684e6462488c5941ff87556715b222018faf031d20c75bf7b0406f3c2447f.bin" with { type: "file" };
-import file_51 from "./template-blobs/d05bf4ac7519daeabadc2a882fcd960931e84965b71aae9d04d46786adedc2cc.bin" with { type: "file" };
+import file_51 from "./template-blobs/2325a45d465bcbc34e287ca40380d1eea86028f5583508597f95785f055a209a.bin" with { type: "file" };
 import file_52 from "./template-blobs/f0a14c93089babe36d29ef2a32c6aa39e2e293512debcde11a72117793ac8559.bin" with { type: "file" };
 import file_53 from "./template-blobs/9c413d1e9f10f2cc1be4623b8a4ea95baeea81c23c31c85b442f8bea26bf5bd4.bin" with { type: "file" };
 import file_54 from "./template-blobs/6831357c2010b27724558ab84e4d4aa6277371c532f7c69a82d638aeac974f57.bin" with { type: "file" };
@@ -95,7 +95,7 @@ import file_91 from "./template-blobs/cd2ca5978f2b21863df482bda02d7ea7c66d12e132
 import file_92 from "./template-blobs/9f89d0bad8b24cefdf8ee261dcfe1d04798a27e6c8c4d8765867301f55a7be9a.bin" with { type: "file" };
 import file_93 from "./template-blobs/24c56091b2138cc2afc5c5e77a51be9d0387c2d4a2352b7ec7c2161927390b06.bin" with { type: "file" };
 import file_94 from "./template-blobs/55ddc1a73d62492418394d677c4460fc029ae0f4315ebae6347169d41ed24760.bin" with { type: "file" };
-import file_95 from "./template-blobs/58ebd8d7db144d81188a39bf65a18e6fc047837157e1301d530ecbdcdc416f4b.bin" with { type: "file" };
+import file_95 from "./template-blobs/7ced92fd590886f802d39cb06c0630505dc004c4a008f2b045cb1a61433ce689.bin" with { type: "file" };
 import file_96 from "./template-blobs/1a211d27a60ee411029a0111692d9ffb0c90300f5777cc6dfaad0461d334b2c8.bin" with { type: "file" };
 import file_97 from "./template-blobs/f58b5693f2c92f518891b648f4e2e8287bde35f83ba693027c00454b334d15dc.bin" with { type: "file" };
 import file_98 from "./template-blobs/e3250eb50f8585bb87e6a4ff91f1fc0abf49194c0f3070a6513fadd3c82f6815.bin" with { type: "file" };
@@ -176,7 +176,7 @@ import file_172 from "./template-blobs/0dc26bc1082ffeb57db18ec0777be419b20557e40
 import file_173 from "./template-blobs/1d2c7d26bea94353b47b5a420a39ed1374621901442029cb507d28709e6ec25d.bin" with { type: "file" };
 import file_174 from "./template-blobs/5513c553bf5e7cb8ddf3ee8a2f627e2d9c574eaa2c378e9a71e94bd5d71f10d4.bin" with { type: "file" };
 import file_175 from "./template-blobs/70b4fd3d159ec91d56622f4b7af9caa93bfa903cb1aee2825105cff501c352df.bin" with { type: "file" };
-import file_176 from "./template-blobs/d05bf4ac7519daeabadc2a882fcd960931e84965b71aae9d04d46786adedc2cc.bin" with { type: "file" };
+import file_176 from "./template-blobs/2325a45d465bcbc34e287ca40380d1eea86028f5583508597f95785f055a209a.bin" with { type: "file" };
 import file_177 from "./template-blobs/e81463d534e79b30eb78767e3a67e582612f6e6d33d581e15ac40a8d8f934544.bin" with { type: "file" };
 import file_178 from "./template-blobs/2b95e45c33e7fd5223f4fe21e7fbd0aa5618884c1159d290d38ade8271264cbb.bin" with { type: "file" };
 import file_179 from "./template-blobs/dc9d58d8d285dfbed728374d7c99a050c2bfd43055f8234274d18901d311d3e8.bin" with { type: "file" };
@@ -221,36 +221,36 @@ import file_217 from "./template-blobs/8ebb4935ed91b21354491840c34fcaf0bde15928d
 import file_218 from "./template-blobs/0dc4256e0fbc8444c10615db4670f21a1a96c0d72e644542f272555d1c273315.bin" with { type: "file" };
 import file_219 from "./template-blobs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" with { type: "file" };
 import file_220 from "./template-blobs/54cc7712dd3360e1121544ffff86dcfb80231986b9863aefaedc9c29b965ec08.bin" with { type: "file" };
-import file_221 from "./template-blobs/721ad7cab34935848c2cb1789603f02da06bc03115487ce1f237bcd1b9c8b954.bin" with { type: "file" };
+import file_221 from "./template-blobs/7bf62cac2d68b60957106983f34d25e3d056bb0f0a6d3753e030947cc6a424a6.bin" with { type: "file" };
 import file_222 from "./template-blobs/3afc9d19eeb94e1d636a735ee76596f206d8441a15ef1edb1fac77fe3a4b2e01.bin" with { type: "file" };
 import file_223 from "./template-blobs/2892dad4065a95e30383c9bd7a7ffe3e762f40a7f8a10fa7c22e2db95490a8f6.bin" with { type: "file" };
 import file_224 from "./template-blobs/f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85.bin" with { type: "file" };
 import file_225 from "./template-blobs/586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a.bin" with { type: "file" };
 import file_226 from "./template-blobs/502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4.bin" with { type: "file" };
-import file_227 from "./template-blobs/a23055f9b017fbc6e04617aecb042ad492af4b78c6c5ff58dd29facf6a3fdc90.bin" with { type: "file" };
-import file_228 from "./template-blobs/04493c44be1b2f62a12183ecaae069ed0aaeee2f7dd456181e0035c27dfe9f4f.bin" with { type: "file" };
-import file_229 from "./template-blobs/92920e20579787530724716743fbb4c58bcf485af542fc3d73499dddc510e46d.bin" with { type: "file" };
+import file_227 from "./template-blobs/355c8a485f42faa62d297ae75e4c5be2c6e69ccf4333d32f301a4df682d26767.bin" with { type: "file" };
+import file_228 from "./template-blobs/1565a69d9fa5cd1fed6b3236334542b8088a5e25a64ff0e8da6dc6f79fe28943.bin" with { type: "file" };
+import file_229 from "./template-blobs/4ebb55085c01a0267deb29ea3f725b2febde99dae811a6b1a28c7364aa8e93d4.bin" with { type: "file" };
 import file_230 from "./template-blobs/223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6.bin" with { type: "file" };
-import file_231 from "./template-blobs/b30fa1199225cfa7715a6c573890737506192a5211cff3a6e212ba559888a7cc.bin" with { type: "file" };
+import file_231 from "./template-blobs/d80119217a1f979f186da310710d2023fd842f67075a6435c121e7b687340f35.bin" with { type: "file" };
 import file_232 from "./template-blobs/496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c.bin" with { type: "file" };
-import file_233 from "./template-blobs/4ed94fb7ac45ffa4b563baa1a44644a67bf164c4f6cacd83fe421b0e0c878a44.bin" with { type: "file" };
+import file_233 from "./template-blobs/2a24ff10d2b43a7f4c2ab4ec1e8cbbb0655f95d14735e18d79a0a5c6188b06f3.bin" with { type: "file" };
 import file_234 from "./template-blobs/d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c.bin" with { type: "file" };
 import file_235 from "./template-blobs/d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342.bin" with { type: "file" };
 import file_236 from "./template-blobs/0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3.bin" with { type: "file" };
 import file_237 from "./template-blobs/01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b.bin" with { type: "file" };
 import file_238 from "./template-blobs/70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114.bin" with { type: "file" };
-import file_239 from "./template-blobs/593cbbcbfe5f4220b57cbf5f33a8c30e0e83470974f106f9dccd2bc6a865731c.bin" with { type: "file" };
+import file_239 from "./template-blobs/be4ea7329fc72be45acf8b7ab43dd26aa28fc5f75590461f24bc131433d1a5bb.bin" with { type: "file" };
 import file_240 from "./template-blobs/9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88.bin" with { type: "file" };
-import file_241 from "./template-blobs/5e98da7dfae6bc19e97656e402019f29567299fb9627d1c28c418357b66dc2e9.bin" with { type: "file" };
+import file_241 from "./template-blobs/2909ee516c454fd2f26c7c4fcab0fe8e11dd027467cb94cb82d572f911b2254a.bin" with { type: "file" };
 import file_242 from "./template-blobs/00bb78f35bae7eb451d4f2db2a9bae8c4c21d53ab69e34bb41d043166bb6e1b7.bin" with { type: "file" };
 import file_243 from "./template-blobs/4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8.bin" with { type: "file" };
 import file_244 from "./template-blobs/afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf.bin" with { type: "file" };
-import file_245 from "./template-blobs/1ee1bd059c52f593d82875f048de63cfb8061808633386aa5ea01d19ec0e25d7.bin" with { type: "file" };
-import file_246 from "./template-blobs/9ee60b50aed2c27f23c81e92a0822aad9a5f094f06cf824b3a48c4097a6dca56.bin" with { type: "file" };
+import file_245 from "./template-blobs/7aaf276387b614cc0c8fbd673a311f09146ada327bd5af72a99962550af0866d.bin" with { type: "file" };
+import file_246 from "./template-blobs/4583fd83681cd040984089cc17c8c5f62f58413b9be1f94e2e7cfa3be590255f.bin" with { type: "file" };
 
 export const templatePack = {
-  version: "1.1.0-beta.17.17",
-  packId: "cd77283d46107d23bb81fd3d81eda35eb642d070bd4e7ad2974518b7ff4efd1f",
+  version: "1.1.0-beta.21",
+  packId: "0a9e1fec68bea0f40bc30006745a6ef1c94035616f3d7537948ad5caa76dfd64",
   files: [
   { path: ".agents/agents/spinosa-analyst.md", mode: 420, sha256: "46749285d9f984a154f7bb53c7cc76c266bca94828ea1c50a0617aa6b3c7038a", contentPath: file_0 },
   { path: ".agents/agents/spinosa-evaluator.md", mode: 420, sha256: "5eb4523f552d79506b1d61d4bf8ce472ab41c463ab3d611506cfcd06f0811348", contentPath: file_1 },
@@ -258,7 +258,7 @@ export const templatePack = {
   { path: ".agents/agents/spinosa-janitor.md", mode: 420, sha256: "6a22b84230184d256e8b12cedec3c5568d0d679e653356539ea5b97eabce9bf7", contentPath: file_3 },
   { path: ".agents/agents/spinosa-mapper.md", mode: 420, sha256: "5a733899edfd4f340a800ad9f9814daab22e5377aa2973440cba4b950af8c2ad", contentPath: file_4 },
   { path: ".agents/agents/spinosa-overseer.md", mode: 420, sha256: "4e146b3d194eeba4a1c9651c0931a15c7dd55e2c721a351843410cde9d2206d2", contentPath: file_5 },
-  { path: ".agents/agents/spinosa-router.md", mode: 420, sha256: "d05bf4ac7519daeabadc2a882fcd960931e84965b71aae9d04d46786adedc2cc", contentPath: file_6 },
+  { path: ".agents/agents/spinosa-router.md", mode: 420, sha256: "2325a45d465bcbc34e287ca40380d1eea86028f5583508597f95785f055a209a", contentPath: file_6 },
   { path: ".agents/agents/spinosa-searcher.md", mode: 420, sha256: "42f4e98f864cdfdef41dc76f31a838288573c93fcc8569ba53e9189571f2ca60", contentPath: file_7 },
   { path: ".agents/agents/spinosa-serendippo.md", mode: 420, sha256: "34ba5e2494107479db0f6511fdbd9d483e3911a628c032a3b535efda228cbd97", contentPath: file_8 },
   { path: ".agents/agents/spinosa-verifier.md", mode: 420, sha256: "aee928e4f6854c0c92bc5b056d207c9ffffb9152e4f9593da64ee99ff6172a2d", contentPath: file_9 },
@@ -303,7 +303,7 @@ export const templatePack = {
   { path: ".claude/agents/spinosa-janitor.md", mode: 420, sha256: "a7372f7dc8b13468c33d9fc691c775b6cb5dba00f10ce793f6a3bc44a5945d7e", contentPath: file_48 },
   { path: ".claude/agents/spinosa-mapper.md", mode: 420, sha256: "cbff02a1fa67b156019c4464e3a14fde303b0c492fc433e273e7a3f99ac88e92", contentPath: file_49 },
   { path: ".claude/agents/spinosa-overseer.md", mode: 420, sha256: "680684e6462488c5941ff87556715b222018faf031d20c75bf7b0406f3c2447f", contentPath: file_50 },
-  { path: ".claude/agents/spinosa-router.md", mode: 420, sha256: "d05bf4ac7519daeabadc2a882fcd960931e84965b71aae9d04d46786adedc2cc", contentPath: file_51 },
+  { path: ".claude/agents/spinosa-router.md", mode: 420, sha256: "2325a45d465bcbc34e287ca40380d1eea86028f5583508597f95785f055a209a", contentPath: file_51 },
   { path: ".claude/agents/spinosa-searcher.md", mode: 420, sha256: "f0a14c93089babe36d29ef2a32c6aa39e2e293512debcde11a72117793ac8559", contentPath: file_52 },
   { path: ".claude/agents/spinosa-serendippo.md", mode: 420, sha256: "9c413d1e9f10f2cc1be4623b8a4ea95baeea81c23c31c85b442f8bea26bf5bd4", contentPath: file_53 },
   { path: ".claude/agents/spinosa-verifier.md", mode: 420, sha256: "6831357c2010b27724558ab84e4d4aa6277371c532f7c69a82d638aeac974f57", contentPath: file_54 },
@@ -347,7 +347,7 @@ export const templatePack = {
   { path: ".codex/agents/spinosa-janitor.toml", mode: 420, sha256: "9f89d0bad8b24cefdf8ee261dcfe1d04798a27e6c8c4d8765867301f55a7be9a", contentPath: file_92 },
   { path: ".codex/agents/spinosa-mapper.toml", mode: 420, sha256: "24c56091b2138cc2afc5c5e77a51be9d0387c2d4a2352b7ec7c2161927390b06", contentPath: file_93 },
   { path: ".codex/agents/spinosa-overseer.toml", mode: 420, sha256: "55ddc1a73d62492418394d677c4460fc029ae0f4315ebae6347169d41ed24760", contentPath: file_94 },
-  { path: ".codex/agents/spinosa-router.toml", mode: 420, sha256: "58ebd8d7db144d81188a39bf65a18e6fc047837157e1301d530ecbdcdc416f4b", contentPath: file_95 },
+  { path: ".codex/agents/spinosa-router.toml", mode: 420, sha256: "7ced92fd590886f802d39cb06c0630505dc004c4a008f2b045cb1a61433ce689", contentPath: file_95 },
   { path: ".codex/agents/spinosa-searcher.toml", mode: 420, sha256: "1a211d27a60ee411029a0111692d9ffb0c90300f5777cc6dfaad0461d334b2c8", contentPath: file_96 },
   { path: ".codex/agents/spinosa-serendippo.toml", mode: 420, sha256: "f58b5693f2c92f518891b648f4e2e8287bde35f83ba693027c00454b334d15dc", contentPath: file_97 },
   { path: ".codex/agents/spinosa-verifier.toml", mode: 420, sha256: "e3250eb50f8585bb87e6a4ff91f1fc0abf49194c0f3070a6513fadd3c82f6815", contentPath: file_98 },
@@ -428,7 +428,7 @@ export const templatePack = {
   { path: ".opencode/agents/spinosa-janitor.md", mode: 420, sha256: "1d2c7d26bea94353b47b5a420a39ed1374621901442029cb507d28709e6ec25d", contentPath: file_173 },
   { path: ".opencode/agents/spinosa-mapper.md", mode: 420, sha256: "5513c553bf5e7cb8ddf3ee8a2f627e2d9c574eaa2c378e9a71e94bd5d71f10d4", contentPath: file_174 },
   { path: ".opencode/agents/spinosa-overseer.md", mode: 420, sha256: "70b4fd3d159ec91d56622f4b7af9caa93bfa903cb1aee2825105cff501c352df", contentPath: file_175 },
-  { path: ".opencode/agents/spinosa-router.md", mode: 420, sha256: "d05bf4ac7519daeabadc2a882fcd960931e84965b71aae9d04d46786adedc2cc", contentPath: file_176 },
+  { path: ".opencode/agents/spinosa-router.md", mode: 420, sha256: "2325a45d465bcbc34e287ca40380d1eea86028f5583508597f95785f055a209a", contentPath: file_176 },
   { path: ".opencode/agents/spinosa-searcher.md", mode: 420, sha256: "e81463d534e79b30eb78767e3a67e582612f6e6d33d581e15ac40a8d8f934544", contentPath: file_177 },
   { path: ".opencode/agents/spinosa-serendippo.md", mode: 420, sha256: "2b95e45c33e7fd5223f4fe21e7fbd0aa5618884c1159d290d38ade8271264cbb", contentPath: file_178 },
   { path: ".opencode/agents/spinosa-verifier.md", mode: 420, sha256: "dc9d58d8d285dfbed728374d7c99a050c2bfd43055f8234274d18901d311d3e8", contentPath: file_179 },
@@ -473,31 +473,31 @@ export const templatePack = {
   { path: ".spinosa/workspace-files.tsv", mode: 420, sha256: "0dc4256e0fbc8444c10615db4670f21a1a96c0d72e644542f272555d1c273315", contentPath: file_218 },
   { path: ".trash/.gitkeep", mode: 420, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", contentPath: file_219 },
   { path: ".trash/AGENTS.md", mode: 420, sha256: "54cc7712dd3360e1121544ffff86dcfb80231986b9863aefaedc9c29b965ec08", contentPath: file_220 },
-  { path: "AGENTS.md", mode: 420, sha256: "721ad7cab34935848c2cb1789603f02da06bc03115487ce1f237bcd1b9c8b954", contentPath: file_221 },
+  { path: "AGENTS.md", mode: 420, sha256: "7bf62cac2d68b60957106983f34d25e3d056bb0f0a6d3753e030947cc6a424a6", contentPath: file_221 },
   { path: "CLAUDE.md", mode: 420, sha256: "3afc9d19eeb94e1d636a735ee76596f206d8441a15ef1edb1fac77fe3a4b2e01", contentPath: file_222 },
   { path: "README.md", mode: 420, sha256: "2892dad4065a95e30383c9bd7a7ffe3e762f40a7f8a10fa7c22e2db95490a8f6", contentPath: file_223 },
   { path: "agent_reports/.gitkeep", mode: 420, sha256: "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85", contentPath: file_224 },
   { path: "agent_reports/AGENTS.md", mode: 420, sha256: "586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a", contentPath: file_225 },
   { path: "docs/FAQ.md", mode: 420, sha256: "502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4", contentPath: file_226 },
-  { path: "docs/GLOSSARY.md", mode: 420, sha256: "a23055f9b017fbc6e04617aecb042ad492af4b78c6c5ff58dd29facf6a3fdc90", contentPath: file_227 },
-  { path: "docs/diagrams.md", mode: 420, sha256: "04493c44be1b2f62a12183ecaae069ed0aaeee2f7dd456181e0035c27dfe9f4f", contentPath: file_228 },
-  { path: "docs/reference/agents.md", mode: 420, sha256: "92920e20579787530724716743fbb4c58bcf485af542fc3d73499dddc510e46d", contentPath: file_229 },
+  { path: "docs/GLOSSARY.md", mode: 420, sha256: "355c8a485f42faa62d297ae75e4c5be2c6e69ccf4333d32f301a4df682d26767", contentPath: file_227 },
+  { path: "docs/diagrams.md", mode: 420, sha256: "1565a69d9fa5cd1fed6b3236334542b8088a5e25a64ff0e8da6dc6f79fe28943", contentPath: file_228 },
+  { path: "docs/reference/agents.md", mode: 420, sha256: "4ebb55085c01a0267deb29ea3f725b2febde99dae811a6b1a28c7364aa8e93d4", contentPath: file_229 },
   { path: "docs/reference/cli.md", mode: 420, sha256: "223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6", contentPath: file_230 },
-  { path: "docs/reference/corpus.md", mode: 420, sha256: "b30fa1199225cfa7715a6c573890737506192a5211cff3a6e212ba559888a7cc", contentPath: file_231 },
+  { path: "docs/reference/corpus.md", mode: 420, sha256: "d80119217a1f979f186da310710d2023fd842f67075a6435c121e7b687340f35", contentPath: file_231 },
   { path: "docs/reference/reports.md", mode: 420, sha256: "496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c", contentPath: file_232 },
-  { path: "docs/reference/testsuite.md", mode: 420, sha256: "4ed94fb7ac45ffa4b563baa1a44644a67bf164c4f6cacd83fe421b0e0c878a44", contentPath: file_233 },
+  { path: "docs/reference/testsuite.md", mode: 420, sha256: "2a24ff10d2b43a7f4c2ab4ec1e8cbbb0655f95d14735e18d79a0a5c6188b06f3", contentPath: file_233 },
   { path: "maps/.gitkeep", mode: 420, sha256: "d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c", contentPath: file_234 },
   { path: "maps/AGENTS.md", mode: 420, sha256: "d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342", contentPath: file_235 },
   { path: "maps/map_template.md", mode: 420, sha256: "0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3", contentPath: file_236 },
   { path: "raw/.gitkeep", mode: 420, sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b", contentPath: file_237 },
   { path: "raw/AGENTS.md", mode: 420, sha256: "70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114", contentPath: file_238 },
-  { path: "startup-prompt.md", mode: 420, sha256: "593cbbcbfe5f4220b57cbf5f33a8c30e0e83470974f106f9dccd2bc6a865731c", contentPath: file_239 },
+  { path: "startup-prompt.md", mode: 420, sha256: "be4ea7329fc72be45acf8b7ab43dd26aa28fc5f75590461f24bc131433d1a5bb", contentPath: file_239 },
   { path: "system/AGENTS.md", mode: 420, sha256: "9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88", contentPath: file_240 },
-  { path: "system/configuration.md", mode: 420, sha256: "5e98da7dfae6bc19e97656e402019f29567299fb9627d1c28c418357b66dc2e9", contentPath: file_241 },
+  { path: "system/configuration.md", mode: 420, sha256: "2909ee516c454fd2f26c7c4fcab0fe8e11dd027467cb94cb82d572f911b2254a", contentPath: file_241 },
   { path: "system/context.md", mode: 420, sha256: "00bb78f35bae7eb451d4f2db2a9bae8c4c21d53ab69e34bb41d043166bb6e1b7", contentPath: file_242 },
   { path: "system/dictionary.md", mode: 420, sha256: "4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8", contentPath: file_243 },
   { path: "system/system_architecture_map.md", mode: 420, sha256: "afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf", contentPath: file_244 },
-  { path: "system/workspace_index.md", mode: 420, sha256: "1ee1bd059c52f593d82875f048de63cfb8061808633386aa5ea01d19ec0e25d7", contentPath: file_245 },
-  { path: "system/yaml_header_template.md", mode: 420, sha256: "9ee60b50aed2c27f23c81e92a0822aad9a5f094f06cf824b3a48c4097a6dca56", contentPath: file_246 },
+  { path: "system/workspace_index.md", mode: 420, sha256: "7aaf276387b614cc0c8fbd673a311f09146ada327bd5af72a99962550af0866d", contentPath: file_245 },
+  { path: "system/yaml_header_template.md", mode: 420, sha256: "4583fd83681cd040984089cc17c8c5f62f58413b9be1f94e2e7cfa3be590255f", contentPath: file_246 },
   ],
 } as const

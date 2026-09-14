@@ -10,6 +10,11 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Removed
+
+- Local OCR engine (binaries + language data + tools tarballs). Scans transcribe via a vision model or copy-as-is. Digital PDFs extract via pdf.js. Code: `packages/spinosa-core/src/import`, `packages/spinosa-core/src/distribution`, `install.sh`, `scripts/release`, `.github/workflows/release-beta.yml`.
+- OCR tools tarball builds and CI matrix tools jobs. Releases publish product binaries only. Code: `scripts/build-tools-tarballs.ts` (deleted), `scripts/release/tools-target.ts` (deleted), `.github/workflows/release-beta.yml`.
+
 ## [1.1.0-beta.21] — 2026-09-14
 
 ### Fixed

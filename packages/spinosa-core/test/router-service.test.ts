@@ -58,7 +58,7 @@ describe("routeRequest Stage 2", () => {
     const routed = await routeRequest({
       routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", model: MODEL,
     })
-    expect(routed.decision).toEqual({ mode: "generic" })
+    expect(routed.decision).toEqual({ mode: "general" })
     expect(routed.via).toBe("model")
   })
 
@@ -71,17 +71,17 @@ describe("routeRequest Stage 2", () => {
     const routed = await routeRequest({
       routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws",
     })
-    expect(routed.decision).toEqual({ mode: "generic" })
+    expect(routed.decision).toEqual({ mode: "general" })
     expect(routed.via).toBe("model")
   })
 
-  test("explicit generic verdicts pass through as generic", async () => {
+  test("explicit general verdicts pass through as general", async () => {
     const harness = new MockHarness()
-    harness.scriptedOutputs.set("spinosa-router", JSON.stringify({ mode: "generic" }))
+    harness.scriptedOutputs.set("spinosa-router", JSON.stringify({ mode: "general" }))
     const routed = await routeRequest({
       routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", model: MODEL,
     })
-    expect(routed.decision).toEqual({ mode: "generic" })
+    expect(routed.decision).toEqual({ mode: "general" })
     expect(routed.via).toBe("model")
   })
 
@@ -95,7 +95,7 @@ describe("routeRequest Stage 2", () => {
     const routed = await routeRequest({
       routeInput: { ...AMBIGUOUS, text: "Hi" },
     })
-    expect(routed.decision.mode).toBe("fast")
+    expect(routed.decision.mode).toBe("general")
     expect(routed.via).toBe("rules")
   })
 
@@ -105,7 +105,7 @@ describe("routeRequest Stage 2", () => {
     const routed = await routeRequest({
       routeInput: AMBIGUOUS, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", timeoutMs: 20,
     })
-    expect(routed.decision).toEqual({ mode: "generic" })
+    expect(routed.decision).toEqual({ mode: "general" })
     expect(routed.via).toBe("rules")
     // Orphan-kill targets the child turn, never the conversation.
     const child = childID(harness)
@@ -143,14 +143,14 @@ describe("routeRequest Stage 2", () => {
   test("router preamble + Thought dump still parses (preamble-tolerant)", async () => {
     const harness = new MockHarness()
     const decision = JSON.stringify({
-      mode: "fast", action: "answer", reason: "ordinary conversation", confidence: 0.8,
+      mode: "general",
     })
     harness.scriptedOutputs.set("spinosa-router", `Ok go on\n- Thought: 12.5s\n${decision}\n`)
     const routed = await routeRequest({
       routeInput: { ...AMBIGUOUS, text: "go on" }, harness, sessionID: "parent-1", workspacePath: "/tmp/ws", model: MODEL,
     })
     expect(routed.via).toBe("model")
-    expect(routed.decision).toMatchObject({ mode: "fast", action: "answer" })
+    expect(routed.decision).toMatchObject({ mode: "general" })
     expect(extractRouterJson("no braces")).toBe("no braces")
   })
 })

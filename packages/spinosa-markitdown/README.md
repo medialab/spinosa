@@ -6,7 +6,7 @@ Spinosa fork of [`markitdown-ts`](https://github.com/dead8309/markitdown-ts) (`0
 
 **Spinosa patches:**
 - `src/converters/image.ts` — `SPINOSA_IMAGE_EXTS` supports all `IMAGE_EXTENSIONS` (`jpg/jpeg/png/webp/heic/heif/tiff/tif/bmp/svg/gif`) when `llmModel` present; default prompt → `Transcribe all visible text… [illegible]` (see `packages/spinosa-core/src/import/vision-models.ts`).
-- Branch: `feat/tesseract-pdf-copy-images` → `main` after merge. Upstream sync via `git subtree` or `git remote add markitdown-upstream`.
+- Branch: `feat/vision-pdf-copy-images` → `main` after merge. Upstream sync via `git subtree` or `git remote add markitdown-upstream`.
 
 **Usage (same as upstream):**
 ```ts

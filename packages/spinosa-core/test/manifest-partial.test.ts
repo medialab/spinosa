@@ -103,7 +103,7 @@ describe("manifest partial state + integrity", () => {
         reconcileManifest(records, scan, { route: new Map([["d.txt", "vision"]]) }).changed,
       ).toContain("d.txt")
       expect(
-        reconcileManifest(records, scan, { engine: new Map([["d.txt", "tesseract"]]) }).changed,
+        reconcileManifest(records, scan, { engine: new Map([["d.txt", "vision-model"]]) }).changed,
       ).toContain("d.txt")
       expect(
         reconcileManifest(records, scan, { model: new Map([["d.txt", "m2"]]) }).changed,

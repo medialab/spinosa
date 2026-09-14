@@ -8,14 +8,16 @@ import type { PromptInfo } from "../prompt/history"
  * transcript row), and a per-session dispatcher evaluates + sends entries
  * strictly FIFO when the session is idle:
  *
- *   queued → evaluating → sent (row removed, server echo takes over)
+ *   queued ──steer──→ steered
+ *      └──────────────┴──→ evaluating → sent (server echo takes over)
+ *                                  ↘ interrupted (row remains as a receipt)
  *
  * Nothing here touches the server: no protocol change, no durable state.
  * Server admission still happens exactly once per prompt, at dispatch time,
  * through the existing direct/workflow send paths.
  */
 
-export type OutboundState = "queued" | "evaluating"
+export type OutboundState = "queued" | "steered" | "evaluating" | "interrupted"
 
 /**
  * Everything the dispatcher needs to send the prompt exactly as submit
@@ -90,9 +92,9 @@ export function enqueueOutbound(
   return key
 }
 
-/** Head of the session queue (oldest undispatched entry), if any. */
+/** Oldest dispatchable entry. Interrupted receipts never block the queue. */
 export function peekOutbound(sessionID: string): OutboundEntry | undefined {
-  return entriesBySession[sessionID]?.[0]
+  return entriesBySession[sessionID]?.find((entry) => entry.state !== "interrupted")
 }
 
 /** Reactive snapshot of a session's undispatched entries (rendering). */
@@ -103,7 +105,7 @@ export function outboundForSession(sessionID: string): OutboundEntry[] {
 /** Flip the head entry to evaluating. False when it is gone or not the head. */
 export function markOutboundEvaluating(sessionID: string, key: string): boolean {
   const head = peekOutbound(sessionID)
-  if (!head || head.key !== key || head.state !== "queued") return false
+  if (!head || head.key !== key || (head.state !== "queued" && head.state !== "steered")) return false
   setEntriesBySession(
     produce((draft) => {
       const found = draft[sessionID]?.find((e) => e.key === key)
@@ -139,26 +141,41 @@ export function hasEvaluating(sessionID: string): boolean {
   return (entriesBySession[sessionID] ?? []).some((e) => e.state === "evaluating")
 }
 
+/** Preserve a cancelled evaluation in the transcript as an explicit receipt. */
+export function markOutboundInterrupted(sessionID: string, key: string): boolean {
+  const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
+  if (!entry || entry.state !== "evaluating") return false
+  controllers.delete(key)
+  setEntriesBySession(
+    produce((draft) => {
+      const found = draft[sessionID]?.find((candidate) => candidate.key === key)
+      if (found?.state === "evaluating") found.state = "interrupted"
+    }),
+  )
+  return true
+}
+
 /**
  * Steer: move a queued entry to the front so the pump dispatches it next.
  * FIFO order of the remaining entries is preserved. False when the entry
- * is gone or already evaluating (it is already next).
+ * is gone or has already been steered/evaluated.
  */
 export function steerOutbound(sessionID: string, key: string): boolean {
   const list = entriesBySession[sessionID]
   if (!list) return false
   const at = list.findIndex((e) => e.key === key)
   if (at < 0) return false
-  if (list[at]?.state === "evaluating") return false
+  if (list[at]?.state !== "queued") return false
   setEntriesBySession(
     produce((draft) => {
       const items = draft[sessionID]
       if (!items) return
       const idx = items.findIndex((e) => e.key === key)
-      if (idx > 0) {
-        const [entry] = items.splice(idx, 1)
-        if (entry) items.unshift(entry)
-      }
+      if (idx < 0) return
+      const [entry] = items.splice(idx, 1)
+      if (!entry) return
+      entry.state = "steered"
+      items.unshift(entry)
     }),
   )
   return true

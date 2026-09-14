@@ -1,8 +1,10 @@
 /**
- * Product OCR (bundled Tesseract) platform gate.
+ * Product OCR platform gate — no local OCR engine ships.
  *
- * OCR is supported everywhere the Spinosa-owned Tesseract + tessdata assets
- * are installed under SPINOSA_HOME.
+ * Text extraction is pdf.js (digital PDFs) + vision-model transcription
+ * (scanned PDFs/images, user-selected provider) + copy-as-is. There is no
+ * bundled OCR binary, so the platform gate reports unsupported with an
+ * honest reason instead of failing closed on missing assets.
  */
 
 export type OcrPlatformHints = {
@@ -10,12 +12,12 @@ export type OcrPlatformHints = {
   arch?: string
 }
 
-/** True when this OS/arch is allowed to load OCR. Bundled Tesseract is supported everywhere. */
+/** Local OCR is removed — always false so doctor/TUI never wait on it. */
 export function isOcrPlatformSupported(hints: OcrPlatformHints = {}): boolean {
-  return true
+  return false
 }
 
-/** Human reason when OCR must not load; undefined when supported. */
+/** Human reason when OCR must not load; always defined post-removal. */
 export function ocrUnsupportedReason(hints: OcrPlatformHints = {}): string | undefined {
-  return undefined
+  return "Local OCR removed — pick a vision model to transcribe scans, or copy files as-is (digital PDFs still extract via pdf.js)"
 }

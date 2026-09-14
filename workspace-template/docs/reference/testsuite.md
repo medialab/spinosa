@@ -370,7 +370,7 @@ See [RELEASE_GUIDE.md](../../../RELEASE_GUIDE.md) § Linux VM testdrive. Summary
 5. Optional: `SPINOSA_TEST_VAULT_SCOPE=mixed|full` on VM before major releases
 6. Edge matrix: PDF-only, JPG-only, empty dir, unicode filenames — build subsets under `/tmp/TEST-VAULT/`; always pass `--cli other --launch copy`
 
-**Linux-specific:** if OCR reports unavailable, re-run the installer (bundled Tesseract + tessdata live under `$SPINOSA_HOME/tools/`) and re-run doctor.
+**Linux-specific:** OCR unavailable is the contract (local OCR removed) — scans transcribe via a vision model or copy-as-is; digital PDFs via pdf.js.
 
 ---
 

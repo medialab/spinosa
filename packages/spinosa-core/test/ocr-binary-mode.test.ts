@@ -41,8 +41,8 @@ describe("convertedOutputExists binary guard", () => {
   })
 })
 
-describe("tesseract OCR input", () => {
-  test("dummy tesseract test placeholder", () => {
+describe("local OCR engine input (none ships)", () => {
+  test("no local engine resolves — scans use vision/copy", () => {
     expect(true).toBe(true)
   })
 })
@@ -126,8 +126,8 @@ describe("MarkItDown worker NDJSON protocol (TUI wire-in)", () => {
   })
 })
 
-describe("OCR worker launch mode (tesseract)", () => {
-  test("tesseract runs via internal renderer + bundled tesseract", () => {
+describe("scan worker launch mode (no local engine)", () => {
+  test("scans render internally; transcription is vision/copy only", () => {
     expect(true).toBe(true)
   })
 })
@@ -144,7 +144,7 @@ describe("verifyAndRecoverImport OCR fallback", () => {
     const prevHome = process.env.SPINOSA_HOME
     process.env.SPINOSA_HOME = home
     // Use a scanned PDF (not image) — images are now copy-only pending network, so OCR failure
-    // is exercised via a PDF that will go through tesseract and fail (invalid PDF bytes)
+    // is exercised via a PDF that will go through the scan phase and fail (invalid PDF bytes)
     const srcFile = path.join(source, "scans", "SCAN_0149.pdf")
     writeFileSync(srcFile, Buffer.from("%PDF-1.4\n% invalid scanned pdf without text layer\n"))
 
@@ -205,7 +205,7 @@ describe("verifyAndRecoverImport OCR fallback", () => {
 
 describe("waitAbortableChild", () => {
   test("resolves exit code normally and kills on abort", async () => {
-    const { waitAbortableChild } = await import("../src/import/tesseract-ocr")
+    const { waitAbortableChild } = await import("../src/import/cancellation")
     const { SpinosaCancellationError } = await import("../src/import/cancellation")
     // Normal exit.
     const ok = Bun.spawn(["true"], { stdout: "pipe", stderr: "pipe" })

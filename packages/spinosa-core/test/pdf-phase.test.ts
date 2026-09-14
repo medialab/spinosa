@@ -1,6 +1,6 @@
-// Dedicated PDF step: pdf.js extracts text pages; image pages get tesseract
-// only when explicitly selected, otherwise explicit placeholders (original
-// kept for a later vision pass). No vision calls are ever made here.
+// Dedicated PDF step: pdf.js extracts text pages; image pages get explicit
+// placeholders (original kept for a later vision pass). No vision calls are
+// ever made here.
 import { describe, expect, test } from "bun:test"
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -92,29 +92,22 @@ describe("processPdf", () => {
     }
   })
 
-  test("tesseract selection: image pages fill via tesseract, text stays direct", async () => {
-    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
-    // Dev machines exercise the real OCR path via the explicit developer
-    // override (production stays bundled-or-unavailable, never host PATH).
-    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
-    _resetTesseractAvailableCache()
-    if (!tesseractAvailable()) return
-    const { root, logsDir, raw } = stage("tess")
+  test("unknown model id behaves like unset: direct text kept, image pages get placeholders (no local OCR)", async () => {
+    const { root, logsDir, raw } = stage("unknown")
     try {
       const files = [pdfEntry(root, raw, MIXED, "mixed.pdf")]
       const logs: string[] = []
       const res = await processPdf(files, logsDir, undefined, (m) => logs.push(m), undefined, {
-        ocrModelId: "tesseract-local",
+        ocrModelId: "legacy-removed",
       })
       expect(res.converted).toBe(1)
       expect(res.failed).toBe(0)
       const md = readFileSync(path.join(raw, "mixed__pdf", "page-001.md"), "utf-8")
       expect(md).toContain("embedded digital text")
-      // MIXED's image page is a solid black box (no text): blank OCR is
-      // correct and must NOT count as a tesseract fill. A fill is only
-      // claimed when real text is recovered (see pdf-scanned-ocr.test.ts).
+      // MIXED's image page is a solid black box (no text): no local engine
+      // fills it anymore — placeholders kept, direct pages extracted.
       expect(logs.some((l) => l.includes("direct via pdf.js"))).toBe(true)
-      expect(logs.some((l) => l.includes("tesseract page fill failed"))).toBe(false)
+      expect(logs.some((l) => l.includes("placeholders kept"))).toBe(true)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -133,7 +126,7 @@ describe("processPdf", () => {
       expect(res.skipped).toBe(1)
       expect(existsSync(files[0]!.dest)).toBe(true)
       expect(existsSync(path.join(raw, "scan.pdf"))).toBe(true)
-      expect(readFileSync(files[0]!.dest, "utf-8")).toContain("pending vision OCR")
+      expect(readFileSync(files[0]!.dest, "utf-8")).toContain("Local OCR was removed")
       expect(logs.some((l) => l.includes("no extractable text"))).toBe(true)
     } finally {
       rmSync(root, { recursive: true, force: true })

@@ -142,12 +142,12 @@ describe("deterministic router", () => {
     references: { fileCount: 0, hasSelectedRange: false, fileNames: [], mimeTypes: [] },
   }
   test("explicit agent and non-Spinosa bypass", () => {
-    expect(deterministicRoute({ text: "find evidence", explicitAgent: "build", ...base })?.mode).toBe("fast")
+    expect(deterministicRoute({ text: "find evidence", explicitAgent: "build", ...base })?.mode).toBe("general")
     expect(deterministicRoute({
       text: "find evidence in corpus",
       workspace: { isSpinosa: false, setupStatus: "unknown" },
       references: base.references,
-    })?.mode).toBe("fast")
+    })?.mode).toBe("general")
   })
 
   test("startup command and startup prompt text bypass the model", () => {
@@ -183,7 +183,7 @@ describe("deterministic router", () => {
   })
 
   test("ambiguous bounded text stays fast; research text goes targeted", () => {
-    expect(heuristicAmbiguousRoute("Explain this term").mode).toBe("fast")
+    expect(heuristicAmbiguousRoute("Explain this term").mode).toBe("general")
     expect(heuristicAmbiguousRoute("Find source-grounded evidence for interviews")).toMatchObject({ strategy: "targeted_evidence" })
   })
 })

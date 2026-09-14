@@ -8,6 +8,7 @@ import {
   isOutboundPumping,
   kickPump,
   markOutboundEvaluating,
+  markOutboundInterrupted,
   outboundForSession,
   peekOutbound,
   registerPump,
@@ -92,17 +93,28 @@ describe("outbound queue", () => {
     clearOutbound("ses-queue-b")
   })
 
-  test("steer moves a queued entry to the front, preserving the rest", () => {
+  test("steer is a one-way state transition and preserves the remaining queue", () => {
     const sid = "ses-queue-steer"
     enqueueOutbound(sid, snapshot("a"), dispatch())
     const b = enqueueOutbound(sid, snapshot("b"), dispatch())
     enqueueOutbound(sid, snapshot("c"), dispatch())
     expect(steerOutbound(sid, b)).toBe(true)
     expect(outboundForSession(sid).map((e) => e.text)).toEqual(["b", "a", "c"])
-    // Steering the head or an unknown key is a no-op success/failure pair.
-    const head = peekOutbound(sid)?.key ?? ""
-    expect(steerOutbound(sid, head)).toBe(true)
+    expect(outboundForSession(sid)[0]?.state).toBe("steered")
+    expect(steerOutbound(sid, b)).toBe(false)
     expect(steerOutbound(sid, "missing")).toBe(false)
+    clearOutbound(sid)
+  })
+
+  test("interrupted evaluations remain visible without blocking the next prompt", () => {
+    const sid = "ses-queue-interrupted"
+    const first = enqueueOutbound(sid, snapshot("one"), dispatch())
+    const second = enqueueOutbound(sid, snapshot("two"), dispatch())
+    expect(markOutboundEvaluating(sid, first)).toBe(true)
+    expect(markOutboundInterrupted(sid, first)).toBe(true)
+    expect(outboundForSession(sid).find((entry) => entry.key === first)?.state).toBe("interrupted")
+    expect(hasEvaluating(sid)).toBe(false)
+    expect(peekOutbound(sid)?.key).toBe(second)
     clearOutbound(sid)
   })
 

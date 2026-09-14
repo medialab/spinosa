@@ -41,8 +41,8 @@ preferred_llm_cli: "[filled by CLI onboarding]"
 
 ## Notes
 - This file is initialized by the CLI fast setup and completed by startup.
-- The CLI collects: project name and preferred LLM CLI. It imports accepted files into raw/. Office documents are converted via MarkItDown; text-based PDFs via the internal pdf.js engine; scanned PDFs and images via bundled Tesseract OCR. Videos, audio, and AGENTS.md control files are skipped.
-- `converter_policy: local_only` means all conversion engines (MarkItDown, Tesseract) operate offline. Cloud-dependent features (audio transcription, YouTube, Azure) are excluded at build time.
+- The CLI collects: project name and preferred LLM CLI. It imports accepted files into raw/. Office documents are converted via MarkItDown; text-based PDFs via the internal pdf.js engine; scanned PDFs and images via the selected vision model, or copied as-is. Videos, audio, and AGENTS.md control files are skipped.
+- `converter_policy: local_only` means conversion engines operate offline (MarkItDown, pdf.js, copy-as-is). Cloud-dependent features (audio transcription, YouTube, Azure, vision-model OCR) are excluded at build time.
 - After onboarding, normal source-grounded work starts from raw/.
 - During startup, project description and helpful artifact URLs are optional. If absent, the LLM CLI agent records them as not provided, keeps external_sources_allowed at its default `no`, and infers working scope from the raw corpus.
 - When setup_status reaches workspace_started, the startup workflow has built the master dictionary, created multi-level navigation maps in maps/, and passed validation.

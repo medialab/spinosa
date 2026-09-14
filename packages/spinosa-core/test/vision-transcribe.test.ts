@@ -121,15 +121,15 @@ describe("processVisionInProcess - callback based", () => {
     expect(existsSync(dest)).toBe(false)
   })
 
-  test("safe fallback when vision model is tesseract-local -> copy", async () => {
+  test("safe fallback when vision model is unknown -> copy", async () => {
     const { src, rel, dest, dir } = makeTempImage("jpg")
     const logsDir = path.join(dir, ".logs")
     const files: ClassifiedEntry[] = [{ src, rel, dest }]
     const transcribeVision = async () => {
-      throw new Error("should not be called for tesseract")
+      throw new Error("should not be called for unknown ids")
     }
     const result = await processVisionInProcess(files, logsDir, undefined, undefined, undefined, {
-      visionModelId: "tesseract-local",
+      visionModelId: "legacy-removed",
       transcribeVision: transcribeVision as never,
     })
     expect(result.converted).toBe(1)
