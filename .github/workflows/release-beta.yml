@@ -4,7 +4,7 @@
 # Pipeline: validate → build ×4 → assemble → verify ×4 → publish + channel.
 # Publish is gated behind verify: beta.19 shipped broken before this gate.
 #
-# Test workflow changes first (dry-run publishes nothing):
+# Test workflow changes first — dry-run proves everything but publish:
 #   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
 
 name: Beta release
@@ -162,10 +162,10 @@ jobs:
             bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
           fi
 
-      - if: needs.validate.outputs.dry_run != 'true'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           # Both dist/v<version>/ and dist/beta/ — ci-publish needs the channel installer.
+          # Uploaded in dry runs too: verify downloads it to prove the full pipeline.
           name: assembled-dist
           path: dist
           if-no-files-found: error
@@ -175,7 +175,6 @@ jobs:
   verify:
     name: Verify ${{ matrix.target }}
     needs: [validate, assemble]
-    if: needs.validate.outputs.dry_run != 'true'
     permissions:
       contents: read
     strategy:
@@ -207,7 +206,7 @@ jobs:
       - run: |
           cd "dist/v${{ needs.validate.outputs.version }}"
           grep " spinosa-${{ matrix.target }}$" checksums.txt | shasum -a 256 -c -
-          bash "$GITHUB_WORKSPACE/scripts/smoke-native-binary.sh" "spinosa-${{ matrix.target }}" 5
+          bash "$GITHUB_WORKSPACE/scripts/smoke-native-binary.sh" "./spinosa-${{ matrix.target }}" 5
 
   publish:
     name: Publish + roll beta channel
