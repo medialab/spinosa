@@ -10,6 +10,10 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Release channel roll no longer force-moves a Git tag. The rolling channel is the rolling GitHub Release. CI needs no workflows permission. Code: `scripts/release/stages.ts`.
+
 ## [1.1.0-beta.23] — 2026-09-14
 
 ### Fixed

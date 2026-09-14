@@ -77,12 +77,12 @@ State is tracked in `dist/v{VERSION}/.release-state.json` so releases can be res
 
 1. **preflight** — channel↔branch enforcement, clean tree, `bun run quality`
 2. **bump** — sync versions, commit, push; refresh release-state SHA to post-bump HEAD
-3. **build** — pack embedded templates, compile four product binaries via `scripts/build-release-binaries.ts`, then build any missing OCR tools tarballs (below), stage `install.sh`, `checksums.txt`, `build-manifest.json`
+3. **build** — pack embedded templates, compile four product binaries via `scripts/build-release-binaries.ts`, stage `install.sh`, `checksums.txt`, `build-manifest.json`
 4. **verify-local** — exact asset set (no source tarball), pins, checksums, executable bits
 5. **smoke** — serve local assets over HTTP and run the real installer into a temp home (`SPINOSA_RELEASE_BASE_URL`)
 6. **git-tag** — tag must equal HEAD/state SHA
 7. **publish-version** — create immutable GitHub release with binaries + installer + checksums + manifest (refuse checksum/manifest clobber)
-8. **channel** — sync rolling `beta`/`stable` tag + installer only (clobber allowed only here)
+8. **channel** — refresh rolling `beta`/`stable` GitHub Release only (retitle + replace installer and checksums; no Git tag is moved in CI)
 9. **verify-remote** — live installer pin check; `SPINOSA_SMOKE_REMOTE=1` also downloads the host binary and smokes it
 
 Contract: [docs/release/binary-distribution-contract.md](docs/release/binary-distribution-contract.md).

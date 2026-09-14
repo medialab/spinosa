@@ -444,15 +444,15 @@ export async function runChannel(ctx: StageContext): Promise<void> {
   }
 
   await resolveGhToken()
-  const sha = (await $`git rev-parse HEAD`.cwd(RELEASE_ROOT)).text().trim()
-  await $`git tag -f ${paths.channel} ${sha}`.cwd(RELEASE_ROOT)
-  await $`git push origin refs/tags/${paths.channel}:refs/tags/${paths.channel} --force`.cwd(RELEASE_ROOT)
+  // The rolling channel is the rolling GitHub Release (title + installer +
+  // checksums), not a moving Git tag: CI never force-moves refs, so no
+  // workflows permission is ever required.
   await publishRollingChannelRelease({
     version,
     channel: paths.channel,
     channelDist: paths.channelDist,
   })
-  ctx.reporter.detail(`rolling ${paths.channel} → ${sha.slice(0, 8)}`)
+  ctx.reporter.detail(`rolling ${paths.channel} release → v${version}`)
 }
 
 export async function runVerifyRemote(ctx: StageContext): Promise<void> {

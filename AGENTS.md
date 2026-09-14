@@ -27,8 +27,8 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
    release with build-provenance attestation → rolls the `beta` channel.
    Publish is gated behind the verify matrix: a broken binary must never
    become the rolling-channel default (v1.1.0-beta.19).
-6. Verify: `gh release view vX.Y.Z`, rolling `beta` tag points at the
-   release commit, live installer serves the new `PINNED_VERSION`.
+6. Verify: `gh release view vX.Y.Z`, rolling `beta` release advertises
+   the release, live installer serves the new `PINNED_VERSION`.
 
 Dry-run without publishing (after workflow changes):
 `gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true`.
