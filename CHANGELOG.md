@@ -10,6 +10,28 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.17.18] — 2026-09-14
+
+### Added
+
+- Optimistic routing UX with session autoroute and generic fallback. Turns show route decisions early. Code: `packages/tui/src/spinosa`, `packages/spinosa-core/src`.
+- STEER button on queued rows aborts the turn and dispatches now. Code: `packages/tui/src/spinosa/outbound-queue.ts`.
+- Esc-warn-esc stops the agent within 10 seconds. The first esc warns. Code: `packages/tui/src`.
+- forceAgent routing applies once after startup. Later turns route normally. Code: `packages/spinosa-core/src`.
+
+### Changed
+
+- Installer uses bundled-only OCR tools. It never modifies the host system. Host tools work for development only. Code: `install.sh`, `packages/spinosa-core/src/distribution/tools.ts`.
+- Import pipeline hardens PDF handling with destinations and manifest recovery. Code: `packages/spinosa-core/src/import`.
+- Release builds OCR tool tarballs locally from pinned source. No CI builds them. Code: `scripts/build-tools-tarballs.ts`.
+
+### Fixed
+
+- Child sessions no longer leak router state into parents. Code: `packages/spinosa-core/src`.
+- Back from sub-agent view returns to parent without stop-confirm. Code: `packages/tui/src/routes/session`.
+- Session continue suggestion drops redundant --project flag. Code: `packages/tui/src/routes/session/index.tsx`.
+- Dev smoke opts into host OCR tools explicitly. Production stays fail-closed. Code: `scripts/smoke-install.ts`, `packages/spinosa-core/src/tools/detection.ts`.
+
 ## [1.1.0-beta.17.17] — 2026-09-13
 
 ### Fixed
