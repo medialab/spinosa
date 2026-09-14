@@ -10,6 +10,13 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.23] — 2026-09-14
+
+### Fixed
+
+- Release verify smoke resolves bare binary names. A bare asset name no longer falls through to PATH lookup. Code: `scripts/smoke-native-binary.sh`.
+- Release dry runs prove the full pre-publish pipeline. The verify matrix runs in dry runs. Only publish stays gated. Code: `.github/workflows/release-beta.yml`.
+
 ## [1.1.0-beta.22] — 2026-09-14
 
 ### Removed
