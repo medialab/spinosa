@@ -2,6 +2,7 @@
 
 import { $ } from "bun"
 import fs from "fs"
+import { createHash } from "node:crypto"
 import path from "path"
 import { fileURLToPath } from "url"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
@@ -103,7 +104,65 @@ function isEmbeddedPathByte(byte: number): boolean {
   return byte !== 0x22 && byte !== 0x27 && byte !== 0x60 && byte !== 0x2c && byte !== 0x3b
 }
 
-function scrubEmbeddedBuildPaths(binaryPath: string): number {
+/** Byte range of pristine embedded file data inside the compiled binary. */
+export interface EmbeddedSpan {
+  start: number
+  end: number
+}
+
+/**
+ * Locate pristine embedded file bytes (e.g. a staged `.node` native) inside
+ * the compiled binary. Probes distinctive slices away from the file head and
+ * requires exactly one hit — fail closed on ambiguity so the path scrub can
+ * never clobber the wrong span.
+ */
+export function findEmbeddedSpan(haystack: Buffer, needle: Buffer): EmbeddedSpan {
+  if (needle.byteLength < 4096) {
+    throw new Error(`embedded span needle too small to locate uniquely (${needle.byteLength} bytes)`)
+  }
+  for (const sliceOffset of [1048576, 524288, 131072, 16384, 1024]) {
+    if (sliceOffset + 256 > needle.byteLength) continue
+    const slice = needle.subarray(sliceOffset, sliceOffset + 256)
+    const first = haystack.indexOf(slice)
+    if (first < 0) continue
+    if (haystack.indexOf(slice, first + 1) >= 0) continue
+    const start = first - sliceOffset
+    const end = start + needle.byteLength
+    if (start < 0 || end > haystack.byteLength) continue
+    return { start, end }
+  }
+  throw new Error("embedded native span not uniquely locatable — refusing to scrub (fail closed)")
+}
+
+export function spanIntersects(match: number, end: number, spans: readonly EmbeddedSpan[]): boolean {
+  return spans.some((span) => match < span.end && end > span.start)
+}
+
+export function sha256Hex(data: Buffer | Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex")
+}
+
+/**
+ * Fail closed when post-scrub embedded bytes differ from pristine. This gate
+ * would have caught the v1.1.0-beta.18 darwin outage (scrub corrupted the
+ * staged canvas `.node`, macOS killed hosts on dlopen).
+ */
+export function assertEmbeddedSpanIntact(
+  binaryPath: string,
+  span: EmbeddedSpan,
+  expectedHash: string,
+  label: string,
+): void {
+  const bytes = fs.readFileSync(binaryPath)
+  const actual = sha256Hex(bytes.subarray(span.start, span.end))
+  if (actual !== expectedHash) {
+    throw new Error(
+      `scrub altered embedded ${label} (bytes ${span.start}..${span.end}): expected ${expectedHash}, got ${actual}`,
+    )
+  }
+}
+
+export function scrubEmbeddedBuildPaths(binaryPath: string, skipSpans: readonly EmbeddedSpan[] = []): number {
   const bytes = fs.readFileSync(binaryPath)
   let replacements = 0
   for (const { prefix, replacement } of EMBEDDED_BUILD_PATH_PREFIXES) {
@@ -114,6 +173,15 @@ function scrubEmbeddedBuildPaths(binaryPath: string): number {
       if (match < 0) break
       let end = match + prefix.length
       while (end < bytes.length && isEmbeddedPathByte(bytes[end])) end++
+      // Embedded native blobs (staged `.node` files) carry their own
+      // toolchain paths — clobbering them corrupts the inner Mach-O and
+      // macOS kills the host on dlopen (v1.1.0-beta.18 darwin outage).
+      // Advance by one (not to `end`): the greedy extension below may run
+      // far past the span, and later matches inside it need their own check.
+      if (spanIntersects(match, end, skipSpans)) {
+        offset = match + 1
+        continue
+      }
       const length = end - match
       const neutral = Buffer.alloc(length, 0x5f)
       neutral.set(replacement.subarray(0, Math.min(length, replacement.length)))
@@ -126,20 +194,36 @@ function scrubEmbeddedBuildPaths(binaryPath: string): number {
   return replacements
 }
 
-function assertNoEmbeddedBuildPaths(binaryPath: string): void {
+export function assertNoEmbeddedBuildPaths(binaryPath: string, skipSpans: readonly EmbeddedSpan[] = []): void {
   const bytes = fs.readFileSync(binaryPath)
   for (const { prefix } of EMBEDDED_BUILD_PATH_PREFIXES) {
     if (prefix.length === 0) continue
-    const offset = bytes.indexOf(prefix)
-    if (offset >= 0) {
-      throw new Error(`binary ${binaryPath} still contains ${prefix.toString()} at byte ${offset}`)
+    let offset = 0
+    while (true) {
+      const hit = bytes.indexOf(prefix, offset)
+      if (hit < 0) break
+      let end = hit + prefix.length
+      while (end < bytes.length && isEmbeddedPathByte(bytes[end])) end++
+      if (!spanIntersects(hit, end, skipSpans)) {
+        throw new Error(`binary ${binaryPath} still contains ${prefix.toString()} at byte ${hit}`)
+      }
+      offset = end
     }
   }
-  // Also fail on generic personal markers that should never ship
+  // Also fail on generic personal markers that should never ship.
+  // Verified-pristine spans are exempt: their bytes are hash-pinned vendored
+  // input (assertEmbeddedSpanIntact), so the scrub cannot act on them anyway.
   const personal = [Buffer.from("tommasoprinetti"), Buffer.from("thdxr")]
   for (const p of personal) {
-    const off = bytes.indexOf(p)
-    if (off >= 0) throw new Error(`binary ${binaryPath} still contains personal marker ${p.toString()} at byte ${off}`)
+    let offset = 0
+    while (true) {
+      const off = bytes.indexOf(p, offset)
+      if (off < 0) break
+      if (!spanIntersects(off, off + p.byteLength, skipSpans)) {
+        throw new Error(`binary ${binaryPath} still contains personal marker ${p.toString()} at byte ${off}`)
+      }
+      offset = off + 1
+    }
   }
 }
 
@@ -330,28 +414,32 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     const binBytes = fs.readFileSync(outfile)
 
     // Same fingerprint gate for canvas skia .node (OCR load path on Linux).
-    {
-      const libPath = path.join(canvasEmbed.libsDir, canvasEmbed.name)
-      const libData = fs.readFileSync(libPath)
-      if (libData.byteLength < 1024) {
-        throw new Error(`canvas native too small to fingerprint: ${libPath}`)
-      }
-      if (binBytes.byteLength < libData.byteLength) {
-        throw new Error(
-          `binary ${outfile} (${binBytes.byteLength} bytes) smaller than canvas native ${canvasEmbed.name} (${libData.byteLength} bytes)`,
-        )
-      }
-      const probeAt = Math.min(4096, libData.byteLength - 64)
-      const probe = libData.subarray(probeAt, probeAt + 64)
-      if (!binBytes.includes(probe)) {
-        throw new Error(
-          `binary ${outfile} missing embedded bytes for ${canvasEmbed.name} (${item.os}-${item.arch}) — canvas native not packaged`,
-        )
-      }
+    // Locate the pristine span now: the scrub below must never touch it —
+    // clobbered inner Mach-O bytes kill the host on dlopen under macOS
+    // code-signing enforcement (v1.1.0-beta.18 darwin outage).
+    const canvasLibPath = path.join(canvasEmbed.libsDir, canvasEmbed.name)
+    const canvasLibData = fs.readFileSync(canvasLibPath)
+    if (canvasLibData.byteLength < 1024) {
+      throw new Error(`canvas native too small to fingerprint: ${canvasLibPath}`)
     }
+    if (binBytes.byteLength < canvasLibData.byteLength) {
+      throw new Error(
+        `binary ${outfile} (${binBytes.byteLength} bytes) smaller than canvas native ${canvasEmbed.name} (${canvasLibData.byteLength} bytes)`,
+      )
+    }
+    const probeAt = Math.min(4096, canvasLibData.byteLength - 64)
+    const probe = canvasLibData.subarray(probeAt, probeAt + 64)
+    if (!binBytes.includes(probe)) {
+      throw new Error(
+        `binary ${outfile} missing embedded bytes for ${canvasEmbed.name} (${item.os}-${item.arch}) — canvas native not packaged`,
+      )
+    }
+    const canvasSpan = findEmbeddedSpan(binBytes, canvasLibData)
+    const canvasHash = sha256Hex(canvasLibData)
 
-    const scrubbedPaths = scrubEmbeddedBuildPaths(outfile)
-    assertNoEmbeddedBuildPaths(outfile)
+    const scrubbedPaths = scrubEmbeddedBuildPaths(outfile, [canvasSpan])
+    assertNoEmbeddedBuildPaths(outfile, [canvasSpan])
+    assertEmbeddedSpanIntact(outfile, canvasSpan, canvasHash, `canvas native ${canvasEmbed.name}`)
     if (process.platform === "darwin" && item.os === "darwin") {
       const signed = await $`codesign --force --sign - ${outfile}`.nothrow()
       if (signed.exitCode !== 0) throw new Error(`failed to re-sign sanitized binary: ${outfile}`)
