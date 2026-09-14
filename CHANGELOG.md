@@ -10,6 +10,8 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.22] — 2026-09-14
+
 ### Removed
 
 - Local OCR engine (binaries + language data + tools tarballs). Scans transcribe via a vision model or copy-as-is. Digital PDFs extract via pdf.js. Code: `packages/spinosa-core/src/import`, `packages/spinosa-core/src/distribution`, `install.sh`, `scripts/release`, `.github/workflows/release-beta.yml`.
