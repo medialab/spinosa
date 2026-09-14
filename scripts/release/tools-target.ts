@@ -153,6 +153,23 @@ export function limaRunner(instance: string): BuildRunner {
 
 export type ToolsOs = "darwin" | "linux"
 
+export type WhichFn = (cmd: string) => string | null
+
+/** "ccache " prefix when a ccache binary is installed, else "".
+ * Native builds only: the Lima guest path never enables it (a host-side
+ * probe cannot see the guest, and a fresh guest has no cache to hit —
+ * within-run caching would be pure overhead). Pure (which injectable). */
+export function ccachePrefix(
+  which: WhichFn = (cmd) =>
+    (Bun as unknown as { which?: (c: string) => string | null }).which?.(cmd) ?? null,
+): string {
+  try {
+    return which("ccache") ? "ccache " : ""
+  } catch {
+    return ""
+  }
+}
+
 async function cmakeConfigure(
   r: BuildRunner,
   opts: { src: string; build: string; prefix: string; toolchain?: string; args: string[] },
@@ -216,8 +233,11 @@ export async function buildToolTarget(opts: {
   runner: BuildRunner
   /** SDK path for darwin (xcrun); unused on linux. */
   sdkPath?: string
+  /** Prefix compilers with ccache (native builds with a warm cache dir). */
+  ccache?: boolean
 }): Promise<string> {
   const { target, os, arch, sourcesDir, prefix, buildRoot, jobs, runner } = opts
+  const cc = opts.ccache ? "ccache " : ""
   const targetStarted = Date.now()
   const elapsed = () => fmtElapsed(Date.now() - targetStarted)
   const log = (m: string) => console.log(`[${timestamp()}] [tools:${target} +${elapsed()}] ${m}`)
@@ -232,7 +252,10 @@ export async function buildToolTarget(opts: {
     if (!opts.sdkPath) fail("xcrun SDK not found (install Xcode command line tools on the build Mac)")
     const sdk = opts.sdkPath
     const base = `-arch ${arch} -mmacosx-version-min=13.0 -O2`
-    cflags = { CC: "clang", CXX: "clang++", CFLAGS: base, CXXFLAGS: base, LDFLAGS: base }
+    // NOTE: in cross mode CMake ignores CFLAGS/LDFLAGS env, and the
+    // toolchain file pins CMAKE_C_COMPILER — ccache only applies to
+    // native darwin builds (the CI case). Local x64-cross stays uncached.
+    cflags = { CC: `${cc}clang`, CXX: `${cc}clang++`, CFLAGS: base, CXXFLAGS: base, LDFLAGS: base }
     const hostArch = process.arch === "arm64" ? "arm64" : "x86_64"
     if (arch !== hostArch) {
       if (arch !== "x86_64") fail(`cannot cross-compile ${target} from a ${hostArch} host — build it on matching hardware`)
@@ -240,7 +263,7 @@ export async function buildToolTarget(opts: {
       await runner.writeFile(toolchain, darwinCrossToolchain())
     }
   } else {
-    cflags = { CC: "gcc", CXX: "g++", CFLAGS: "-O2 -static", CXXFLAGS: "-O2 -static", LDFLAGS: "-static" }
+    cflags = { CC: `${cc}gcc`, CXX: `${cc}g++`, CFLAGS: "-O2 -static", CXXFLAGS: "-O2 -static", LDFLAGS: "-static" }
   }
   const run = (cmd: string[], env?: Record<string, string>) =>
     runner.run(cmd, env ? { env: { ...cflags, ...env } } : { env: cflags })

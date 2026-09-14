@@ -136,6 +136,29 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install builder toolchain extras
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq ccache
+          else
+            brew install ccache
+          fi
+
+      - name: Restore pinned sources cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/spinosa-tools-sources
+          key: tools-sources-${{ hashFiles('scripts/release/tools-target.ts', 'install.sh') }}
+          restore-keys: tools-sources-
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/spinosa-ccache
+          key: ccache-${{ matrix.target }}-${{ hashFiles('scripts/release/tools-target.ts') }}
+          restore-keys: ccache-${{ matrix.target }}-
+
       - name: Build product binary (${{ matrix.target }})
         shell: bash
         run: >
@@ -147,11 +170,15 @@ jobs:
 
       - name: Build OCR tools tarball (${{ matrix.target }})
         shell: bash
+        env:
+          CCACHE_DIR: ~/.cache/spinosa-ccache
+          CCACHE_MAXSIZE: 2G
         run: >
           bun scripts/build-tools-tarballs.ts
           --out-dir "dist/v${{ needs.resolve.outputs.version }}"
           --only "${{ matrix.target }}"
           --reuse-previous
+          --sources-dir ~/.cache/spinosa-tools-sources
 
       - name: Upload target artifacts
         uses: actions/upload-artifact@v4

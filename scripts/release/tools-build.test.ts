@@ -3,6 +3,7 @@ import { PRODUCT_BINARY_TARGETS } from "../../packages/spinosa-core/src/distribu
 import {
   SOURCE_PINS,
   TESSERACT_VERSION,
+  ccachePrefix,
 } from "./tools-target.ts"
 import {
   TOOLS_TARGETS,
@@ -98,6 +99,12 @@ describe("tools tarball pins (pinned source, local Lima or native CI runners)", 
     expect(canBuildLinuxNative("linux-x64", { platform: "darwin", arch: "arm64" })).toBe(false)
     expect(canBuildLinuxNative("darwin-arm64", { platform: "linux", arch: "arm64" })).toBe(false)
     expect(canBuildLinuxNative("darwin-x64", { platform: "darwin", arch: "arm64" })).toBe(false)
+  })
+
+  test("ccache prefix engages only when a ccache binary is visible", () => {
+    expect(ccachePrefix(() => "/usr/bin/ccache")).toBe("ccache ")
+    expect(ccachePrefix(() => null)).toBe("")
+    expect(ccachePrefix(() => { throw new Error("nope") })).toBe("")
   })
 
   test("reuse tag selection prefers the greatest older beta", () => {

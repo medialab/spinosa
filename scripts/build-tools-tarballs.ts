@@ -53,6 +53,7 @@ import {
   SOURCE_PINS,
   TESSERACT_VERSION,
   buildToolTarget,
+  ccachePrefix,
   limaRunner,
   localRunner,
 } from "./release/tools-target.ts"
@@ -274,6 +275,8 @@ async function buildDarwin(target: ToolsTarget, sourcesDir: string, prefix: stri
   mkdirSync(buildRoot, { recursive: true })
   step("tools", `${target}: compiling on this Mac (static tesseract — minutes, per-library lines below)`)
   const compileElapsed = startTimer()
+  const useCcache = ccachePrefix() !== ""
+  info("tools", `${target}: ccache ${useCcache ? "on (warm cache hits skip recompiles)" : "off (install ccache for incremental rebuilds)"}`)
   await buildToolTarget({
     target,
     os: "darwin",
@@ -284,6 +287,7 @@ async function buildDarwin(target: ToolsTarget, sourcesDir: string, prefix: stri
     jobs: cpuCount(),
     runner: localRunner(),
     sdkPath: sdk,
+    ccache: useCcache,
   })
   ok("tools", `${target}: host compile finished`, compileElapsed())
 }
@@ -347,6 +351,8 @@ async function buildLinuxNative(
   const jobs = cpuCount()
   info("tools", `${target}: compiling natively with ${jobs} jobs (static tesseract — minutes, per-library lines below)`)
   const compileElapsed = startTimer()
+  const useCcache = ccachePrefix() !== ""
+  info("tools", `${target}: ccache ${useCcache ? "on (warm cache hits skip recompiles)" : "off (install ccache for incremental rebuilds)"}`)
   await buildToolTarget({
     target,
     os: "linux",
@@ -356,6 +362,7 @@ async function buildLinuxNative(
     buildRoot,
     jobs,
     runner: localRunner(),
+    ccache: useCcache,
   })
   ok("tools", `${target}: native compile finished`, compileElapsed())
   return path.join(prefix, "bin", "tesseract")
@@ -525,7 +532,7 @@ if (import.meta.main) {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     console.log(`Usage:
   bun scripts/build-tools-tarballs.ts --out-dir <dir> [--only <t,...>] [--host-only] [--work-dir <dir>] [--force]
-    [--reuse-from <tag> | --reuse-previous]
+    [--reuse-from <tag> | --reuse-previous] [--sources-dir <dir>]
 
 Builds spinosa-tools-<os>-<arch>.tar.gz from pinned source (local only, no CI).
 darwin targets compile on this Mac; linux targets compile in Lima guests
@@ -547,7 +554,10 @@ builds from source; --force always rebuilds.`)
   const force = process.argv.includes("--force")
   const workDir =
     argValue("--work-dir") ?? path.join(tmpdir(), "spinosa-tools-build")
-  const sourcesDir = path.join(workDir, "sources")
+  // Pinned sources live apart from per-run build trees so CI can persist
+  // them across runs (actions/cache): present + SHA-verified archives are
+  // never re-downloaded (see ensureSources).
+  const sourcesDir = path.resolve(argValue("--sources-dir") ?? path.join(workDir, "sources"))
   const stageRoot = path.join(workDir, "stage")
 
   const hostTarget = `${process.platform}-${process.arch}` as ToolsTarget
