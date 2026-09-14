@@ -84,6 +84,7 @@ import {
   isOutboundPumping,
   kickPump,
   markOutboundEvaluating,
+  markOutboundInterrupted,
   peekOutbound,
   registerPump,
   removeOutbound,
@@ -439,7 +440,7 @@ export function Prompt(props: PromptProps) {
         name: "session.interrupt",
         category: "Session",
         hidden: true,
-        enabled: status().type !== "idle",
+        enabled: status().type !== "idle" || hasEvaluating(props.sessionID ?? ""),
         run: () => {
           if (auto()?.visible) return
           if (store.mode === "shell") {
@@ -449,22 +450,17 @@ export function Prompt(props: PromptProps) {
           const sessionID = props.sessionID
           if (!sessionID) return
 
-          // Single press cancels evaluating (routing): nothing was sent yet,
-          // so there is nothing to confirm.
-          if (hasEvaluating(sessionID)) {
-            for (const key of evaluatingKeys(sessionID)) abortOutbound(key)
-            dialog.clear()
-            return
-          }
-
-          // Stopping a live run needs esc-warn-esc within 10s: the first
-          // press only arms (hint highlights), the second press stops. A
-          // lone Esc never kills a run by accident.
-          if (!escConfirmStop(store.interrupt)) {
+          const evaluating = evaluatingKeys(sessionID)
+          const stopTarget = evaluating[0] ? `evaluation:${evaluating[0]}` : `session:${sessionID}`
+          // Evaluation and live conversation turns share the same double-Esc
+          // fence. The arm is target-bound, so it cannot leak across phases.
+          if (!escConfirmStop(store.interrupt, interruptTarget, stopTarget)) {
             if (interruptTimer) clearTimeout(interruptTimer)
+            interruptTarget = stopTarget
             setStore("interrupt", Date.now())
             interruptTimer = setTimeout(() => {
               setStore("interrupt", 0)
+              interruptTarget = undefined
               interruptTimer = undefined
             }, ESC_ARM_WINDOW_MS)
             dialog.clear()
@@ -475,6 +471,15 @@ export function Prompt(props: PromptProps) {
             interruptTimer = undefined
           }
           setStore("interrupt", 0)
+          interruptTarget = undefined
+          if (evaluating.length > 0) {
+            for (const key of evaluating) {
+              abortOutbound(key)
+              markOutboundInterrupted(sessionID, key)
+            }
+            dialog.clear()
+            return
+          }
           void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
             if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
           }).finally(() => {
@@ -1078,8 +1083,9 @@ export function Prompt(props: PromptProps) {
   })
 
   let submitting = false
-  // Armed-Esc window timer for stopping live runs (esc-warn-esc, 10s).
+  // Armed-Esc fence for evaluations and live conversation turns.
   let interruptTimer: ReturnType<typeof setTimeout> | undefined
+  let interruptTarget: string | undefined
 
   // Dispatch bridge: dispatchEntry is defined per-submit (it closes over
   // nothing submit-local anymore, but lives in submitInner for minimal
@@ -1132,15 +1138,12 @@ export function Prompt(props: PromptProps) {
           // Direct sends resolve at admission.
           if (result.completion) await result.completion.catch(() => {})
         } catch (err) {
-          removeOutbound(sessionID, head.key)
           if (err instanceof RouterAbortedError || controller.signal.aborted) {
-            // Esc during evaluating: nothing was sent. Restore the text
-            // only when the box is still empty — never clobber fresh input.
-            if (shouldRestoreCancelledText(head.text, store.prompt.input)) {
-              input.setText(head.text)
-              setStore("prompt", "input", head.text)
-            }
+            // Nothing entered the conversation. Keep the row as an explicit
+            // interrupted receipt and let the next queued prompt proceed.
+            markOutboundInterrupted(sessionID, head.key)
           } else {
+            removeOutbound(sessionID, head.key)
             toast.show({
               title: "Couldn’t send prompt",
               message: errorMessage(err),
@@ -1519,26 +1522,11 @@ export function Prompt(props: PromptProps) {
       return { completion }
     } else {
       move.startSubmit()
-      // Route badge: fast-path requests carry their decision so the
-      // transcript shows ⚡ fast (V1 transport preserves part metadata).
-      const directMeta =
-        preparedSpinosa?.kind === "direct" && preparedSpinosa.decision.mode === "fast"
-          ? {
-              [SPINOSA_ROUTE_METADATA]: {
-                kind: "direct",
-                action: preparedSpinosa.decision.action,
-                reason: preparedSpinosa.decision.reason,
-                ...(preparedSpinosa.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
-                confidence: preparedSpinosa.decision.confidence,
-              },
-            }
-          : {}
       const promptParts = [
         ...snapshot.editorParts,
         {
           type: "text" as const,
           text: outboundText,
-          ...(Object.keys(directMeta).length > 0 ? { metadata: directMeta } : {}),
         },
         ...snapshot.nonTextParts,
       ]
@@ -1993,7 +1981,7 @@ export function Prompt(props: PromptProps) {
         </box>
         <box width="100%" flexDirection="row" justifyContent="space-between">
           <Switch>
-            <Match when={status().type !== "idle"}>
+            <Match when={status().type !== "idle" || hasEvaluating(props.sessionID ?? "")}>
               <box
                 flexDirection="row"
                 gap={1}
@@ -2003,10 +1991,17 @@ export function Prompt(props: PromptProps) {
                 <box flexShrink={0} flexDirection="row" gap={1}>
                   <box marginLeft={1}>
                     <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
-                      <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
+                      <spinner
+                        color={hasEvaluating(props.sessionID ?? "") ? theme.textMuted : spinnerDef().color}
+                        frames={spinnerDef().frames}
+                        interval={40}
+                      />
                     </Show>
                   </box>
                   <box flexDirection="row" gap={1} flexShrink={0}>
+                    <Show when={hasEvaluating(props.sessionID ?? "")}>
+                      <text fg={theme.textMuted}>Evaluating</text>
+                    </Show>
                     {(() => {
                       const retry = createMemo(() => {
                         const s = status()

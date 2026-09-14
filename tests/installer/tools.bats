@@ -21,25 +21,17 @@ setup() {
   [ "$(tools_platform_dir)" = "$SPINOSA_HOME/tools/darwin-arm64" ]
 }
 
-@test "tools_tessdata_complete requires all three languages" {
-  dir="$BATS_TEST_TMPDIR/tessdata"
+@test "legacy_ocr_data_complete is always absent (no engine ships)" {
+  dir="$BATS_TEST_TMPDIR/ocr-data"
   mkdir -p "$dir"
-  run tools_tessdata_complete "$dir"
-  [ "$status" -ne 0 ]
-  touch "$dir/eng.traineddata" "$dir/ita.traineddata"
-  run tools_tessdata_complete "$dir"
-  [ "$status" -ne 0 ]
-  touch "$dir/fra.traineddata"
-  run tools_tessdata_complete "$dir"
-  [ "$status" -eq 0 ]
-  run tools_tessdata_complete ""
+  touch "$dir/eng.dat" "$dir/ita.dat" "$dir/fra.dat"
+  run legacy_ocr_data_complete "$dir"
   [ "$status" -ne 0 ]
 }
 
 @test "installer never calls a package manager (standalone contract)" {
-  # No tesseract/poppler installs via any package manager (the bash
-  # prerequisite hint is exempt — bash is the installer's own runtime).
-  run grep -E 'brew install tesseract|apt-get install .*(tesseract|poppler)|dnf install .*(tesseract|poppler)|pacman -S .*(tesseract|poppler)' "$INSTALLER"
+  # No engine installs via any package manager.
+  run grep -E 'brew install|apt-get install|dnf install|pacman -S' "$INSTALLER"
   [ "$status" -ne 0 ]
   # No package-manager execution paths remain outside comments/echo hints.
   run grep -E '^\s*\$sudo (brew|apt-get|dnf|pacman)|\$\(sudo' "$INSTALLER"
@@ -51,58 +43,52 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
-@test "host_ocr_complete ignores host PATH in production (bundled only)" {
+@test "host_ocr_complete is always absent (no engine ships, no host probing)" {
   bindir="$BATS_TEST_TMPDIR/stubbin"
   mkdir -p "$bindir"
-  printf '#!/bin/sh\necho "tesseract 5.0"\necho "eng\nita\nfra"\n' > "$bindir/tesseract"
-  chmod +x "$bindir/tesseract"
+  printf '#!/bin/sh\necho "legacy-ocr 5.0"\necho "eng\nita\nfra"\n' > "$bindir/legacy-ocr"
+  chmod +x "$bindir/legacy-ocr"
   unset SPINOSA_DEV_HOST_TOOLS
   PATH="$bindir:$PATH" run host_ocr_complete
   [ "$status" -ne 0 ]
-}
-
-@test "host_ocr_complete honors SPINOSA_DEV_HOST_TOOLS=1 developer override" {
-  bindir="$BATS_TEST_TMPDIR/stubbin2"
-  mkdir -p "$bindir"
-  printf '#!/bin/sh\necho "eng\nita\nfra"\n' > "$bindir/tesseract"
-  chmod +x "$bindir/tesseract"
   SPINOSA_DEV_HOST_TOOLS=1 PATH="$bindir:$PATH" run host_ocr_complete
-  [ "$status" -eq 0 ]
-}
-
-@test "tessdata pins an immutable commit (never mutable main)" {
-  run grep -E '^TESSDATA_PIN_COMMIT="[0-9a-f]{40}"' "$INSTALLER"
-  [ "$status" -eq 0 ]
-  run grep -E 'tessdata_fast/raw/main' "$INSTALLER"
   [ "$status" -ne 0 ]
 }
 
-@test "write_tools_manifest emits valid JSON with source" {
-  run write_tools_manifest "tarball"
+@test "no language-data pins remain" {
+  run grep -E '^[A-Z_]*PIN_COMMIT=' "$INSTALLER"
+  [ "$status" -ne 0 ]
+  run grep -E 'traineddata' "$INSTALLER"
+  [ "$status" -ne 0 ]
+}
+
+@test "write_tools_manifest emits removal JSON" {
+  run write_tools_manifest "removed"
   [ "$status" -eq 0 ]
   manifest="$SPINOSA_HOME/tools/TOOLS_MANIFEST.json"
   [ -f "$manifest" ]
-  python3 -c "import json,sys; d=json.load(open('$manifest')); assert d['platform']=='darwin-arm64', d; assert d['source']=='tarball', d; assert 'tessdata_commit' in d, d"
+  python3 -c "import json,sys; d=json.load(open('$manifest')); assert d['platform']=='darwin-arm64', d; assert d['source']=='removed', d; assert d['ocr']=='removed', d"
 }
 
-@test "ensure_bundled_tessdata skips download when complete" {
-  dir="$SPINOSA_HOME/tools/darwin-arm64/tessdata"
+@test "ensure_bundled_ocr_data is a fail-closed stub (no downloads)" {
+  dir="$SPINOSA_HOME/tools/darwin-arm64/ocr-data"
   mkdir -p "$dir"
-  touch "$dir/eng.traineddata" "$dir/ita.traineddata" "$dir/fra.traineddata"
-  run ensure_bundled_tessdata
-  [ "$status" -eq 0 ]
+  touch "$dir/eng.dat" "$dir/ita.dat" "$dir/fra.dat"
+  run ensure_bundled_ocr_data
+  [ "$status" -ne 0 ]
 }
 
-@test "install_bundled_tools honors the skip flag" {
-  SPINOSA_SKIP_BUNDLED_TOOLS=1 run install_bundled_tools "/nonexistent-checksums"
+@test "install_bundled_tools is a no-op that records removal" {
+  run install_bundled_tools "/nonexistent-checksums"
   [ "$status" -eq 0 ]
+  python3 -c "import json; d=json.load(open('$SPINOSA_HOME/tools/TOOLS_MANIFEST.json')); assert d['source']=='removed', d"
 }
 
-@test "install_bundled_tools never uses host tools without dev override" {
+@test "install_bundled_tools never uses host tools" {
   bindir="$BATS_TEST_TMPDIR/stubbin3"
   mkdir -p "$bindir"
-  printf '#!/bin/sh\necho "eng\nita\nfra"\n' > "$bindir/tesseract"
-  chmod +x "$bindir/tesseract"
+  printf '#!/bin/sh\necho "eng\nita\nfra"\n' > "$bindir/legacy-ocr"
+  chmod +x "$bindir/legacy-ocr"
   unset SPINOSA_DEV_HOST_TOOLS
   PATH="$bindir:$PATH" run install_bundled_tools "/nonexistent-checksums"
   [ "$status" -eq 0 ]
@@ -110,8 +96,8 @@ setup() {
 }
 
 @test "bundled tools provision before staged doctor verification" {
-  # The staged doctor gate fails closed on missing OCR, so the install flow
-  # must provision $SPINOSA_HOME/tools before running staged verification.
+  # The removal-manifest step still runs before staged verification so the
+  # ordering invariant keeps holding.
   tools_line="$(grep -nF 'install_bundled_tools "$checksums_file"' "$INSTALLER" | cut -d: -f1)"
   verify_line="$(grep -nF 'run_staged_binary_checks "$staged_binary"' "$INSTALLER" | cut -d: -f1)"
   [ -n "$tools_line" ]

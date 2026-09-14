@@ -140,7 +140,7 @@ describe("background import monitor + chip", () => {
       await app.renderOnce()
       expect(app.captureCharFrame()).not.toContain("Import running")
 
-      svc.start({ kind: "add-files", title: "t", workspacePath: "/tmp/ws", modelId: "tesseract-local" })
+      svc.start({ kind: "add-files", title: "t", workspacePath: "/tmp/ws", modelId: "none" })
       svc.seedQueue(["a.txt", "b.txt"])
       svc.reportProgress({ relPath: "a.txt", status: "done" })
       await app.renderOnce()

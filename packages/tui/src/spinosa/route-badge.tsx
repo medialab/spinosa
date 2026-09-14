@@ -3,9 +3,9 @@ import { Show } from "solid-js"
 import { useTheme } from "../context/theme"
 
 /**
- * Conversation route badge: manifests in the transcript whether a request
- * took the fast path or an orchestrated workflow — and, for workflows, which
- * step is running. Attached at submit time as part metadata (same mechanism
+ * Conversation route badge: manifests transient routing state and, for
+ * orchestrated workflows, which step is running. Workflow identity is
+ * attached at submit time as part metadata (same mechanism
  * as the `ignored` / `spinosaSilent` markers), so it survives reload and
  * needs no message-id matching. Live step progress arrives via the
  * `onProgress` callback threaded through `executeSpinosaSubmit`.
@@ -14,7 +14,7 @@ import { useTheme } from "../context/theme"
 export const SPINOSA_ROUTE_METADATA = "spinosaRoute"
 
 export type RouteBadgeInfo =
-  | { kind: "direct"; action: string; reason?: string; routedBy?: "rules" | "model"; confidence?: number }
+  | { kind: "general"; routedBy?: "rules" | "model"; confidence?: number }
   | {
       kind: "workflow"
       workflowID: string
@@ -25,9 +25,11 @@ export type RouteBadgeInfo =
       confidence?: number
     }
   // Transient TUI-local states for the outbound queue (never persisted to
-  // part metadata — the badge flips to direct/workflow once routed).
+  // part metadata — the badge disappears or flips to workflow once routed).
   | { kind: "queued" }
+  | { kind: "steered" }
   | { kind: "evaluating" }
+  | { kind: "interrupted" }
 
 export type RouteStepProgress = {
   done: number
@@ -52,11 +54,11 @@ export function routeBadgeFromParts(parts: readonly unknown[] | undefined): Rout
     const v = info as Record<string, unknown>
     const routedBy = v.routedBy === "model" || v.routedBy === "rules" ? v.routedBy : undefined
     const confidence = typeof v.confidence === "number" ? v.confidence : undefined
-    if (v.kind === "direct" && typeof v.action === "string") {
+    // Older transcript parts used { kind: "direct", action: ... }. Normalize
+    // those persisted rows into the current general-answer vocabulary.
+    if (v.kind === "general" || (v.kind === "direct" && typeof v.action === "string")) {
       return {
-        kind: "direct",
-        action: v.action,
-        ...(typeof v.reason === "string" ? { reason: v.reason } : {}),
+        kind: "general",
         ...(routedBy ? { routedBy } : {}),
         ...(confidence !== undefined ? { confidence } : {}),
       }
@@ -129,6 +131,15 @@ function shortAgent(stepID: string): string {
   return shortStepLabel(stepID)
 }
 
+export function routeBadgeLabel(info: RouteBadgeInfo): string {
+  if (info.kind === "general") return "General answer"
+  if (info.kind === "queued") return "○ queued"
+  if (info.kind === "steered") return "→ steered"
+  if (info.kind === "evaluating") return "Evaluating"
+  if (info.kind === "interrupted") return "⛔ Interrupted"
+  return `◈ ${shortWorkflow(info.workflowID)}`
+}
+
 /** Small chip rendered under the user message timestamp row. */
 export function RouteBadge(props: { info: RouteBadgeInfo }) {
   const { theme } = useTheme()
@@ -136,9 +147,11 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
     props.info.kind === "workflow" ? routeProgress(props.info.runID) : undefined
 
   const tone = () => {
-    if (props.info.kind === "direct") return theme.textMuted
+    if (props.info.kind === "general") return theme.textMuted
     if (props.info.kind === "queued") return theme.textMuted
-    if (props.info.kind === "evaluating") return theme.warning
+    if (props.info.kind === "steered") return theme.primary
+    if (props.info.kind === "evaluating") return theme.textMuted
+    if (props.info.kind === "interrupted") return theme.error
     const p = progress()
     if (!p) return theme.primary
     if (p.status === "done" && p.done >= p.total && p.total > 0) return theme.success
@@ -146,20 +159,14 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
     return theme.primary
   }
 
-  const label = () => {
-    if (props.info.kind === "direct") return "⚡ fast"
-    if (props.info.kind === "queued") return "○ queued"
-    if (props.info.kind === "evaluating") return "⏳ evaluating"
-    return `◈ ${shortWorkflow(props.info.workflowID)}`
-  }
-
   // Badge shows state only — never why the model decided. No reasons, no
   // via-model/rules provenance, no confidence. The single exception is live
   // workflow step progress (run-state signaling, not an explanation).
   const detail = () => {
     if (props.info.kind === "queued") return "waiting for its turn"
-    if (props.info.kind === "evaluating") return "routing your prompt"
-    if (props.info.kind === "direct") return undefined
+    if (props.info.kind === "steered") return "will go next"
+    if (props.info.kind === "evaluating" || props.info.kind === "interrupted") return undefined
+    if (props.info.kind === "general") return undefined
     const p = progress()
     if (!p || p.total === 0) return undefined
     const done = p.status === "done" && p.done >= p.total ? "✓ " : ""
@@ -172,7 +179,7 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
     <box flexDirection="row" gap={1}>
       <text fg={tone()}>●</text>
       <text fg={theme.text}>
-        <span style={{ bold: true }}>{label()}</span>
+        <span style={{ bold: true }}>{routeBadgeLabel(props.info)}</span>
       </text>
       <Show when={detail()}>
         <text fg={theme.textMuted}>{detail()}</text>

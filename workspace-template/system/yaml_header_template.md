@@ -54,7 +54,7 @@ page_number: 1 # split page files only
 page_count: 1 # split page files only
 source_type: interview | fieldnote | article | report | dataset | correspondence | researcher_note | participant_worksheet | transcript | transcript_for_worksheet | book
 original_format: pdf | docx | pptx | xlsx | xls | epub | html | txt | rtf | csv | json | yaml | md | jpg | png | ...
-converter_engine: markitdown | tesseract | renamer | native
+converter_engine: markitdown | vision | renamer | native
 ocr_confidence: high | medium | low | unknown
 language: en | fr | pt | es | ...
 date: "YYYY-MM-DD or YYYY-MM-DD"
@@ -81,7 +81,7 @@ Rules:
 - `source` uses a relative path from the repo root (e.g., `raw/folder/file.md`).
 - Split page files use `source_document`, `original_source`, `page_number`, `page_count`, and `part_of` so agents can cite exact pages while preserving source-document grouping.
 - `original_format` records the source file extension before conversion (e.g., `pdf`, `docx`, `txt`). Replaces the former `text_type` field. Used for provenance tracking and re-onboarding idempotency checks.
-- `converter_engine` records which engine produced this `.md` file: `renamer` (extension rename only), `native` (copied unchanged), `markitdown` (MarkItDown conversion), or `tesseract` (bundled Tesseract OCR). Enables engine-specific re-classification warnings on re-onboarding.
+- `converter_engine` records which engine produced this `.md` file: `renamer` (extension rename only), `native` (copied unchanged), `markitdown` (MarkItDown conversion), or `vision` (vision-model transcription). Older engine values predate local-OCR removal. Enables engine-specific re-classification warnings on re-onboarding.
 - `ocr_confidence` is optional and applies when OCR or scan conversion produced the text. Use `unknown` when OCR quality was not measured.
 - `language` is the ISO 639-1 code of the source file's primary language (en, fr, pt, es, etc.).
 - `people`, `places`, `organizations` MUST use canonical forms from [[dictionary]].
@@ -91,7 +91,7 @@ Rules:
 - `uncertain_terms`, `machine_artifacts`, and `metadata_uncertainty` quarantine noisy or incomplete metadata.
 - `related_sources` lists other raw copies with shared topics.
 - `generated_by`, `generated_at`, and `processing_status` preserve provenance for generated headers.
-- `processing_status` values are engine-specific: `copied_text_headered` (renamer/native), `markitdown_converted` (MarkItDown), `ocr_processed` (Tesseract).
+- `processing_status` values are engine-specific: `copied_text_headered` (renamer/native), `markitdown_converted` (MarkItDown), `ocr_processed` (legacy, pre-removal) or vision transcription.
 - Omit fields that have no value — do not write `people: []`.
 
 **Frontmatter exception:** `connects_to:` and other YAML keys use **bare paths** (not wikilinks). This keeps the metadata machine-readable, grep-friendly, and stable for sub-agents to parse.

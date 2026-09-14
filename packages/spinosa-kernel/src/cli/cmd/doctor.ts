@@ -23,8 +23,7 @@ import {
   readInstalledBinaryVersion,
 } from "@spinosa/core/distribution/bootstrap"
 import { isOcrPlatformSupported, ocrUnsupportedReason } from "@spinosa/core/tools/ocr-support"
-import { tesseractSource } from "@spinosa/core/distribution/tools"
-import { moduleAvailable, ocrAvailable, pdfjsAvailable } from "@spinosa/core/tools/detection"
+import { moduleAvailable, pdfjsAvailable } from "@spinosa/core/tools/detection"
 import { getFormat, log, emitResult, errorOut, type OutputFormat } from "../output"
 import { effectCmd } from "../effect-cmd"
 
@@ -45,13 +44,13 @@ async function probePdfEngine(compiled: boolean): Promise<boolean> {
   }
 }
 
-async function probeOcrEngine(compiled: boolean): Promise<{ ok: boolean; unsupported?: boolean; error?: string; source?: string }> {
+async function probeOcrEngine(compiled: boolean): Promise<{ ok: boolean; unsupported?: boolean; error?: string }> {
+  void compiled
   const unsupported = ocrUnsupportedReason()
   if (unsupported) {
     return { ok: false, unsupported: true, error: unsupported }
   }
-  const ok = ocrAvailable()
-  return { ok, source: ok ? tesseractSource() : undefined }
+  return { ok: false }
 }
 
 async function probeMarkitdown(): Promise<boolean> {
@@ -108,11 +107,9 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
         log(fmt, `OCR engine: unsupported`)
         if (ocr.error) log(fmt, `OCR: ${ocr.error}`)
       } else {
-        log(fmt, `OCR engine: ${ocr.ok ? "available" : "missing"}${ocr.ok && ocr.source ? ` (${ocr.source})` : ""}`)
-        if (!ocr.ok && ocr.error) log(fmt, `OCR probe error: ${ocr.error}`)
-        if (!ocr.ok) {
-          log(fmt, `OCR tools: expected Spinosa-owned assets under $SPINOSA_HOME/tools/<platform>/{bin/tesseract,tessdata} (installed by install.sh from spinosa-tools-<platform>.tar.gz; never brew/apt)`)
-        }
+        log(fmt, `OCR engine: missing`)
+        if (ocr.error) log(fmt, `OCR probe error: ${ocr.error}`)
+        log(fmt, `OCR tools: local OCR engine removed — pick a vision model to transcribe scans, or copy files as-is (digital PDFs extract via pdf.js)`)
       }
       log(fmt, `Canvas: ${canvas ? "available" : "missing"}`)
       if (!pdf || !markitdown) healthy = false
@@ -125,6 +122,8 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
       log(fmt, `Version: ${readFrameworkVersionFromRoot(frameworkRoot)}`)
       const tools = yield* Effect.promise(() => detectDocumentTools())
       for (const [name, available] of Object.entries(tools)) {
+        // Local OCR was removed — its absence is by design, never a health failure.
+        if (name === "ocr" || name === "ocrUnsupportedReason") continue
         log(fmt, `${name}: ${available ? "ok" : "missing"}`)
         if (!available) healthy = false
       }

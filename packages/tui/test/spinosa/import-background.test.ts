@@ -25,7 +25,7 @@ describe("background import service", () => {
       expect(svc.active()).toBe(false)
       expect(startRun(svc)).toBeDefined()
       expect(svc.active()).toBe(true)
-      expect(svc.start({ kind: "add-files", title: "x", modelId: "tesseract-local" })).toBeUndefined()
+      expect(svc.start({ kind: "add-files", title: "x", modelId: "none" })).toBeUndefined()
     } finally {
       dispose()
     }

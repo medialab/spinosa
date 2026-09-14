@@ -51,7 +51,7 @@ export interface OnboardingOptions {
   additionalRecovered?: number
   /** Interactive multi-source flows may have no importable files in source 1. */
   allowEmptySelection?: boolean
-  /** Selected OCR engine id (vision model / tesseract-local / none) for route-aware verify. */
+  /** Selected OCR engine id (vision model / none) for route-aware verify. */
   ocrModelId?: string
 }
 
@@ -348,7 +348,7 @@ async function writeOnboardingSummary(summary: OnboardingSummary): Promise<void>
   } = summary
 
   const ocrMode = scanCounts.ocrConvertible > 0
-    ? (copyResult.ocrConverted > 0 ? "tesseract_converted" : toolStatus.ocr ? "tesseract_available" : "tesseract_not_available")
+    ? (copyResult.ocrConverted > 0 ? "pdfjs_converted" : "vision_or_copy")
     : "not_applicable"
 
   const markitdownMode = scanCounts.markitdown > 0
@@ -373,7 +373,7 @@ updated: ${today()}
 - Text-based files to rename to Markdown: ${scanCounts.markdown}
 - Office docs/HTML/EPUB via MarkItDown: ${scanCounts.markitdown}
 - Native-readable files to copy unchanged: ${scanCounts.native}
-- OCR candidates (PDFs → pdf.js text census, scanned → tesseract 300dpi ita+eng+fra; images → copy as-is): ${scanCounts.ocrConvertible}
+- OCR candidates (PDFs → pdf.js text census; scanned → vision model or copy as-is; images → copy as-is): ${scanCounts.ocrConvertible}
 - Videos (optional): ${scanCounts.video}
 - Audio (optional): ${scanCounts.audio}
 - Unsupported or unknown files: ${scanCounts.unknown}
@@ -386,7 +386,7 @@ updated: ${today()}
 - Files skipped during direct copy: ${copyResult.skipped}
 - MarkItDown converted: ${copyResult.mdConverted}
 - MarkItDown mode: ${markitdownMode}
-- OCR (tesseract ita+eng+fra) converted: ${copyResult.ocrConverted}
+- OCR (pdf.js digital, vision/copy for scans) converted: ${copyResult.ocrConverted}
 - OCR mode: ${ocrMode}
 
 ## Handoff

@@ -170,14 +170,8 @@ function extToImportOptions(extMap: Map<string, ExtEntry>): OnboardingImportOpti
 function buildPreflightRows(workspacePath: string, toolStatus: ToolStatus): OnboardingPreviewRow[] {
   const rows: OnboardingPreviewRow[] = []
   rows.push({ label: "Workspace", status: "writable", detail: path.basename(workspacePath), tone: "success" })
-  const ocrStatus = toolStatus.ocr ? "available" : toolStatus.ocrUnsupportedReason ? "unsupported" : "missing"
-  const ocrTone = toolStatus.ocr ? "success" : toolStatus.ocrUnsupportedReason ? "muted" : "error"
-  rows.push({
-    label: "Tesseract",
-    status: ocrStatus,
-    detail: toolStatus.ocrUnsupportedReason ?? (toolStatus.ocr ? "Italian, English and French scans (free, offline)" : "Bundled OCR tools missing — re-run the installer"),
-    tone: ocrTone,
-  })
+  // No local OCR engine ships — no row. Scans transcribe via a
+  // vision model or copy as-is; digital PDFs extract via pdf.js.
   rows.push({ label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", tone: toolStatus.markitdown ? "success" : "error" })
   rows.push({ label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", tone: toolStatus.pdfjs ? "success" : "error" })
   return rows

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   routeBadgeFromParts,
+  routeBadgeLabel,
   routeProgress,
   setRouteProgress,
   shortStepLabel,
@@ -9,11 +10,11 @@ import {
 } from "../../src/spinosa/route-badge"
 
 describe("routeBadgeFromParts", () => {
-  test("extracts fast-path identity", () => {
+  test("extracts general-answer identity", () => {
     const info = routeBadgeFromParts([
-      { type: "text", text: "Hi", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "direct", action: "answer", reason: "greeting" } } },
+      { type: "text", text: "Hi", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "general" } } },
     ])
-    expect(info).toMatchObject({ kind: "direct", action: "answer" })
+    expect(info).toMatchObject({ kind: "general" })
   })
 
   test("extracts routing provenance", () => {
@@ -31,7 +32,7 @@ describe("routeBadgeFromParts", () => {
     ])
     expect(info).toMatchObject({ routedBy: "model", confidence: 0.9 })
     const rules = routeBadgeFromParts([
-      { type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "direct", action: "answer", routedBy: "rules" } } },
+      { type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "general", routedBy: "rules" } } },
     ])
     expect(rules).toMatchObject({ routedBy: "rules" })
   })
@@ -65,13 +66,16 @@ describe("routeBadgeFromParts", () => {
   })
 
   test("transient outbound states never parse from server parts", () => {
-    // queued/evaluating are TUI-local optimistic states rendered from the
+    // Outbound lifecycle states are TUI-local and rendered from the
     // outbound queue — they must never arrive via persisted part metadata.
     expect(
       routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "evaluating" } } }]),
     ).toBeUndefined()
     expect(
       routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "queued" } } }]),
+    ).toBeUndefined()
+    expect(
+      routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "interrupted" } } }]),
     ).toBeUndefined()
   })
 })
@@ -81,6 +85,15 @@ describe("shortStepLabel", () => {
     expect(shortStepLabel("search")).toBe("search")
     expect(shortStepLabel("extract-fanout")).toBe("extract × parallel")
     expect(shortStepLabel("search-fanout:batch-001")).toBe("search × parallel")
+  })
+})
+
+describe("routeBadgeLabel", () => {
+  test("makes every outbound fence explicit", () => {
+    expect(routeBadgeLabel({ kind: "queued" })).toBe("○ queued")
+    expect(routeBadgeLabel({ kind: "steered" })).toBe("→ steered")
+    expect(routeBadgeLabel({ kind: "evaluating" })).toBe("Evaluating")
+    expect(routeBadgeLabel({ kind: "interrupted" })).toBe("⛔ Interrupted")
   })
 })
 

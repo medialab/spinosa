@@ -1,5 +1,5 @@
 // PDF routing: MarkItDown takes office docs only — PDFs route by engine at
-// scan time (vision / tesseract / copy-as-is) and split per page inside the
+// scan time (vision / copy-as-is) and split per page inside the
 // owning phase (pdf.js text pages direct, image pages via engine).
 import { describe, expect, test } from "bun:test"
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -43,13 +43,13 @@ describe("scan buckets never send PDFs to MarkItDown", () => {
     }
   })
 
-  test("tesseract selection: digital + scanned PDFs → ocrFiles", async () => {
-    const { root, source, raw } = stageSource("tess", [
+  test("unset selection: digital + scanned PDFs → ocrFiles", async () => {
+    const { root, source, raw } = stageSource("unset", [
       { rel: "digital.pdf", fixture: DIGITAL },
       { rel: "scan.pdf", fixture: SCANNED },
     ])
     try {
-      const c = await scanAndClassifySource(source, raw, undefined, undefined, undefined, "tesseract-local")
+      const c = await scanAndClassifySource(source, raw, undefined, undefined, undefined, undefined)
       expect(c).not.toBeNull()
       expect(c!.markitdownFiles).toEqual([])
       expect(c!.ocrFiles.map((f) => path.basename(f.src)).sort()).toEqual(["digital.pdf", "scan.pdf"])

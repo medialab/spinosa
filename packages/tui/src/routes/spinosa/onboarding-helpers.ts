@@ -68,11 +68,6 @@ export function waveRow(frame: number, width: number): string {
 export function initialToolChecks(): ToolCheckResult[] {
   return [
     {
-      label: "Tesseract",
-      status: "checking",
-      detail: "Italian, English and French scans",
-    },
-    {
       label: "MarkItDown",
       status: "checking",
       detail: "Office docs, EPUB, HTML",
@@ -95,16 +90,9 @@ export type DocumentToolStatus = {
 export function toolCheckResults(
   status: DocumentToolStatus,
 ): ToolCheckResult[] {
+  // No local OCR engine ships: no OCR row. Vision-model and
+  // copy-as-is flows need nothing local; digital PDFs extract via pdf.js.
   return [
-    {
-      label: "Tesseract",
-      status: status.ocr
-        ? "available"
-        : status.ocrUnsupportedReason
-          ? "unsupported"
-          : "missing",
-      detail: status.ocrUnsupportedReason ?? "Italian, English and French scans (free, offline)",
-    },
     {
       label: "MarkItDown",
       status: status.markitdown ? "available" : "missing",
@@ -122,25 +110,18 @@ export function toolActionLabel(checks: readonly ToolCheckResult[]): string {
   if (checks.length === 0) return "";
   if (checks.some((check) => check.status === "checking")) return "Checking...";
   if (checks.some((check) => check.status === "missing")) {
-    // Tesseract is optional: vision-model and copy-as-is flows never touch
-    // it, so its absence must not block the wizard behind a useless
-    // reinstall loop. Any other missing tool still needs repair.
-    if (onlyLocalOcrMissing(checks)) return "Continue without Tesseract";
     return "Reinstall missing tools";
   }
   return "Scan source folders";
 }
 
 /**
- * True when every missing tool is local OCR (Tesseract). The OCR-engine
- * choice comes later in the wizard; users picking vision/none never need it.
+ * Local OCR was removed, so no missing tool is ever a local-OCR wait.
+ * Kept as a stub for import compat; always false.
  */
 export function onlyLocalOcrMissing(checks: readonly ToolCheckResult[]): boolean {
-  const missing = checks.filter((check) => check.status === "missing");
-  return (
-    missing.length > 0 &&
-    missing.every((check) => check.label === "Tesseract")
-  );
+  void checks;
+  return false;
 }
 
 export function toolChecksReady(checks: readonly ToolCheckResult[]): boolean {
@@ -173,14 +154,6 @@ export type { OcrModelOption } from "./wizard-ui";
 
 export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
-    id: "tesseract-local",
-    label: "Tesseract (offline)",
-    detail: "Free and offline. Best for typed pages. Poor for handwriting. Reads Italian, English and French scans. Photos copy without text.",
-    kind: "tesseract",
-    vision: false,
-    cost: "offline",
-  },
-  {
     id: "vision:provider-picker",
     label: "Vision model (provider / model)",
     detail: "Paid online model. Needs internet and an API key. Transcribes scans and photos.",
@@ -201,10 +174,9 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
 /** Short per-engine hints for the selector footer. Single source — the
     OcrModelSelector hint line composes from here, so copy can't drift. */
 export const OCR_ENGINE_HINTS = {
-  tesseract: "Tesseract: free offline reading (photos copied)",
   vision: "Vision: paid online transcription (needs key)",
   none: "None: copy only",
 } as const
 
 export const OCR_ENGINE_HINT_LINE =
-  `↑↓ move · space select · enter continue · ${OCR_ENGINE_HINTS.tesseract} · ${OCR_ENGINE_HINTS.vision} · ${OCR_ENGINE_HINTS.none}`
+  `↑↓ move · space select · enter continue · ${OCR_ENGINE_HINTS.vision} · ${OCR_ENGINE_HINTS.none}`

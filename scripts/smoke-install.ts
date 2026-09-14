@@ -50,10 +50,6 @@ function argValue(flag: string): string | undefined {
 
 const distDir = argValue("--dist")
 const binaryPath = argValue("--binary")
-// Optional alongside --binary: stage this tools tarball under the smoke
-// home's tools/ dir first, so doctor proves bundled OCR standalone
-// (no SPINOSA_DEV_HOST_TOOLS override).
-const toolsTarball = argValue("--tools")
 const explicitRepo = process.argv.includes("--repo-root")
 const structureOnly =
   process.argv.includes("--structure") ||
@@ -65,7 +61,6 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   bun scripts/smoke-install.ts --repo-root                  # same
   bun scripts/smoke-install.ts --dist <release-dir>         # binary installer via local HTTP
   bun scripts/smoke-install.ts --binary <product-binary>    # direct binary version/doctor
-  bun scripts/smoke-install.ts --binary <bin> --tools <tarball>  # + bundled-OCR proof
 Env:
   SPINOSA_SMOKE_STRUCTURE=1     structure / asset checks only
   SPINOSA_RELEASE_BASE_URL      honored by rewritten install.sh (set by --dist)`)
@@ -75,10 +70,6 @@ Env:
 const modes = [distDir ? "dist" : null, binaryPath ? "binary" : null, explicitRepo ? "repo" : null].filter(Boolean)
 if (modes.length > 1) {
   console.error("Use only one of --dist, --binary, or --repo-root")
-  process.exit(1)
-}
-if (toolsTarball && !binaryPath) {
-  console.error("--tools requires --binary")
   process.exit(1)
 }
 
@@ -94,17 +85,13 @@ function hostBinaryName(): string {
 }
 
 /**
- * Stage a tools tarball under <smokeHome>/tools — the same layout
- * install.sh provisions ($SPINOSA_HOME/tools/<platform>/{bin,tessdata}),
- * so doctor proves bundled OCR standalone. Exported for unit tests.
+ * @deprecated No OCR tools ship, so there is nothing to stage.
+ * Kept as a fail-closed stub so old callers fail with a clear message.
  */
 export async function stageToolsTarball(toolsTarball: string, smokeHome: string, label: string): Promise<void> {
-  if (!existsSync(toolsTarball)) throw new Error(`tools tarball not found: ${toolsTarball}`)
-  const toolsDir = path.join(smokeHome, "tools")
-  mkdirSync(toolsDir, { recursive: true })
-  const staged = await $`tar -xzf ${toolsTarball} -C ${toolsDir}`.nothrow()
-  if (staged.exitCode !== 0) throw new Error(`failed to stage tools tarball ${toolsTarball}`)
-  console.log(`→ staged tools ${path.basename(toolsTarball)} (${label})`)
+  void smokeHome
+  void label
+  throw new Error(`tools tarballs no longer exist (no OCR engine ships): ${toolsTarball}`)
 }
 
 async function smokeBinary(bin: string, label: string, smokeHome: string = home): Promise<void> {
@@ -119,9 +106,6 @@ async function smokeBinary(bin: string, label: string, smokeHome: string = home)
   }
 
   const env = { ...process.env, SPINOSA_HOME: smokeHome }
-  if (toolsTarball) {
-    await stageToolsTarball(toolsTarball, smokeHome, label)
-  }
   for (const cmd of ["version", "doctor"] as const) {
     console.log(`→ smoke ${cmd} (${label})`)
     const result = await $`${bin} ${cmd}`.cwd(project).env(env).nothrow()
@@ -237,10 +221,8 @@ async function smokeRepoRoot(): Promise<void> {
     SPINOSA_HOME: home,
     SPINOSA_TEMPLATE_ROOT: frameworkRoot,
     PWD: project,
-    // Repo-root smoke exercises the dev launch path: opt into the
-    // developer-only host OCR fallback (never set in production or the
-    // binary installer smoke below, which must prove bundled tools).
-    SPINOSA_DEV_HOST_TOOLS: "1",
+    // Local OCR was removed: no host-OCR fallback exists anymore.
+    // Doctor must pass standalone (unavailable OCR is the contract).
   }
 
   for (const cmd of ["version", "doctor"] as const) {

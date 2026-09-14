@@ -54,7 +54,7 @@ describe("prepareSpinosaSubmit", () => {
     }
   })
 
-  test("skips framing for fast-path prompts", async () => {
+  test("skips framing for general answers", async () => {
     const prepared = await prepareSpinosaSubmit(fixture, "How do I open settings pane?")
     expect(prepared.framed).toBe(false)
     expect(prepared.kind).toBe("direct")

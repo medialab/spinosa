@@ -1,4 +1,4 @@
-// Per-page progress for PDF import paths: tesseract/digital splits tick
+// Per-page progress for PDF import paths: pdf.js/digital splits tick
 // onPage per page (TUI renders PG: N/M), and over-long destinations resolve
 // to the path actually written instead of reporting "no output".
 import { describe, expect, test } from "bun:test"
@@ -59,28 +59,25 @@ describe("convertTextPdf onPage ticks", () => {
   })
 })
 
-describe("ocrPdfViaTesseract onPage ticks", () => {
-  test("ticks per rendered page with totals", async () => {
-    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
-    // Dev machines exercise the real OCR path via the explicit developer
-    // override (production stays bundled-or-unavailable, never host PATH).
-    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
-    _resetTesseractAvailableCache()
-    if (!tesseractAvailable()) return
-    const { ocrPdfViaTesseract } = await import("../src/import/tesseract-ocr")
-    const { root, raw } = stage("tessticks")
+describe("scan-phase placeholder outcome", () => {
+  test("scanned PDF keeps the original + honest placeholder (never faked text)", async () => {
+    const { root, raw } = stage("scanprog")
     try {
       const src = path.join(root, "scan.pdf")
       copyFileSync(SCANNED, src)
-      const ticks: Array<[number, number]> = []
-      const logs: string[] = []
-      const res = await ocrPdfViaTesseract(src, path.join(raw, "scan__pdf.md"), "scan.pdf", {
-        onLog: (m) => logs.push(m),
-        onPage: (p, t) => void ticks.push([p, t]),
-      })
-      expect(res.pages).toBe(2)
-      expect(ticks).toEqual([[1, 2], [2, 2]])
-      expect(logs.some((l) => l.includes("splitting into 2 pages") && l.includes("tesseract"))).toBe(true)
+      const dest = path.join(raw, "scan__pdf.md")
+      const { processPdf } = await import("../src/import/pipeline")
+      const res = await processPdf(
+        [{ src, rel: "scan.pdf", dest }],
+        path.join(root, ".logs"),
+        undefined,
+        undefined,
+        undefined,
+        { ocrModelId: undefined },
+      )
+      expect(res.failed).toBe(0)
+      expect(existsSync(dest)).toBe(true)
+      expect(readFileSync(dest, "utf-8")).toContain("Local OCR was removed")
     } finally {
       const { rmSync } = await import("node:fs")
       rmSync(root, { recursive: true, force: true })

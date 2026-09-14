@@ -4,7 +4,7 @@ import { findSourceFiles, classifySourceFile } from "../extension/classifier"
 import { fileExt } from "../constants"
 import { resolveUserPath } from "../utils/path"
 import type { ImportBatchManager } from "../import/batch"
-import { moduleAvailable, ocrAvailable, pdfjsAvailable, tesseractAvailable } from "../tools/detection"
+import { moduleAvailable, pdfjsAvailable } from "../tools/detection"
 import { ocrUnsupportedReason } from "../tools/ocr-support"
 
 export interface ScanCounts {
@@ -125,13 +125,14 @@ export async function scanSource(
 }
 
 export async function detectDocumentTools(): Promise<ToolStatus> {
-  const hasTesseract = tesseractAvailable()
-  const unsupported = hasTesseract ? undefined : ocrUnsupportedReason()
+  // No local OCR engine ships: always report unavailable with the
+  // removal reason. Vision/copy need nothing local; pdf.js handles digital PDFs.
+  const unsupported = ocrUnsupportedReason()
   // Fork is @spinosa/markitdown; keep markitdown-ts as fallback for availability
   const hasMarkitdown = checkModuleAvailable("@spinosa/markitdown") || checkModuleAvailable("markitdown-ts")
   return {
     markitdown: hasMarkitdown,
-    ocr: ocrAvailable(),
+    ocr: false,
     pdfjs: pdfjsAvailable(),
     ...(unsupported ? { ocrUnsupportedReason: unsupported } : {}),
   }

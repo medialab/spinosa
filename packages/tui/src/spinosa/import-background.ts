@@ -62,7 +62,7 @@ export function createBackgroundImportService() {
   const [progTotal, setProgTotal] = createSignal(1)
   const [files, setFiles] = createSignal<ImportFileProgressItem[]>([])
   const [logLines, setLogLines] = createSignal<string[]>([])
-  const [modelId, setModelIdSignal] = createSignal("tesseract-local")
+  const [modelId, setModelIdSignal] = createSignal("none")
   const [visionError, setVisionError] = createSignal<string | undefined>(undefined)
   const [visionPause, setVisionPause] = createSignal<BgVisionPause>(undefined)
   const [pendingGate, setPendingGate] = createSignal<BgPendingGate>(undefined)

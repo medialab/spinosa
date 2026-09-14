@@ -337,8 +337,7 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       files["src/generated/template-pack.gen.ts"] = options.templatePackModule
     }
 
-    // OCR is the Spinosa-owned bundled Tesseract (external binary + tessdata
-    // release assets, not a Bun module) — nothing to embed here.
+    // No OCR binaries ship — nothing to embed here.
     console.log(`canvas-only native embed for ${item.os}-${item.arch}`)
 
     const canvasTarget = { os: item.os, arch: item.arch, abi: item.abi }

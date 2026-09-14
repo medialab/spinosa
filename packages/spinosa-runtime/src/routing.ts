@@ -2,9 +2,7 @@
 // Legacy Q routes remain in routes.ts behind legacyRouteDecision() until WP10.
 // This module is pure: no filesystem, TUI, or kernel imports.
 
-export type ExecutionMode = "fast" | "orchestrated" | "generic"
-
-export type FastAction = "answer" | "retrieve" | "transform" | "visualize"
+export type ExecutionMode = "general" | "orchestrated"
 
 export type OperationFamily = "research" | "corpus" | "maintenance" | "meta"
 
@@ -43,22 +41,9 @@ export type VerificationPolicy = "none" | "normal" | "strict"
 
 export type EvaluationPolicy = "always" | "on_failure" | "sampled" | "never"
 
-export type FastDecision = {
-  mode: "fast"
-  action: FastAction
-  reason: string
-  confidence: number
-}
-
-/**
- * Generic fallback: no verdict — just answer normally with the default
- * agent loop. No fast-action framing, no workflow engine, no badge.
- * Used whenever routing produces nothing usable (model unavailable,
- * garbage output, low confidence, timeout), and offered to the router
- * model as the explicit "none of the above" verdict.
- */
-export type GenericDecision = {
-  mode: "generic"
+/** A normal conversation turn with no harness workflow or framing. */
+export type GeneralDecision = {
+  mode: "general"
 }
 
 export type OrchestratedDecision = {
@@ -75,24 +60,20 @@ export type OrchestratedDecision = {
   confidence: number
 }
 
-export type RouteDecision = FastDecision | OrchestratedDecision | GenericDecision
+export type RouteDecision = GeneralDecision | OrchestratedDecision
 
 export function isOrchestratedDecision(decision: RouteDecision): decision is OrchestratedDecision {
   return decision.mode === "orchestrated"
 }
 
-export function isFastDecision(decision: RouteDecision): decision is FastDecision {
-  return decision.mode === "fast"
-}
-
-export function isGenericDecision(decision: RouteDecision): decision is GenericDecision {
-  return decision.mode === "generic"
+export function isGeneralDecision(decision: RouteDecision): decision is GeneralDecision {
+  return decision.mode === "general"
 }
 
 /** Deterministic fallback when the router agent is unavailable or low-confidence. */
 export function fallbackDecision(input: { hasResearchIntent: boolean; reason: string }): RouteDecision {
   if (!input.hasResearchIntent) {
-    return { mode: "fast", action: "answer", reason: input.reason, confidence: 0.5 }
+    return { mode: "general" }
   }
   return {
     mode: "orchestrated",

@@ -19,7 +19,7 @@ export function mimeForImageExt(ext: string): string {
 
 export function isVisionModelId(id: string | undefined): boolean {
   if (!id) return false
-  if (id === "tesseract-local" || id === "none" || id === "vision:provider-picker") return false
+  if (id === "none" || id === "vision:provider-picker") return false
   return id.includes("/")
 }
 

@@ -186,7 +186,6 @@ export async function importRouteForFile(
         // Images: vision model → dedicated SDK transcription, otherwise copy-only.
         // MarkItDown handles office docs only, never images.
         if (modelId) {
-          if (modelId === "tesseract-local") return "copy"
           if (isVisionModelId(modelId)) return "vision"
           try {
             const { findOcrModel } = await import("../import/vision-models")
@@ -197,11 +196,12 @@ export async function importRouteForFile(
         return "copy"
       }
       // PDFs never take the MarkItDown route: text pages extract via pdf.js
-      // and image pages transcribe via vision/OCR in the owning phase
+      // and image pages transcribe via vision in the owning phase
       // (per-page hybrid). The phase, not the router, splits the pages.
-      // Vision model → vision page transcription; tesseract (or legacy
-      // unset) → tesseract OCR.
-      if (modelId && modelId !== "tesseract-local") {
+      // Vision model → vision page transcription; anything else (none/unset) →
+      // pdf phase, which extracts digital text via pdf.js and copies
+      // scanned pages as-is (no local OCR).
+      if (modelId) {
         if (isVisionModelId(modelId)) return "vision"
         try {
           const { findOcrModel } = await import("../import/vision-models")

@@ -33,7 +33,7 @@ import {
   resolveUserPath,
 } from "../../spinosa/onboarding-preview"
 import { runReinstall } from "../../spinosa/reinstall"
-import { onlyLocalOcrMissing, toolActionLabel as resolveToolActionLabel, initialToolChecks, toolCheckResults, formatBytes, wavePulse, waveRow, waveString, validateSinglePath } from "./onboarding-helpers"
+import { toolActionLabel as resolveToolActionLabel, initialToolChecks, toolCheckResults, formatBytes, wavePulse, waveRow, waveString, validateSinglePath } from "./onboarding-helpers"
 import { useBackgroundImport, isBackgroundAvailable, detachImportToBackground } from "../../spinosa/import-background"
 import { openBackgroundImportMonitor } from "../../component/dialog-background-import"
 import { readBundledFrameworkVersion, isPrereleaseFrameworkVersion } from "../../spinosa/service"
@@ -455,7 +455,7 @@ export function AddFiles() {
     if (busy()) return
     try { blurSourceInputs() } catch (error) { logError("blurSourceInputs", error) }
     const checks = toolChecks()
-    const needsRepair = checks.some((t) => t.status === "missing") && !onlyLocalOcrMissing(checks)
+    const needsRepair = checks.some((t) => t.status === "missing")
     const toolsReady = checks.every((t) => t.status === "available" || t.status === "unsupported")
     if (needsRepair) {
       logAction("repair-tools", `${checks.filter(t => t.status === "missing").length} tools missing`)
@@ -467,9 +467,9 @@ export function AddFiles() {
           setBusy(false)
         }
       })
-    } else if (toolsReady || onlyLocalOcrMissing(checks)) {
-      // Tesseract-only absence never blocks: vision/none flows never touch local OCR.
-      logAction("start-scan", onlyLocalOcrMissing(checks) ? "Continuing without local OCR" : "All tools ready")
+    } else if (toolsReady) {
+      // Vision/copy flows need nothing local; digital PDFs extract via pdf.js.
+      logAction("start-scan", "All tools ready")
       startScan().catch((err) => {
         logError("startScan-top", err)
         appendLogLine(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -594,7 +594,7 @@ export function AddFiles() {
     const initialVision =
       storedVision && local.vision.isValid()
         ? `${storedVision.providerID}/${storedVision.modelID}`
-        : "tesseract-local"
+        : "none"
     const started = bg.start({
       kind: "add-files",
       title: "Add files import",
@@ -753,12 +753,12 @@ export function AddFiles() {
               return true
             }
             setBusy(false)
-            if (!await bg.requestGate(id, count, "OCR scanned PDFs with Tesseract")) return false
+            if (!await bg.requestGate(id, count, "Copy scanned leftovers as-is (no local OCR)")) return false
             setBusy(true)
             if (shouldAbort()) return false
             setStep("ocr")
             bg.setPhase("ocr")
-              bg.reportStatus(`Running Tesseract on scanned PDFs — ${count} files`)
+              bg.reportStatus(`Copying scanned leftovers as-is — ${count} files`)
             totalOcr += count
             await delay(500)
             return true
@@ -794,8 +794,8 @@ export function AddFiles() {
               ocrConverted += result.converted
               bg.reportStatus(
                 result.failed > 0
-                  ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed`
-                  : `Scanned PDFs via Tesseract — ${result.converted} files`,
+                  ? `Scanned leftovers copied — ${result.converted} ok, ${result.failed} failed`
+                  : `Scanned leftovers copied as-is — ${result.converted} files`,
               )
               // Dwell so failure-first 100% results are readable before done.
               await delay(1500)

@@ -18,7 +18,7 @@ This package owns workspace, corpus, import, artifact, and application-domain co
 | `utils/version.ts` | `compareFrameworkVersions()`, `releaseChannel()`, `parseInstallPinnedVersion()` |
 | `system/channels.ts` | Reads `beta: true\|false` from `~/.spinosa/metadata/config.yaml` |
 
-Document converters (`markitdown-ts`, `pdfjs-dist`, `@napi-rs/canvas`) live in this package — not in `@spinosa/tui`. OCR is the Spinosa-owned bundled Tesseract only.
+Document converters (`markitdown-ts`, `pdfjs-dist`, `@napi-rs/canvas`) live in this package — not in `@spinosa/tui`. No local OCR engine ships: scans transcribe via a vision model or copy-as-is, digital PDFs via pdf.js.
 
 Kernel commands `upgrade` and `preflight` are thin wrappers. Launch preflight runs in `packages/spinosa-kernel/src/cli/cmd/tui.ts` **before** the TUI worker spawns. Do not add a second preflight path in the bash launcher.
 

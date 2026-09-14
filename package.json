@@ -26,7 +26,6 @@
     "smoke": "bun scripts/smoke-install.ts",
     "build:binaries": "bun scripts/build-release-binaries.ts",
     "build:binaries:host": "bun scripts/build-release-binaries.ts --host-only",
-    "build:tools": "bun scripts/build-tools-tarballs.ts",
     "release": "bun scripts/release/index.ts",
     "release:validate": "bun scripts/release/index.ts validate",
     "release:sync-version": "bun scripts/set-version.ts",

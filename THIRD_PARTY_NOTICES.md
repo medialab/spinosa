@@ -26,15 +26,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## Tesseract OCR
-
-The Spinosa installer can provision [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
-binaries and [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast)
-language data into `$SPINOSA_HOME/tools/` for offline OCR.
-
-Tesseract is distributed under the Apache License 2.0.
-tessdata_fast language data is distributed under the Apache License 2.0.
-
 ## pdf.js + Canvas (PDF rendering)
 
 Spinosa renders PDF pages internally with

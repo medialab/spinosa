@@ -1,15 +1,15 @@
 /**
- * Fully-scanned PDF fixtures with REAL text (guide #9).
+ * Fully-scanned PDF fixtures with REAL raster text (guide #9).
  *
- * Existing fixtures are deliberately text-free (font-free blanks, photo,
- * black box). This file synthesizes a genuinely scanned PDF — a rendered
- * text page embedded as a raster image XObject with no text layer — and
- * proves end-to-end: internal render → bundled Tesseract → recovered text.
- * A fully scanned PDF with tesseract-local must never become pending-vision
- * without first attempting Tesseract.
+ * Local OCR was removed: a genuinely scanned PDF (rendered text page
+ * embedded as a raster image XObject with no text layer) can no longer be
+ * transcribed locally. This file proves the removal contract end-to-end:
+ *   - the removal stub reports unavailable and throws honest errors
+ *   - processPdf keeps the original + an honest placeholder (skipped, retryable)
+ *   - nothing is ever marked done with faked text
  */
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { deflateSync } from "node:zlib"
 import { tmpdir } from "node:os"
 import * as path from "node:path"
@@ -81,36 +81,16 @@ async function makeScannedPdf(dir: string): Promise<string> {
   return out
 }
 
-describe("fully scanned PDF with real text", () => {
-  test("tesseract-local recovers text (never pending-vision without trying)", async () => {
-    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
-    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
-    _resetTesseractAvailableCache()
-    if (!tesseractAvailable()) return
-    const dir = mkdtempSync(path.join(tmpdir(), "spinosa-scanned-ocr-"))
-    try {
-      const scanned = await makeScannedPdf(dir)
-      // Sanity: the synthetic scan really has no text layer.
-      const { pdfHasTextLayer } = await import("../src/import/tesseract-ocr")
-      expect(await pdfHasTextLayer(scanned)).toBe(false)
+describe("fully scanned PDF with real raster text (no local engine)", () => {
+  test("platform gate reports unsupported with honest errors", async () => {
+    const { isOcrPlatformSupported, ocrUnsupportedReason } = await import("../src/tools/ocr-support")
+    expect(isOcrPlatformSupported()).toBe(false)
+    expect(ocrUnsupportedReason()).toMatch(/vision model|copy/i)
+    const { ocrAvailable } = await import("../src/tools/detection")
+    expect(ocrAvailable()).toBe(false)
+  })
 
-      const { ocrPdfPagesStructured } = await import("../src/import/tesseract-ocr")
-      const results = await ocrPdfPagesStructured(scanned, [1], "synthetic-scan.pdf", {})
-      const page = results.get(1)
-      expect(page?.status).toBe("text")
-      if (page?.status === "text") {
-        expect(page.text.toLowerCase()).toContain("embedded digital text")
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }, 120_000)
-
-  test("processPdf converts the synthetic scan via tesseract", async () => {
-    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
-    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
-    _resetTesseractAvailableCache()
-    if (!tesseractAvailable()) return
+  test("processPdf keeps the synthetic scan + honest placeholder (never faked text)", async () => {
     const { processPdf } = await import("../src/import/pipeline")
     const dir = mkdtempSync(path.join(tmpdir(), "spinosa-scanned-pipe-"))
     const logsDir = path.join(dir, ".logs")
@@ -127,11 +107,15 @@ describe("fully scanned PDF with real text", () => {
         undefined,
         undefined,
         undefined,
-        { ocrModelId: "tesseract-local" },
+        { ocrModelId: undefined },
       )
       expect(res.failed).toBe(0)
-      expect(res.converted).toBe(1)
-      expect(readFileSync(dest, "utf-8").toLowerCase()).toContain("embedded digital text")
+      expect(res.converted).toBe(0)
+      expect(res.skipped).toBe(1)
+      expect(existsSync(path.join(raw, "synthetic-scan.pdf"))).toBe(true)
+      const md = readFileSync(dest, "utf-8")
+      expect(md).toContain("Local OCR was removed")
+      expect(md.toLowerCase()).not.toContain("embedded digital text")
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

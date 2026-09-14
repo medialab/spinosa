@@ -206,7 +206,7 @@ export function AddFilesView(props: AddFilesViewProps) {
             {step() === "path" ? " — choosing source folders" : ""}
             {step() === "tools" ? " — checking your document tools" : ""}
             {step() === "scan" ? " — scanning your source" : ""}
-            {step() === "direct" ? " — copying text-based files" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "pdf" ? " — processing PDFs (text direct, image pages via engine)" : step() === "ocr" ? " — running Tesseract on scanned PDFs" : ""}
+            {step() === "direct" ? " — copying text-based files" : step() === "markitdown" ? " — converting office docs via MarkItDown" : step() === "pdf" ? " — processing PDFs (text direct, image pages via engine)" : step() === "ocr" ? " — copying scanned leftovers as-is" : ""}
             {step() === "done" ? " — import complete" : ""}
             {step() === "error" ? " — fixing the issue and retrying" : ""}
           </text>

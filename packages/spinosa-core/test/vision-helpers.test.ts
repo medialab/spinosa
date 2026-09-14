@@ -12,7 +12,7 @@ describe("vision-helpers", () => {
   })
 
   test("isVisionModelId identifies vision ids", () => {
-    expect(isVisionModelId("tesseract-local")).toBe(false)
+    expect(isVisionModelId("legacy-removed")).toBe(false)
     expect(isVisionModelId("none")).toBe(false)
     expect(isVisionModelId("vision:provider-picker")).toBe(false)
     expect(isVisionModelId(undefined)).toBe(false)

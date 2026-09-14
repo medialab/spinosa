@@ -8,8 +8,10 @@ const REPO_ROOT = path.join(__dirname, "..", "..", "..")
 describe("fixtures-real guard", () => {
   test("corpus dir is git-ignored (can never be committed)", () => {
     // git check-ignore exits 0 when the path IS ignored; throws otherwise.
+    // Append "/" so the dir-pattern in .gitignore matches even when the
+    // directory does not exist locally (fresh clones / CI).
     expect(() =>
-      execFileSync("git", ["check-ignore", "-q", path.relative(REPO_ROOT, FIXTURES_REAL_DIR)], {
+      execFileSync("git", ["check-ignore", "-q", `${path.relative(REPO_ROOT, FIXTURES_REAL_DIR)}/`], {
         cwd: REPO_ROOT,
         stdio: "pipe",
       }),

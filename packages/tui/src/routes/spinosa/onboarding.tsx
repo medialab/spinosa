@@ -121,7 +121,6 @@ import {
   initialToolChecks,
   mergeImportOptions,
   OCR_ENGINE_HINT_LINE,
-  onlyLocalOcrMissing,
   toolActionLabel as resolveToolActionLabel,
   toolCheckResults,
   toolChecksReady,
@@ -293,8 +292,8 @@ export function Onboarding() {
   const [importOptions, setImportOptions] = createSignal<ImportOption[]>([]);
   const [selectedImport, setSelectedImport] = createSignal(0);
   const [selectedCli, setSelectedCli] = createSignal(0);
-  const [selectedOcrModel, setSelectedOcrModel] = createSignal("tesseract-local");
-  const [selectedOcrModelIndex, setSelectedOcrModelIndex] = createSignal(0);
+  const [selectedOcrModel, setSelectedOcrModel] = createSignal("none");
+  const [selectedOcrModelIndex, setSelectedOcrModelIndex] = createSignal(1);
   const sync = useSync();
   const local = useLocal();
   const toast = useToast();
@@ -357,10 +356,10 @@ export function Onboarding() {
     if (picked.includes("/")) {
       const [prov, ...rest] = picked.split("/")
       const model = rest.join("/")
-      // Update the Vision button (index 1) to show the chosen model — keep 3 buttons total.
+      // Update the Vision button (index 0) to show the chosen model — keep 2 buttons total.
       // The name stays visible here and top-right; only gate/status copy stays generic.
-      base[1] = {
-        ...base[1]!,
+      base[0] = {
+        ...base[0]!,
         label: `Vision model: ${picked} ✓`,
         detail: `Selected — ${prov}/${model} — press space to select, Continue to re-choose vision model`,
         id: "vision:provider-picker",
@@ -387,9 +386,9 @@ export function Onboarding() {
     setSelectedOcrModel(opt.id)
   }
 
-  // Persist vision default: tesseract until user picks a vision model, thereafter that vision is default
+  // Persist vision default: copy-as-is until user picks a vision model, thereafter that vision is default
   // Reads from same KV as chat (vision-model.json) — single source of truth via local.vision.
-  // Only runs once on initial load; user can still pick tesseract/"don't OCR" afterwards
+  // Only runs once on initial load; user can still pick vision/"copy files only" afterwards
   createEffect(() => {
     if (hasRestoredVision) return
     if (!local.vision.ready) return
@@ -404,14 +403,14 @@ export function Onboarding() {
       hasRestoredVision = true
       return
     }
-    if (selectedOcrModel() !== "tesseract-local") {
+    if (selectedOcrModel() !== "none") {
       hasRestoredVision = true
       return
     }
     const id = `${last.providerID}/${last.modelID}`
-    // Guard against stale/purged vision model – fallback to tesseract with toast
+    // Guard against stale/purged vision model – fallback to copy with toast
     if (!local.vision.isValid()) {
-      logAction("vision", `Stored vision ${id} no longer valid – staying on Tesseract`)
+      logAction("vision", `Stored vision ${id} no longer valid – staying on copy-as-is`)
       hasRestoredVision = true
       return
     }
@@ -419,7 +418,7 @@ export function Onboarding() {
     const isProviderAvailable = sync.data.provider.some((p) => p.id === last.providerID)
     const isConnected = sync.data.provider_next.connected.includes(last.providerID)
     if (!isProviderAvailable && !isConnected) {
-      logAction("vision", `Stored vision ${id} provider not authenticated – staying on Tesseract`)
+      logAction("vision", `Stored vision ${id} provider not authenticated – staying on copy-as-is`)
       hasRestoredVision = true
       return
     }
@@ -427,13 +426,13 @@ export function Onboarding() {
     // synchronously with the connected provider list, unlike the later auth-methods hydration.
     const providerInfo = sync.data.provider.find((provider) => provider.id === last.providerID)
     if (providerInfo && !isVisionProviderSelectable(providerInfo)) {
-      logAction("vision", `Stored vision ${id} is openai oauth without api.responses.write – staying on Tesseract, use openrouter for vision`)
+      logAction("vision", `Stored vision ${id} is openai oauth without api.responses.write – staying on copy-as-is, use openrouter for vision`)
       hasRestoredVision = true
       return
     }
     hasRestoredVision = true
     setSelectedOcrModel(id)
-    setSelectedOcrModelIndex(1)
+    setSelectedOcrModelIndex(0)
     logAction("vision", `Restored vision default ${id} from previous pick`)
   })
   // Whenever a concrete vision model is selected, persist it as new default and also to chat recents
@@ -502,7 +501,7 @@ export function Onboarding() {
       }
       didPick = true
       setSelectedOcrModel(id)
-      setSelectedOcrModelIndex(1)
+      setSelectedOcrModelIndex(0)
       logAction("vision", `Picked vision model ${id} — press Continue or reclick to change`)
       dialog.clear()
     }} />, () => {
@@ -947,7 +946,7 @@ export function Onboarding() {
     const toolsReady = checks.every(
       (t) => t.status === "available" || t.status === "unsupported",
     );
-    if (needsRepair && !onlyLocalOcrMissing(checks)) {
+    if (needsRepair) {
       logAction(
         "repair-tools",
         `${checks.filter((t) => t.status === "missing").length} tools missing`,
@@ -965,10 +964,9 @@ export function Onboarding() {
           setBusy(false)
         }
       })
-    } else if (toolsReady || onlyLocalOcrMissing(checks)) {
-      // Tesseract-only absence never blocks: the OCR-engine choice comes
-      // later, and vision/none flows never touch local OCR.
-      logAction("start-scan", onlyLocalOcrMissing(checks) ? "Continuing without local OCR" : "All tools ready");
+    } else if (toolsReady) {
+      // Vision/copy flows need nothing local; digital PDFs extract via pdf.js.
+      logAction("start-scan", "All tools ready");
       void startScan();
     }
   };
@@ -1049,7 +1047,7 @@ export function Onboarding() {
     }
     // Show OCR model selector as a pop-up step before setup.
     // This is the lacing point for vision MarkItDown: selected model flows into
-    // scanAndClassify + processMarkitdown (llmModel) with tesseract fallback.
+    // scanAndClassify + processMarkitdown (llmModel). No local fallback.
     logAction(
       "continue",
       `Imports → Vision (${selectedExtensions().length} types: ${selectedExtensions().join(",")})`,
@@ -1300,13 +1298,13 @@ export function Onboarding() {
             return true;
           }
           setBusy(false);
-          if (!await bg.requestGate(id, count, "OCR scanned PDFs with Tesseract")) return false;
+          if (!await bg.requestGate(id, count, "Copy scanned leftovers as-is (no local OCR)")) return false;
           if (shouldAbort()) return false;
           setBusy(true);
           setStep("ocr");
           bg.setPhase("ocr");
-          // OCR phase handles only scanned PDFs (ita+eng+fra 300dpi); images via vision/copy now externalized
-          bg.reportStatus(`Running Tesseract on scanned PDFs — ${count} files — Back to change vision model`);
+          // OCR phase is now a copy fallback (local OCR removed); images via vision/copy externalized
+          bg.reportStatus(`Copying scanned leftovers as-is — ${count} files — Back to change vision model`);
           await delay(500);
           return true;
         },
@@ -1352,8 +1350,8 @@ export function Onboarding() {
           if (id === "ocr") {
             bg.reportStatus(
               result.failed > 0
-                ? `Scanned PDFs via Tesseract — ${result.converted} ok, ${result.failed} failed — Back to change vision model`
-                : `Scanned PDFs via Tesseract — ${result.converted} files`,
+                ? `Scanned leftovers copied — ${result.converted} ok, ${result.failed} failed — Back to change vision model`
+                : `Scanned leftovers copied as-is — ${result.converted} files`,
             );
             await delay(1000);
           }
@@ -1981,7 +1979,7 @@ export function Onboarding() {
         }
         if (event.name === "space") {
           const idx = selectedOcrModelIndex()
-          if (idx === 1) {
+          if (idx === 0) {
             openVisionPicker()
           } else {
             selectOcrOption(idx)
@@ -2124,7 +2122,7 @@ export function Onboarding() {
         return
       }
       bg.setModel(id)
-      setSelectedOcrModelIndex(1)
+      setSelectedOcrModelIndex(0)
       logAction("vision", `Picked vision model ${id} — will apply at next file (current continues with old model)`)
       if (bg.snapshot().visionPause) {
         bg.resolvePause("retry")

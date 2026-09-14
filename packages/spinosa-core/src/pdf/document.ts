@@ -2,7 +2,7 @@
  * Internal PDF document abstraction — the ONLY production PDF entry point.
  *
  * Architecture:
- *   PDF → pdf.js → page → embedded text | Canvas image buffer → Tesseract/Vision
+ *   PDF → pdf.js → page → embedded text | Canvas image buffer → Vision transcription
  *
  * No other production subsystem may import `pdfjs-dist` directly. Open once,
  * iterate pages in order, render imageless pages internally (no pdftoppm, no

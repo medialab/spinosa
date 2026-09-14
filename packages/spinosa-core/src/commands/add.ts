@@ -9,7 +9,7 @@ import {
 } from "node:fs"
 import * as path from "node:path"
 import type { ChildProcess } from "node:child_process"
-import { safeCopy, writeTextAtomic } from "../utils/fs"
+import { safeCopy, safeCopyAsync, writeTextAtomic, writeTextAtomicSafe } from "../utils/fs"
 import {
   findSourceFiles,
   classifySourceFile,
@@ -350,7 +350,7 @@ async function addSingleFile(
         }
         break
       }
-      // PDFs: pdf.js census for digital, tesseract for scanned
+      // PDFs: pdf.js census for digital, vision/copy for scanned (no local OCR engine)
       const fileName = path.basename(srcFile)
       const stem = fileName.replace(/\.[^.]+$/, "")
       const destName = `${stem}__${fileExt(fileName)}.md`
@@ -370,12 +370,11 @@ async function addSingleFile(
       let restored = true
       const tmpDest = destFile + `.spinosa-part-${process.pid}-${crypto.randomUUID()}`
 
-      // PDFs: pdf.js census + per-page hybrid — all-digital extracts directly;
-      // mixed documents keep direct text pages and tesseract only imageless
-      // pages; unknown/scanned fall through to tesseract below.
-      // MarkItDown never handles PDFs (office docs only).
+      // PDFs: pdf.js census for digital; scanned/mixed have no local engine —
+      // keep the original + an honest placeholder (pick a vision model to
+      // transcribe, or keep the copy). MarkItDown never handles PDFs.
       try {
-        const { classifyPdfPages, hasEmbeddedTextPdfPages, isDigitalPdfPages } = await import("../import/pdf-pages")
+        const { classifyPdfPages, isDigitalPdfPages } = await import("../import/pdf-pages")
         const classes = await classifyPdfPages(srcFile)
         throwIfSpinosaCancelled(shouldAbort)
         if (isDigitalPdfPages(classes)) {
@@ -389,39 +388,42 @@ async function addSingleFile(
             onProgress?.(`${fileName} → digital PDF, text extracted via pdf.js (no OCR)`)
             break
           }
-        } else if (hasEmbeddedTextPdfPages(classes)) {
-          const { convertPdfHybridTesseract } = await import("../import/tesseract-ocr")
-          const hybrid = await convertPdfHybridTesseract(srcFile, destFile, fileName, classes, { shouldAbort })
-          destFile = hybrid.destFile
-          failedDest = destFile
-          throwIfSpinosaCancelled(shouldAbort)
-          if (convertedOutputExists(destFile)) {
-            injectColdFrontmatter(destFile)
-            removeConvertedBackups(backups)
-            ocrConverted = 1
-            onProgress?.(`${fileName} → mixed PDF, direct text + tesseract on imageless pages`)
-            break
-          }
         }
       } catch (err) {
         if (isSpinosaCancellationError(err)) throw err
         try { rmSync(destFile, { force: true }) } catch { /* cleanup */ }
         try { rmSync(destFile.slice(0, -3) + "_pages", { recursive: true, force: true }) } catch { /* cleanup */ }
-        // fall through to tesseract
       }
 
       try {
-        const { tesseractAvailable, ocrPdfViaTesseract } = await import("../import/tesseract-ocr")
-        if (tesseractAvailable()) {
-          const tess = await ocrPdfViaTesseract(srcFile, tmpDest, fileName, { shouldAbort })
-          if (convertedOutputExists(tess.mdPath)) {
-            renameSync(tess.mdPath, destFile)
-            ocrConverted = 1
-            injectColdFrontmatter(destFile)
-          } else {
-            restored = restoreConvertedOutput(destFile, backups)
-            ocrFailed = 1
-          }
+        // No local OCR engine: keep the original bytes + placeholder md.
+        const binaryDest = path.join(path.dirname(destFile), fileName)
+        mkdirSync(path.dirname(binaryDest), { recursive: true })
+        const kept = await safeCopyAsync(srcFile, binaryDest)
+        const placeholder = [
+          "---",
+          `source_document: "${fileName.replace(/"/g, '\\"')}"`,
+          `ocr_status: local_ocr_removed`,
+          "---",
+          "",
+          `# ${stem} — transcription pending`,
+          "",
+          `Local OCR was removed. Original file kept as \`${path.basename(binaryDest)}\`.`,
+          "",
+          `To transcribe: re-run import with a vision model selected.`,
+          `Digital PDFs always extract via pdf.js with no model needed.`,
+          "",
+        ].join("\n")
+        try {
+          mkdirSync(path.dirname(tmpDest), { recursive: true })
+          writeTextAtomicSafe(tmpDest, placeholder)
+          injectColdFrontmatter(tmpDest)
+        } catch {}
+        if (kept && convertedOutputExists(tmpDest)) {
+          renameSync(tmpDest, destFile)
+          ocrConverted = 1
+          injectColdFrontmatter(destFile)
+          onProgress?.(`${fileName} → scanned PDF, no local OCR — original kept, placeholder written (pick a vision model to transcribe)`)
         } else {
           restored = restoreConvertedOutput(destFile, backups)
           ocrFailed = 1

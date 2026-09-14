@@ -7,7 +7,6 @@ import {
   expectedChannelReleaseAssets,
   expectedImmutableReleaseAssets,
   productBinaryAssetName,
-  productToolsAssetName,
   resolveProductBinaryTarget,
   type BuildManifest,
   type ProductBinaryTarget,
@@ -150,16 +149,9 @@ export async function runBuild(ctx: StageContext): Promise<void> {
     throw new Error("product binary build failed — see scripts/build-release-binaries.ts")
   }
 
-  // OCR tools tarballs (RELEASE_GUIDE.md: the build stage guarantees them).
-  // The tools script skips archives already present, so a prebuilt dist/
-  // (or CI matrix artifacts) is untouched; missing targets build from pinned
-  // source (Lima guests for linux) or fail closed with setup instructions.
-  const tools = await $`bun scripts/build-tools-tarballs.ts --out-dir ${paths.dist}`
-    .cwd(RELEASE_ROOT)
-    .nothrow()
-  if (tools.exitCode !== 0) {
-    throw new Error("OCR tools build failed — see scripts/build-tools-tarballs.ts")
-  }
+  // No OCR tools ship (no local engine): no per-platform tools archives
+  // are built or published anymore.
+  ctx.reporter.detail("skipping OCR tools tarballs (local OCR removed)")
 
   for (const binaryPath of Object.values(paths.binaryPaths)) {
     if (!existsSync(binaryPath)) throw new Error(`missing binary after build: ${binaryPath}`)
@@ -172,7 +164,7 @@ export async function runBuild(ctx: StageContext): Promise<void> {
 /**
  * Finish dist/ deterministically: installers, manifest rewrite, checksums.
  * Shared by local `build` (binaries just compiled) and CI `ci-assemble`
- * (binaries + tools tarballs downloaded as matrix artifacts, manifest
+ * (binaries downloaded as matrix artifacts, manifest
  * staged via build-release-binaries --manifest-only). Idempotent.
  */
 export async function finalizeDistAssets(
@@ -183,7 +175,7 @@ export async function finalizeDistAssets(
   if (!existsSync(paths.manifestPath)) {
     throw new Error(
       `build-manifest.json missing in ${paths.dist} — stage matrix artifacts there first ` +
-      `(product binaries + tools tarballs) and run build-release-binaries.ts --manifest-only`,
+      `(product binaries) and run build-release-binaries.ts --manifest-only`,
     )
   }
   mkdirSync(paths.dist, { recursive: true })
@@ -220,22 +212,10 @@ export async function finalizeDistAssets(
   writeFileSync(paths.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
   // Immutable assets hashed into checksums.txt (checksums.txt itself is published, not self-hashed).
-  // Tools archives (Spinosa-owned Tesseract + tessdata) are checksummed before
-  // extraction by the installer — fail closed when missing. They are built
-  // from pinned source per target (local Lima guests or native CI runners)
-  // by scripts/build-tools-tarballs.ts (see RELEASE_GUIDE.md).
-  for (const name of paths.toolsNames) {
-    if (!existsSync(resolve(paths.dist, name))) {
-      throw new Error(
-        `missing tools archive ${name} — build it first: ` +
-        `bun scripts/build-tools-tarballs.ts --out-dir ${paths.dist} (see RELEASE_GUIDE.md)`,
-      )
-    }
-  }
+  // No tools archives anymore (local OCR removed) — product binaries only.
   const immutableHashed = [
     "install.sh",
     ...paths.binaryNames,
-    ...paths.toolsNames,
     "build-manifest.json",
   ]
   const checksums = await $`shasum -a 256 ${immutableHashed}`.cwd(paths.dist).text()
@@ -302,8 +282,8 @@ export async function runVerifyLocal(ctx: StageContext): Promise<void> {
   if (!manifest.templatePackId) throw new Error("manifest missing templatePackId")
   for (const target of Object.keys(buildManifestAssets()) as ProductBinaryTarget[]) {
     const got = manifest.assets[target]
-    if (!got || got.binary !== productBinaryAssetName(target) || got.tools !== productToolsAssetName(target)) {
-      throw new Error(`manifest assets[${target}]=${JSON.stringify(got)}, expected {binary:${productBinaryAssetName(target)},tools:${productToolsAssetName(target)}}`)
+    if (!got || got.binary !== productBinaryAssetName(target)) {
+      throw new Error(`manifest assets[${target}]=${JSON.stringify(got)}, expected {binary:${productBinaryAssetName(target)}}`)
     }
   }
 
@@ -313,10 +293,7 @@ export async function runVerifyLocal(ctx: StageContext): Promise<void> {
   for (const name of paths.binaryNames) {
     assertChecksum(resolve(paths.dist, name), checksums.get(name), name)
   }
-  for (const name of paths.toolsNames) {
-    assertChecksum(resolve(paths.dist, name), checksums.get(name), name)
-  }
-  for (const name of ["install.sh", ...paths.binaryNames, ...paths.toolsNames, "build-manifest.json"]) {
+  for (const name of ["install.sh", ...paths.binaryNames, "build-manifest.json"]) {
     if (!checksums.has(name)) throw new Error(`checksums.txt missing entry for ${name}`)
   }
 

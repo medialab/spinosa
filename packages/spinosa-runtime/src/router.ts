@@ -55,11 +55,11 @@ function orchestrated(
 export function deterministicRoute(input: RouteInput): RouteDecision | undefined {
   // 1. Explicit selected agent: the user chose the executor, no routing.
   if (input.explicitAgent) {
-    return { mode: "fast", action: "answer", reason: `explicit agent ${input.explicitAgent} bypasses routing`, confidence: 1 }
+    return { mode: "general" }
   }
   // 2. Non-Spinosa workspace → direct execution.
   if (!input.workspace.isSpinosa) {
-    return { mode: "fast", action: "answer", reason: "non-Spinosa workspace", confidence: 0.95 }
+    return { mode: "general" }
   }
   // 3. The /startup flow only: explicit startup command or the startup
   // prompt text itself. Everything else — including what to do while the
@@ -77,20 +77,11 @@ export function deterministicRoute(input: RouteInput): RouteDecision | undefined
 
 /** Stage-2 fallback classifier for bounded single ops vs targeted research. */
 export function heuristicAmbiguousRoute(text: string): RouteDecision {
-  const wantsVisual = /visualiz|chart|plot|graph/i.test(text)
-  if (wantsVisual && text.split(/\s+/).length < 40 && !/corpus|archive|sources/i.test(text)) {
-    return { mode: "fast", action: "visualize", reason: "bounded visualization", confidence: 0.7 }
-  }
-  const bounded = /^(explain|summarize this|retrieve|convert|plot these)/i.test(text.trim())
-  if (bounded) {
-    const action = /plot|chart|visualiz/i.test(text) ? "visualize" : /retriev|quote/i.test(text) ? "retrieve" : /convert|transform/i.test(text) ? "transform" : "answer"
-    return { mode: "fast", action, reason: "one bounded target", confidence: 0.7 }
-  }
   if (/\b(corpus|archive|sources?|evidence)\b/i.test(text)) {
     const contextual = /analy[sz]e|compare|synthesi|taxonomy|patterns/i.test(text)
     return orchestrated("research", contextual ? "contextual_synthesis" : "targeted_evidence", "source-grounded multi-stage", {
       coverage: "sufficient",
     })
   }
-  return { mode: "fast", action: "answer", reason: "ordinary conversation", confidence: 0.6 }
+  return { mode: "general" }
 }

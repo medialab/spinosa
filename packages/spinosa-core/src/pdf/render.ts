@@ -2,7 +2,7 @@
  * Adaptive page rendering for the internal PDF engine.
  * pdf.js + @napi-rs/canvas → in-memory PNG buffer. No pdftoppm/Poppler, no
  * temp PNG files in the hot path (callers may spill to a private temp dir
- * only when a child process needs a file path, e.g. tesseract).
+ * only when a child process needs a file path.
  *
  * Policy (benchmark-tunable):
  *   normal document        → ~200 DPI

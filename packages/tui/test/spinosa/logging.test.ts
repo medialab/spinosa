@@ -53,13 +53,13 @@ describe("Spinosa logging", () => {
     try {
       const { persistImportWizardLogLines } = await import("../../src/spinosa/log")
       persistImportWizardLogLines(
-        ["[diag] direct=1 markitdown=0 ocr=1", "Tesseract: Processing 1 files", ""],
+        ["[diag] direct=1 markitdown=0 ocr=1", "OCR: Processing 1 files", ""],
         "import-wizard-test",
       )
       const tuiText = await Bun.file(path.join(process.env.SPINOSA_HOME, "logs", "tui.ndjson")).text()
       expect(tuiText).toContain("import-wizard-test")
       expect(tuiText).toContain("[diag] direct=1 markitdown=0 ocr=1")
-      expect(tuiText).toContain("Tesseract: Processing 1 files")
+      expect(tuiText).toContain("OCR: Processing 1 files")
     } finally {
       if (originalHome === undefined) delete process.env.SPINOSA_HOME
       else process.env.SPINOSA_HOME = originalHome

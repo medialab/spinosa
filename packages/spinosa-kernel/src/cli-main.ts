@@ -40,7 +40,6 @@ import {
   isCompiledBinaryDistribution,
   registerEmbeddedTemplatePack,
 } from "@spinosa/core/distribution/bootstrap"
-import { ensureBundledToolsEnv } from "@spinosa/core/distribution/tools"
 
 const args = hideBin(process.argv)
 const { pid, ppid } = process
@@ -66,18 +65,6 @@ bootLog("kernel.init", "kernel entry parsing args", {
   SPINOSA_LOG_LEVEL: process.env.SPINOSA_LOG_LEVEL ?? undefined,
   BUN_VERSION: process.env.BUN_VERSION ?? undefined,
 })
-
-// Bundled OCR tools ($SPINOSA_HOME/tools/<platform>/bin) take PATH precedence
-// on every startup — dev and binary alike — so bundled tesseract resolves
-// deterministically. Microsecond-cheap after first call; runs before the fast
-// path so even --version-adjacent probes see the same resolution.
-try {
-  ensureBundledToolsEnv()
-} catch (error) {
-  bootLog("kernel.tools", "bundled tools env unavailable", {
-    error: error instanceof Error ? error.message : String(error),
-  })
-}
 
 if (!isFastPath && isCompiledBinaryDistribution()) {  try {
     const packMod = await import("./generated/template-pack.gen.ts")

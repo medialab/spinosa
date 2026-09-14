@@ -146,43 +146,13 @@ Linux VM soak (Lima): [docs/release/lima-linux-soak.md](docs/release/lima-linux-
 
 ---
 
-## OCR tools tarballs (pinned-source builds)
+## OCR tools tarballs (removed)
 
-`spinosa-tools-<os>-<arch>.tar.gz` (static Tesseract + pinned tessdata) is built
-from pinned source per target — nothing is downloaded as a binary.
-Locally: Darwin targets compile on the Mac; Linux targets compile inside
-local Lima guests (native arch), or natively on matching-arch Linux.
-In CI: each matrix runner builds its own target natively
-(macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04) — no Lima.
-
-One-time guest setup (release machine only):
-
-```bash
-limactl start --name spinosa-tools-linux-arm64 template://ubuntu
-limactl start --name spinosa-tools-linux-x64 --arch x86_64 template://ubuntu
-```
-
-Prerequisites on the release Mac: Xcode command line tools, cmake, and Rosetta
-(`arch -x86_64 /usr/bin/true` must succeed — configure-time probes for the
-`darwin-x64` cross-build execute through it).
-
-Build (before the release `build` stage, into the same dist dir):
-
-```bash
-DIST="dist/v$(jq -r .version package.json)"
-bun scripts/build-tools-tarballs.ts --out-dir "$DIST"          # all four targets
-bun scripts/build-tools-tarballs.ts --out-dir "$DIST" --host-only  # darwin-arm64 iteration
-```
-
-Pin-aware reuse: `--reuse-previous` (or `--reuse-from vX.Y.Z`) adopts a
-previous release's tarballs after verifying them against current pins —
-tool tarballs depend only on pins, never on the product version. Anything
-missing or mismatched builds from source; `--force` always rebuilds.
-
-Each tarball is self-verifying: SHA256-pinned sources, fail-closed linkage
-gates (system libs only on macOS, fully static on Linux), version/lang checks,
-and a blank-PNG end-to-end OCR probe where the host can execute the binary.
-The release `build` stage refuses to cut checksums when a tarball is missing.
+Local OCR was removed (no engine ships): no `spinosa-tools-<os>-<arch>.tar.gz`
+assets are built, cached, reused, or published anymore. The historical
+pinned-source build (`scripts/build-tools-tarballs.ts`) was deleted. Scans
+transcribe via a selected vision model or copy-as-is; digital PDFs extract via
+pdf.js with no model needed.
 
 ---
 
