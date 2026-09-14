@@ -171,6 +171,11 @@ bun scripts/build-tools-tarballs.ts --out-dir "$DIST"          # all four target
 bun scripts/build-tools-tarballs.ts --out-dir "$DIST" --host-only  # darwin-arm64 iteration
 ```
 
+Pin-aware reuse: `--reuse-previous` (or `--reuse-from vX.Y.Z`) adopts a
+previous release's tarballs after verifying them against current pins —
+tool tarballs depend only on pins, never on the product version. Anything
+missing or mismatched builds from source; `--force` always rebuilds.
+
 Each tarball is self-verifying: SHA256-pinned sources, fail-closed linkage
 gates (system libs only on macOS, fully static on Linux), version/lang checks,
 and a blank-PNG end-to-end OCR probe where the host can execute the binary.

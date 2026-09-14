@@ -42,6 +42,7 @@ import {
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { deflateSync } from "node:zlib"
+import semver from "semver"
 import {
   PRODUCT_BINARY_TARGETS,
   productToolsAssetName,
@@ -62,6 +63,79 @@ export const TOOLS_TARGETS: readonly ToolsTarget[] = PRODUCT_BINARY_TARGETS
 /** Canonical release asset name (single source of truth lives in contract.ts). */
 export function toolsTarballName(target: ToolsTarget): string {
   return productToolsAssetName(target)
+}
+
+/** Normalize a reuse tag to v<semver> (or undefined when unparseable). */
+export function normalizeReuseTag(tag: string): string | undefined {
+  const clean = tag.trim().replace(/^v/, "")
+  return semver.valid(clean) ? `v${clean}` : undefined
+}
+
+/** Greatest beta tag strictly below currentVersion (both v-prefixed tags).
+ * Pure helper so unit tests cover reuse selection without git. */
+export function previousReleaseTag(currentVersion: string, tags: string[]): string | undefined {
+  const current = currentVersion.replace(/^v/, "")
+  if (!semver.valid(current)) return undefined
+  const candidates = tags
+    .map((t) => t.trim().replace(/^v/, ""))
+    .filter((v) => semver.valid(v) && semver.prerelease(v)?.[0] === "beta" && semver.lt(v, current))
+    .sort(semver.compare)
+  const prev = candidates.at(-1)
+  return prev ? `v${prev}` : undefined
+}
+
+function gitBetaTags(): string[] {
+  try {
+    const out = Bun.spawnSync(["git", "tag", "--list", "v*"])
+    if (out.exitCode !== 0) return []
+    return out.stdout.toString().split("\n").map((s) => s.trim()).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Pin-aware reuse: fetch the same tarball from a previous GitHub release
+ * and adopt it only if it verifies against CURRENT pins (tesseract version,
+ * tessdata SHAs, layout, OCR probe). Tool tarballs depend solely on pins,
+ * never on the product version — so a verified older asset is identical to
+ * a fresh build. Returns true when reused; any miss or mismatch falls
+ * through to a from-source build with a clear log line.
+ */
+async function tryReuseFromRelease(opts: {
+  tarball: string
+  target: ToolsTarget
+  outDir: string
+  reuseTag: string
+  workDir: string
+  tessPins: TessdataPins
+}): Promise<boolean> {
+  const { tarball, target, outDir, reuseTag, workDir, tessPins } = opts
+  const name = path.basename(tarball)
+  if (!Bun.which("gh")) {
+    warn("tools", `${target}: gh CLI not found — cannot check ${reuseTag}, building from source`)
+    return false
+  }
+  const tmp = path.join(workDir, "reuse", target)
+  rmSync(tmp, { recursive: true, force: true })
+  mkdirSync(tmp, { recursive: true })
+  try {
+    await capture(["gh", "release", "download", reuseTag, "--pattern", name, "--dir", tmp, "--clobber"])
+  } catch {
+    info("tools", `${target}: no ${name} on ${reuseTag} — building from source`)
+    return false
+  }
+  const downloaded = path.join(tmp, name)
+  try {
+    await verifyTarball(downloaded, target, tessPins)
+  } catch (error) {
+    warn("tools", `${target}: ${reuseTag} asset fails current pins (${error instanceof Error ? error.message.split("\n")[0] : error}) — rebuilding from source`)
+    return false
+  }
+  rmSync(tarball, { force: true })
+  await run(["cp", downloaded, tarball])
+  ok("tools", `${target}: reused ${name} from ${reuseTag} (pins verified, no rebuild)`)
+  return true
 }
 
 export type TessdataPins = {
@@ -451,10 +525,19 @@ if (import.meta.main) {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     console.log(`Usage:
   bun scripts/build-tools-tarballs.ts --out-dir <dir> [--only <t,...>] [--host-only] [--work-dir <dir>] [--force]
+    [--reuse-from <tag> | --reuse-previous]
 
 Builds spinosa-tools-<os>-<arch>.tar.gz from pinned source (local only, no CI).
 darwin targets compile on this Mac; linux targets compile in Lima guests
-(spinosa-tools-linux-arm64 / spinosa-tools-linux-x64 — see header).`)
+(spinosa-tools-linux-arm64 / spinosa-tools-linux-x64 — see header), or
+natively on matching-arch Linux hosts (CI runners).
+
+Reuse: --reuse-from vX.Y.Z downloads that release's tarballs and adopts
+them after verifying against CURRENT pins (tesseract version, tessdata
+SHAs, layout, OCR probe) — tool tarballs depend only on pins, never on
+the product version. --reuse-previous picks the greatest beta tag below
+the --out-dir version automatically. Anything missing or mismatched
+builds from source; --force always rebuilds.`)
     process.exit(0)
   }
   const root = path.resolve(import.meta.dir, "..")
@@ -484,6 +567,24 @@ darwin targets compile on this Mac; linux targets compile in Lima guests
     wanted = [hostTarget]
   }
 
+  // Pin-aware reuse: adopt verified tarballs from a previous release
+  // instead of recompiling identical pins.
+  const reuseFromRaw = argValue("--reuse-from")
+  let reuseTag: string | undefined
+  if (reuseFromRaw) {
+    reuseTag = normalizeReuseTag(reuseFromRaw)
+    if (!reuseTag) throw new Error(`--reuse-from unparseable tag: ${reuseFromRaw} (want vX.Y.Z)`)
+  } else if (process.argv.includes("--reuse-previous")) {
+    const outBase = path.basename(outDir)
+    const outVersion = outBase.replace(/^v/, "")
+    reuseTag = previousReleaseTag(outVersion, gitBetaTags()) ?? undefined
+    if (reuseTag) {
+      info("tools", `reuse: previous release ${reuseTag} (below ${outBase})`)
+    } else {
+      info("tools", `reuse: no previous beta tag below ${outBase} — building all from source`)
+    }
+  }
+
   const installSh = readFileSync(path.join(root, "install.sh"), "utf-8")
   const tessPins = parseTessdataPins(installSh)
   info("tools", `tessdata commit ${tessPins.commit}`)
@@ -502,6 +603,10 @@ darwin targets compile on this Mac; linux targets compile in Lima guests
       info("tools", `${tag} ${target}: ${path.basename(tarball)} exists (use --force to rebuild)`)
       await verifyTarball(tarball, target, tessPins)
       continue
+    }
+    if (!force && reuseTag) {
+      const reused = await tryReuseFromRelease({ tarball, target, outDir, reuseTag, workDir, tessPins })
+      if (reused) continue
     }
     const targetElapsed = startTimer()
     step("tools", `${tag} ${target}: building tesseract ${TESSERACT_VERSION} from source`)

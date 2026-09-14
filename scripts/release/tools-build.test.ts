@@ -8,7 +8,9 @@ import {
   TOOLS_TARGETS,
   blankPng,
   canBuildLinuxNative,
+  normalizeReuseTag,
   parseTessdataPins,
+  previousReleaseTag,
   toolsTarballName,
 } from "../build-tools-tarballs.ts"
 
@@ -96,6 +98,22 @@ describe("tools tarball pins (pinned source, local Lima or native CI runners)", 
     expect(canBuildLinuxNative("linux-x64", { platform: "darwin", arch: "arm64" })).toBe(false)
     expect(canBuildLinuxNative("darwin-arm64", { platform: "linux", arch: "arm64" })).toBe(false)
     expect(canBuildLinuxNative("darwin-x64", { platform: "darwin", arch: "arm64" })).toBe(false)
+  })
+
+  test("reuse tag selection prefers the greatest older beta", () => {
+    expect(normalizeReuseTag("v1.1.0-beta.17.17")).toBe("v1.1.0-beta.17.17")
+    expect(normalizeReuseTag("1.1.0-beta.17.17")).toBe("v1.1.0-beta.17.17")
+    expect(normalizeReuseTag("garbage")).toBeUndefined()
+    expect(previousReleaseTag("1.1.0-beta.17.18", [
+      "v1.1.0-beta.17.17",
+      "v1.1.0-beta.14",
+      "v1.1.0-beta.17.18",
+      "v1.1.0",
+    ])).toBe("v1.1.0-beta.17.17")
+    // Current and newer tags never qualify; non-beta ignored.
+    expect(previousReleaseTag("1.1.0-beta.14", ["v1.1.0-beta.14", "v1.1.0-beta.17.17"])).toBeUndefined()
+    expect(previousReleaseTag("1.1.0-beta.17.18", ["v1.1.0"])).toBeUndefined()
+    expect(previousReleaseTag("garbage", ["v1.1.0-beta.14"])).toBeUndefined()
   })
 
   test("linux builders never reference Lima when native, never host paths", async () => {

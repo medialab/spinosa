@@ -60,7 +60,9 @@ workflows from the default branch) and stay in sync with `beta-dev`.
 - `template-pack.gen.ts` is a build artifact: builds overwrite it, restore the
   tracked stub afterwards (`git checkout -- <file>`), never commit it.
 - `dist/` is git-ignored release workspace, not source.
-- Tesseract/tessdata pins are the tools-tarball cache key: same pins → reuse,
-  never rebuild. A rebuild happens only on pin, flag, or platform changes.
+- Tesseract/tessdata pins are the tools-tarball cache key: same pins → reuse
+  (local tarballs, or `--reuse-previous` from published release assets
+  after pin verification), never rebuild. A rebuild happens only on pin,
+  flag, or platform changes.
 - Pre-existing LSP diagnostics about `.ts` import extensions in `scripts/` are
   repo-wide config noise (bun-style imports) — do not "fix" them.
