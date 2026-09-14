@@ -177,6 +177,12 @@ export async function finalizeDistAssets(
   }
   mkdirSync(paths.dist, { recursive: true })
   mkdirSync(paths.channelDist, { recursive: true })
+  // Artifact download (actions/download-artifact) strips executable bits —
+  // restore them here so verify-local sees release-ready binaries on every
+  // path (local builds chmod after compile; CI matrix artifacts need it).
+  for (const binaryPath of Object.values(paths.binaryPaths)) {
+    if (existsSync(binaryPath)) chmodSync(binaryPath, 0o755)
+  }
   const builtManifest = JSON.parse(readFileSync(paths.manifestPath, "utf-8")) as BuildManifest
   if (!builtManifest.templatePackId) {
     throw new Error("build-manifest.json missing templatePackId after binary build")
