@@ -274,5 +274,14 @@ jobs:
         run: |
           cd /tmp/verify-darwin
           chmod +x spinosa-darwin-arm64
-          ./spinosa-darwin-arm64 version
-          ./spinosa-darwin-arm64 version --json
+          # The Tahoe SIGKILL is intermittent (a corrupt embedded native
+          # sometimes survives one launch), so probe repeatedly with a fresh
+          # HOME each time to force re-stage + cold dlopen. Fail closed.
+          for i in 1 2 3 4 5; do
+            FRESH_HOME="$(mktemp -d /tmp/verify-home-XXXXXX)"
+            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+              ./spinosa-darwin-arm64 version
+            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+              ./spinosa-darwin-arm64 version --json
+            rm -rf "$FRESH_HOME"
+          done
