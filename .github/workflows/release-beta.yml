@@ -57,7 +57,7 @@ jobs:
             echo "dry_run=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
@@ -96,7 +96,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
@@ -117,7 +117,7 @@ jobs:
 
       - run: bash scripts/smoke-native-binary.sh "dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}" 3
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: release-${{ matrix.target }}
           path: dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}
@@ -133,7 +133,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
@@ -144,7 +144,7 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: release-*
           merge-multiple: true
@@ -162,7 +162,7 @@ jobs:
             bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           # Both dist/v<version>/ and dist/beta/ — ci-publish needs the channel installer.
           # Uploaded in dry runs too: verify downloads it to prove the full pipeline.
@@ -193,11 +193,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: assembled-dist
           # Artifact root holds dist/ contents, so download into dist/.
@@ -219,7 +219,7 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.ref }}
@@ -230,14 +230,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: assembled-dist
           path: dist
 
       - run: bun run release ci-publish "v${{ needs.validate.outputs.version }}"
 
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v3
         with:
           subject-path: |
             dist/v${{ needs.validate.outputs.version }}/install.sh
