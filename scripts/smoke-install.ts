@@ -84,7 +84,7 @@ function hostBinaryName(): string {
   )
 }
 
-async function smokeBinary(bin: string, label: string): Promise<void> {
+async function smokeBinary(bin: string, label: string, smokeHome: string = home): Promise<void> {
   if (!existsSync(bin)) throw new Error(`${label} not found: ${bin}`)
   chmodSync(bin, 0o755)
   if (structureOnly) {
@@ -95,7 +95,7 @@ async function smokeBinary(bin: string, label: string): Promise<void> {
     return
   }
 
-  const env = { ...process.env, SPINOSA_HOME: home }
+  const env = { ...process.env, SPINOSA_HOME: smokeHome }
   for (const cmd of ["version", "doctor"] as const) {
     console.log(`→ smoke ${cmd} (${label})`)
     const result = await $`${bin} ${cmd}`.cwd(project).env(env).nothrow()
@@ -171,7 +171,10 @@ async function smokeDist(dist: string): Promise<void> {
 
     const installedBin = path.join(home, ".spinosa", HOME_LAYOUT.binDir, HOME_LAYOUT.binaryName)
     if (install.exitCode === 0 && existsSync(installedBin)) {
-      await smokeBinary(installedBin, "installed binary")
+      // Doctor must inspect the home install.sh actually wrote to —
+      // passing the temp parent would check an empty dir (missing
+      // binary/metadata/tools) and fail a healthy install.
+      await smokeBinary(installedBin, "installed binary", path.join(home, ".spinosa"))
       console.log(
         "note: workspace create smoke skipped here — release smoke covers install + version/doctor",
       )
