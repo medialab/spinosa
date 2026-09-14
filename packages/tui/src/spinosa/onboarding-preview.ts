@@ -175,7 +175,7 @@ function buildPreflightRows(workspacePath: string, toolStatus: ToolStatus): Onbo
   rows.push({
     label: "Tesseract",
     status: ocrStatus,
-    detail: toolStatus.ocrUnsupportedReason ?? (toolStatus.ocr ? "Italian, English and French scans (free, offline)" : "Install tesseract + poppler + language data (French, Italian, English)"),
+    detail: toolStatus.ocrUnsupportedReason ?? (toolStatus.ocr ? "Italian, English and French scans (free, offline)" : "Bundled OCR tools missing — re-run the installer"),
     tone: ocrTone,
   })
   rows.push({ label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", tone: toolStatus.markitdown ? "success" : "error" })

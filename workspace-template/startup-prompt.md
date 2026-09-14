@@ -43,7 +43,7 @@ Before Phase 1 dispatch, write `agent_reports/g_{session_id}.md` using `.agents/
 
 - **Do not edit `raw/`.** Startup may write maps, dictionary, workspace index, context, configuration. Exception: YAML frontmatter semantic fields on raw files (summary and related) as specified in Phase 3.
 - Treat `raw/` as the active working corpus.
-- PDFs were converted by onboarding (MarkItDown for text-based, PaddleOCR for scanned). Account for skipped media (audio, video) as uncovered.
+- PDFs were converted by onboarding (internal pdf.js engine for text-based, bundled Tesseract for scanned). Account for skipped media (audio, video) as uncovered.
 - Treat every `AGENTS.md` file as control instructions, not corpus evidence.
 - Use the dictionary for consistent terminology.
 - Preserve generated-file provenance on maps and reports.

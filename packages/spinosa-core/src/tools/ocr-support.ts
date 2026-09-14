@@ -1,8 +1,8 @@
 /**
- * Product OCR (tesseract) platform gate.
+ * Product OCR (bundled Tesseract) platform gate.
  *
- * Formerly gated on onnxruntime for ppu-paddle-ocr; now tesseract via pdftoppm
- * is the only engine, supported wherever tesseract+pdftoppm+tessdata are present.
+ * OCR is supported everywhere the Spinosa-owned Tesseract + tessdata assets
+ * are installed under SPINOSA_HOME.
  */
 
 export type OcrPlatformHints = {
@@ -10,7 +10,7 @@ export type OcrPlatformHints = {
   arch?: string
 }
 
-/** True when this OS/arch is allowed to load OCR. tesseract is sole engine, supported everywhere. */
+/** True when this OS/arch is allowed to load OCR. Bundled Tesseract is supported everywhere. */
 export function isOcrPlatformSupported(hints: OcrPlatformHints = {}): boolean {
   return true
 }

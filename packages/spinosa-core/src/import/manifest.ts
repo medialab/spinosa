@@ -1,9 +1,10 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import * as path from "node:path"
 
 export const IMPORT_MANIFEST_FILENAME = "import-manifest.ndjson"
 
-export type ManifestStatus = "done" | "failed" | "skipped"
+export type ManifestStatus = "done" | "partial" | "failed" | "skipped"
 
 export type ManifestRecord = {
   rel: string
@@ -14,12 +15,18 @@ export type ManifestRecord = {
   bytes: number
   /** Source mtime at record time (stat, ms). */
   mtimeMs: number
+  /** Content digest (sha256 hex) — source identity for corpus integrity. */
+  sha256?: string
   /** Workspace-relative dest that was written (or attempted). */
   dest: string
   engine: string
   model?: string
   attempts: number
   updatedTs: string
+  /** Page-level state for PDFs: retry unresolved pages on resume. */
+  pages?: number
+  completedPages?: number[]
+  pendingPages?: number[]
 }
 
 export type ManifestScanEntry = {
@@ -76,28 +83,64 @@ export function fingerprintSource(srcFile: string): { bytes: number; mtimeMs: nu
   }
 }
 
-function parseRecordLine(line: string): ManifestRecord | undefined {
-  let obj: Record<string, unknown>
+/** Content digest (sha256 hex) for long-term corpus integrity. One file read. */
+export function hashSourceFile(srcFile: string): string | undefined {
   try {
-    obj = JSON.parse(line) as Record<string, unknown>
+    const hash = createHash("sha256")
+    hash.update(readFileSync(srcFile))
+    return hash.digest("hex")
   } catch {
     return undefined
   }
-  if (typeof obj.rel !== "string" || obj.rel.length === 0) return undefined
-  if (obj.status !== "done" && obj.status !== "failed" && obj.status !== "skipped") return undefined
-  if (typeof obj.bytes !== "number" || typeof obj.mtimeMs !== "number") return undefined
+}
+
+function parseStringArray(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  if (!value.every((v) => typeof v === "number" && Number.isFinite(v))) return undefined
+  return [...(value as number[])]
+}
+
+function parseRecordLine(line: string): ManifestRecord | undefined {
+  let obj: unknown
+  try {
+    obj = JSON.parse(line) as unknown
+  } catch {
+    return undefined
+  }
+  // Harden parsing: root must be an object, every required property validated.
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return undefined
+  const rec = obj as Record<string, unknown>
+  if (typeof rec.rel !== "string" || rec.rel.length === 0 || rec.rel.length > 4096) return undefined
+  if (rec.rel.includes("\0") || path.isAbsolute(rec.rel) || rec.rel.split(path.sep).includes("..")) return undefined
+  if (rec.status !== "done" && rec.status !== "partial" && rec.status !== "failed" && rec.status !== "skipped") return undefined
+  if (typeof rec.bytes !== "number" || typeof rec.mtimeMs !== "number") return undefined
+  if (rec.sha256 !== undefined && (typeof rec.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(rec.sha256))) return undefined
+  if (rec.dest !== undefined && typeof rec.dest !== "string") return undefined
+  if (rec.engine !== undefined && typeof rec.engine !== "string") return undefined
+  if (rec.model !== undefined && typeof rec.model !== "string") return undefined
+  if (rec.attempts !== undefined && typeof rec.attempts !== "number") return undefined
+  const pages = rec.pages === undefined ? undefined : typeof rec.pages === "number" ? rec.pages : undefined
+  if (rec.pages !== undefined && pages === undefined) return undefined
+  const completedPages = rec.completedPages === undefined ? undefined : parseStringArray(rec.completedPages)
+  if (rec.completedPages !== undefined && completedPages === undefined) return undefined
+  const pendingPages = rec.pendingPages === undefined ? undefined : parseStringArray(rec.pendingPages)
+  if (rec.pendingPages !== undefined && pendingPages === undefined) return undefined
   return {
-    rel: obj.rel,
-    ext: typeof obj.ext === "string" ? obj.ext : "",
-    route: typeof obj.route === "string" ? obj.route : "",
-    status: obj.status,
-    bytes: obj.bytes,
-    mtimeMs: obj.mtimeMs,
-    dest: typeof obj.dest === "string" ? obj.dest : "",
-    engine: typeof obj.engine === "string" ? obj.engine : "",
-    model: typeof obj.model === "string" ? obj.model : undefined,
-    attempts: typeof obj.attempts === "number" ? obj.attempts : 1,
-    updatedTs: typeof obj.updatedTs === "string" ? obj.updatedTs : "",
+    rel: rec.rel,
+    ext: typeof rec.ext === "string" ? rec.ext : "",
+    route: typeof rec.route === "string" ? rec.route : "",
+    status: rec.status,
+    bytes: rec.bytes,
+    mtimeMs: rec.mtimeMs,
+    sha256: rec.sha256 as string | undefined,
+    dest: typeof rec.dest === "string" ? rec.dest : "",
+    engine: typeof rec.engine === "string" ? rec.engine : "",
+    model: typeof rec.model === "string" ? rec.model : undefined,
+    attempts: typeof rec.attempts === "number" ? rec.attempts : 1,
+    updatedTs: typeof rec.updatedTs === "string" ? rec.updatedTs : "",
+    pages,
+    completedPages,
+    pendingPages,
   }
 }
 
@@ -141,23 +184,34 @@ export function recordResult(entry: {
   engine: string
   model?: string
   attempts?: number
+  pages?: number
+  completedPages?: number[]
+  pendingPages?: number[]
 }): void {
   const { logsDir } = entry
   try {
     ensureLogsDir(logsDir)
     const fp = fingerprintSource(entry.srcFile)
+    // A file may only be marked done when all required content was processed:
+    // partial (unresolved pages) never upgrades to done here.
+    const status: ManifestStatus =
+      entry.status === "done" && entry.pendingPages && entry.pendingPages.length > 0 ? "partial" : entry.status
     const record: ManifestRecord = {
       rel: entry.rel,
       ext: entry.ext,
       route: entry.route,
-      status: entry.status,
+      status,
       bytes: fp?.bytes ?? -1,
       mtimeMs: fp?.mtimeMs ?? -1,
+      sha256: hashSourceFile(entry.srcFile),
       dest: entry.dest,
       engine: entry.engine,
       model: entry.model,
       attempts: entry.attempts ?? 1,
       updatedTs: new Date().toISOString(),
+      pages: entry.pages,
+      completedPages: entry.completedPages,
+      pendingPages: entry.pendingPages,
     }
     appendFileSync(manifestPath(logsDir), JSON.stringify(record) + "\n", "utf-8")
   } catch {}
@@ -165,14 +219,17 @@ export function recordResult(entry: {
 
 /**
  * Compare a fresh scan against the manifest.
- * - unchanged: done + fingerprint match → skip without re-processing.
- * - changed: fingerprint mismatch → re-process (stale outputs overwritten).
+ * - unchanged: done + fingerprint match (+ digest match when present) → skip.
+ * - changed: fingerprint/digest mismatch → re-process.
  * - removed: tracked but absent → caller prunes.
- * - untracked: new files AND previous failures (failures always retry).
+ * - untracked: new files + previous failures + partials + reroutes → process.
+ * Retry forces actual processing for changed/failed/partial/rerouted/
+ * engine-changed/model-changed; only unchanged successful files skip.
  */
 export function reconcileManifest(
   records: Map<string, ManifestRecord>,
   scan: ManifestScanEntry[],
+  options?: { route?: Map<string, string>; engine?: Map<string, string>; model?: Map<string, string | undefined> },
 ): ManifestReconcile {
   const unchanged: string[] = []
   const changed: string[] = []
@@ -185,10 +242,32 @@ export function reconcileManifest(
       untracked.push(entry.rel)
       continue
     }
+    // Reroute / engine / model changes force reprocessing.
+    if (options?.route?.get(entry.rel) && options.route.get(entry.rel) !== record.route) {
+      changed.push(entry.rel)
+      continue
+    }
+    if (options?.engine?.get(entry.rel) && options.engine.get(entry.rel) !== record.engine) {
+      changed.push(entry.rel)
+      continue
+    }
+    const wantModel = options?.model?.get(entry.rel)
+    if (wantModel !== undefined && wantModel !== record.model) {
+      changed.push(entry.rel)
+      continue
+    }
     const fp = fingerprintSource(entry.srcFile)
     if (!fp || fp.bytes !== record.bytes || fp.mtimeMs !== record.mtimeMs) {
       changed.push(entry.rel)
       continue
+    }
+    // Content digest is authoritative when present on both sides.
+    if (record.sha256) {
+      const digest = hashSourceFile(entry.srcFile)
+      if (digest && digest !== record.sha256) {
+        changed.push(entry.rel)
+        continue
+      }
     }
     unchanged.push(entry.rel)
   }

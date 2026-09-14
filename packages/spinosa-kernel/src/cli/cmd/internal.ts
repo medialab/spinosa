@@ -107,9 +107,9 @@ export const InternalCommand = {
             process.stdout.write(`${JSON.stringify({ type: "error", message: unsupported })}\n`)
             process.exit(1)
           }
-          // ppu-paddle-ocr purged — tesseract is sole OCR engine; ocr-worker is deprecated
+          // ocr-worker is deprecated — OCR runs in-process via bundled Tesseract.
           process.stdout.write(
-            `${JSON.stringify({ type: "error", message: "ocr-worker deprecated: ppu-paddle-ocr removed, use tesseract" })}\n`,
+            `${JSON.stringify({ type: "error", message: "ocr-worker deprecated: OCR runs in-process via bundled Tesseract" })}\n`,
           )
           process.exit(1)
         },

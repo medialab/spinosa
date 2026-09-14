@@ -24,7 +24,7 @@ describe("resolveCanvasNativeStageDir", () => {
     }
   })
 
-  test("falls back to onnx stage order when canvas cache is not executable", () => {
+  test("falls back to shared stage order when canvas cache is not executable", () => {
     const scratch = mkdtempSync(path.join(tmpdir(), "spinosa-canvas-resolve-"))
     const home = path.join(scratch, "home")
     const tmp = path.join(scratch, "tmp")

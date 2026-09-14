@@ -35,13 +35,9 @@ language data into `$SPINOSA_HOME/tools/` for offline OCR.
 Tesseract is distributed under the Apache License 2.0.
 tessdata_fast language data is distributed under the Apache License 2.0.
 
-## Poppler (pdftoppm)
+## pdf.js + Canvas (PDF rendering)
 
-The Spinosa installer can provision the `pdftoppm` utility from
-[Poppler](https://poppler.freedesktop.org/) into `$SPINOSA_HOME/tools/`
-for PDF page rendering.
-
-Poppler is distributed under the GNU General Public License v2 or later
-(GPL-2.0-or-later). Corresponding source for any Poppler binaries
-distributed with Spinosa releases is available from the Poppler project at
-https://poppler.freedesktop.org/ (git: https://gitlab.freedesktop.org/poppler/poppler).
+Spinosa renders PDF pages internally with
+[pdf.js](https://github.com/mozilla/pdf.js) (`pdfjs-dist`) and
+[@napi-rs/canvas](https://github.com/Brooooooklyn/canvas) (Skia).
+No Poppler/`pdftoppm` binaries are distributed or required.

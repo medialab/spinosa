@@ -25,12 +25,20 @@ export function createVisionTranscriber(
   sdk: Pick<ReturnType<typeof useSDK>, "client">,
 ): VisionTranscribe {
   return async (request) => {
-    const result = await sdk.client.provider.vision.transcribe({
-      providerID: request.providerID,
-      modelID: request.modelID,
-      prompt: request.prompt,
-      image: request.image,
-    })
+    if (request.signal?.aborted) {
+      throw new DOMException("Vision cancelled", "AbortError")
+    }
+    const result = await sdk.client.provider.vision.transcribe(
+      {
+        providerID: request.providerID,
+        modelID: request.modelID,
+        prompt: request.prompt,
+        image: request.image,
+      },
+      // Forward cancellation when the SDK supports per-request init; the
+      // core-side linked AbortSignal still bounds the wait regardless.
+      ...(request.signal ? [{ signal: request.signal } as object] : []),
+    )
     return visionTranscribeResultText(result)
   }
 }

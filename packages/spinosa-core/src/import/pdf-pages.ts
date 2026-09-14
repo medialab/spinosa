@@ -102,7 +102,7 @@ async function classifyPdfPagesOnce(srcFile: string): Promise<PdfPageClass[]> {
   })
 }
 
-/** Group 1-based page numbers into contiguous ranges for pdftoppm -f/-l. */
+/** Group 1-based page numbers into contiguous ranges (batch processing). */
 export function contiguousRanges(pages: readonly number[]): Array<{ from: number; to: number }> {
   const sorted = [...new Set(pages)].sort((a, b) => a - b)
   const ranges: Array<{ from: number; to: number }> = []

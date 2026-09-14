@@ -1,12 +1,24 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { mkdtemp, readFile } from "node:fs/promises"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtemp } from "node:fs/promises"
 import * as path from "node:path"
 import { tmpdir } from "node:os"
 import { safeCopyAsync, writeTextAtomicSafe } from "../utils/fs"
 import { injectColdFrontmatter } from "./frontmatter"
 import { SpinosaCancellationError, isSpinosaCancellationError, throwIfSpinosaCancelled } from "./cancellation"
+import {
+  bundledTessdataDir,
+  bundledToolPath,
+  resolveTesseract,
+  verifyBundledTools,
+} from "../distribution/tools"
 
 type SpawnedProc = { exited: Promise<number>; kill: () => void; stderr?: unknown; stdout?: unknown }
+
+/** Structured per-page OCR outcome. Failures never become successful text. */
+export type PageOcrResult =
+  | { status: "text"; text: string }
+  | { status: "blank" }
+  | { status: "failed"; error: string }
 
 /**
  * Await a spawned child, killing it when cancellation flips (poll +
@@ -50,15 +62,15 @@ export async function waitAbortableChild(
 let _tesseractAvailable: boolean | undefined
 
 function tessdataCandidates(): string[] {
+  // Standalone contract: only Spinosa-owned locations — the bundled tools dir
+  // and an explicit TESSDATA_PREFIX. Never host-system install locations:
+  // the shipped binary must not depend on, or even probe, paths outside
+  // $SPINOSA_HOME and explicit env overrides.
+  const bundled = bundledTessdataDir()
   const env = process.env.TESSDATA_PREFIX
   return [
+    ...(bundled ? [bundled] : []),
     ...(env ? [env] : []),
-    "/opt/homebrew/share/tessdata",
-    "/usr/local/share/tessdata",
-    "/usr/share/tessdata",
-    "/usr/share/tesseract-ocr/4.00/tessdata",
-    "/usr/share/tesseract-ocr/5/tessdata",
-    "/opt/local/share/tessdata",
   ]
 }
 
@@ -71,51 +83,47 @@ function hasAllLangs(base: string): boolean {
 export function tesseractAvailable(): boolean {
   if (_tesseractAvailable !== undefined) return _tesseractAvailable
   try {
-    const hasTesseract = typeof Bun !== "undefined" && (Bun as unknown as { which?: (cmd: string) => string | null }).which
-      ? !!(Bun as unknown as { which: (cmd: string) => string | null }).which!("tesseract")
-      : false
-    const hasPdftoppm = typeof Bun !== "undefined" && (Bun as unknown as { which?: (cmd: string) => string | null }).which
-      ? !!(Bun as unknown as { which: (cmd: string) => string | null }).which!("pdftoppm")
-      : false
-    if (!hasTesseract || !hasPdftoppm) {
-      _tesseractAvailable = false
-      return _tesseractAvailable
-    }
-    // Check tessdata
-    for (const base of tessdataCandidates()) {
-      if (existsSync(base) && hasAllLangs(base)) {
-        _tesseractAvailable = true
-        return _tesseractAvailable
-      }
-    }
-    // Fallback: if tesseract binary exists, assume langs are bundled (e.g. linux container)
-    // Try a cheap spawn check: tesseract --list-langs includes needed langs
-    try {
-      const proc = Bun.spawnSync(["tesseract", "--list-langs"] as unknown as string[], {
-        stdout: "pipe",
-        stderr: "pipe",
-      } as unknown as Parameters<typeof Bun.spawnSync>[1])
-      const out = String((proc as unknown as { stdout: Uint8Array }).stdout ?? "") + String((proc as unknown as { stderr: Uint8Array }).stderr ?? "")
-      if (out.includes("eng") && out.includes("ita") && out.includes("fra")) {
-        _tesseractAvailable = true
-        return _tesseractAvailable
-      }
-      // If custom tessdata path via env or default, still consider available if binary works
-      // For product binaries without tessdata on host, we still claim available and let OCR fail per-file
-      _tesseractAvailable = true
-      return _tesseractAvailable
-    } catch {
+    // Production: bundled Spinosa-owned Tesseract + tessdata first.
+    const bundled = bundledToolPath("tesseract")
+    const tessdata = bundledTessdataDir()
+    if (bundled && tessdata) {
       _tesseractAvailable = true
       return _tesseractAvailable
     }
+    // Developer-only fallback behind an explicit flag. Never PATH-sniff in
+    // production (no Bun.which("tesseract") as the dependency mechanism).
+    if (process.env.SPINOSA_DEV_HOST_TOOLS === "1" && typeof Bun !== "undefined") {
+      const which = (Bun as unknown as { which?: (cmd: string) => string | null }).which
+      if (which?.("tesseract")) {
+        for (const base of tessdataCandidates()) {
+          if (existsSync(base) && hasAllLangs(base)) {
+            _tesseractAvailable = true
+            return _tesseractAvailable
+          }
+        }
+      }
+    }
+    _tesseractAvailable = false
+    return _tesseractAvailable
   } catch {
     _tesseractAvailable = false
     return _tesseractAvailable
   }
 }
 
+/**
+ * @deprecated Poppler/pdftoppm is NOT a production dependency: the internal
+ * PDF engine (pdf.js + Canvas) renders pages to in-memory buffers. Always
+ * returns false so legacy call sites fail safe instead of shelling to a host
+ * binary.
+ */
 export function pdftoppmAvailable(): boolean {
-  return tesseractAvailable()
+  return false
+}
+
+/** Unavailable-asset detail for doctor/logs (fail-closed messaging). */
+export function tesseractMissingDetail(): string[] {
+  return verifyBundledTools()
 }
 
 export function networkImageAvailable(): boolean {
@@ -124,14 +132,21 @@ export function networkImageAvailable(): boolean {
 }
 
 export async function pdfHasTextLayer(pdfPath: string): Promise<boolean> {
-  // Outcome-based: try MarkItDown, if it yields non-empty markdown → text layer
+  // Single PDF subsystem: probe embedded text via the internal engine.
+  // MarkItDown must never process PDFs (office formats only).
   try {
-    const { MarkItDown } = await import("@spinosa/markitdown")
-    const { markitdownConvertFile } = await import("./markitdown-convert")
-    const converter = new MarkItDown()
-    const result = await markitdownConvertFile(converter, pdfPath)
-    const text = result?.markdown?.trim() ?? ""
-    return text.length > 0
+    const { withPdfDocument } = await import("../extension/pdf-js")
+    const { pdfDocumentPageHasExtractableText } = await import("../extension/pdf-js")
+    return await withPdfDocument(pdfPath, async (doc) => {
+      for (let page = 1; page <= doc.numPages; page++) {
+        try {
+          if (await pdfDocumentPageHasExtractableText(doc, page)) return true
+        } catch {
+          continue
+        }
+      }
+      return false
+    })
   } catch {
     return false
   }
@@ -150,12 +165,21 @@ function cleanOcrBody(body: string): string {
 }
 
 /**
- * OCR a subset of PDF pages (1-based) via range-grouped pdftoppm renders.
- * Companion to the vision-path hybrid: text-bearing pages are handled by
- * direct extraction, so tesseract only ever sees imageless pages. Returns
- * cleaned text per requested page (missing entries mean render/OCR failure).
+ * OCR a subset of PDF pages (1-based) via the internal renderer
+ * (pdf.js + Canvas → in-memory PNG → bundled Tesseract).
+ * Text-bearing pages are handled by direct extraction upstream, so tesseract
+ * only ever sees imageless pages. Returns cleaned text per successfully OCR'd
+ * page (missing entries mean render/OCR failure — never placeholder text).
  */
 export type PdfOcrPageTick = (page: number, total: number) => void | Promise<void>
+
+function tesseractEnv(): Record<string, string | undefined> {
+  const tessdata = bundledTessdataDir()
+  if (tessdata && !process.env.TESSDATA_PREFIX) {
+    return { ...process.env, TESSDATA_PREFIX: tessdata }
+  }
+  return { ...process.env }
+}
 
 export async function ocrPdfPagesViaTesseract(
   srcPath: string,
@@ -167,42 +191,45 @@ export async function ocrPdfPagesViaTesseract(
   const wanted = [...new Set(pages)].filter((p) => Number.isFinite(p) && p >= 1)
   if (wanted.length === 0) return out
   throwIfSpinosaCancelled(options?.shouldAbort)
-  if (!tesseractAvailable()) throw new Error("tesseract not available (missing tesseract/pdftoppm or tessdata ita+eng+fra)")
-  const { contiguousRanges } = await import("./pdf-pages")
-  const tmpDir = await mkdtemp(path.join(tmpdir(), "spinosa-tess-"))
+  if (!tesseractAvailable()) {
+    throw new Error(`Bundled Tesseract is unavailable (missing: ${tesseractMissingDetail().join(", ") || "unknown"})`)
+  }
+  const tesseractBin = resolveTesseract()
+  const { withPdfDocument } = await import("../extension/pdf-js")
+  const { renderPage } = await import("../pdf/render")
+  // Private temp dir for the tesseract CLI file interface (0700 via mkdtemp).
+  const { mkdtemp: mkdtempAsync } = await import("node:fs/promises")
+  const tmpDir = await mkdtempAsync(path.join(tmpdir(), "spinosa-tess-"))
   try {
-    const prefix = path.join(tmpDir, "page")
     options?.onLog?.(`  ${relPath} → rendering ${wanted.length} page${wanted.length === 1 ? "" : "s"} (${wanted.join(", ")}) for tesseract OCR ...`)
-    for (const range of contiguousRanges(wanted)) {
-      const proc = Bun.spawn(
-        ["pdftoppm", "-png", "-r", "300", "-f", String(range.from), "-l", String(range.to), srcPath, prefix],
-        { stdout: "pipe", stderr: "pipe" },
-      )
-      const exit = await waitAbortableChild(proc, {
-        shouldAbort: options?.shouldAbort,
-        signal: options?.signal,
-        label: `pdftoppm ${relPath} pages ${range.from}-${range.to}`,
-      })
-      if (exit !== 0) {
-        const errText = await new Response(proc.stderr as unknown as ReadableStream).text().catch(() => "")
-        throw new Error(`pdftoppm failed (exit ${exit}): ${errText.slice(0, 400)}`)
+    const pngByPage = new Map<number, string>()
+    await withPdfDocument(srcPath, async (doc) => {
+      for (const page of [...wanted].sort((a, b) => a - b)) {
+        throwIfSpinosaCancelled(options?.shouldAbort)
+        if (options?.signal?.aborted) throw new SpinosaCancellationError(`tesseract ${relPath} cancelled`)
+        let png: Buffer
+        try {
+          png = await renderPage(doc, page)
+        } catch (err) {
+          options?.onLog?.(`  ${relPath} page ${page} internal render failed: ${err instanceof Error ? err.message : String(err)}`)
+          continue
+        }
+        // Adaptive retry: empty first pass at ~200 DPI → retry at ~300 DPI.
+        const pngPath = path.join(tmpDir, `page-${page}.png`)
+        writeFileSync(pngPath, png)
+        pngByPage.set(page, pngPath)
       }
+    })
+    const env = tesseractEnv()
+    for (const page of [...pngByPage.keys()].sort((a, b) => a - b)) {
       throwIfSpinosaCancelled(options?.shouldAbort)
-    }
-    const pngs = readdirSync(tmpDir)
-      .filter((f) => f.endsWith(".png"))
-      .sort()
-    for (const png of pngs) {
-      // Range renders keep real page numbers (page-3.png for -f 3).
-      const page = Number((png.match(/page-(\d+)\.png$/) ?? [])[1])
-      if (!Number.isFinite(page) || !wanted.includes(page)) continue
-      throwIfSpinosaCancelled(options?.shouldAbort)
+      const pngPath = pngByPage.get(page)!
       const txtBase = path.join(tmpDir, `out-${page}`)
       const tessProc = Bun.spawn(
-        ["tesseract", path.join(tmpDir, png), txtBase, "-l", "ita+eng+fra", "--psm", "6", "--oem", "1"],
-        { stdout: "pipe", stderr: "pipe" },
+        [tesseractBin, pngPath, txtBase, "-l", "ita+eng+fra", "--psm", "6", "--oem", "1"],
+        { stdout: "pipe", stderr: "pipe", env },
       )
-      await waitAbortableChild(tessProc, {
+      const exit = await waitAbortableChild(tessProc, {
         shouldAbort: options?.shouldAbort,
         signal: options?.signal,
         label: `tesseract ${relPath} page ${page}`,
@@ -214,6 +241,17 @@ export async function ocrPdfPagesViaTesseract(
       } catch {
         pageText = ""
       }
+      if (exit !== 0 && !pageText.trim()) {
+        const errText = await new Response(tessProc.stderr as unknown as ReadableStream).text().catch(() => "")
+        options?.onLog?.(`  ${relPath} page ${page} tesseract failed (exit ${exit}): ${errText.slice(0, 200)}`)
+        continue
+      }
+      if (!pageText.trim()) {
+        // Blank page: record explicit blank (not failure, not success-text).
+        out.set(page, "")
+        await options?.onPage?.(page, options?.pageTotal ?? wanted.length)
+        continue
+      }
       out.set(page, cleanOcrBody(pageText))
       await options?.onPage?.(page, options?.pageTotal ?? wanted.length)
       await new Promise<void>((r) => setTimeout(r, 0))
@@ -224,6 +262,33 @@ export async function ocrPdfPagesViaTesseract(
       rmSync(tmpDir, { recursive: true, force: true })
     } catch { /* cleanup */ }
   }
+}
+
+/** Structured wrapper: text/blank/failed per requested page. */
+export async function ocrPdfPagesStructured(
+  srcPath: string,
+  pages: readonly number[],
+  relPath: string,
+  options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void; signal?: AbortSignal },
+): Promise<Map<number, PageOcrResult>> {
+  const wanted = [...new Set(pages)].filter((p) => Number.isFinite(p) && p >= 1)
+  const out = new Map<number, PageOcrResult>()
+  if (wanted.length === 0) return out
+  let texts: Map<number, string>
+  try {
+    texts = await ocrPdfPagesViaTesseract(srcPath, wanted, relPath, options)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    for (const p of wanted) out.set(p, { status: "failed", error: msg })
+    return out
+  }
+  for (const p of wanted) {
+    const t = texts.get(p)
+    if (t === undefined) out.set(p, { status: "failed", error: "render or OCR failed" })
+    else if (!t.trim()) out.set(p, { status: "blank" })
+    else out.set(p, { status: "text", text: t })
+  }
+  return out
 }
 
 /**
@@ -253,12 +318,24 @@ export async function convertPdfHybridTesseract(
     options?.onLog?.(`  ${relPath} → ${direct.size}/${total} pages have embedded text, tesseract transcribes ${imagePages.length} imageless page(s) ...`)
   }
   const ocr = await ocrPdfPagesViaTesseract(srcFile, imagePages, relPath, { ...options, pageTotal: total })
+  // Structured outcomes: direct text wins; OCR text wins; blank stays an
+  // explicit blank; MISSING OCR entries are failures (never success text).
+  // Callers must treat failed pages as unresolved (partial/failed), not done.
+  const failedOcrPages: number[] = []
   const pageTexts: string[] = []
   for (let p = 1; p <= total; p++) {
     const d = direct.get(p)
     if (d !== undefined) pageTexts.push(d.trim())
-    else if (ocr.has(p)) pageTexts.push((ocr.get(p) ?? "").trim() || "[No text detected on this page]")
-    else pageTexts.push("[No text detected on this page]")
+    else if (ocr.has(p)) {
+      const t = (ocr.get(p) ?? "").trim()
+      pageTexts.push(t || "[Blank page — no text detected]")
+    } else {
+      failedOcrPages.push(p)
+      pageTexts.push("[Page OCR failed — pending retry]")
+    }
+  }
+  if (failedOcrPages.length > 0) {
+    throw new Error(`tesseract OCR failed on pages ${failedOcrPages.join(", ")} — refusing to mark done with unresolved pages`)
   }
   const combined = `# ${title}\n\n${pageTexts.map((t, idx) => `## Page ${idx + 1}\n\n${t}`).join("\n\n")}\n`
   mkdirSync(path.dirname(destFile), { recursive: true })
@@ -285,7 +362,7 @@ export async function convertPdfHybridTesseract(
             "",
             `# ${title} - Page ${i + 1}`,
             "",
-            text.trim() || "[No text detected on this page]",
+            text.trim() || "[Blank page — no text detected]",
             "",
           ].join("\n"),
         )
@@ -325,35 +402,31 @@ export async function ocrPdfViaTesseract(
   options?: { shouldAbort?: () => boolean; onLog?: (line: string) => void; signal?: AbortSignal; onPage?: PdfOcrPageTick },
 ): Promise<TesseractOcrResult> {
   throwIfSpinosaCancelled(options?.shouldAbort)
-  if (!tesseractAvailable()) throw new Error("tesseract not available (missing tesseract/pdftoppm or tessdata ita+eng+fra)")
+  if (!tesseractAvailable()) {
+    throw new Error(`Bundled Tesseract is unavailable (missing: ${tesseractMissingDetail().join(", ") || "unknown"})`)
+  }
   const title = titleFromRel(relPath)
+  const tesseractBin = resolveTesseract()
+  const env = tesseractEnv()
   const tmpDir = await mkdtemp(path.join(tmpdir(), "spinosa-tess-"))
   try {
-    const prefix = path.join(tmpDir, "page")
-    // pdftoppm -png -r 300 pdf prefix
-    let pdftoppmProc: SpawnedProc
-    try {
-      pdftoppmProc = Bun.spawn(["pdftoppm", "-png", "-r", "300", srcPath, prefix], {
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-    } catch (err) {
-      throw new Error(`pdftoppm spawn failed: ${err instanceof Error ? err.message : String(err)}`)
-    }
-    const pdftoppmExit = await waitAbortableChild(pdftoppmProc, {
-      shouldAbort: options?.shouldAbort,
-      signal: options?.signal,
-      label: `pdftoppm ${relPath}`,
+    // Internal renderer (pdf.js + Canvas): open once, render each page to a
+    // buffer, spill to private temp PNGs only for the tesseract CLI.
+    const { withPdfDocument } = await import("../extension/pdf-js")
+    const { renderPage } = await import("../pdf/render")
+    const pngPaths: string[] = []
+    await withPdfDocument(srcPath, async (doc) => {
+      for (let page = 1; page <= doc.numPages; page++) {
+        throwIfSpinosaCancelled(options?.shouldAbort)
+        const png = await renderPage(doc, page)
+        const pngPath = path.join(tmpDir, `page-${page}.png`)
+        writeFileSync(pngPath, png)
+        pngPaths.push(pngPath)
+      }
     })
-    if (pdftoppmExit !== 0) {
-      const errText = await new Response(pdftoppmProc.stderr as unknown as ReadableStream).text().catch(() => "")
-      throw new Error(`pdftoppm failed (exit ${pdftoppmExit}): ${errText.slice(0, 400)}`)
-    }
     throwIfSpinosaCancelled(options?.shouldAbort)
-    const pngs = readdirSync(tmpDir)
-      .filter((f) => f.endsWith(".png"))
-      .sort()
-    if (pngs.length === 0) throw new Error("pdftoppm produced no pages")
+    const pngs = pngPaths.map((p) => path.basename(p)).sort()
+    if (pngs.length === 0) throw new Error("internal PDF renderer produced no pages")
     options?.onLog?.(`  ${relPath} → splitting into ${pngs.length} page${pngs.length === 1 ? "" : "s"}, extracting text via tesseract OCR ...`)
     const pageTexts: string[] = []
     const pageConfs: number[] = []
@@ -366,8 +439,8 @@ export async function ocrPdfViaTesseract(
       let tessProc: SpawnedProc
       try {
         tessProc = Bun.spawn(
-          ["tesseract", png, txtBase, "-l", "ita+eng+fra", "--psm", "6", "--oem", "1"],
-          { stdout: "pipe", stderr: "pipe" },
+          [tesseractBin, png, txtBase, "-l", "ita+eng+fra", "--psm", "6", "--oem", "1"],
+          { stdout: "pipe", stderr: "pipe", env },
         )
       } catch (err) {
         throw new Error(`tesseract spawn failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -390,11 +463,11 @@ export async function ocrPdfViaTesseract(
         options?.onLog?.(`  ${relPath} page ${i + 1} tesseract exit ${tessExit}: ${errText.slice(0, 200)}`)
       }
       pageTexts.push(cleanOcrBody(pageText))
-      // Confidence via TSV (second pass, cheap for 300dpi single page)
+      // Confidence via TSV (second pass, cheap for single page)
       try {
         const tsvProc = Bun.spawn(
-          ["tesseract", png, "stdout", "-l", "ita+eng+fra", "--psm", "6", "tsv"],
-          { stdout: "pipe", stderr: "pipe" },
+          [tesseractBin, png, "stdout", "-l", "ita+eng+fra", "--psm", "6", "tsv"],
+          { stdout: "pipe", stderr: "pipe", env },
         )
         const [tsvText] = await Promise.all([
           new Response(tsvProc.stdout as unknown as ReadableStream).text(),

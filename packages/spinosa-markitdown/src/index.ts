@@ -84,6 +84,129 @@ function patchImageConverter() {
 }
 patchImageConverter()
 
+export class ZipArchiveError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "ZipArchiveError"
+  }
+}
+
+/** Archive limits (zip-bomb hardening). */
+export const ZIP_LIMITS = {
+  maxFiles: 1000,
+  maxEntryBytes: 100 * 1024 * 1024,
+  maxTotalBytes: 500 * 1024 * 1024,
+  maxDepth: 3,
+} as const
+
+/**
+ * Hardened Zip processing: bounded concurrency, explicit archive limits, every
+ * entry awaited before return, structured failure (never `[ERROR]` markdown
+ * as a successful conversion).
+ */
+export async function convertZipBuffer(
+  zipBuffer: Buffer,
+  fileExtension: string,
+  convertEntry: (buffer: Buffer, extension: string) => Promise<{ markdown: string } | null>,
+  zipFileName = "archive.zip",
+  depth = 0,
+): Promise<string> {
+  if (depth > ZIP_LIMITS.maxDepth) {
+    throw new ZipArchiveError(`zip nesting depth exceeds ${ZIP_LIMITS.maxDepth}: ${zipFileName}`)
+  }
+  let unzipper: typeof import("unzipper")
+  try {
+    unzipper = await import("unzipper")
+  } catch {
+    throw new ZipArchiveError("unzipper is not bundled — ZIP imports require the shipped Spinosa binary")
+  }
+  if (fileExtension.toLowerCase() !== ".zip") {
+    throw new ZipArchiveError(`not a zip archive: ${zipFileName}`)
+  }
+  const directory = await unzipper.Open.buffer(zipBuffer)
+  const entries = directory.files.filter((f: { type: string }) => f.type === "File")
+  if (entries.length > ZIP_LIMITS.maxFiles) {
+    throw new ZipArchiveError(`zip file count ${entries.length} exceeds limit ${ZIP_LIMITS.maxFiles}: ${zipFileName}`)
+  }
+  const CONCURRENCY = 4
+  const results = new Array<string | null>(entries.length).fill(null)
+  let totalBytes = 0
+  let cursor = 0
+  const workers = Array.from({ length: Math.min(CONCURRENCY, entries.length) }, async () => {
+    while (cursor < entries.length) {
+      const index = cursor++
+      const entry = entries[index]! as {
+        path: string
+        buffer: () => Promise<Buffer>
+      }
+      const buf = await entry.buffer()
+      if (buf.byteLength > ZIP_LIMITS.maxEntryBytes) {
+        throw new ZipArchiveError(`zip entry ${entry.path} exceeds ${ZIP_LIMITS.maxEntryBytes} bytes`)
+      }
+      totalBytes += buf.byteLength
+      if (totalBytes > ZIP_LIMITS.maxTotalBytes) {
+        throw new ZipArchiveError(`zip total expanded size exceeds ${ZIP_LIMITS.maxTotalBytes} bytes: ${zipFileName}`)
+      }
+      const ext = entry.path.includes(".") ? entry.path.slice(entry.path.lastIndexOf(".")) : ""
+      if (ext.toLowerCase() === ".zip") {
+        const nested = await convertZipBuffer(buf, ".zip", convertEntry, entry.path, depth + 1)
+        results[index] = `\n## File: ${entry.path}\n\n${nested}\n`
+        continue
+      }
+      const converted = await convertEntry(buf, ext)
+      results[index] = converted ? `\n## File: ${entry.path}\n\n${converted.markdown}\n` : null
+    }
+  })
+  await Promise.all(workers)
+  const body = results.filter((r): r is string => typeof r === "string").join("")
+  return `Content from the zip file \`${zipFileName}\`:\n\n${body}`.trim()
+}
+
+function patchZipConverter() {
+  try {
+    const dummy = new Upstream() as unknown as { converters?: Array<{ constructor?: { name?: string }; convert?: unknown }> }
+    const converters = dummy.converters
+    if (!converters) return
+    for (const c of converters) {
+      if (c.constructor?.name === "ZipConverter") {
+        const proto = Object.getPrototypeOf(c) as {
+          convert?: (source: string | Buffer, options?: Record<string, unknown>) => Promise<unknown>
+        }
+        const origProto = proto.convert
+        if (typeof origProto !== "function" || (origProto as { __spinosaZipPatched?: boolean }).__spinosaZipPatched) return
+        const patchedConvert = async function (source: string | Buffer, options: Record<string, unknown> = {}) {
+          const fileExtension = String(options.file_extension ?? "")
+          if (fileExtension.toLowerCase() !== ".zip") return null
+          const parentConverters = options._parent_converters as Array<{
+            convert?: (source: Buffer, opts: Record<string, unknown>) => Promise<{ markdown: string } | null>
+            constructor?: { name?: string }
+          }> | undefined
+          if (!parentConverters) {
+            throw new ZipArchiveError("no converters available to process zip contents")
+          }
+          const buf = typeof source === "string" ? fs.readFileSync(source) : Buffer.from(source as Uint8Array)
+          const zipFileName = typeof source === "string" ? source.split("/").pop() ?? "archive.zip" : "archive.zip"
+          const convertEntry = async (entryBuffer: Buffer, extension: string) => {
+            const fileOptions = { ...options, file_extension: extension, _parent_converters: parentConverters }
+            for (const converter of parentConverters) {
+              if (converter.constructor?.name === "ZipConverter") continue
+              const result = await converter.convert?.(entryBuffer, fileOptions)
+              if (result) return result
+            }
+            return null
+          }
+          const markdown = await convertZipBuffer(buf, fileExtension, convertEntry, zipFileName)
+          return { title: null, markdown, text_content: markdown }
+        }
+        ;(patchedConvert as { __spinosaZipPatched?: boolean }).__spinosaZipPatched = true
+        proto.convert = patchedConvert
+        return
+      }
+    }
+  } catch {}
+}
+patchZipConverter()
+
 export class MarkItDown extends Upstream {
   constructor() {
     super()

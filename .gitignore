@@ -11,6 +11,19 @@ __pycache__/
 .env.*
 !.env.example
 
+# Credentials and secrets (never commit; services read them from the environment)
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+*credentials*.json
+secrets.yaml
+secrets.yml
+secrets.json
+.auth/
+.tokens/
+
 # OS junk
 .DS_Store
 Thumbs.db
@@ -33,9 +46,7 @@ framework/bin/.build/
 /packages/spinosa-kernel/src/generated/template-blobs/
 /packages/spinosa-kernel/src/generated/template-files/
 /packages/spinosa-kernel/src/generated/template-pack-meta.json
-# template-pack.gen.ts / onnx-native.gen.ts / canvas-native.gen.ts keep tracked stubs; builds overwrite on disk then restore stubs
-# onnx companion libs for Bun --compile (template-blobs pattern; also mirrored under .build/onnx-native/)
-/packages/spinosa-kernel/src/generated/onnx-libs/
+# template-pack.gen.ts / canvas-native.gen.ts keep tracked stubs; builds overwrite on disk then restore stubs
 # canvas skia .node for Bun --compile (NAPI_RS_NATIVE_LIBRARY_PATH staging)
 /packages/spinosa-kernel/src/generated/canvas-libs/
 

@@ -61,7 +61,7 @@ Effect rules: `makeRuntime` for services, `InstanceState` for per-directory stat
 - Runner hooks: `prepareNextTurn` (auto-compaction), `shouldStopAfterTurn` (terminate / max-steps), `beforeToolCall` (skip before Permission.ask)
 - Structural ops (switchModel / switchAgent / compact) reject with `BusyRejection` while execution is active
 - `SessionExecutionStatus` reports busy/idle for the public `session.status` contract (kernel bridges to `SessionStatus`)
-- Do not bridge through legacy `SessionPrompt.loop` for new features — TUI defaults to V2 prompt (`SPINOSA_SESSION_V2_PROMPT`, default on); mid-run Enter queues, Steer on the queued message (or `prompt.submit_queue` / `<leader>return`) steers immediately
+- Do not bridge through legacy `SessionPrompt.loop` for new features — TUI defaults to the V1 conversation transport (`SPINOSA_SESSION_V2_PROMPT=1` opts into the V2 prompt); with V2 on, mid-run Enter queues, Steer on the queued message (or `prompt.submit_queue` / `<leader>return`) steers immediately
 
 Full spec: `specs/v2/session.md`, vocabulary: root `CONTEXT.md`.
 

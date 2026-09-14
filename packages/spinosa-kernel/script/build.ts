@@ -9,15 +9,10 @@ import type { BunPlugin } from "bun"
 import {
   assertNapiCanvasPlatformInstalled,
   materializeCanvasNativeEmbed,
-  materializeOnnxNativeEmbed,
   napiCanvasForceModule,
   napiCanvasPlatformPackage,
-  isOcrEmbeddedTarget,
-  resolveOnnxRuntimeNodeRoot,
   restoreCanvasNativeStub,
-  restoreOnnxNativeStub,
-  ONNX_NATIVE_STUB_MODULE,
-} from "./onnx-native.ts"
+} from "./canvas-embed.ts"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -154,19 +149,22 @@ export function productAssetName(item: BinaryTarget): string {
   return `spinosa-${parts.filter(Boolean).join("-")}`
 }
 
-/** Pin onnxruntime-node to the workspace paddle-linked install (ignore polluted home node_modules). */
-function createOnnxWorkspacePlugin(onnxRoot: string): BunPlugin {
-  const indexJs = path.join(onnxRoot, "dist", "index.js")
-  return {
-    name: "onnxruntime-workspace",
-    setup(build) {
-      build.onResolve({ filter: /^onnxruntime-node$/ }, () => ({ path: indexJs }))
-      build.onResolve({ filter: /^onnxruntime-node\// }, (args) => ({
-        path: path.join(onnxRoot, args.path.slice("onnxruntime-node/".length)),
-      }))
-    },
-  }
-}
+/**
+ * Bun external dependency audit (release contract — keep in sync).
+ *
+ * | module                | why external                          | prod reachable? | where on user machine              | tested by                          |
+ * |-----------------------|---------------------------------------|-----------------|------------------------------------|------------------------------------|
+ * | unzipper              | BUNDLED (compiled in) — ZIP imports   | yes             | inside spinosa binary              | zip conversion tests               |
+ * | youtube-transcript    | external — URL transcription, not a   | no              | n/a (feature not advertised)       | inventory test asserts unreachable |
+ * |                       | file-import path; never imported      |                 |                                    |                                    |
+ * | @aws-sdk/client-s3    | external — transitive draft dep,      | no              | n/a                                | inventory test asserts unreachable |
+ * |                       | never imported in src                 |                 |                                    |                                    |
+ * | node-gyp              | external — build-time only, never     | no              | n/a                                | inventory test asserts unreachable |
+ * |                       | imported at runtime                   |                 |                                    |                                    |
+ *
+ * Rule: any module needed by a production feature must be compiled into the
+ * executable. Never leave an external because it happened to work in-repo.
+ */
 
 export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions): Promise<{
   binaries: Record<string, string>
@@ -179,11 +177,9 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
   const pkg = await Bun.file(path.join(cwd, "package.json")).json()
   const solidPlugin = createSolidTransformPlugin()
   const coreFrom = path.resolve(cwd, "../spinosa-core")
-  const onnxRoot = resolveOnnxRuntimeNodeRoot(coreFrom)
   const plugins = [
     createPortableDependencyPlugin(),
     solidPlugin,
-    createOnnxWorkspacePlugin(onnxRoot),
   ]
 
   const distribution = options.distribution ?? "binary"
@@ -255,32 +251,14 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       files["src/generated/template-pack.gen.ts"] = options.templatePackModule
     }
 
-    // OCR is now tesseract (system binary, not onnx). No onnx embed needed.
-    // Keep stub for compatibility; ppu-paddle-ocr/onnx removed.
-    const wantOnnx = false
-    const embedOcr = false
-    let onnxEmbed: Awaited<ReturnType<typeof materializeOnnxNativeEmbed>> | null = null
-    if (embedOcr) {
-      onnxEmbed = await materializeOnnxNativeEmbed({
-        cwd,
-        target: { os: item.os, arch: item.arch },
-        fromDir: coreFrom,
-      })
-      console.log(
-        `embedding onnxruntime natives for ${item.os}-${item.arch}: ${onnxEmbed.libs
-          .map((l) => `${l.name} (${fs.statSync(path.join(onnxEmbed!.libsDir, l.name)).size} bytes)`)
-          .join(", ")}`,
-      )
-    } else {
-      fs.writeFileSync(path.join(cwd, "src/generated/onnx-native.gen.ts"), ONNX_NATIVE_STUB_MODULE)
-      const reason = !wantOnnx ? "SPINOSA_WITH_ONNX=0 (light build)" : "OCR unsupported on this product binary"
-      console.log(`skipping onnxruntime embed for ${item.os}-${item.arch} (${reason})`)
-    }
+    // OCR is the Spinosa-owned bundled Tesseract (external binary + tessdata
+    // release assets, not a Bun module) — nothing to embed here.
+    console.log(`canvas-only native embed for ${item.os}-${item.arch}`)
 
     const canvasTarget = { os: item.os, arch: item.arch, abi: item.abi }
     const canvasPkg = napiCanvasPlatformPackage(canvasTarget)
     assertNapiCanvasPlatformInstalled(canvasTarget, coreFrom)
-    // Embed skia.<triple>.node on disk (template-blobs / onnx pattern). Nested
+    // Embed skia.<triple>.node on disk (template-blobs pattern). Nested
     // OCR chunks cannot require() optional @napi-rs/canvas-* on Linux compile;
     // index.ts stages this file and sets NAPI_RS_NATIVE_LIBRARY_PATH first.
     const canvasEmbed = materializeCanvasNativeEmbed({
@@ -293,18 +271,18 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     )
     // Package-only force module stays on the virtual files map (writing it to disk
     // breaks Bun resolution of optional @napi-rs/canvas-* platform packages).
-    files["src/generated/napi-canvas-force.gen.ts"] = napiCanvasForceModule(canvasPkg, {
-      includeOcr: embedOcr,
-    })
-    console.log(`embedding ${canvasPkg} for ${item.os}-${item.arch}${embedOcr ? " (+ OCR)" : " (no OCR)"}`)
+    files["src/generated/napi-canvas-force.gen.ts"] = napiCanvasForceModule(canvasPkg)
+    console.log(`embedding ${canvasPkg} for ${item.os}-${item.arch}`)
 
     const result = await Bun.build({
       conditions: ["bun", "node"],
       tsconfig: "./tsconfig.json",
       plugins,
-      // youtube-transcript / unzipper are optional markitdown-ts deps; keep them
-      // external so a polluted global markitdown install cannot fail the compile.
-      external: ["node-gyp", "@aws-sdk/client-s3", "youtube-transcript", "unzipper"],
+      // unzipper is BUNDLED (ZIP imports are an advertised feature — the
+      // markitdown-ts ZipConverter dynamic-imports it at runtime, which
+      // fails inside the compiled binary unless compiled in). The remaining
+      // externals are unreachable in production file import (see audit above).
+      external: ["node-gyp", "@aws-sdk/client-s3", "youtube-transcript"],
       format: "esm",
       minify: true,
       sourcemap: options.sourcemaps ? "linked" : "none",
@@ -350,27 +328,6 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     // Bun renames `with { type: "file" }` assets (hashed filenames), so path
     // strings are not a reliable marker — fingerprint the lib contents instead.
     const binBytes = fs.readFileSync(outfile)
-    if (onnxEmbed) {
-      for (const lib of onnxEmbed.libs) {
-        const libPath = path.join(onnxEmbed.libsDir, lib.name)
-        const libData = fs.readFileSync(libPath)
-        if (libData.byteLength < 1024) {
-          throw new Error(`onnx lib too small to fingerprint: ${libPath}`)
-        }
-        if (binBytes.byteLength < libData.byteLength) {
-          throw new Error(
-            `binary ${outfile} (${binBytes.byteLength} bytes) smaller than onnx lib ${lib.name} (${libData.byteLength} bytes)`,
-          )
-        }
-        const probeAt = Math.min(4096, libData.byteLength - 64)
-        const probe = libData.subarray(probeAt, probeAt + 64)
-        if (!binBytes.includes(probe)) {
-          throw new Error(
-            `binary ${outfile} missing embedded bytes for ${lib.name} (${item.os}-${item.arch}) — companion lib not packaged`,
-          )
-        }
-      }
-    }
 
     // Same fingerprint gate for canvas skia .node (OCR load path on Linux).
     {
@@ -411,38 +368,17 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     ) {
       console.log(`Running smoke test: ${outfile} version`)
       try {
-        // Clear any leftover staged lib so smoke proves embed→tmpdir staging works.
-        const { tmpdir } = await import("node:os")
-        if (onnxEmbed) {
-          for (const lib of onnxEmbed.libs) {
-            try {
-              fs.rmSync(path.join(tmpdir(), lib.name), { force: true })
-            } catch {
-              /* ignore */
-            }
-          }
-        }
         const versionOutput = await $`${outfile} version`.text()
         console.log(`Smoke test passed: ${versionOutput.trim()}`)
         if (!versionOutput.includes(options.version)) {
           throw new Error(`version smoke mismatch: expected ${options.version}, got ${versionOutput}`)
         }
-        if (onnxEmbed) {
-          for (const lib of onnxEmbed.libs) {
-            const staged = path.join(tmpdir(), lib.name)
-            if (!fs.existsSync(staged) || fs.statSync(staged).size < 1024) {
-              throw new Error(`host smoke: onnx lib not staged to tmpdir after version: ${staged}`)
-            }
-          }
-        }
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e)
-        // Host smoke should pass once onnx natives are embedded; keep non-strict escape hatch.
-        if (process.env.SPINOSA_BINARY_SMOKE_STRICT === "1") {
-          console.error(`Smoke test failed for ${packageName}:`, e)
-          throw e
-        }
-        console.warn(`Smoke test warning for ${packageName} (non-strict): ${detail.slice(0, 400)}`)
+        // Release gates fail closed: smoke failures are fatal (no non-strict
+        // escape hatch — see scripts/quality-binary.ts).
+        console.error(`Smoke test failed for ${packageName}:`, e)
+        throw new Error(`host binary smoke failed (fail closed): ${detail.slice(0, 400)}`)
       }
     }
 
@@ -468,7 +404,6 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     assets[assetName] = outfile
   }
   } finally {
-    restoreOnnxNativeStub(cwd)
     restoreCanvasNativeStub(cwd)
   }
 

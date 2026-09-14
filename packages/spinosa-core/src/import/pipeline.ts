@@ -408,6 +408,30 @@ export async function scanAndClassifySource(
     }
   }
 
+  // Destination allocation phase (after routing, before processing):
+  // globally reserve every desired dest across all routes + existing
+  // workspace files (case-insensitive, page dirs, binary originals).
+  // Stable across runs: rels keep their previously resolved dest so resume
+  // converges instead of disambiguating against our own outputs.
+  try {
+    const { allocateDestinationsStable, persistDestMap, loadDestMap } = await import("./destinations")
+    const workspaceDir = path.resolve(destDir, "..")
+    const all = [...directFiles, ...markitdownFiles, ...visionFiles, ...ocrFiles, ...copyFiles]
+    const allocations = allocateDestinationsStable(
+      all.map((f) => ({ rel: f.rel, srcFile: f.src, desiredDest: f.dest })),
+      workspaceDir,
+      loadDestMap(logsDir),
+    )
+    const byRel = new Map(allocations.map((a) => [a.rel, a.dest]))
+    for (const f of all) {
+      const reserved = byRel.get(f.rel)
+      if (reserved) f.dest = reserved
+    }
+    persistDestMap(logsDir, allocations)
+  } catch {
+    // Allocation is hardening: never fail classification when it errors.
+  }
+
   return { directFiles, markitdownFiles, visionFiles, ocrFiles, copyFiles, logsDir }
 }
 
@@ -1034,7 +1058,7 @@ export async function processOcr(
     return { converted, skipped, failed, renamed: 0, recoverable }
   }
 
-  // No ppu-paddle-ocr fallback — tesseract is the only OCR engine
+  // Bundled Tesseract is the OCR engine — no fallback chain.
   if (remaining.length > 0) {
     // Any remaining files after tesseract block are unexpected (e.g. tesseract not available already handled)
     // Mark them as failed with clear reason
@@ -1193,14 +1217,64 @@ export async function processPdf(
         `${blankPages} blank, ${failedPages.length} failed` +
         (failedPages.length > 0 ? ` [pages ${failedPages.map(({ page }) => page).join(",")}]` : ""),
     )
+    // Fill state shared by the fully-scanned fast path below and the normal
+    // mixed-document path after it.
+    let filledViaTesseract = 0
+    let texts = pageTexts
     if (!pageTexts.some(({ text }) => hasRealText(text))) {
-      // Pure scan (or blanks): no transcript to write. Keep the original next
-      // to a placeholder so a later vision pass can pick it up; mark skipped
-      // so resume retries instead of trusting the placeholder.
-      const binaryDest = path.join(path.dirname(f.dest), path.basename(f.src))
-      try { rmSync(f.dest, { force: true }) } catch {}
-      const copied = await safeCopyAsync(f.src, binaryDest)
-      const placeholder = [
+      // Fully scanned (or blank) document: with tesseract-local selected, OCR
+      // MUST be attempted first — never mark pending-vision without trying.
+      if (useTesseract) {
+        try {
+          const { ocrPdfPagesViaTesseract } = await import("./tesseract-ocr")
+          const allPages = pageTexts.map(({ page }) => page)
+          const ocr = await ocrPdfPagesViaTesseract(f.src, allPages, f.rel, {
+            shouldAbort,
+            onLog,
+            signal: hooks?.signal,
+            pageTotal: pageTexts.length,
+            onPage: (page, pageTotal) => tickPdfPage(f.rel, page, pageTotal),
+          })
+          throwIfSpinosaCancelled(shouldAbort)
+          const filled = pageTexts.map(({ page, text }) => {
+            const t = (ocr.get(page) ?? "").trim()
+            return { page, text: t || text }
+          })
+          if (filled.some(({ text }) => hasRealText(text))) {
+            // Tesseract recovered text: continue to the normal write path.
+            texts = filled
+            filledViaTesseract = [...ocr.values()].filter((t) => t.trim().length > 0).length
+          } else {
+            // Tesseract ran but recovered nothing: fail closed (not done,
+            // not silent placeholder-success). Keep original + explicit state.
+            const binaryDest = path.join(path.dirname(f.dest), path.basename(f.src))
+            try { rmSync(f.dest, { force: true }) } catch {}
+            await safeCopyAsync(f.src, binaryDest)
+            recordPhaseResult(logsDir, f, stepRoute, "failed", "tesseract", stepModel)
+            appendNdjson(pdfLog, {
+              ts: isoNow(), status: "fail", source: f.rel,
+              output: markitdownOutputRelPath(f.rel),
+              engine: "tesseract", pages: String(pageTexts.length),
+              duration_s: (Date.now() - startTime) / 1000,
+              error: "tesseract OCR attempted on fully scanned PDF but recovered no text",
+            })
+            failed++
+            await emitDone(f.rel, "failed")
+            continue
+          }
+        } catch (err) {
+          if (isSpinosaCancellationError(err)) throw err
+          await failPdfFile(f, `tesseract OCR failed on fully scanned PDF: ${err instanceof Error ? err.message : String(err)}`, err)
+          continue
+        }
+      } else {
+        // No text engine selected (vision or none): keep the original next
+        // to a placeholder so a later vision pass can pick it up; mark skipped
+        // so resume retries instead of trusting the placeholder.
+        const binaryDest = path.join(path.dirname(f.dest), path.basename(f.src))
+        try { rmSync(f.dest, { force: true }) } catch {}
+        const copied = await safeCopyAsync(f.src, binaryDest)
+        const placeholder = [
         "---",
         `source_document: "${path.basename(f.rel).replace(/"/g, '\\"')}"`,
         `pdf_status: no_extractable_text`,
@@ -1232,11 +1306,12 @@ export async function processPdf(
       await emitDone(f.rel)
       skipped++
       continue
-    }
+      } // end else (no engine selected)
+    } // end fully-scanned fast path (tesseract success falls through with texts filled)
     // Fill pages without real text via tesseract — only when selected.
-    let filledViaTesseract = 0
-    let texts = pageTexts
-    const needEngine = pageTexts.filter(({ text }) => !hasRealText(text)).map(({ page }) => page)
+    // (Fully-scanned documents already returned above; this is the mixed path.
+    // When the fast path filled texts, needEngine is empty so this is a no-op.)
+    const needEngine = texts.filter(({ text }) => !hasRealText(text)).map(({ page }) => page)
     if (needEngine.length > 0 && useTesseract) {
       try {
         const { ocrPdfPagesViaTesseract } = await import("./tesseract-ocr")
@@ -1248,7 +1323,7 @@ export async function processPdf(
           onPage: (page, pageTotal) => tickPdfPage(f.rel, page, pageTotal),
         })
         throwIfSpinosaCancelled(shouldAbort)
-        texts = pageTexts.map(({ page, text }) => {
+        texts = texts.map(({ page, text }) => {
           if (hasRealText(text)) return { page, text }
           const t = (ocr.get(page) ?? "").trim()
           if (t) filledViaTesseract++
@@ -1316,7 +1391,7 @@ function productBinaryExecutable(): string {
   return process.execPath || process.argv0 || "spinosa"
 }
 
-// Back-compat alias for tests that still import the old ppu name
+// Legacy alias (kept for external import compatibility).
 export const consumeOcrWorkerNdjsonLine = consumeMarkitdownWorkerNdjsonLine as unknown as (
   line: string,
   state: {

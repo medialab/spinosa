@@ -68,7 +68,7 @@ bootLog("kernel.init", "kernel entry parsing args", {
 })
 
 // Bundled OCR tools ($SPINOSA_HOME/tools/<platform>/bin) take PATH precedence
-// on every startup — dev and binary alike — so tesseract/pdftoppm resolve
+// on every startup — dev and binary alike — so bundled tesseract resolves
 // deterministically. Microsecond-cheap after first call; runs before the fast
 // path so even --version-adjacent probes see the same resolution.
 try {

@@ -93,7 +93,11 @@ describe("processPdf", () => {
   })
 
   test("tesseract selection: image pages fill via tesseract, text stays direct", async () => {
-    const { tesseractAvailable } = await import("../src/import/tesseract-ocr")
+    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
+    // Dev machines exercise the real OCR path via the explicit developer
+    // override (production stays bundled-or-unavailable, never host PATH).
+    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
+    _resetTesseractAvailableCache()
     if (!tesseractAvailable()) return
     const { root, logsDir, raw } = stage("tess")
     try {
@@ -106,7 +110,11 @@ describe("processPdf", () => {
       expect(res.failed).toBe(0)
       const md = readFileSync(path.join(raw, "mixed__pdf", "page-001.md"), "utf-8")
       expect(md).toContain("embedded digital text")
-      expect(logs.some((l) => l.includes("via tesseract"))).toBe(true)
+      // MIXED's image page is a solid black box (no text): blank OCR is
+      // correct and must NOT count as a tesseract fill. A fill is only
+      // claimed when real text is recovered (see pdf-scanned-ocr.test.ts).
+      expect(logs.some((l) => l.includes("direct via pdf.js"))).toBe(true)
+      expect(logs.some((l) => l.includes("tesseract page fill failed"))).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

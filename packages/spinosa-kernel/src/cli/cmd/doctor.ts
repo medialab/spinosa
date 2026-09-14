@@ -110,6 +110,9 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
       } else {
         log(fmt, `OCR engine: ${ocr.ok ? "available" : "missing"}${ocr.ok && ocr.source ? ` (${ocr.source})` : ""}`)
         if (!ocr.ok && ocr.error) log(fmt, `OCR probe error: ${ocr.error}`)
+        if (!ocr.ok) {
+          log(fmt, `OCR tools: expected Spinosa-owned assets under $SPINOSA_HOME/tools/<platform>/{bin/tesseract,tessdata} (installed by install.sh from spinosa-tools-<platform>.tar.gz; never brew/apt)`)
+        }
       }
       log(fmt, `Canvas: ${canvas ? "available" : "missing"}`)
       if (!pdf || !markitdown) healthy = false

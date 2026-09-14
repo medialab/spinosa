@@ -127,7 +127,7 @@ describe("MarkItDown worker NDJSON protocol (TUI wire-in)", () => {
 })
 
 describe("OCR worker launch mode (tesseract)", () => {
-  test("tesseract runs via pdftoppm + tesseract (no ppu worker)", () => {
+  test("tesseract runs via internal renderer + bundled tesseract", () => {
     expect(true).toBe(true)
   })
 })

@@ -62,22 +62,34 @@ export const PRESERVED_AFTER_UNINSTALL = [
   "versions",
 ] as const
 
+export type BuildManifestAsset = {
+  binary: string
+  tools: string
+}
+
 export type BuildManifest = {
   product: "spinosa"
   version: string
   channel: "stable" | "beta"
   templatePackId: string
-  assets: Record<ProductBinaryTarget, string>
+  assets: Record<ProductBinaryTarget, BuildManifestAsset>
 }
 
 export function productBinaryAssetName(target: ProductBinaryTarget): string {
   return `spinosa-${target}`
 }
 
-export function buildManifestAssets(): Record<ProductBinaryTarget, string> {
+export function productToolsAssetName(target: ProductBinaryTarget): string {
+  return `spinosa-tools-${target}.tar.gz`
+}
+
+export function buildManifestAssets(): Record<ProductBinaryTarget, BuildManifestAsset> {
   return Object.fromEntries(
-    PRODUCT_BINARY_TARGETS.map((target) => [target, productBinaryAssetName(target)]),
-  ) as Record<ProductBinaryTarget, string>
+    PRODUCT_BINARY_TARGETS.map((target) => [
+      target,
+      { binary: productBinaryAssetName(target), tools: productToolsAssetName(target) },
+    ]),
+  ) as Record<ProductBinaryTarget, BuildManifestAsset>
 }
 
 export function expectedImmutableReleaseAssets(version: string): readonly string[] {
@@ -85,6 +97,7 @@ export function expectedImmutableReleaseAssets(version: string): readonly string
   return [
     "install.sh",
     ...PRODUCT_BINARY_TARGETS.map(productBinaryAssetName),
+    ...PRODUCT_BINARY_TARGETS.map(productToolsAssetName),
     "checksums.txt",
     "build-manifest.json",
   ]

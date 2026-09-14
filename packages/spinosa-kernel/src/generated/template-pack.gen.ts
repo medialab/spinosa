@@ -227,30 +227,30 @@ import file_223 from "./template-blobs/2892dad4065a95e30383c9bd7a7ffe3e762f40a7f
 import file_224 from "./template-blobs/f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85.bin" with { type: "file" };
 import file_225 from "./template-blobs/586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a.bin" with { type: "file" };
 import file_226 from "./template-blobs/502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4.bin" with { type: "file" };
-import file_227 from "./template-blobs/3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7.bin" with { type: "file" };
-import file_228 from "./template-blobs/4b599456bcd3ad6b3c9df896e7cdd9de4c76d12131254dc21d60939f2bd190a3.bin" with { type: "file" };
-import file_229 from "./template-blobs/49c608a3845778563e2068fc7efb8b89cc4645c9238a94b3aba585bfb9ea25b9.bin" with { type: "file" };
+import file_227 from "./template-blobs/a23055f9b017fbc6e04617aecb042ad492af4b78c6c5ff58dd29facf6a3fdc90.bin" with { type: "file" };
+import file_228 from "./template-blobs/04493c44be1b2f62a12183ecaae069ed0aaeee2f7dd456181e0035c27dfe9f4f.bin" with { type: "file" };
+import file_229 from "./template-blobs/92920e20579787530724716743fbb4c58bcf485af542fc3d73499dddc510e46d.bin" with { type: "file" };
 import file_230 from "./template-blobs/223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6.bin" with { type: "file" };
-import file_231 from "./template-blobs/591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54.bin" with { type: "file" };
+import file_231 from "./template-blobs/b30fa1199225cfa7715a6c573890737506192a5211cff3a6e212ba559888a7cc.bin" with { type: "file" };
 import file_232 from "./template-blobs/496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c.bin" with { type: "file" };
-import file_233 from "./template-blobs/67d7b2211a3449d71ca80954cc23062f02917cebf61d2858768851da2cc6e376.bin" with { type: "file" };
+import file_233 from "./template-blobs/4ed94fb7ac45ffa4b563baa1a44644a67bf164c4f6cacd83fe421b0e0c878a44.bin" with { type: "file" };
 import file_234 from "./template-blobs/d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c.bin" with { type: "file" };
 import file_235 from "./template-blobs/d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342.bin" with { type: "file" };
 import file_236 from "./template-blobs/0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3.bin" with { type: "file" };
 import file_237 from "./template-blobs/01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b.bin" with { type: "file" };
 import file_238 from "./template-blobs/70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114.bin" with { type: "file" };
-import file_239 from "./template-blobs/6e63f02967e488eb83d66aaa0e5193ccff1a71b38e4c577ab2e9e9d34c6725d0.bin" with { type: "file" };
+import file_239 from "./template-blobs/593cbbcbfe5f4220b57cbf5f33a8c30e0e83470974f106f9dccd2bc6a865731c.bin" with { type: "file" };
 import file_240 from "./template-blobs/9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88.bin" with { type: "file" };
-import file_241 from "./template-blobs/63ab310cdb9203c0b33950f6d95f270d61777289ce8b01374cd0e08975f19037.bin" with { type: "file" };
+import file_241 from "./template-blobs/5e98da7dfae6bc19e97656e402019f29567299fb9627d1c28c418357b66dc2e9.bin" with { type: "file" };
 import file_242 from "./template-blobs/00bb78f35bae7eb451d4f2db2a9bae8c4c21d53ab69e34bb41d043166bb6e1b7.bin" with { type: "file" };
 import file_243 from "./template-blobs/4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8.bin" with { type: "file" };
 import file_244 from "./template-blobs/afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf.bin" with { type: "file" };
-import file_245 from "./template-blobs/5d688e7d86de39c5b6b3267e61748e02e44a2794db6d7be3cce322ac9a6601b1.bin" with { type: "file" };
-import file_246 from "./template-blobs/a2e855a23f53ba682e6dee9d65019b4717b6330fd77590fac7bd7edf69da0cfb.bin" with { type: "file" };
+import file_245 from "./template-blobs/1ee1bd059c52f593d82875f048de63cfb8061808633386aa5ea01d19ec0e25d7.bin" with { type: "file" };
+import file_246 from "./template-blobs/9ee60b50aed2c27f23c81e92a0822aad9a5f094f06cf824b3a48c4097a6dca56.bin" with { type: "file" };
 
 export const templatePack = {
-  version: "1.1.0-beta.17.16",
-  packId: "44230e2d115a3da8de596ff4807aa2e055a90991224093fee41bb19bd43a7521",
+  version: "1.1.0-beta.17.17",
+  packId: "cd77283d46107d23bb81fd3d81eda35eb642d070bd4e7ad2974518b7ff4efd1f",
   files: [
   { path: ".agents/agents/spinosa-analyst.md", mode: 420, sha256: "46749285d9f984a154f7bb53c7cc76c266bca94828ea1c50a0617aa6b3c7038a", contentPath: file_0 },
   { path: ".agents/agents/spinosa-evaluator.md", mode: 420, sha256: "5eb4523f552d79506b1d61d4bf8ce472ab41c463ab3d611506cfcd06f0811348", contentPath: file_1 },
@@ -479,25 +479,25 @@ export const templatePack = {
   { path: "agent_reports/.gitkeep", mode: 420, sha256: "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85", contentPath: file_224 },
   { path: "agent_reports/AGENTS.md", mode: 420, sha256: "586c5b46cac4f62f4b1e01247ba3bf2abaa34f1e53660d00436066900d45582a", contentPath: file_225 },
   { path: "docs/FAQ.md", mode: 420, sha256: "502c923a5c822b4eaa4c28f51d4f7bd252c7a6714e7721416142ca0a23ac94e4", contentPath: file_226 },
-  { path: "docs/GLOSSARY.md", mode: 420, sha256: "3455cc2dd3efe1479dc99769656f054eb8ef3a2947fa3d4aac23d9b22c1c1eb7", contentPath: file_227 },
-  { path: "docs/diagrams.md", mode: 420, sha256: "4b599456bcd3ad6b3c9df896e7cdd9de4c76d12131254dc21d60939f2bd190a3", contentPath: file_228 },
-  { path: "docs/reference/agents.md", mode: 420, sha256: "49c608a3845778563e2068fc7efb8b89cc4645c9238a94b3aba585bfb9ea25b9", contentPath: file_229 },
+  { path: "docs/GLOSSARY.md", mode: 420, sha256: "a23055f9b017fbc6e04617aecb042ad492af4b78c6c5ff58dd29facf6a3fdc90", contentPath: file_227 },
+  { path: "docs/diagrams.md", mode: 420, sha256: "04493c44be1b2f62a12183ecaae069ed0aaeee2f7dd456181e0035c27dfe9f4f", contentPath: file_228 },
+  { path: "docs/reference/agents.md", mode: 420, sha256: "92920e20579787530724716743fbb4c58bcf485af542fc3d73499dddc510e46d", contentPath: file_229 },
   { path: "docs/reference/cli.md", mode: 420, sha256: "223275ef46e2be4a501461998ba65fea55c20834e8c59205b6c95374cc82d1f6", contentPath: file_230 },
-  { path: "docs/reference/corpus.md", mode: 420, sha256: "591127854c8ef1d0ff39e29145169ce556394c68be294ae46786bcd3bc9c9a54", contentPath: file_231 },
+  { path: "docs/reference/corpus.md", mode: 420, sha256: "b30fa1199225cfa7715a6c573890737506192a5211cff3a6e212ba559888a7cc", contentPath: file_231 },
   { path: "docs/reference/reports.md", mode: 420, sha256: "496e1725015dcccf89f35ffb8c3cd21f3568930815d00770f02136cd73e3ec8c", contentPath: file_232 },
-  { path: "docs/reference/testsuite.md", mode: 420, sha256: "67d7b2211a3449d71ca80954cc23062f02917cebf61d2858768851da2cc6e376", contentPath: file_233 },
+  { path: "docs/reference/testsuite.md", mode: 420, sha256: "4ed94fb7ac45ffa4b563baa1a44644a67bf164c4f6cacd83fe421b0e0c878a44", contentPath: file_233 },
   { path: "maps/.gitkeep", mode: 420, sha256: "d77cc86a8b0a8ca59a7312f6707d1b5e7253cb05764502040139e64173971a4c", contentPath: file_234 },
   { path: "maps/AGENTS.md", mode: 420, sha256: "d23a862b82e19d6888b7dd57e10a474eeed0c64a29d0966a0d82170d53d51342", contentPath: file_235 },
   { path: "maps/map_template.md", mode: 420, sha256: "0a8101e65dc5628e51e39196eda9953697de737e2c549dbbae8b323a73be95e3", contentPath: file_236 },
   { path: "raw/.gitkeep", mode: 420, sha256: "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b", contentPath: file_237 },
   { path: "raw/AGENTS.md", mode: 420, sha256: "70ae54988e29db37805752679b1e135bf89ad3804b2a5aa78d5c519adfc75114", contentPath: file_238 },
-  { path: "startup-prompt.md", mode: 420, sha256: "6e63f02967e488eb83d66aaa0e5193ccff1a71b38e4c577ab2e9e9d34c6725d0", contentPath: file_239 },
+  { path: "startup-prompt.md", mode: 420, sha256: "593cbbcbfe5f4220b57cbf5f33a8c30e0e83470974f106f9dccd2bc6a865731c", contentPath: file_239 },
   { path: "system/AGENTS.md", mode: 420, sha256: "9794847e865afd133defd900bee95434fd983e160f4ce49664f3ee9d3f642a88", contentPath: file_240 },
-  { path: "system/configuration.md", mode: 420, sha256: "63ab310cdb9203c0b33950f6d95f270d61777289ce8b01374cd0e08975f19037", contentPath: file_241 },
+  { path: "system/configuration.md", mode: 420, sha256: "5e98da7dfae6bc19e97656e402019f29567299fb9627d1c28c418357b66dc2e9", contentPath: file_241 },
   { path: "system/context.md", mode: 420, sha256: "00bb78f35bae7eb451d4f2db2a9bae8c4c21d53ab69e34bb41d043166bb6e1b7", contentPath: file_242 },
   { path: "system/dictionary.md", mode: 420, sha256: "4c8dab4373213aa646c5c807332af1edb162a9671485f9b45fb9deb0ebdbbfd8", contentPath: file_243 },
   { path: "system/system_architecture_map.md", mode: 420, sha256: "afe4bdc93f36ed4212b7cc269cbcc3f10af63169a98b628d90ee4c26563b4ebf", contentPath: file_244 },
-  { path: "system/workspace_index.md", mode: 420, sha256: "5d688e7d86de39c5b6b3267e61748e02e44a2794db6d7be3cce322ac9a6601b1", contentPath: file_245 },
-  { path: "system/yaml_header_template.md", mode: 420, sha256: "a2e855a23f53ba682e6dee9d65019b4717b6330fd77590fac7bd7edf69da0cfb", contentPath: file_246 },
+  { path: "system/workspace_index.md", mode: 420, sha256: "1ee1bd059c52f593d82875f048de63cfb8061808633386aa5ea01d19ec0e25d7", contentPath: file_245 },
+  { path: "system/yaml_header_template.md", mode: 420, sha256: "9ee60b50aed2c27f23c81e92a0822aad9a5f094f06cf824b3a48c4097a6dca56", contentPath: file_246 },
   ],
 } as const

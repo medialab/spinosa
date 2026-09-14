@@ -24,4 +24,4 @@ Plain-English definitions of terms you'll encounter.
 | **Source intake** | The workflow for adding new documents to an existing workspace. Converts, headers, and maps the new files without redoing everything. |
 | **OCR** | Optical Character Recognition. Turns images of text (scanned PDF pages, photos of documents) into searchable text. Spinosa runs this locally. |
 | **MarkItDown** | The engine that converts Office documents (Word, Excel, PowerPoint), EPUB, HTML, and text-based PDFs to markdown format. |
-| **PaddleOCR** | The engine that processes scanned PDFs and images through OCR. Runs entirely on your machine. |
+| **Tesseract** | The bundled OCR engine that processes scanned PDFs and images. Ships with Spinosa under `$SPINOSA_HOME/tools/` — runs entirely on your machine, no system packages needed. |

@@ -28,11 +28,18 @@ export async function markitdownConvertFile(
     vision?.llmModel
       ? { llmModel: vision.llmModel as never, llmPrompt: vision.llmPrompt }
       : undefined
-  if (path.extname(src).toLowerCase() === ".xlsx") {
-    return converter.convertBuffer(readFileSync(src), {
-      file_extension: ".xlsx",
-      ...(visionOpts ? visionOpts : {}),
-    } as never)
+  const result =
+    path.extname(src).toLowerCase() === ".xlsx"
+      ? await converter.convertBuffer(readFileSync(src), {
+        file_extension: ".xlsx",
+        ...(visionOpts ? visionOpts : {}),
+      } as never)
+      : await converter.convert(src, visionOpts as never)
+  // Structured failure: upstream `[ERROR] ...` markdown must never read as a
+  // successful conversion. Throw so callers record failed/partial, not done.
+  const markdown = (result as { markdown?: unknown } | null)?.markdown
+  if (typeof markdown === "string" && /^\[ERROR\]/m.test(markdown.trim())) {
+    throw new Error(`document conversion failed for ${path.basename(src)}: ${markdown.trim().slice(0, 300)}`)
   }
-  return converter.convert(src, visionOpts as never)
+  return result
 }

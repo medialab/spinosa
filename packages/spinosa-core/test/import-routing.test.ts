@@ -361,7 +361,11 @@ describe("addFiles single-file — digital PDF via pdf.js, never MarkItDown", ()
   })
 
   test("single mixed PDF keeps direct pages and OCRs only image pages", async () => {
-    const { tesseractAvailable } = await import("../src/import/tesseract-ocr")
+    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
+    // Dev machines exercise the real OCR path via the explicit developer
+    // override (production stays bundled-or-unavailable, never host PATH).
+    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
+    _resetTesseractAvailableCache()
     if (!tesseractAvailable()) return
     const root = mkdtempSync(path.join(tmpdir(), "spinosa-addsingle-mixed-"))
     const workspace = path.join(root, "ws")

@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.17.17] — 2026-09-13
+
+### Fixed
+
+- OpenAI reasoning models request reasoning summaries. The TUI shows the clickable Thinking row for o3, o4-mini, and gpt-5-pro. Code: `packages/spinosa-kernel/src/provider/options.ts`.
+
 ## [1.1.0-beta.17.16] — 2026-09-12
 
 ### Changed

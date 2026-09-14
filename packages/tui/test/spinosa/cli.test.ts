@@ -181,7 +181,11 @@ describe("Spinosa CLI", () => {
 
   test("status reports framework info", async () => {
     const originalRoot = process.env.SPINOSA_TEMPLATE_ROOT
+    const originalDevTools = process.env.SPINOSA_DEV_HOST_TOOLS
     process.env.SPINOSA_TEMPLATE_ROOT = repoRoot
+    // Dev checkout: opt into host OCR tools explicitly. Production resolution
+    // is bundled-or-unavailable (never silent host PATH sniffing).
+    process.env.SPINOSA_DEV_HOST_TOOLS = "1"
     const result = capture()
     try {
       const code = await runSpinosaCli(["status"], result.io)
@@ -190,6 +194,8 @@ describe("Spinosa CLI", () => {
     } finally {
       if (originalRoot === undefined) delete process.env.SPINOSA_TEMPLATE_ROOT
       else process.env.SPINOSA_TEMPLATE_ROOT = originalRoot
+      if (originalDevTools === undefined) delete process.env.SPINOSA_DEV_HOST_TOOLS
+      else process.env.SPINOSA_DEV_HOST_TOOLS = originalDevTools
     }
   })
 

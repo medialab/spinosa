@@ -2,7 +2,7 @@
 
 `@spinosa/server` implements the V2 HTTP API. It wires `packages/protocol` endpoint groups to `@spinosa/kernel-core` Effect handlers. No business rules invented here — translate HTTP ↔ core services.
 
-**Shipped with the product CLI.** The live kernel HttpApi mounts this V2 Effect stack under `/api/...` alongside the legacy V1 instance routes. TUI prompt submit defaults to V2 `session.prompt` with `delivery: steer|queue` (override with `SPINOSA_SESSION_V2_PROMPT=0`). V1 routes remain for session create/list, shell/command, and compatibility.
+**Shipped with the product CLI.** The live kernel HttpApi mounts this V2 Effect stack under `/api/...` alongside the legacy V1 instance routes. TUI prompt submit defaults to the V1 conversation transport (opt into V2 `session.prompt` with `delivery: steer|queue` via `SPINOSA_SESSION_V2_PROMPT=1`). V1 routes remain for session create/list, shell/command, and compatibility.
 
 ## Entry points
 

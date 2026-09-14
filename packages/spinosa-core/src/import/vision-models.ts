@@ -33,7 +33,7 @@ export const OCR_MODEL_OPTIONS: OcrModelOption[] = [
   {
     id: "tesseract-local",
     label: "Tesseract (offline)",
-    detail: "Suitable for documents; handwritten quality may be poor · Scanned PDFs via pdftoppm + tesseract (ita+eng+fra, 300dpi) · images copied",
+    detail: "Suitable for documents; handwritten quality may be poor · Scanned PDFs via bundled tesseract (ita+eng+fra, internal render) · images copied",
     kind: "tesseract",
     vision: false,
     cost: "offline",

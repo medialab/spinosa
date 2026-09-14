@@ -191,11 +191,11 @@ The orchestrator maintains session notes in `.spinosa/memory/orchestrator-notes.
 
 ## Document conversion (OCR)
 
-- **Text-layer PDFs** → `MarkItDown` succeeds (outcome-based `isTextBased` via MarkItDown non-empty) → keep text layer, no OCR, frontmatter + `page-*.md` split.
-- **Scanned PDFs** → `MarkItDown` empty/fails → `pdftoppm -png -r 300` → `tesseract -l ita+eng+fra --psm 6` → `.md` (see `packages/spinosa-core/src/import/tesseract-ocr.ts`). Requires `tesseract`, `pdftoppm` (poppler), and `ita`/`eng`/`fra` tessdata.
+- **Text-layer PDFs** → internal PDF engine extracts embedded text with pdf.js → keep text layer, no OCR, frontmatter + `page-*.md` split.
+- **Scanned PDFs** → pages without usable text are rendered internally with pdf.js + Canvas → bundled `tesseract -l ita+eng+fra --psm 6` → `.md` (see `packages/spinosa-core/src/import/tesseract-ocr.ts`). Requires only the Spinosa-owned tools under `$SPINOSA_HOME/tools/` — no system packages.
 - **Images** (`jpg`/`jpeg`/`png`/`gif`/`webp`/`heic`/`tif`/`bmp`/`svg`) → by default copy as binary to `raw/` (no OCR), tagged `images_pending_network_ocr`. When a vision model is selected in the onboarding pop-up (see `packages/spinosa-core/src/import/vision-models.ts` `OCR_MODEL_OPTIONS`), images are instead handled by `MarkItDown` with `llmModel` (Vercel AI SDK) — e.g. `openrouter/qwen2.5-vl:free` via `OPENROUTER_API_KEY` — transcribed with `OCR_VISION_PROMPT` into `__jpg.md`. Tesseract remains the offline fallback for scanned PDFs; vision handles images (and optionally scanned PDF pages when enabled).
 - **Office docs** (`docx`/`xlsx`/`csv`/`html`/`epub`/`json`/`xml`/`zip`) → MarkItDown unchanged.
-- `ppu-paddle-ocr` + `onnxruntime` removed — `tesseract` (pdftoppm) is sole OCR engine; binary is tesseract-only (≈189M darwin-arm64, no ONNX).
+- OCR is the Spinosa-owned bundled Tesseract (pdf.js + Canvas renderer, no Poppler, no system package managers).
 
 ## Sub-agent gateway
 

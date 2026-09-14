@@ -7,6 +7,7 @@ import {
   expectedChannelReleaseAssets,
   expectedImmutableReleaseAssets,
   productBinaryAssetName,
+  productToolsAssetName,
   resolveProductBinaryTarget,
   type BuildManifest,
   type ProductBinaryTarget,
@@ -180,9 +181,21 @@ export async function runBuild(ctx: StageContext): Promise<void> {
   writeFileSync(paths.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
   // Immutable assets hashed into checksums.txt (checksums.txt itself is published, not self-hashed).
+  // Tools archives (Spinosa-owned Tesseract + tessdata) are checksummed before
+  // extraction by the installer — fail closed when missing. They are built
+  // locally by scripts/build-tools-tarballs.ts (no CI builds them).
+  for (const name of paths.toolsNames) {
+    if (!existsSync(resolve(paths.dist, name))) {
+      throw new Error(
+        `missing tools archive ${name} — build it locally first: ` +
+        `bun scripts/build-tools-tarballs.ts --out-dir ${paths.dist} (see RELEASE_GUIDE.md)`,
+      )
+    }
+  }
   const immutableHashed = [
     "install.sh",
     ...paths.binaryNames,
+    ...paths.toolsNames,
     "build-manifest.json",
   ]
   const checksums = await $`shasum -a 256 ${immutableHashed}`.cwd(paths.dist).text()
@@ -248,8 +261,9 @@ export async function runVerifyLocal(ctx: StageContext): Promise<void> {
   }
   if (!manifest.templatePackId) throw new Error("manifest missing templatePackId")
   for (const target of Object.keys(buildManifestAssets()) as ProductBinaryTarget[]) {
-    if (manifest.assets[target] !== productBinaryAssetName(target)) {
-      throw new Error(`manifest assets[${target}]=${manifest.assets[target]}, expected ${productBinaryAssetName(target)}`)
+    const got = manifest.assets[target]
+    if (!got || got.binary !== productBinaryAssetName(target) || got.tools !== productToolsAssetName(target)) {
+      throw new Error(`manifest assets[${target}]=${JSON.stringify(got)}, expected {binary:${productBinaryAssetName(target)},tools:${productToolsAssetName(target)}}`)
     }
   }
 
@@ -259,7 +273,10 @@ export async function runVerifyLocal(ctx: StageContext): Promise<void> {
   for (const name of paths.binaryNames) {
     assertChecksum(resolve(paths.dist, name), checksums.get(name), name)
   }
-  for (const name of ["install.sh", ...paths.binaryNames, "build-manifest.json"]) {
+  for (const name of paths.toolsNames) {
+    assertChecksum(resolve(paths.dist, name), checksums.get(name), name)
+  }
+  for (const name of ["install.sh", ...paths.binaryNames, ...paths.toolsNames, "build-manifest.json"]) {
     if (!checksums.has(name)) throw new Error(`checksums.txt missing entry for ${name}`)
   }
 

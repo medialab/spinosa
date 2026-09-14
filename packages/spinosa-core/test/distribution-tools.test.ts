@@ -3,12 +3,15 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import * as path from "node:path"
 import { tmpdir } from "node:os"
 import {
+  bundledLegacyToolPath,
   bundledTessdataDir,
   bundledToolPath,
   bundledToolsRoot,
   ensureBundledToolsEnv,
+  resolveTesseract,
   tesseractSource,
   toolsPlatformTag,
+  verifyBundledTools,
 } from "../src/distribution/tools"
 
 const ORIGINAL_PATH = process.env.PATH
@@ -29,11 +32,9 @@ function makeToolsHome(opts?: { bin?: boolean; langs?: string[] }): { home: stri
   const root = path.join(home, "tools", toolsPlatformTag()!)
   if (opts?.bin) {
     mkdirSync(path.join(root, "bin"), { recursive: true })
-    for (const name of ["tesseract", "pdftoppm"]) {
-      const p = path.join(root, "bin", name)
-      writeFileSync(p, "#!/bin/sh\nexit 0\n")
-      chmodSync(p, 0o755)
-    }
+    const p = path.join(root, "bin", "tesseract")
+    writeFileSync(p, "#!/bin/sh\nexit 0\n")
+    chmodSync(p, 0o755)
   }
   if (opts?.langs) {
     mkdirSync(path.join(root, "tessdata"), { recursive: true })
@@ -64,11 +65,12 @@ describe("bundled tools resolution", () => {
     }
   })
 
-  test("bundledToolPath requires executables", () => {
+  test("bundledToolPath requires executables (tesseract only — no poppler)", () => {
     const { home, root } = makeToolsHome({ bin: true })
     try {
       expect(bundledToolPath("tesseract", home)).toBe(path.join(root, "bin", "tesseract"))
-      expect(bundledToolPath("pdftoppm", home)).toBe(path.join(root, "bin", "pdftoppm"))
+      // pdftoppm is not a production dependency: legacy alias only.
+      expect(bundledLegacyToolPath("pdftoppm", home)).toBeUndefined()
       expect(bundledToolPath("tesseract", path.join(home, "empty"))).toBeUndefined()
     } finally {
       rmSync(home, { recursive: true, force: true })
@@ -114,15 +116,23 @@ describe("bundled tools resolution", () => {
     }
   })
 
-  test("tesseractSource classifies bundled/host/none", () => {
-    const { home } = makeToolsHome({ bin: true })
+  test("tesseractSource classifies bundled/dev-host/none (never silent host)", () => {
+    const { home } = makeToolsHome({ bin: true, langs: ["eng", "ita", "fra"] })
     const empty = mkdtempSync(path.join(tmpdir(), "spinosa-tools-empty-"))
+    const prevDev = process.env.SPINOSA_DEV_HOST_TOOLS
     try {
+      delete process.env.SPINOSA_DEV_HOST_TOOLS
       expect(tesseractSource(home)).toBe("bundled")
-      const src = tesseractSource(empty)
-      // Host-dependent: either host tools exist or nothing does — never bundled.
-      expect(["host", "none"]).toContain(src)
+      // Production never sniffs host PATH: empty home is none even when a
+      // host tesseract exists.
+      expect(tesseractSource(empty)).toBe("none")
+      expect(() => resolveTesseract(empty)).toThrow(/Bundled Tesseract is unavailable/)
+      expect(resolveTesseract(home)).toContain("tesseract")
+      expect(verifyBundledTools(home)).toEqual([])
+      expect(verifyBundledTools(empty).length).toBeGreaterThan(0)
     } finally {
+      if (prevDev === undefined) delete process.env.SPINOSA_DEV_HOST_TOOLS
+      else process.env.SPINOSA_DEV_HOST_TOOLS = prevDev
       rmSync(home, { recursive: true, force: true })
       rmSync(empty, { recursive: true, force: true })
     }

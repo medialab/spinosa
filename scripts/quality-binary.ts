@@ -42,7 +42,7 @@ async function step(label: string, fn: () => Promise<void>): Promise<void> {
 }
 
 await step("distribution + release unit tests", async () => {
-  const result = await $`bun test --timeout 30000 test/distribution.test.ts test/uninstall.test.ts ../../scripts/release/lib.test.ts ../../scripts/release/bump.test.ts ../../scripts/set-version.test.ts`
+  const result = await $`bun test --timeout 30000 test/distribution.test.ts test/distribution-tools.test.ts test/pdf-engine.test.ts test/pdf-scanned-ocr.test.ts test/manifest-partial.test.ts test/destinations.test.ts test/zip-hardened.test.ts test/vision-abort.test.ts test/standalone.test.ts test/uninstall.test.ts ../../scripts/release/lib.test.ts ../../scripts/release/bump.test.ts ../../scripts/release/tools-build.test.ts ../../scripts/set-version.test.ts`
     .cwd(path.join(root, "packages/spinosa-core"))
     .nothrow()
   if (result.exitCode !== 0) throw new Error("binary unit tests failed")
@@ -70,13 +70,10 @@ await step("host binary smoke", async () => {
   if (!existsSync(hostBinary)) throw new Error(`missing host binary ${hostBinary}`)
   assertPortableBinary(hostBinary)
   const result = await $`bun scripts/smoke-install.ts --binary ${hostBinary}`.cwd(root).nothrow()
+  // Release gates fail closed: smoke failures are always fatal (no
+  // SPINOSA_BINARY_SMOKE_STRICT escape hatch).
   if (result.exitCode !== 0) {
-    if (process.env.SPINOSA_BINARY_SMOKE_STRICT === "1") {
-      throw new Error("host binary smoke failed")
-    }
-    console.warn(
-      "host binary smoke failed (non-strict) — often onnxruntime/OCR native packaging; artifact still built",
-    )
+    throw new Error("host binary smoke failed (fail closed — release gate)")
   }
 })
 

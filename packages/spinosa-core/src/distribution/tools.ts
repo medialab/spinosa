@@ -3,16 +3,18 @@ import { homedir } from "node:os"
 import path from "node:path"
 
 /**
- * Bundled OCR/document tools (tesseract, pdftoppm, tessdata).
+ * Bundled OCR tools (Spinosa-owned Tesseract + tessdata).
  *
  * Layout under the Spinosa home so installs are self-contained:
- *   $SPINOSA_HOME/tools/<os>-<arch>/bin/{tesseract,pdftoppm}
+ *   $SPINOSA_HOME/tools/<os>-<arch>/bin/tesseract
  *   $SPINOSA_HOME/tools/<os>-<arch>/tessdata/{eng,ita,fra}.traineddata
  *   $SPINOSA_HOME/tools/TOOLS_MANIFEST.json
  *
- * Resolution order everywhere is bundled-first, host-second: a bundled
- * install is deterministic (survives brew upgrades/removals), while machines
- * with working host tools keep working with zero downloads.
+ * Standalone resolution order (release contract):
+ *   1. Spinosa bundled dependency
+ *   2. Explicit developer override (SPINOSA_DEV_HOST_TOOLS=1, dev only)
+ *   3. unavailable (fail closed — never silently use host tools, never
+ *      modify the machine, never call Bun.which("tesseract") in production).
  */
 
 export const TOOLS_DIRNAME = "tools"
@@ -57,10 +59,20 @@ function isExecutableFile(p: string): boolean {
 }
 
 /** Absolute path to a bundled tool binary, or undefined when not provisioned. */
-export function bundledToolPath(name: "tesseract" | "pdftoppm", home = spinosaHomeDir()): string | undefined {
+export function bundledToolPath(name: "tesseract", home = spinosaHomeDir()): string | undefined {
   const bin = bundledToolsBinDir(home)
   if (!bin) return undefined
   const candidate = path.join(bin, name + (process.platform === "win32" ? ".exe" : ""))
+  return isExecutableFile(candidate) ? candidate : undefined
+}
+
+/** Legacy alias: pdftoppm is NOT a production dependency (pdf.js + Canvas
+ * renders internally). Resolves only when a stale bundled copy exists, so
+ * old installs keep working while new code never requires it. */
+export function bundledLegacyToolPath(name: "pdftoppm", home = spinosaHomeDir()): string | undefined {
+  const bin = bundledToolsBinDir(home)
+  if (!bin) return undefined
+  const candidate = path.join(bin, name)
   return isExecutableFile(candidate) ? candidate : undefined
 }
 
@@ -110,12 +122,38 @@ export function ensureBundledToolsEnv(home = spinosaHomeDir()): { binDir?: strin
 }
 
 /** Where the OCR engine resolves from — for logs/doctor/debugging. */
-export function tesseractSource(home = spinosaHomeDir()): "bundled" | "host" | "none" {
-  if (bundledToolPath("tesseract", home) && bundledToolPath("pdftoppm", home)) return "bundled"
-  if (typeof Bun !== "undefined" && (Bun as unknown as { which?: (c: string) => string | null }).which) {
-    const which = (Bun as unknown as { which: (c: string) => string | null }).which
-    if (which("tesseract") && which("pdftoppm")) return "host"
-    return "none"
+export function tesseractSource(home = spinosaHomeDir()): "bundled" | "dev-host" | "none" {
+  if (bundledToolPath("tesseract", home) && bundledTessdataDir(home)) return "bundled"
+  if (process.env.SPINOSA_DEV_HOST_TOOLS === "1" && typeof Bun !== "undefined") {
+    const which = (Bun as unknown as { which?: (c: string) => string | null }).which
+    if (which?.("tesseract")) return "dev-host"
   }
   return "none"
+}
+
+/** Resolve the production Tesseract binary: bundled copy first, explicit
+ * developer override second, otherwise throw (fail closed). Never falls back
+ * to PATH silently. */
+export function resolveTesseract(home = spinosaHomeDir()): string {
+  const bundled = bundledToolPath("tesseract", home)
+  if (bundled) return bundled
+  if (process.env.SPINOSA_DEV_HOST_TOOLS === "1" && typeof Bun !== "undefined") {
+    const which = (Bun as unknown as { which?: (c: string) => string | null }).which
+    const host = which?.("tesseract")
+    if (host) return host
+  }
+  throw new Error("Bundled Tesseract is unavailable (expected $SPINOSA_HOME/tools/<platform>/bin/tesseract with tessdata eng/ita/fra)")
+}
+
+/** Verify all mandatory bundled OCR assets exist. Returns missing entries
+ * (empty = ready). Existence alone is checked here; content digests are
+ * verified at install time (checksums.txt + per-file SHA256). */
+export function verifyBundledTools(home = spinosaHomeDir()): string[] {
+  const missing: string[] = []
+  if (!bundledToolPath("tesseract", home)) missing.push("bin/tesseract")
+  const tessdata = bundledTessdataDir(home)
+  if (!tessdata) {
+    for (const lang of REQUIRED_TESS_LANGS) missing.push(`tessdata/${lang}.traineddata`)
+  }
+  return missing
 }

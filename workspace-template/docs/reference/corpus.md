@@ -62,7 +62,7 @@ keywords: ["shoreline retreat", "sea defences"]
 - **page_number/page_count:** for split page files, the page position in the source document
 - **source_type:** what kind of document this is (interview, field note, report, etc.)
 - **original_format:** what it was before conversion (PDF, Word doc, etc.)
-- **converter_engine:** how it was converted (MarkItDown for text, PaddleOCR for scanned images)
+- **converter_engine:** how it was converted (MarkItDown for text/office docs, bundled Tesseract for scanned images/PDF pages)
 - **language:** the document's language
 - **people/places/topics/keywords:** labels extracted from the content, using canonical terms from the dictionary
 

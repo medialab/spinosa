@@ -1,6 +1,5 @@
-import { mkdirSync, readFileSync, appendFileSync, readdirSync, rmSync, mkdtempSync } from "node:fs"
+import { mkdirSync, appendFileSync, readFileSync, rmSync } from "node:fs"
 import * as path from "node:path"
-import { tmpdir } from "node:os"
 import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
 import { safeCopyAsync, writeTextAtomicSafe } from "../utils/fs"
 import { injectColdFrontmatter, convertedOutputExists } from "./frontmatter"
@@ -8,7 +7,6 @@ import { isSpinosaCancellationError, SpinosaCancellationError, throwIfSpinosaCan
 import { ProgressEmitter } from "../progress/progress"
 import { markitdownOutputRelPath } from "../extension/classifier"
 import { VISION_TRANSCRIBE_PROMPT, mimeForImageExt, isVisionModelId } from "./vision-helpers"
-import { waitAbortableChild } from "./tesseract-ocr"
 import { recordResult, manifestDest, type ManifestStatus } from "./manifest"
 import { optimizeVisionImage } from "./vision-image"
 import type { ClassifiedEntry, PhaseResult } from "./pipeline"
@@ -18,6 +16,8 @@ export type VisionTranscribeRequest = {
   modelID: string
   prompt: string
   image: { mime: string; data: string }
+  /** AbortSignal for the underlying provider request (timeout/cancel kills it). */
+  signal?: AbortSignal
 }
 
 export type VisionTranscribe = (request: VisionTranscribeRequest) => Promise<string>
@@ -84,14 +84,6 @@ function titleFromRel(rel: string): string {
   return stem.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || stem
 }
 
-function pdftoppmPresent(): boolean {
-  try {
-    return typeof Bun !== "undefined" && !!(Bun as unknown as { which?: (cmd: string) => string | null }).which?.("pdftoppm")
-  } catch {
-    return false
-  }
-}
-
 type PagePayload = { mime: string; data: string; label: string }
 
 /** Optimize one image buffer into a model-ready payload (optimize, else original). */
@@ -123,12 +115,11 @@ async function prepareImagePayload(
 }
 
 /**
- * Render PDF pages to PNG (pdftoppm, 300dpi) and prepare payloads.
- * Mirrors the tesseract phase renderer so vision sees the same pages.
+ * Render PDF pages to in-memory PNGs via the internal engine
+ * (pdf.js + Canvas, vision preset ≈2200px long side) and prepare payloads.
+ * No pdftoppm/Poppler, no temp PNGs in the hot path.
  *
- * `onlyPages` (1-based) restricts rendering to imageless pages: pdftoppm
- * `-f/-l` runs once per contiguous range, and each payload carries its real
- * page number (pdftoppm names outputs `prefix-<N>.png` for the range).
+ * `onlyPages` (1-based) restricts rendering to imageless pages.
  */
 async function renderPdfPagesToPayloads(
   srcPath: string,
@@ -140,77 +131,26 @@ async function renderPdfPagesToPayloads(
   onPage?: (page: number, total?: number) => void,
   totalPages?: number,
 ): Promise<Array<{ page: number; payload: PagePayload }>> {
-  if (!pdftoppmPresent()) {
-    throw new Error(
-      "PDF page rendering needs pdftoppm (poppler-utils), which is not installed — install it or pick Tesseract for scanned PDFs",
-    )
-  }
-  const { contiguousRanges } = await import("./pdf-pages")
-  const ranges = onlyPages && onlyPages.length > 0
-    ? contiguousRanges(onlyPages)
-    : undefined
-  const tmpDir = mkdtempSync(path.join(tmpdir(), "spinosa-vision-pdf-"))
-  // pdftoppm writes PNGs progressively but reports nothing per page — poll
-  // the output dir so the UI can show live "(PG: N)" motion during the
-  // silent render. Total stays unknown until the file list lands below.
-  const seenRenderPages = new Set<number>()
-  const renderPoll = setInterval(() => {
-    let names: string[] = []
-    try {
-      names = readdirSync(tmpDir)
-    } catch {
-      return
-    }
-    for (const name of names) {
-      const page = Number((name.match(/page-(\d+)\.png$/) ?? [])[1])
-      if (!Number.isFinite(page) || seenRenderPages.has(page)) continue
-      seenRenderPages.add(page)
+  const { withPdfDocument } = await import("../extension/pdf-js")
+  const { renderPage } = await import("../pdf/render")
+  throwIfSpinosaCancelled(shouldAbort)
+  if (signal?.aborted) throw new SpinosaCancellationError("Vision cancelled")
+  const out: Array<{ page: number; payload: PagePayload }> = []
+  await withPdfDocument(srcPath, async (doc) => {
+    const all = Array.from({ length: doc.numPages }, (_, i) => i + 1)
+    const wanted = onlyPages && onlyPages.length > 0
+      ? all.filter((p) => onlyPages.includes(p))
+      : all
+    const optimizeTotal = totalPages ?? wanted.length
+    for (const page of wanted) {
+      throwIfSpinosaCancelled(shouldAbort)
+      if (signal?.aborted) throw new SpinosaCancellationError("Vision cancelled")
+      let buf: Buffer
       try {
-        onPage?.(page, totalPages)
-      } catch {
-        /* progress-only */
+        buf = await renderPage(doc, page, { forVision: true })
+      } catch (err) {
+        throw new Error(`internal PDF render failed on page ${page}: ${err instanceof Error ? err.message : String(err)}`)
       }
-    }
-  }, 400)
-  try {
-    throwIfSpinosaCancelled(shouldAbort)
-    if (signal?.aborted) throw new SpinosaCancellationError("Vision cancelled")
-    const prefix = path.join(tmpDir, "page")
-    const runs = ranges ?? [{ from: 1, to: Number.MAX_SAFE_INTEGER }]
-    for (const range of runs) {
-      const args =
-        ranges
-          ? ["pdftoppm", "-png", "-r", "300", "-f", String(range.from), "-l", String(range.to), srcPath, prefix]
-          : ["pdftoppm", "-png", "-r", "300", srcPath, prefix]
-      const proc = Bun.spawn(args, {
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-      const exit = await waitAbortableChild(proc, {
-        shouldAbort,
-        signal,
-        label: `pdftoppm ${rel}${ranges ? ` pages ${range.from}-${range.to}` : ""}`,
-      })
-      if (exit !== 0) {
-        const errText = await new Response(proc.stderr as unknown as ReadableStream).text().catch(() => "")
-        throw new Error(`pdftoppm failed (exit ${exit}): ${errText.slice(0, 400)}`)
-      }
-      throwIfSpinosaCancelled(shouldAbort)
-    }
-    const pngs = readdirSync(tmpDir)
-      .filter((f) => f.endsWith(".png"))
-      .sort()
-    if (pngs.length === 0) throw new Error("pdftoppm produced no pages")
-    onLog?.(`  ${rel} → rendered ${pngs.length} page${pngs.length === 1 ? "" : "s"} for vision`)
-    const out: Array<{ page: number; payload: PagePayload }> = []
-    const optimizeTotal = totalPages ?? pngs.length
-    for (const png of pngs) {
-      throwIfSpinosaCancelled(shouldAbort)
-      // pdftoppm names range outputs with real page numbers (page-3.png…).
-      const page = Number((png!.match(/page-(\d+)\.png$/) ?? [])[1])
-      if (!Number.isFinite(page)) continue
-      // Per-page tick with known total so the UI shows "(PG: N/M)" while
-      // each page optimizes — the visible proof the render is proceeding.
       if (optimizeTotal > 1) {
         try {
           onPage?.(page, optimizeTotal)
@@ -218,19 +158,15 @@ async function renderPdfPagesToPayloads(
           /* progress-only */
         }
       }
-      const buf = readFileSync(path.join(tmpDir, png!))
       // Label keeps the .png suffix so MIME detection sees the real format.
       const payload = await prepareImagePayload(buf, `${rel}#page${page}.png`, onLog)
       out.push({ page, payload })
     }
-    out.sort((a, b) => a.page - b.page)
-    return out
-  } finally {
-    clearInterval(renderPoll)
-    try {
-      rmSync(tmpDir, { recursive: true, force: true })
-    } catch {}
-  }
+  })
+  if (out.length === 0) throw new Error("internal PDF renderer produced no pages")
+  onLog?.(`  ${rel} → rendered ${out.length} page${out.length === 1 ? "" : "s"} for vision (internal pdf.js + Canvas)`)
+  out.sort((a, b) => a.page - b.page)
+  return out
 }
 
 const isRetryableVisionError = (msg: string) => /429|rate.?limit|timeout|timed out|503|502|500|ECONNRESET|ETIMEDOUT/i.test(msg)
@@ -291,27 +227,33 @@ async function transcribeWithTimeout(
   shouldAbort: (() => boolean) | undefined,
   onRequestStarted?: () => void,
 ): Promise<string> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined
-  let onAbort: (() => void) | undefined
-  const abortPromise = new Promise<never>((_, reject) => {
-    onAbort = () => reject(new SpinosaCancellationError("Vision cancelled"))
-    if (shouldAbort?.() || signal?.aborted) {
-      onAbort()
-      return
-    }
-    signal?.addEventListener("abort", onAbort, { once: true })
-  })
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`vision timeout after ${VISION_ATTEMPT_TIMEOUT_MS / 1000}s`)), VISION_ATTEMPT_TIMEOUT_MS)
-  })
+  const timeoutController = new AbortController()
+  const timer = setTimeout(() => timeoutController.abort(new Error(`vision timeout after ${VISION_ATTEMPT_TIMEOUT_MS / 1000}s`)), VISION_ATTEMPT_TIMEOUT_MS)
+  const linked = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
+  const onExternalAbort = () => timeoutController.abort(new SpinosaCancellationError("Vision cancelled"))
+  if (shouldAbort?.() || signal?.aborted) {
+    clearTimeout(timer)
+    throw new SpinosaCancellationError("Vision cancelled")
+  }
+  signal?.addEventListener("abort", onExternalAbort, { once: true })
+  // Poll shouldAbort so a flipped flag terminates the in-flight provider
+  // request (not just the wait around it). Retries never overlap: each
+  // attempt fully settles before the next begins.
+  const poll = setInterval(() => {
+    if (shouldAbort?.()) timeoutController.abort(new SpinosaCancellationError("Vision cancelled"))
+  }, 200)
 
   try {
-    const transcription = transcribeVision(request)
     onRequestStarted?.()
-    return await Promise.race([transcription, timeoutPromise, abortPromise])
+    // Propagate the linked signal INTO the provider request so timeout and
+    // cancellation terminate the actual HTTP call.
+    return await transcribeVision({ ...request, signal: linked })
   } finally {
-    if (timeoutId) clearTimeout(timeoutId)
-    if (onAbort) signal?.removeEventListener("abort", onAbort)
+    clearTimeout(timer)
+    clearInterval(poll)
+    signal?.removeEventListener("abort", onExternalAbort)
   }
 }
 
@@ -335,7 +277,7 @@ export async function processVisionInProcess(
   let processed = 0
   // Manual per-file retries (user pressed retry) are bounded: without a cap,
   // always-retry loops forever; page payloads are cached so retries skip
-  // the expensive pdftoppm re-render.
+  // the expensive internal re-render.
   const MAX_MANUAL_RETRIES = 3
   const manualRetries = new Map<string, number>()
   type CachedPages =

@@ -36,37 +36,53 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
-@test "host_ocr_complete passes with stubbed binaries and langs" {
+@test "installer never calls a package manager (standalone contract)" {
+  # No tesseract/poppler installs via any package manager (the bash
+  # prerequisite hint is exempt — bash is the installer's own runtime).
+  run grep -E 'brew install tesseract|apt-get install .*(tesseract|poppler)|dnf install .*(tesseract|poppler)|pacman -S .*(tesseract|poppler)' "$INSTALLER"
+  [ "$status" -ne 0 ]
+  # No package-manager execution paths remain outside comments/echo hints.
+  run grep -E '^\s*\$sudo (brew|apt-get|dnf|pacman)|\$\(sudo' "$INSTALLER"
+  [ "$status" -ne 0 ]
+}
+
+@test "try_package_manager_tools is a fail-closed stub" {
+  run try_package_manager_tools
+  [ "$status" -ne 0 ]
+}
+
+@test "host_ocr_complete ignores host PATH in production (bundled only)" {
   bindir="$BATS_TEST_TMPDIR/stubbin"
   mkdir -p "$bindir"
   printf '#!/bin/sh\necho "tesseract 5.0"\necho "eng\nita\nfra"\n' > "$bindir/tesseract"
-  printf '#!/bin/sh\nexit 0\n' > "$bindir/pdftoppm"
-  chmod +x "$bindir/tesseract" "$bindir/pdftoppm"
-  PATH="$bindir:$PATH" run host_ocr_complete
-  [ "$status" -eq 0 ]
-}
-
-@test "host_ocr_complete fails when langs are missing" {
-  bindir="$BATS_TEST_TMPDIR/stubbin2"
-  mkdir -p "$bindir"
-  printf '#!/bin/sh\necho "eng\nosd"\n' > "$bindir/tesseract"
-  printf '#!/bin/sh\nexit 0\n' > "$bindir/pdftoppm"
-  chmod +x "$bindir/tesseract" "$bindir/pdftoppm"
+  chmod +x "$bindir/tesseract"
+  unset SPINOSA_DEV_HOST_TOOLS
   PATH="$bindir:$PATH" run host_ocr_complete
   [ "$status" -ne 0 ]
 }
 
-@test "host_ocr_complete fails when binaries are absent" {
-  PATH="/usr/bin:/bin" run host_ocr_complete
+@test "host_ocr_complete honors SPINOSA_DEV_HOST_TOOLS=1 developer override" {
+  bindir="$BATS_TEST_TMPDIR/stubbin2"
+  mkdir -p "$bindir"
+  printf '#!/bin/sh\necho "eng\nita\nfra"\n' > "$bindir/tesseract"
+  chmod +x "$bindir/tesseract"
+  SPINOSA_DEV_HOST_TOOLS=1 PATH="$bindir:$PATH" run host_ocr_complete
+  [ "$status" -eq 0 ]
+}
+
+@test "tessdata pins an immutable commit (never mutable main)" {
+  run grep -E '^TESSDATA_PIN_COMMIT="[0-9a-f]{40}"' "$INSTALLER"
+  [ "$status" -eq 0 ]
+  run grep -E 'tessdata_fast/raw/main' "$INSTALLER"
   [ "$status" -ne 0 ]
 }
 
 @test "write_tools_manifest emits valid JSON with source" {
-  run write_tools_manifest "host"
+  run write_tools_manifest "tarball"
   [ "$status" -eq 0 ]
   manifest="$SPINOSA_HOME/tools/TOOLS_MANIFEST.json"
   [ -f "$manifest" ]
-  python3 -c "import json,sys; d=json.load(open('$manifest')); assert d['platform']=='darwin-arm64', d; assert d['source']=='host', d"
+  python3 -c "import json,sys; d=json.load(open('$manifest')); assert d['platform']=='darwin-arm64', d; assert d['source']=='tarball', d; assert 'tessdata_commit' in d, d"
 }
 
 @test "ensure_bundled_tessdata skips download when complete" {
@@ -82,13 +98,23 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "install_bundled_tools records host source without downloading" {
+@test "install_bundled_tools never uses host tools without dev override" {
   bindir="$BATS_TEST_TMPDIR/stubbin3"
   mkdir -p "$bindir"
   printf '#!/bin/sh\necho "eng\nita\nfra"\n' > "$bindir/tesseract"
-  printf '#!/bin/sh\nexit 0\n' > "$bindir/pdftoppm"
-  chmod +x "$bindir/tesseract" "$bindir/pdftoppm"
+  chmod +x "$bindir/tesseract"
+  unset SPINOSA_DEV_HOST_TOOLS
   PATH="$bindir:$PATH" run install_bundled_tools "/nonexistent-checksums"
   [ "$status" -eq 0 ]
-  python3 -c "import json; assert json.load(open('$SPINOSA_HOME/tools/TOOLS_MANIFEST.json'))['source']=='host'"
+  python3 -c "import json; d=json.load(open('$SPINOSA_HOME/tools/TOOLS_MANIFEST.json')); assert d['source']!='host' and d['source']!='package-manager', d"
+}
+
+@test "bundled tools provision before staged doctor verification" {
+  # The staged doctor gate fails closed on missing OCR, so the install flow
+  # must provision $SPINOSA_HOME/tools before running staged verification.
+  tools_line="$(grep -nF 'install_bundled_tools "$checksums_file"' "$INSTALLER" | cut -d: -f1)"
+  verify_line="$(grep -nF 'run_staged_binary_checks "$staged_binary"' "$INSTALLER" | cut -d: -f1)"
+  [ -n "$tools_line" ]
+  [ -n "$verify_line" ]
+  [ "$tools_line" -lt "$verify_line" ]
 }

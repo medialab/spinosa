@@ -46,7 +46,7 @@
 |------|---------|
 | **OCR** | Optical Character Recognition — turning scanned images into searchable text |
 | **MarkItDown** | Converter for Office docs, EPUB, HTML, and text-based PDFs |
-| **PaddleOCR** | Local OCR engine for scanned PDFs and images |
+| **Tesseract** | Bundled local OCR engine for scanned PDFs and images (ships with Spinosa, no system packages needed) |
 
 ## Related
 

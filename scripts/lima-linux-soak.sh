@@ -120,6 +120,16 @@ EOF
       warn "missing $name (ok for partial soak trees)"
     fi
   done
+  # Spinosa-owned OCR tool tarballs: the installer only accepts them with a
+  # checksums.txt entry (fail closed otherwise), and the staged doctor gate
+  # fails closed on missing OCR — so a green guest smoke needs them staged.
+  for name in spinosa-tools-darwin-arm64.tar.gz spinosa-tools-darwin-x64.tar.gz spinosa-tools-linux-arm64.tar.gz spinosa-tools-linux-x64.tar.gz; do
+    if [ -f "$DIST/$name" ]; then
+      hashed+=("$name")
+    else
+      warn "missing $name (guest doctor will fail closed on OCR)"
+    fi
+  done
 
   (
     cd "$DIST"
@@ -144,7 +154,7 @@ ensure_instance() {
 }
 
 copy_into_guest() {
-  local arch asset
+  local arch asset tools_asset
   arch="$(guest_linux_asset)"
   case "$arch" in
     aarch64|arm64) asset=spinosa-linux-arm64 ;;
@@ -154,6 +164,7 @@ copy_into_guest() {
   [ -f "$DIST/$asset" ] || die "missing $DIST/$asset for guest arch $arch"
   [ -f "$DIST/install.sh" ] || die "missing $DIST/install.sh — run --stage-only first"
   [ -f "$DIST/checksums.txt" ] || die "missing $DIST/checksums.txt — run --stage-only first"
+  tools_asset="spinosa-tools-${asset#spinosa-}.tar.gz"
 
   info "copying $asset + installer into ${INSTANCE}:/tmp/spinosa-dist/"
   limactl shell "$INSTANCE" -- bash -lc 'rm -rf /tmp/spinosa-dist && mkdir -p /tmp/spinosa-dist'
@@ -163,6 +174,12 @@ copy_into_guest() {
     "$DIST/checksums.txt" \
     "$DIST/build-manifest.json" \
     "${INSTANCE}:/tmp/spinosa-dist/"
+  if [ -f "$DIST/$tools_asset" ]; then
+    info "copying $tools_asset (bundled OCR tools)"
+    limactl copy "$DIST/$tools_asset" "${INSTANCE}:/tmp/spinosa-dist/"
+  else
+    warn "missing $DIST/$tools_asset — guest doctor will fail closed on OCR"
+  fi
   ok "assets in guest /tmp/spinosa-dist"
 }
 
@@ -190,7 +207,7 @@ bash ./install.sh --yes --no-launch
 # Optional tiny PDF fixture (non-fatal if new needs more flags on this cut)
 mkdir -p /tmp/spinosa-tiny-corpus
 printf '%%PDF-1.1\\n1 0 obj<<>>endobj\\ntrailer<<>>\\n%%%%EOF\\n' >/tmp/spinosa-tiny-corpus/tiny.pdf
-\"\$SPINOSA_HOME/bin/spinosa\" new /tmp/spinosa-tiny-corpus --extensions pdf --cli other --launch copy --no-color \\
+\"\$SPINOSA_HOME/bin/spinosa\" new /tmp/spinosa-tiny-corpus --extensions pdf --cli other --launch copy \\
   || echo 'note: tiny pdf workspace create skipped/failed (doctor already exercised PDF probe)'
 kill \"\$(cat /tmp/spinosa-http.pid)\" 2>/dev/null || true
 rm -f /tmp/spinosa-http.pid

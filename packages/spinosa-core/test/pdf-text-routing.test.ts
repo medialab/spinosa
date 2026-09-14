@@ -158,7 +158,11 @@ describe("isTextBasedPdf", () => {
 
 describe("tesseract hybrid on a mixed document", () => {
   test("direct text pages kept, photo page OCR'd, order preserved", async () => {
-    const { tesseractAvailable } = await import("../src/import/tesseract-ocr")
+    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
+    // Dev machines exercise the real OCR path via the explicit developer
+    // override (production stays bundled-or-unavailable, never host PATH).
+    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
+    _resetTesseractAvailableCache()
     if (!tesseractAvailable()) return
     const { convertPdfHybridTesseract } = await import("../src/import/tesseract-ocr")
     const dir = mkdtempSync(path.join(tmpdir(), "spinosa-pdf-hybrid-"))
@@ -178,7 +182,7 @@ describe("tesseract hybrid on a mixed document", () => {
 })
 
 describe("contiguousRanges", () => {
-  test("groups sorted runs for pdftoppm -f/-l", () => {
+  test("groups sorted runs into contiguous ranges", () => {
     expect(contiguousRanges([1, 2, 3, 5, 7, 8, 9])).toEqual([
       { from: 1, to: 3 },
       { from: 5, to: 5 },

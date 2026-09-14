@@ -61,7 +61,11 @@ describe("convertTextPdf onPage ticks", () => {
 
 describe("ocrPdfViaTesseract onPage ticks", () => {
   test("ticks per rendered page with totals", async () => {
-    const { tesseractAvailable } = await import("../src/import/tesseract-ocr")
+    const { tesseractAvailable, _resetTesseractAvailableCache } = await import("../src/import/tesseract-ocr")
+    // Dev machines exercise the real OCR path via the explicit developer
+    // override (production stays bundled-or-unavailable, never host PATH).
+    process.env.SPINOSA_DEV_HOST_TOOLS ??= "1"
+    _resetTesseractAvailableCache()
     if (!tesseractAvailable()) return
     const { ocrPdfViaTesseract } = await import("../src/import/tesseract-ocr")
     const { root, raw } = stage("tessticks")

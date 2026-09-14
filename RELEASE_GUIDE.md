@@ -49,7 +49,7 @@ State is tracked in `dist/v{VERSION}/.release-state.json` so releases can be res
 
 1. **preflight** — channel↔branch enforcement, clean tree, `bun run quality`
 2. **bump** — sync versions, commit, push; refresh release-state SHA to post-bump HEAD
-3. **build** — pack embedded templates, compile four product binaries via `script/build-release-binaries.ts`, stage `install.sh`, `checksums.txt`, `build-manifest.json`
+3. **build** — build OCR tools tarballs first (below), then pack embedded templates, compile four product binaries via `script/build-release-binaries.ts`, stage `install.sh`, `checksums.txt`, `build-manifest.json`
 4. **verify-local** — exact asset set (no source tarball), pins, checksums, executable bits
 5. **smoke** — serve local assets over HTTP and run the real installer into a temp home (`SPINOSA_RELEASE_BASE_URL`)
 6. **git-tag** — tag must equal HEAD/state SHA
@@ -78,7 +78,7 @@ Quality is **local only** — no GitHub Actions quality workflow.
 
 | Release | Tag | Assets |
 | ------- | --- | ------ |
-| Immutable version | `vX.Y.Z` | `install.sh`, `spinosa-darwin-arm64`, `spinosa-darwin-x64`, `spinosa-linux-arm64`, `spinosa-linux-x64`, `checksums.txt`, `build-manifest.json` |
+| Immutable version | `vX.Y.Z` | `install.sh`, `spinosa-darwin-arm64`, `spinosa-darwin-x64`, `spinosa-linux-arm64`, `spinosa-linux-x64`, `spinosa-tools-darwin-arm64.tar.gz`, `spinosa-tools-darwin-x64.tar.gz`, `spinosa-tools-linux-arm64.tar.gz`, `spinosa-tools-linux-x64.tar.gz`, `checksums.txt`, `build-manifest.json` |
 | Rolling channel | `stable` or `beta` | `install.sh`, `checksums.txt` only |
 
 No `spinosa-v*.tar.gz` product archive.
@@ -114,6 +114,39 @@ bun script/build-release-binaries.ts --out-dir dist/v$(jq -r .version package.js
 ```
 
 Linux VM soak (Lima): [docs/release/lima-linux-soak.md](docs/release/lima-linux-soak.md).
+
+---
+
+## OCR tools tarballs (local build, no CI)
+
+`spinosa-tools-<os>-<arch>.tar.gz` (static Tesseract + pinned tessdata) is built
+from pinned source on the release machine — nothing is downloaded as a binary,
+and no CI produces these assets. Darwin targets compile on the Mac; Linux
+targets compile inside local Lima guests (native arch).
+
+One-time guest setup (release machine only):
+
+```bash
+limactl start --name spinosa-tools-linux-arm64 template://ubuntu
+limactl start --name spinosa-tools-linux-x64 --arch x86_64 template://ubuntu
+```
+
+Prerequisites on the release Mac: Xcode command line tools, cmake, and Rosetta
+(`arch -x86_64 /usr/bin/true` must succeed — configure-time probes for the
+`darwin-x64` cross-build execute through it).
+
+Build (before the release `build` stage, into the same dist dir):
+
+```bash
+DIST="dist/v$(jq -r .version package.json)"
+bun scripts/build-tools-tarballs.ts --out-dir "$DIST"          # all four targets
+bun scripts/build-tools-tarballs.ts --out-dir "$DIST" --host-only  # darwin-arm64 iteration
+```
+
+Each tarball is self-verifying: SHA256-pinned sources, fail-closed linkage
+gates (system libs only on macOS, fully static on Linux), version/lang checks,
+and a blank-PNG end-to-end OCR probe where the host can execute the binary.
+The release `build` stage refuses to cut checksums when a tarball is missing.
 
 ---
 

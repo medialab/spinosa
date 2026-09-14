@@ -2,6 +2,7 @@ import { resolve } from "node:path"
 import {
   PRODUCT_BINARY_TARGETS,
   productBinaryAssetName,
+  productToolsAssetName,
   type ProductBinaryTarget,
 } from "../../packages/spinosa-core/src/distribution/contract.ts"
 import { releaseChannel } from "../../packages/spinosa-core/src/utils/version.ts"
@@ -16,8 +17,12 @@ export type ReleasePaths = {
   channelDist: string
   /** Canonical asset filenames for the four product binaries. */
   binaryNames: readonly string[]
+  /** Canonical asset filenames for the four Spinosa-owned tools archives (Tesseract + tessdata). */
+  toolsNames: readonly string[]
   /** Absolute paths for each product binary under dist/v{version}/. */
   binaryPaths: Record<ProductBinaryTarget, string>
+  /** Absolute paths for each tools archive under dist/v{version}/. */
+  toolsPaths: Record<ProductBinaryTarget, string>
   installPath: string
   checksumsPath: string
   manifestPath: string
@@ -31,8 +36,12 @@ export function releasePaths(version: string): ReleasePaths {
   const dist = resolve(RELEASE_ROOT, `dist/v${version}`)
   const channelDist = resolve(RELEASE_ROOT, `dist/${channel}`)
   const binaryNames = PRODUCT_BINARY_TARGETS.map(productBinaryAssetName)
+  const toolsNames = PRODUCT_BINARY_TARGETS.map(productToolsAssetName)
   const binaryPaths = Object.fromEntries(
     PRODUCT_BINARY_TARGETS.map((target) => [target, resolve(dist, productBinaryAssetName(target))]),
+  ) as Record<ProductBinaryTarget, string>
+  const toolsPaths = Object.fromEntries(
+    PRODUCT_BINARY_TARGETS.map((target) => [target, resolve(dist, productToolsAssetName(target))]),
   ) as Record<ProductBinaryTarget, string>
   return {
     version,
@@ -41,7 +50,9 @@ export function releasePaths(version: string): ReleasePaths {
     dist,
     channelDist,
     binaryNames,
+    toolsNames,
     binaryPaths,
+    toolsPaths,
     installPath: resolve(dist, "install.sh"),
     checksumsPath: resolve(dist, "checksums.txt"),
     manifestPath: resolve(dist, "build-manifest.json"),
