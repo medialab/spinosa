@@ -21,8 +21,7 @@ import {
   runnableSteps,
   startStep,
   type AgentNode,
-  type FastDecision,
-  type GenericDecision,
+  type GeneralDecision,
   type OrchestratedDecision,
   type RouteInput,
   type StepOutcome,
@@ -39,7 +38,7 @@ import { routeRequest } from "./router-service"
 import { SYSTEM_OPERATIONS } from "./workflow-operations"
 
 export type PreparedRequest =
-  | { kind: "direct"; text: string; decision: FastDecision | GenericDecision; routedBy?: "rules" | "model" }
+  | { kind: "direct"; text: string; decision: GeneralDecision; routedBy?: "rules" | "model" }
   | {
       kind: "workflow"
       text: string
@@ -144,10 +143,9 @@ export class WorkflowRunService {
       ...(input.routerTimeoutMs !== undefined ? { timeoutMs: input.routerTimeoutMs } : {}),
     })
     const { decision } = routed
-    // Fast and generic both execute as a plain conversation turn: fast
-    // carries an action badge, generic is just a normal answer (no badge).
-    // Neither frames a workflow, writes a goal, nor touches the engine.
-    if (decision.mode === "fast" || decision.mode === "generic") {
+    // General answers execute as plain conversation turns. They never frame
+    // a workflow, write a goal, or touch the harness engine.
+    if (decision.mode === "general") {
       return { kind: "direct", text, decision, routedBy: routed.via }
     }
     const definition = this.registry.resolve(decision)
