@@ -4,7 +4,7 @@ import type { ReleaseChannel } from "../../packages/spinosa-core/src/utils/versi
 import { planRelease, type ReleaseIncrement } from "./bump.ts"
 import { RELEASE_ROOT, releasePaths } from "./lib.ts"
 import { Reporter } from "./reporter.ts"
-import { readCurrentVersion, runStage, type StageContext } from "./stages.ts"
+import { finalizeDistAssets, readCurrentVersion, runStage, type StageContext } from "./stages.ts"
 import {
   findLatestState,
   initState,
@@ -24,6 +24,7 @@ Usage:
   bun run release stable minor|patch|major [--dry-run]
   bun run release plan beta patch
   bun run release validate
+  bun run release ci-assemble <version> [--dry-run]
   bun run release publish <version> [--from <stage>] [--dry-run]
   bun run release resume [version] [--dry-run]
 
@@ -161,6 +162,38 @@ async function commandPublish(version: string, options: CliOptions): Promise<voi
   await runPipeline(version.replace(/^v/, ""), { ...options, skipBump: true })
 }
 
+/**
+ * CI assemble: finish a tag-triggered release from matrix artifacts.
+ *
+ * The workflow downloads one product binary + one tools tarball per target
+ * into dist/v{version}/ and stages build-manifest.json via
+ * build-release-binaries --manifest-only. This command verifies the tag
+ * equals HEAD, finalizes dist/ (installers, manifest, checksums), then
+ * runs verify-local → smoke → publish-version → channel → verify-remote.
+ * Quality + tag validation run in earlier workflow jobs, not here.
+ */
+async function commandCiAssemble(versionArg: string, options: CliOptions): Promise<void> {
+  const version = versionArg.replace(/^v/, "")
+  const fail = (message: string): never => {
+    console.error(`✗ ci-assemble: ${message}`)
+    process.exit(1)
+  }
+  const head = (await $`git rev-parse HEAD`.cwd(RELEASE_ROOT).quiet()).text().trim()
+  const tagCheck = await $`git rev-list -1 v${version}`.cwd(RELEASE_ROOT).nothrow().quiet()
+  if (tagCheck.exitCode !== 0) fail(`tag v${version} not found — CI assembles from a pushed tag`)
+  const tagSha = tagCheck.text().trim()
+  if (tagSha !== head) {
+    fail(`tag v${version} points at ${tagSha.slice(0, 8)}, HEAD is ${head.slice(0, 8)} — tag the release commit`)
+  }
+  if (readCurrentVersion() !== version) {
+    fail(`package.json says v${readCurrentVersion()}, tag says v${version}`)
+  }
+  if (!options.dryRun) {
+    await finalizeDistAssets(releasePaths(version), version, (m) => console.log(`  ${m}`))
+  }
+  await runPipeline(version, { ...options, from: "verifyLocal", skipBump: true })
+}
+
 async function commandResume(versionArg: string | undefined, options: CliOptions): Promise<void> {
   const resolved = versionArg?.replace(/^v/, "") ?? findLatestState()?.version
   if (!resolved) {
@@ -214,6 +247,13 @@ async function main(): Promise<void> {
         process.exit(1)
       }
       await commandPublish(arg1, options)
+      return
+    case "ci-assemble":
+      if (!arg1) {
+        console.error("Usage: bun run release ci-assemble <version> [--dry-run]")
+        process.exit(1)
+      }
+      await commandCiAssemble(arg1, options)
       return
     case "resume":
       await commandResume(arg1, options)

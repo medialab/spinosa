@@ -33,7 +33,7 @@ function argValue(flag: string): string | undefined {
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage:
   bun scripts/build-release-binaries.ts --out-dir <dir> --version <ver> --channel <stable|beta>
-  [--host-only] [--only linux-x64[,darwin-arm64,...]] [--skip-install]`)
+  [--host-only] [--only linux-x64[,darwin-arm64,...]] [--skip-install] [--manifest-only]`)
   process.exit(0)
 }
 
@@ -50,6 +50,7 @@ const outDir = path.resolve(
 )
 const hostOnly = process.argv.includes("--host-only")
 const skipInstall = process.argv.includes("--skip-install")
+const manifestOnly = process.argv.includes("--manifest-only")
 const onlyRaw = argValue("--only")
 const onlyTargets = onlyRaw
   ? onlyRaw.split(",").map((s) => s.trim()).filter(Boolean)
@@ -75,6 +76,22 @@ const packMeta = JSON.parse(readFileSync(packMetaPath, "utf-8")) as {
 }
 const templatePackModule = readFileSync(packModulePath, "utf-8")
 const templatePackId = argValue("--template-pack-id") ?? packMeta.packId
+
+if (manifestOnly) {
+  // CI assemble job: matrix jobs supply the compiled binaries + tools
+  // tarballs as artifacts; this only packs templates and stages the
+  // manifest so finalizeDistAssets can finish dist/ deterministically.
+  const manifest: BuildManifest = {
+    product: "spinosa",
+    version,
+    channel,
+    templatePackId,
+    assets: buildManifestAssets(),
+  }
+  writeFileSync(path.join(outDir, "build-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`)
+  ok("binaries", `manifest-only → ${outDir} (templatePackId ${templatePackId.slice(0, 12)}…)`)
+  process.exit(0)
+}
 
 const wanted = new Set(
   hostOnly

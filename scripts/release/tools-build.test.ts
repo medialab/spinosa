@@ -7,11 +7,12 @@ import {
 import {
   TOOLS_TARGETS,
   blankPng,
+  canBuildLinuxNative,
   parseTessdataPins,
   toolsTarballName,
 } from "../build-tools-tarballs.ts"
 
-describe("tools tarball pins (local-only bundling, no CI)", () => {
+describe("tools tarball pins (pinned source, local Lima or native CI runners)", () => {
   test("pins cover the full static chain with verified shape", () => {
     expect(SOURCE_PINS.map((p) => p.file)).toEqual([
       "zlib-1.3.1.tar.gz",
@@ -80,5 +81,34 @@ describe("tools tarball pins (local-only bundling, no CI)", () => {
   test("build module pins the same tesseract version", async () => {
     const module = await Bun.file(new URL("./tools-target.ts", import.meta.url)).text()
     expect(module).toContain(`TESSERACT_VERSION = "${TESSERACT_VERSION}"`)
+  })
+
+  test("native-linux selection matrix (Lima vs native CI runners)", () => {
+    // CI ubuntu runners build natively; anything else uses Lima.
+    expect(canBuildLinuxNative("linux-x64", { platform: "linux", arch: "x64" })).toBe(true)
+    expect(canBuildLinuxNative("linux-x64", { platform: "linux", arch: "x86_64" })).toBe(true)
+    expect(canBuildLinuxNative("linux-arm64", { platform: "linux", arch: "arm64" })).toBe(true)
+    expect(canBuildLinuxNative("linux-arm64", { platform: "linux", arch: "aarch64" })).toBe(true)
+    // Cross-arch still needs Lima (or a matching runner).
+    expect(canBuildLinuxNative("linux-x64", { platform: "linux", arch: "arm64" })).toBe(false)
+    expect(canBuildLinuxNative("linux-arm64", { platform: "linux", arch: "x64" })).toBe(false)
+    // Darwin hosts always use Lima for linux targets; darwin targets never native-linux.
+    expect(canBuildLinuxNative("linux-x64", { platform: "darwin", arch: "arm64" })).toBe(false)
+    expect(canBuildLinuxNative("darwin-arm64", { platform: "linux", arch: "arm64" })).toBe(false)
+    expect(canBuildLinuxNative("darwin-x64", { platform: "darwin", arch: "arm64" })).toBe(false)
+  })
+
+  test("linux builders never reference Lima when native, never host paths", async () => {
+    const module = await Bun.file(new URL("../build-tools-tarballs.ts", import.meta.url)).text()
+    // No hardcoded system tessdata locations anywhere in the build path.
+    for (const needle of [
+      "/opt/homebrew",
+      "/usr/local/share/tessdata",
+      "/usr/share/tessdata",
+      "/usr/share/tesseract-ocr",
+      "/opt/local/share/tessdata",
+    ]) {
+      expect(module, `build script must not reference host-system path ${needle}`).not.toContain(needle)
+    }
   })
 })

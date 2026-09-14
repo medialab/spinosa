@@ -8,7 +8,9 @@
  *
  * There is no CI for this: the release machine builds every tarball locally.
  *   darwin-* → compiled on this Mac (x64 via -arch cross-compile)
- *   linux-*  → compiled inside local Lima Ubuntu guests (native arch)
+ *   linux-*  → compiled inside local Lima Ubuntu guests (native arch),
+ *              or natively when the host already is matching-arch Linux
+ *              (GitHub Actions ubuntu runners) — no Lima needed there.
  *
  * Containment: tesseract links only base-system libs on macOS (SDK zlib,
  * static image libs) and is fully static on Linux. The produced binary never
@@ -220,6 +222,69 @@ function limaInstances(): string[] {
   } catch {
     return []
   }
+}
+
+export type HostSpec = { platform: string; arch: string }
+
+/** True when the host can compile a linux target natively (no Lima):
+ * matching-arch Linux (e.g. GitHub Actions ubuntu runners). Pure helper
+ * (host injectable) so unit tests cover the selection matrix. */
+export function canBuildLinuxNative(
+  target: ToolsTarget,
+  host: HostSpec = { platform: process.platform, arch: process.arch },
+): boolean {
+  if (!target.startsWith("linux-") || host.platform !== "linux") return false
+  const wantArch = target.endsWith("x64") ? "x64" : "arm64"
+  const hostArch = host.arch === "arm64" || host.arch === "aarch64"
+    ? "arm64"
+    : ["x64", "x86_64", "amd64"].includes(host.arch)
+      ? "x64"
+      : undefined
+  return hostArch === wantArch
+}
+
+/** Compile a linux target directly on a matching-arch Linux host
+ * (CI ubuntu runners). Same pins, flags, gates and probes as the Lima
+ * path — only the transport differs. Toolchain installs via apt only
+ * for tools missing from the host (runners already ship gcc/cmake). */
+async function buildLinuxNative(
+  target: ToolsTarget,
+  sourcesDir: string,
+  prefix: string,
+  workDir: string,
+): Promise<string> {
+  const wantArch = target.endsWith("x64") ? "x64" : "arm64"
+  if (!canBuildLinuxNative(target)) {
+    throw new Error(`${target} needs native ${wantArch} Linux (this host is ${process.platform}-${process.arch}) — use a matching runner or Lima`)
+  }
+  const missing = ["gcc", "g++", "cmake", "make", "file"].filter((tool) => !Bun.which(tool))
+  if (missing.length > 0) {
+    step("tools", `${target}: installing missing host toolchain (${missing.join(", ")}) via apt`)
+    await run(["sudo", "apt-get", "update", "-qq"])
+    await run(["sudo", "apt-get", "install", "-y", "-qq", "build-essential", "cmake", "file"])
+    ok("tools", `${target}: host toolchain ready`)
+  } else {
+    info("tools", `${target}: host toolchain present (gcc/g++/cmake/make/file) — no apt needed`)
+  }
+  const buildRoot = path.join(workDir, `build-${target}`)
+  rmSync(prefix, { recursive: true, force: true })
+  rmSync(buildRoot, { recursive: true, force: true })
+  mkdirSync(buildRoot, { recursive: true })
+  const jobs = cpuCount()
+  info("tools", `${target}: compiling natively with ${jobs} jobs (static tesseract — minutes, per-library lines below)`)
+  const compileElapsed = startTimer()
+  await buildToolTarget({
+    target,
+    os: "linux",
+    arch: wantArch,
+    sourcesDir,
+    prefix,
+    buildRoot,
+    jobs,
+    runner: localRunner(),
+  })
+  ok("tools", `${target}: native compile finished`, compileElapsed())
+  return path.join(prefix, "bin", "tesseract")
 }
 
 async function buildLinuxViaLima(
@@ -447,7 +512,12 @@ darwin targets compile on this Mac; linux targets compile in Lima guests
       if (process.platform !== "darwin" && process.platform !== "linux") {
         throw new Error(`${target} needs limactl on macOS/Linux (this host is ${process.platform})`)
       }
-      await buildLinuxViaLima(target, sourcesDir, prefix, workDir)
+      if (canBuildLinuxNative(target)) {
+        info("tools", `${tag} ${target}: matching-arch Linux host — building natively (no Lima)`)
+        await buildLinuxNative(target, sourcesDir, prefix, workDir)
+      } else {
+        await buildLinuxViaLima(target, sourcesDir, prefix, workDir)
+      }
     }
     const stage = path.join(stageRoot, target)
     rmSync(stage, { recursive: true, force: true })

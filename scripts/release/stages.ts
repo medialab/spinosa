@@ -155,11 +155,25 @@ export async function runBuild(ctx: StageContext): Promise<void> {
     chmodSync(binaryPath, 0o755)
   }
 
+  await finalizeDistAssets(paths, version, (m) => ctx.reporter.detail(m))
+}
+
+/**
+ * Finish dist/ deterministically: installers, manifest rewrite, checksums.
+ * Shared by local `build` (binaries just compiled) and CI `ci-assemble`
+ * (binaries + tools tarballs downloaded as matrix artifacts, manifest
+ * staged via build-release-binaries --manifest-only). Idempotent.
+ */
+export async function finalizeDistAssets(
+  paths: ReleasePaths,
+  version: string,
+  detail: (message: string) => void = () => {},
+): Promise<void> {
   const builtManifest = JSON.parse(readFileSync(paths.manifestPath, "utf-8")) as BuildManifest
   if (!builtManifest.templatePackId) {
     throw new Error("build-manifest.json missing templatePackId after binary build")
   }
-  ctx.reporter.detail(`templatePackId ${builtManifest.templatePackId.slice(0, 12)}…`)
+  detail(`templatePackId ${builtManifest.templatePackId.slice(0, 12)}…`)
 
   const installSource = readFileSync(resolve(RELEASE_ROOT, "install.sh"), "utf-8")
   const patchInstaller = (source: string, pinnedVersion: string, pinnedTag: string) =>
@@ -183,11 +197,12 @@ export async function runBuild(ctx: StageContext): Promise<void> {
   // Immutable assets hashed into checksums.txt (checksums.txt itself is published, not self-hashed).
   // Tools archives (Spinosa-owned Tesseract + tessdata) are checksummed before
   // extraction by the installer — fail closed when missing. They are built
-  // locally by scripts/build-tools-tarballs.ts (no CI builds them).
+  // from pinned source per target (local Lima guests or native CI runners)
+  // by scripts/build-tools-tarballs.ts (see RELEASE_GUIDE.md).
   for (const name of paths.toolsNames) {
     if (!existsSync(resolve(paths.dist, name))) {
       throw new Error(
-        `missing tools archive ${name} — build it locally first: ` +
+        `missing tools archive ${name} — build it first: ` +
         `bun scripts/build-tools-tarballs.ts --out-dir ${paths.dist} (see RELEASE_GUIDE.md)`,
       )
     }
@@ -204,9 +219,9 @@ export async function runBuild(ctx: StageContext): Promise<void> {
   const channelChecksums = await $`shasum -a 256 install.sh`.cwd(paths.channelDist).text()
   writeFileSync(paths.channelChecksumsPath, formatChecksums(channelChecksums))
 
-  ctx.reporter.detail(paths.dist)
-  ctx.reporter.detail(paths.channelDist)
-  ctx.reporter.detail(`binaries ${paths.binaryNames.join(", ")}`)
+  detail(paths.dist)
+  detail(paths.channelDist)
+  detail(`binaries ${paths.binaryNames.join(", ")}`)
 }
 
 function formatChecksums(text: string): string {
