@@ -246,6 +246,16 @@ async function buildLinuxViaLima(
   step("tools", `${target}: starting Lima guest ${instance} (first boot downloads/provisions — minutes, no output until ready)`)
   await run(["limactl", "start", instance])
   ok("tools", `${target}: guest ${instance} running`)
+  step("tools", `${target}: waiting for guest first-boot provisioning (cloud-init — minutes on a fresh instance)`)
+  await run(["limactl", "shell", instance, "--", "bash", "-c",
+    "cloud-init status --wait",
+  ])
+  ok("tools", `${target}: guest provisioning settled`)
+  step("tools", `${target}: waiting for any guest apt lock to clear`)
+  await run(["limactl", "shell", instance, "--", "bash", "-c",
+    "for i in $(seq 1 60); do sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || break; sleep 10; done; sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && exit 1 || exit 0",
+  ])
+  ok("tools", `${target}: apt lock free`)
   step("tools", `${target}: installing guest toolchain (apt-get — minutes, output streams below)`)
   await run(["limactl", "shell", instance, "--", "bash", "-c",
     "sudo apt-get update -qq && sudo apt-get install -y -qq build-essential cmake file",
