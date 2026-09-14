@@ -28,6 +28,11 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
 
 Dry-run without publishing (after workflow changes):
 `gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true`.
+`ci-assemble --dry-run` runs finalize/verify/smoke FOR REAL and only
+prints remote steps — a green local dry-run (with complete `dist/`)
+predicts a green publish. Anticipate CI before pushing: run
+`validate-tag`, `ci-assemble --dry-run`, and `quality` locally; clean-runner
+gaps get fixed by making the job provision them, never by weakening gates.
 
 `.github/workflows/release-beta.yml` must exist on `main` (GitHub runs tag
 workflows from the default branch) and stay in sync with `beta-dev`.

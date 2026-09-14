@@ -169,6 +169,12 @@ export async function finalizeDistAssets(
   version: string,
   detail: (message: string) => void = () => {},
 ): Promise<void> {
+  if (!existsSync(paths.manifestPath)) {
+    throw new Error(
+      `build-manifest.json missing in ${paths.dist} — stage matrix artifacts there first ` +
+      `(product binaries + tools tarballs) and run build-release-binaries.ts --manifest-only`,
+    )
+  }
   const builtManifest = JSON.parse(readFileSync(paths.manifestPath, "utf-8")) as BuildManifest
   if (!builtManifest.templatePackId) {
     throw new Error("build-manifest.json missing templatePackId after binary build")

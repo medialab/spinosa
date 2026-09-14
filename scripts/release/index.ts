@@ -180,8 +180,11 @@ async function commandCiAssemble(versionArg: string, options: CliOptions): Promi
   }
   const head = (await $`git rev-parse HEAD`.cwd(RELEASE_ROOT).quiet()).text().trim()
   if (options.dryRun) {
-    // Dry runs (workflow_dispatch) prove the pipeline without a pushed tag.
-    console.log(`  (dry-run: skipping pushed-tag check at ${head.slice(0, 8)})`)
+    // Dry runs (workflow_dispatch) prove the pipeline without a pushed tag
+    // and without remote mutations — but everything local runs FOR REAL
+    // (finalize, verify-local, smoke) so a green dry-run predicts a green
+    // publish. Missing dist/ assets fail here with a precise message.
+    console.log(`  (dry-run: tag check skipped at ${head.slice(0, 8)}; remote steps print only)`)
   } else {
     const tagCheck = await $`git rev-list -1 v${version}`.cwd(RELEASE_ROOT).nothrow().quiet()
     if (tagCheck.exitCode !== 0) fail(`tag v${version} not found — CI assembles from a pushed tag`)
@@ -193,8 +196,19 @@ async function commandCiAssemble(versionArg: string, options: CliOptions): Promi
   if (readCurrentVersion() !== version) {
     fail(`package.json says v${readCurrentVersion()}, tag says v${version}`)
   }
-  if (!options.dryRun) {
-    await finalizeDistAssets(releasePaths(version), version, (m) => console.log(`  ${m}`))
+  await finalizeDistAssets(releasePaths(version), version, (m) => console.log(`  ${m}`))
+  if (options.dryRun) {
+    // Real local stages first (fail closed on incomplete dist/), then
+    // print-only remote stages.
+    await runPipeline(version, {
+      ...options,
+      dryRun: false,
+      from: "verifyLocal",
+      only: ["verifyLocal", "smoke"],
+      skipBump: true,
+    })
+    await runPipeline(version, { ...options, from: "gitTag", skipBump: true })
+    return
   }
   await runPipeline(version, { ...options, from: "verifyLocal", skipBump: true })
 }
