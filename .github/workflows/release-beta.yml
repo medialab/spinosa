@@ -253,3 +253,26 @@ jobs:
             dist/v${{ needs.resolve.outputs.version }}/spinosa-tools-linux-x64.tar.gz
             dist/v${{ needs.resolve.outputs.version }}/checksums.txt
             dist/v${{ needs.resolve.outputs.version }}/build-manifest.json
+
+  verify-darwin:
+    name: Verify published darwin asset on Tahoe
+    needs: [resolve, assemble]
+    if: needs.resolve.outputs.dry_run != 'true'
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Download published darwin assets
+        shell: bash
+        run: |
+          mkdir -p /tmp/verify-darwin && cd /tmp/verify-darwin
+          gh release download "v${{ needs.resolve.outputs.version }}" \
+            -p "spinosa-darwin-arm64" -p "checksums.txt"
+          grep " spinosa-darwin-arm64$" checksums.txt | shasum -a 256 -c -
+
+      - name: Smoke published darwin binary (version + version --json)
+        shell: bash
+        run: |
+          cd /tmp/verify-darwin
+          chmod +x spinosa-darwin-arm64
+          ./spinosa-darwin-arm64 version
+          ./spinosa-darwin-arm64 version --json
