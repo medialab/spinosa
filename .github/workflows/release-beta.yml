@@ -5,8 +5,13 @@
 #   git tag v1.1.0-beta.17.18 && git push origin v1.1.0-beta.17.18
 # The tag push IS the release approval (tag protection rules restrict v*
 # pushes to maintainers). CI validates the tag, builds all four targets
-# natively in parallel, assembles dist/, publishes the immutable GitHub
-# release with build-provenance attestation, and rolls the `beta` channel.
+# natively in parallel (each with a native-imports smoke that dlopens the TUI
+# natives version/doctor never touch), assembles dist/, verifies every native
+# binary, and only then publishes the immutable GitHub release with
+# build-provenance attestation and rolls the `beta` channel.
+#
+# Publishing before native verification shipped v1.1.0-beta.19 broken to the
+# default installer — the publish job is gated behind the verify matrix.
 #
 # workflow_dispatch (dry_run=true default) proves the pipeline without
 # publishing — use it after workflow changes before cutting a real tag.
@@ -27,10 +32,10 @@ on:
         type: boolean
         default: true
 
+# No top-level write permissions: each job declares the minimum it needs.
+# Only the publish job gets contents:write / attestations:write / id-token:write.
 permissions:
-  contents: write
-  attestations: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: release-beta
@@ -45,6 +50,8 @@ jobs:
     name: Resolve version
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       dry_run: ${{ steps.version.outputs.dry_run }}
@@ -67,6 +74,8 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - name: Check out tag (full history for tag comparison)
         uses: actions/checkout@v4
@@ -107,6 +116,8 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     needs: [resolve, validate]
+    permissions:
+      contents: read
     strategy:
       fail-fast: true
       matrix:
@@ -167,6 +178,7 @@ jobs:
           --version "${{ needs.resolve.outputs.version }}"
           --channel beta
           --only "${{ matrix.target }}"
+          --skip-install
 
       - name: Build OCR tools tarball (${{ matrix.target }})
         shell: bash
@@ -180,6 +192,32 @@ jobs:
           --reuse-previous
           --sources-dir ~/.cache/spinosa-tools-sources
 
+      # Native gate at the source: version/doctor never dlopen the TUI
+      # natives. A corrupt embedded Mach-O (beta.18/beta.19) passes version
+      # and dies on TUI launch — native-imports loads OpenTUI, FFF, watcher,
+      # node-pty, and canvas without starting an interactive UI. Fail closed.
+      # Doctor runs once against the just-built tools tarball to prove
+      # bundled OCR standalone.
+      - name: Smoke native binary (${{ matrix.target }})
+        shell: bash
+        run: |
+          BIN="dist/v${{ needs.resolve.outputs.version }}/spinosa-${{ matrix.target }}"
+          TOOLS="dist/v${{ needs.resolve.outputs.version }}/spinosa-tools-${{ matrix.target }}.tar.gz"
+          chmod +x "$BIN"
+          STAGED_HOME="$(mktemp -d /tmp/smoke-home-XXXXXX)"
+          mkdir -p "$STAGED_HOME/.spinosa/tools"
+          tar -xzf "$TOOLS" -C "$STAGED_HOME/.spinosa/tools"
+          HOME="$STAGED_HOME" SPINOSA_HOME="$STAGED_HOME/.spinosa" "$BIN" doctor
+          rm -rf "$STAGED_HOME"
+          for i in 1 2 3; do
+            FRESH_HOME="$(mktemp -d /tmp/smoke-home-XXXXXX)"
+            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+              "$BIN" version
+            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+              "$BIN" internal smoke native-imports --json
+            rm -rf "$FRESH_HOME"
+          done
+
       - name: Upload target artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -191,12 +229,16 @@ jobs:
           retention-days: 7
 
   assemble:
-    name: Assemble + publish
+    name: Assemble (no publish)
     needs: [resolve, build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
     # No environment gate here: the pushed tag itself is the approval
     # (v* pushes are maintainer-restricted by tag protection rules).
+    # This job finalizes + locally gates but never publishes — publish runs
+    # only after every native verify job passes.
     steps:
       - name: Check out tag (full history for tag verification)
         uses: actions/checkout@v4
@@ -228,17 +270,120 @@ jobs:
           --channel beta
           --manifest-only
 
-      - name: Assemble + publish release
+      - name: Assemble + local gates (finalize-only)
         shell: bash
         run: |
           if [ "${{ needs.resolve.outputs.dry_run }}" = "true" ]; then
             bun run release ci-assemble "v${{ needs.resolve.outputs.version }}" --dry-run
           else
-            bun run release ci-assemble "v${{ needs.resolve.outputs.version }}"
+            bun run release ci-assemble "v${{ needs.resolve.outputs.version }}" --finalize-only
           fi
 
-      - name: Attest build provenance
+      - name: Upload assembled dist
         if: needs.resolve.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          # Both dist/v<version>/ (immutable) and dist/beta/ (channel) —
+          # ci-publish needs the channel installer staged by finalize.
+          name: assembled-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  verify:
+    name: Verify ${{ matrix.target }}
+    needs: [resolve, assemble]
+    if: needs.resolve.outputs.dry_run != 'true'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-26
+          - target: darwin-x64
+            runner: macos-26-intel
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: linux-x64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - name: Download assembled dist
+        uses: actions/download-artifact@v4
+        with:
+          name: assembled-dist
+          path: .
+
+      - name: Verify checksum + native smoke (${{ matrix.target }})
+        shell: bash
+        run: |
+          cd "dist/v${{ needs.resolve.outputs.version }}"
+          grep " spinosa-${{ matrix.target }}$" checksums.txt | shasum -a 256 -c -
+          grep " spinosa-tools-${{ matrix.target }}.tar.gz$" checksums.txt | shasum -a 256 -c -
+          chmod +x "spinosa-${{ matrix.target }}"
+          # The Tahoe SIGKILL is intermittent (a corrupt embedded native
+          # sometimes survives one launch), so probe repeatedly with a fresh
+          # HOME each time to force re-stage + cold dlopen. Fail closed.
+          # First iteration also stages the platform tools tarball and runs
+          # doctor, proving bundled OCR standalone (no host-tool fallback).
+          STAGED_TOOLS=0
+          for i in 1 2 3 4 5; do
+            FRESH_HOME="$(mktemp -d /tmp/verify-home-XXXXXX)"
+            if [ "$STAGED_TOOLS" -eq 0 ]; then
+              mkdir -p "$FRESH_HOME/.spinosa/tools"
+              tar -xzf "spinosa-tools-${{ matrix.target }}.tar.gz" -C "$FRESH_HOME/.spinosa/tools"
+              HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+                ./spinosa-${{ matrix.target }} doctor
+              STAGED_TOOLS=1
+            fi
+            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+              ./spinosa-${{ matrix.target }} version
+            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+              ./spinosa-${{ matrix.target }} version --json
+            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
+              ./spinosa-${{ matrix.target }} internal smoke native-imports --json
+            rm -rf "$FRESH_HOME"
+          done
+
+  publish:
+    name: Publish + roll beta channel
+    needs: [resolve, assemble, verify]
+    if: needs.resolve.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out tag (full history for tag verification)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download assembled dist
+        uses: actions/download-artifact@v4
+        with:
+          name: assembled-dist
+          path: .
+
+      - name: Publish immutable release + roll beta channel
+        shell: bash
+        run: bun run release ci-publish "v${{ needs.resolve.outputs.version }}"
+
+      - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -253,35 +398,3 @@ jobs:
             dist/v${{ needs.resolve.outputs.version }}/spinosa-tools-linux-x64.tar.gz
             dist/v${{ needs.resolve.outputs.version }}/checksums.txt
             dist/v${{ needs.resolve.outputs.version }}/build-manifest.json
-
-  verify-darwin:
-    name: Verify published darwin asset on Tahoe
-    needs: [resolve, assemble]
-    if: needs.resolve.outputs.dry_run != 'true'
-    runs-on: macos-26
-    timeout-minutes: 15
-    steps:
-      - name: Download published darwin assets
-        shell: bash
-        run: |
-          mkdir -p /tmp/verify-darwin && cd /tmp/verify-darwin
-          gh release download -R "${{ github.repository }}" "v${{ needs.resolve.outputs.version }}" \
-            -p "spinosa-darwin-arm64" -p "checksums.txt"
-          grep " spinosa-darwin-arm64$" checksums.txt | shasum -a 256 -c -
-
-      - name: Smoke published darwin binary (version + version --json)
-        shell: bash
-        run: |
-          cd /tmp/verify-darwin
-          chmod +x spinosa-darwin-arm64
-          # The Tahoe SIGKILL is intermittent (a corrupt embedded native
-          # sometimes survives one launch), so probe repeatedly with a fresh
-          # HOME each time to force re-stage + cold dlopen. Fail closed.
-          for i in 1 2 3 4 5; do
-            FRESH_HOME="$(mktemp -d /tmp/verify-home-XXXXXX)"
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              ./spinosa-darwin-arm64 version
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              ./spinosa-darwin-arm64 version --json
-            rm -rf "$FRESH_HOME"
-          done
