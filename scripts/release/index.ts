@@ -179,11 +179,16 @@ async function commandCiAssemble(versionArg: string, options: CliOptions): Promi
     process.exit(1)
   }
   const head = (await $`git rev-parse HEAD`.cwd(RELEASE_ROOT).quiet()).text().trim()
-  const tagCheck = await $`git rev-list -1 v${version}`.cwd(RELEASE_ROOT).nothrow().quiet()
-  if (tagCheck.exitCode !== 0) fail(`tag v${version} not found — CI assembles from a pushed tag`)
-  const tagSha = tagCheck.text().trim()
-  if (tagSha !== head) {
-    fail(`tag v${version} points at ${tagSha.slice(0, 8)}, HEAD is ${head.slice(0, 8)} — tag the release commit`)
+  if (options.dryRun) {
+    // Dry runs (workflow_dispatch) prove the pipeline without a pushed tag.
+    console.log(`  (dry-run: skipping pushed-tag check at ${head.slice(0, 8)})`)
+  } else {
+    const tagCheck = await $`git rev-list -1 v${version}`.cwd(RELEASE_ROOT).nothrow().quiet()
+    if (tagCheck.exitCode !== 0) fail(`tag v${version} not found — CI assembles from a pushed tag`)
+    const tagSha = tagCheck.text().trim()
+    if (tagSha !== head) {
+      fail(`tag v${version} points at ${tagSha.slice(0, 8)}, HEAD is ${head.slice(0, 8)} — tag the release commit`)
+    }
   }
   if (readCurrentVersion() !== version) {
     fail(`package.json says v${readCurrentVersion()}, tag says v${version}`)
