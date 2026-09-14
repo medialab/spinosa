@@ -112,26 +112,33 @@ export interface EmbeddedSpan {
 
 /**
  * Locate pristine embedded file bytes (e.g. a staged `.node` native) inside
- * the compiled binary. Probes distinctive slices away from the file head and
- * requires exactly one hit — fail closed on ambiguity so the path scrub can
- * never clobber the wrong span.
+ * the compiled binary. Bun may embed the same file asset more than once, so
+ * every fullverbatim occurrence is returned. Slices are verified with a full
+ * byte compare — fail closed when no complete copy is found, so the path
+ * scrub can never clobber the wrong span.
  */
-export function findEmbeddedSpan(haystack: Buffer, needle: Buffer): EmbeddedSpan {
+export function findEmbeddedSpans(haystack: Buffer, needle: Buffer): EmbeddedSpan[] {
   if (needle.byteLength < 4096) {
     throw new Error(`embedded span needle too small to locate uniquely (${needle.byteLength} bytes)`)
   }
   for (const sliceOffset of [1048576, 524288, 131072, 16384, 1024]) {
     if (sliceOffset + 256 > needle.byteLength) continue
     const slice = needle.subarray(sliceOffset, sliceOffset + 256)
-    const first = haystack.indexOf(slice)
-    if (first < 0) continue
-    if (haystack.indexOf(slice, first + 1) >= 0) continue
-    const start = first - sliceOffset
-    const end = start + needle.byteLength
-    if (start < 0 || end > haystack.byteLength) continue
-    return { start, end }
+    const spans: EmbeddedSpan[] = []
+    let from = 0
+    while (true) {
+      const hit = haystack.indexOf(slice, from)
+      if (hit < 0) break
+      const start = hit - sliceOffset
+      const end = start + needle.byteLength
+      if (start >= 0 && end <= haystack.byteLength && haystack.subarray(start, end).equals(needle)) {
+        spans.push({ start, end })
+      }
+      from = hit + 1
+    }
+    if (spans.length > 0) return spans
   }
-  throw new Error("embedded native span not uniquely locatable — refusing to scrub (fail closed)")
+  throw new Error("embedded native span not locatable — refusing to scrub (fail closed)")
 }
 
 export function spanIntersects(match: number, end: number, spans: readonly EmbeddedSpan[]): boolean {
@@ -434,12 +441,14 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
         `binary ${outfile} missing embedded bytes for ${canvasEmbed.name} (${item.os}-${item.arch}) — canvas native not packaged`,
       )
     }
-    const canvasSpan = findEmbeddedSpan(binBytes, canvasLibData)
+    const canvasSpans = findEmbeddedSpans(binBytes, canvasLibData)
     const canvasHash = sha256Hex(canvasLibData)
 
-    const scrubbedPaths = scrubEmbeddedBuildPaths(outfile, [canvasSpan])
-    assertNoEmbeddedBuildPaths(outfile, [canvasSpan])
-    assertEmbeddedSpanIntact(outfile, canvasSpan, canvasHash, `canvas native ${canvasEmbed.name}`)
+    const scrubbedPaths = scrubEmbeddedBuildPaths(outfile, canvasSpans)
+    assertNoEmbeddedBuildPaths(outfile, canvasSpans)
+    for (const span of canvasSpans) {
+      assertEmbeddedSpanIntact(outfile, span, canvasHash, `canvas native ${canvasEmbed.name}`)
+    }
     if (process.platform === "darwin" && item.os === "darwin") {
       const signed = await $`codesign --force --sign - ${outfile}`.nothrow()
       if (signed.exitCode !== 0) throw new Error(`failed to re-sign sanitized binary: ${outfile}`)

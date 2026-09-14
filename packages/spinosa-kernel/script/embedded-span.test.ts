@@ -5,7 +5,7 @@ import path from "node:path"
 import {
   assertEmbeddedSpanIntact,
   assertNoEmbeddedBuildPaths,
-  findEmbeddedSpan,
+  findEmbeddedSpans,
   scrubEmbeddedBuildPaths,
   sha256Hex,
   type EmbeddedSpan,
@@ -48,18 +48,23 @@ function testNeedle(): Buffer {
 }
 
 describe("embedded native span protection (scrub must not touch staged .node bytes)", () => {
-  test("findEmbeddedSpan locates the unique pristine span", () => {
+  test("findEmbeddedSpans locates every pristine copy", () => {
     const needle = testNeedle()
     const { haystack, span } = fakeBinary(needle)
-    expect(findEmbeddedSpan(haystack, needle)).toEqual(span)
+    expect(findEmbeddedSpans(haystack, needle)).toEqual([span])
+    // Bun embeds the same file asset more than once: both copies protected.
+    const doubled = Buffer.concat([haystack, Buffer.alloc(64, 0x41), needle])
+    const second: EmbeddedSpan = {
+      start: haystack.byteLength + 64,
+      end: haystack.byteLength + 64 + needle.byteLength,
+    }
+    expect(findEmbeddedSpans(doubled, needle)).toEqual([span, second])
   })
 
-  test("findEmbeddedSpan fails closed when absent or ambiguous", () => {
+  test("findEmbeddedSpans fails closed when absent or too small", () => {
     const haystack = Buffer.alloc(8192, 0x41)
-    expect(() => findEmbeddedSpan(haystack, Buffer.alloc(8192, 0x42))).toThrow(/not uniquely locatable/)
-    const twice = Buffer.concat([Buffer.alloc(8192, 0x43), Buffer.alloc(8192, 0x43)])
-    expect(() => findEmbeddedSpan(twice, Buffer.alloc(8192, 0x43))).toThrow(/not uniquely locatable/)
-    expect(() => findEmbeddedSpan(haystack, Buffer.alloc(16, 0x44))).toThrow(/too small/)
+    expect(() => findEmbeddedSpans(haystack, testNeedle())).toThrow(/not locatable/)
+    expect(() => findEmbeddedSpans(haystack, Buffer.alloc(16, 0x44))).toThrow(/too small/)
   })
 
   test("scrub preserves the protected span and still scrubs outside it", () => {
