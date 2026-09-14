@@ -265,7 +265,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p /tmp/verify-darwin && cd /tmp/verify-darwin
-          gh release download "v${{ needs.resolve.outputs.version }}" \
+          gh release download -R "${{ github.repository }}" "v${{ needs.resolve.outputs.version }}" \
             -p "spinosa-darwin-arm64" -p "checksums.txt"
           grep " spinosa-darwin-arm64$" checksums.txt | shasum -a 256 -c -
 
