@@ -10,6 +10,15 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.21] — 2026-09-14
+
+### Fixed
+
+- Release artifacts download into dist. Verify and publish jobs rebuild the versioned layout. Code: `.github/workflows/release-beta.yml`.
+- Publish routing has unit tests. Stage plans and tag guards fail closed. Code: `scripts/release/index.ts`.
+- Native-imports aggregation has unit tests. One corrupt native fails the gate. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
+- Timed installer steps preserve state on timeout. The kill trap exports partial state for rollback. Code: `install.sh`.
+
 ## [1.1.0-beta.20] — 2026-09-14
 
 ### Fixed

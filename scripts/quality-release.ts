@@ -38,6 +38,7 @@ const CORE_RELEASE_TESTS = [
   "../../scripts/release/github.test.ts",
   "../../scripts/release/bump.test.ts",
   "../../scripts/release/lib.test.ts",
+  "../../scripts/release/index.test.ts",
   "../../scripts/set-version.test.ts",
 ] as const
 
@@ -132,6 +133,13 @@ if (failed1.length > 0) {
 const wave2 = await wave("wave 2: launch / workspace regressions", [
   runJob("kernel cwd / thread", () =>
     bunTest(path.join(root, "packages/spinosa-kernel"), ["test/cli/tui/thread.test.ts"], 30_000),
+  ),
+  runJob("kernel smoke aggregation", () =>
+    bunTest(
+      path.join(root, "packages/spinosa-kernel"),
+      ["src/cli/cmd/internal-smoke.test.ts", "script/embedded-span.test.ts"],
+      30_000,
+    ),
   ),
   runJob("tui release-critical", async () => {
     const result = await $`bun test --isolate --timeout 60000 ${TUI_RELEASE_TESTS}`

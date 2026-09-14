@@ -13,6 +13,25 @@ function printJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
 }
 
+export interface NativeImportCheck {
+  name: string
+  ok: boolean
+  error?: string
+}
+
+/**
+ * Pure aggregation for `internal smoke native-imports`. Every check must
+ * pass — a single corrupt native (beta.18/beta.19 Mach-O outage) fails the
+ * gate. Extracted so unit tests pin the fail-closed semantics.
+ */
+export function evaluateNativeImportChecks(checks: NativeImportCheck[]): {
+  ok: boolean
+  payload: { ok: boolean; checks: NativeImportCheck[] }
+} {
+  const ok = checks.length > 0 && checks.every((c) => c.ok)
+  return { ok, payload: { ok, checks } }
+}
+
 export const InternalCommand = {
   command: "internal",
   describe: false as const,
@@ -75,7 +94,7 @@ export const InternalCommand = {
             "Load OpenTUI, FFF, watcher, node-pty, and canvas without starting a UI",
             (y) => y.option("json", { type: "boolean", default: false }),
             async (args) => {
-              const checks: { name: string; ok: boolean; error?: string }[] = []
+              const checks: NativeImportCheck[] = []
               // Static specifiers so Bun --compile embeds the modules
               // (variable import() cannot be traced). Each check only loads
               // the native binding — never starts an interactive UI.
@@ -126,8 +145,7 @@ export const InternalCommand = {
               } catch (err) {
                 checks.push({ name: "canvas", ok: false, error: err instanceof Error ? err.message : String(err) })
               }
-              const ok = checks.every((c) => c.ok)
-              const payload = { ok, checks }
+              const { ok, payload } = evaluateNativeImportChecks(checks)
               if (args.json || getFormat(args) === "json") printJson(payload)
               else {
                 for (const c of checks) {

@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.1.0-beta.20"
+PINNED_VERSION="1.1.0-beta.21"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 DEFAULT_VERIFY_TIMEOUT_SECONDS="180"
@@ -392,7 +392,11 @@ run_timed_step() {
   step_begin "$label" "$timeout_seconds"
   started="$(date +%s)"
   export SPINOSA_TIMED_STATE_FILE="$state_file"
-  (trap '_timed_export_state' EXIT; trap - ERR; "$@") >"$output_file" 2>&1 &
+  # EXIT alone is not enough: SIGTERM kills bash without running EXIT traps,
+  # and the timeout path below kills the payload tree. Trap TERM/INT too so
+  # partial state (e.g. BINARY_BACKUP set before a hang) still reaches the
+  # parent for rollback. SIGKILL remains best-effort by nature.
+  (trap '_timed_export_state' EXIT; trap '_timed_export_state; exit 143' TERM INT; trap - ERR; "$@") >"$output_file" 2>&1 &
   pid=$!
   unset SPINOSA_TIMED_STATE_FILE
   STEP_COMMAND_PID="$pid"

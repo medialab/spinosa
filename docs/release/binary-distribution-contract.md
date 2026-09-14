@@ -12,6 +12,10 @@ Typed source of truth: `packages/spinosa-core/src/distribution/contract.ts`.
 | `spinosa-darwin-x64` | macOS Intel executable |
 | `spinosa-linux-arm64` | Linux aarch64 glibc executable |
 | `spinosa-linux-x64` | Linux x86_64 glibc executable |
+| `spinosa-tools-darwin-arm64.tar.gz` | macOS Apple Silicon OCR tools (Tesseract + tessdata) |
+| `spinosa-tools-darwin-x64.tar.gz` | macOS Intel OCR tools (Tesseract + tessdata) |
+| `spinosa-tools-linux-arm64.tar.gz` | Linux aarch64 OCR tools (Tesseract + tessdata) |
+| `spinosa-tools-linux-x64.tar.gz` | Linux x86_64 OCR tools (Tesseract + tessdata) |
 | `checksums.txt` | SHA-256 for every immutable asset |
 | `build-manifest.json` | Version, channel, template pack ID, asset map |
 

@@ -61,7 +61,7 @@ function parseStage(value: string): StageName {
   return stage
 }
 
-function parseOptions(args: string[]): { positionals: string[]; options: CliOptions } {
+export function parseOptions(args: string[]): { positionals: string[]; options: CliOptions } {
   const options: CliOptions = { dryRun: false, skipBump: false }
   const positionals: string[] = []
   for (let index = 0; index < args.length; index += 1) {
@@ -74,6 +74,56 @@ function parseOptions(args: string[]): { positionals: string[]; options: CliOpti
     else positionals.push(arg)
   }
   return { positionals, options }
+}
+
+/**
+ * Pure routing for `ci-assemble`: which stages may run for each mode.
+ * Extracted so unit tests pin the publish gate — publish stages must be
+ * unreachable from `--dry-run` and `--finalize-only` (v1.1.0-beta.19 outage).
+ */
+export type CiAssemblePlan =
+  | { mode: "dry-run"; from: "verifyLocal"; only: ["verifyLocal", "smoke"]; remotePrintOnly: true }
+  | { mode: "finalize-only"; from: "verifyLocal"; only: ["verifyLocal", "smoke"] }
+  | { mode: "full"; from: "verifyLocal"; only: undefined }
+
+export function planCiAssemble(options: { dryRun: boolean; finalizeOnly?: boolean }): CiAssemblePlan {
+  if (options.dryRun) {
+    return { mode: "dry-run", from: "verifyLocal", only: ["verifyLocal", "smoke"], remotePrintOnly: true }
+  }
+  if (options.finalizeOnly) {
+    return { mode: "finalize-only", from: "verifyLocal", only: ["verifyLocal", "smoke"] }
+  }
+  return { mode: "full", from: "verifyLocal", only: undefined }
+}
+
+/**
+ * Pure routing for `ci-publish`: exactly the publish stages, nothing else.
+ * Runs only after every native verify job passes (see release-beta.yml).
+ */
+export function ciPublishStages(): { from: "publishVersion"; only: ["publishVersion", "channel", "verifyRemote"] } {
+  return { from: "publishVersion", only: ["publishVersion", "channel", "verifyRemote"] }
+}
+
+/**
+ * Pure tag/version gate shared by ci-assemble and ci-publish. Returns an
+ * error message instead of throwing so both callers and tests use it.
+ */
+export function checkCiTagGate(input: {
+  version: string
+  head: string
+  tagSha: string | undefined
+  packageVersion: string
+}): string | undefined {
+  if (input.tagSha === undefined) {
+    return `tag v${input.version} not found — CI assembles from a pushed tag`
+  }
+  if (input.tagSha !== input.head) {
+    return `tag v${input.version} points at ${input.tagSha.slice(0, 8)}, HEAD is ${input.head.slice(0, 8)} — tag the release commit`
+  }
+  if (input.packageVersion !== input.version) {
+    return `package.json says v${input.packageVersion}, tag says v${input.version}`
+  }
+  return undefined
 }
 
 function resumeCommand(version: string, stage: StageName): string {
@@ -188,49 +238,54 @@ async function commandCiAssemble(
     process.exit(1)
   }
   const head = (await $`git rev-parse HEAD`.cwd(RELEASE_ROOT).quiet()).text().trim()
-  if (options.dryRun) {
+  const plan = planCiAssemble(options)
+  if (plan.mode === "dry-run") {
     // Dry runs (workflow_dispatch) prove the pipeline without a pushed tag
     // and without remote mutations — but everything local runs FOR REAL
     // (finalize, verify-local, smoke) so a green dry-run predicts a green
     // publish. Missing dist/ assets fail here with a precise message.
     console.log(`  (dry-run: tag check skipped at ${head.slice(0, 8)}; remote steps print only)`)
+    // The version match still applies: a dry-run for a version the tree
+    // does not carry would falsely predict a green publish.
+    if (readCurrentVersion() !== version) {
+      fail(`package.json says v${readCurrentVersion()}, tag says v${version}`)
+    }
   } else {
     const tagCheck = await $`git rev-list -1 v${version}`.cwd(RELEASE_ROOT).nothrow().quiet()
-    if (tagCheck.exitCode !== 0) fail(`tag v${version} not found — CI assembles from a pushed tag`)
-    const tagSha = tagCheck.text().trim()
-    if (tagSha !== head) {
-      fail(`tag v${version} points at ${tagSha.slice(0, 8)}, HEAD is ${head.slice(0, 8)} — tag the release commit`)
-    }
-  }
-  if (readCurrentVersion() !== version) {
-    fail(`package.json says v${readCurrentVersion()}, tag says v${version}`)
+    const gateError = checkCiTagGate({
+      version,
+      head,
+      tagSha: tagCheck.exitCode === 0 ? tagCheck.text().trim() : undefined,
+      packageVersion: readCurrentVersion(),
+    })
+    if (gateError) fail(gateError)
   }
   await finalizeDistAssets(releasePaths(version), version, (m) => console.log(`  ${m}`))
-  if (options.dryRun) {
+  if (plan.mode === "dry-run") {
     // Real local stages first (fail closed on incomplete dist/), then
     // print-only remote stages.
     await runPipeline(version, {
       ...options,
       dryRun: false,
-      from: "verifyLocal",
-      only: ["verifyLocal", "smoke"],
+      from: plan.from,
+      only: [...plan.only],
       skipBump: true,
     })
     await runPipeline(version, { ...options, from: "gitTag", skipBump: true })
     return
   }
-  if (options.finalizeOnly) {
+  if (plan.mode === "finalize-only") {
     // Assemble job: finalize + local gates only. The workflow uploads dist/
     // and runs native verification on every platform before ci-publish.
     await runPipeline(version, {
       ...options,
-      from: "verifyLocal",
-      only: ["verifyLocal", "smoke"],
+      from: plan.from,
+      only: [...plan.only],
       skipBump: true,
     })
     return
   }
-  await runPipeline(version, { ...options, from: "verifyLocal", skipBump: true })
+  await runPipeline(version, { ...options, from: plan.from, skipBump: true })
 }
 
 /**
@@ -245,18 +300,18 @@ async function commandCiPublish(versionArg: string, options: CliOptions): Promis
   }
   const head = (await $`git rev-parse HEAD`.cwd(RELEASE_ROOT).quiet()).text().trim()
   const tagCheck = await $`git rev-list -1 v${version}`.cwd(RELEASE_ROOT).nothrow().quiet()
-  if (tagCheck.exitCode !== 0) fail(`tag v${version} not found — CI publishes from a pushed tag`)
-  const tagSha = tagCheck.text().trim()
-  if (tagSha !== head) {
-    fail(`tag v${version} points at ${tagSha.slice(0, 8)}, HEAD is ${head.slice(0, 8)} — tag the release commit`)
-  }
-  if (readCurrentVersion() !== version) {
-    fail(`package.json says v${readCurrentVersion()}, tag says v${version}`)
-  }
+  const gateError = checkCiTagGate({
+    version,
+    head,
+    tagSha: tagCheck.exitCode === 0 ? tagCheck.text().trim() : undefined,
+    packageVersion: readCurrentVersion(),
+  })
+  if (gateError) fail(gateError)
+  const publishPlan = ciPublishStages()
   await runPipeline(version, {
     ...options,
-    from: "publishVersion",
-    only: ["publishVersion", "channel", "verifyRemote"],
+    from: publishPlan.from,
+    only: [...publishPlan.only],
     skipBump: true,
   })
 }

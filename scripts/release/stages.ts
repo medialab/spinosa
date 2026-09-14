@@ -150,7 +150,7 @@ export async function runBuild(ctx: StageContext): Promise<void> {
     throw new Error("product binary build failed — see scripts/build-release-binaries.ts")
   }
 
-  // OCR tools tarballs (RELEASE_GUIDE.md: build stage builds them first).
+  // OCR tools tarballs (RELEASE_GUIDE.md: the build stage guarantees them).
   // The tools script skips archives already present, so a prebuilt dist/
   // (or CI matrix artifacts) is untouched; missing targets build from pinned
   // source (Lima guests for linux) or fail closed with setup instructions.

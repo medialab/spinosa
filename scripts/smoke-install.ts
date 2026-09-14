@@ -93,6 +93,20 @@ function hostBinaryName(): string {
   )
 }
 
+/**
+ * Stage a tools tarball under <smokeHome>/tools — the same layout
+ * install.sh provisions ($SPINOSA_HOME/tools/<platform>/{bin,tessdata}),
+ * so doctor proves bundled OCR standalone. Exported for unit tests.
+ */
+export async function stageToolsTarball(toolsTarball: string, smokeHome: string, label: string): Promise<void> {
+  if (!existsSync(toolsTarball)) throw new Error(`tools tarball not found: ${toolsTarball}`)
+  const toolsDir = path.join(smokeHome, "tools")
+  mkdirSync(toolsDir, { recursive: true })
+  const staged = await $`tar -xzf ${toolsTarball} -C ${toolsDir}`.nothrow()
+  if (staged.exitCode !== 0) throw new Error(`failed to stage tools tarball ${toolsTarball}`)
+  console.log(`→ staged tools ${path.basename(toolsTarball)} (${label})`)
+}
+
 async function smokeBinary(bin: string, label: string, smokeHome: string = home): Promise<void> {
   if (!existsSync(bin)) throw new Error(`${label} not found: ${bin}`)
   chmodSync(bin, 0o755)
@@ -106,13 +120,7 @@ async function smokeBinary(bin: string, label: string, smokeHome: string = home)
 
   const env = { ...process.env, SPINOSA_HOME: smokeHome }
   if (toolsTarball) {
-    if (!existsSync(toolsTarball)) throw new Error(`tools tarball not found: ${toolsTarball}`)
-    // Same layout install.sh provisions: $SPINOSA_HOME/tools/<platform>/{bin,tessdata}.
-    const toolsDir = path.join(smokeHome, "tools")
-    mkdirSync(toolsDir, { recursive: true })
-    const staged = await $`tar -xzf ${toolsTarball} -C ${toolsDir}`.nothrow()
-    if (staged.exitCode !== 0) throw new Error(`failed to stage tools tarball ${toolsTarball}`)
-    console.log(`→ staged tools ${path.basename(toolsTarball)} (${label})`)
+    await stageToolsTarball(toolsTarball, smokeHome, label)
   }
   for (const cmd of ["version", "doctor"] as const) {
     console.log(`→ smoke ${cmd} (${label})`)
@@ -274,12 +282,15 @@ async function smokeRepoRoot(): Promise<void> {
   console.log(`✓ smoke passed (framework=${frameworkRoot}, project=${project})`)
 }
 
-try {
-  if (distDir) await smokeDist(path.resolve(distDir))
-  else if (binaryPath) await smokeBinary(path.resolve(binaryPath), "product binary")
-  else await smokeRepoRoot()
-} finally {
-  for (const dir of cleanup) {
-    rmSync(dir, { recursive: true, force: true })
+// Import-safe: unit tests import stageToolsTarball without running a smoke.
+if (import.meta.main) {
+  try {
+    if (distDir) await smokeDist(path.resolve(distDir))
+    else if (binaryPath) await smokeBinary(path.resolve(binaryPath), "product binary")
+    else await smokeRepoRoot()
+  } finally {
+    for (const dir of cleanup) {
+      rmSync(dir, { recursive: true, force: true })
+    }
   }
 }

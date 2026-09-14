@@ -65,7 +65,7 @@ Binary releases should be built where native verification is possible. Cross-com
 
 ## Pipeline
 
-One orchestrator: `script/release/index.ts`
+One orchestrator: `scripts/release/index.ts`
 
 ```text
 preflight → bump → build → verify-local → smoke → git-tag → publish-version → channel → verify-remote
@@ -77,7 +77,7 @@ State is tracked in `dist/v{VERSION}/.release-state.json` so releases can be res
 
 1. **preflight** — channel↔branch enforcement, clean tree, `bun run quality`
 2. **bump** — sync versions, commit, push; refresh release-state SHA to post-bump HEAD
-3. **build** — build OCR tools tarballs first (below), then pack embedded templates, compile four product binaries via `script/build-release-binaries.ts`, stage `install.sh`, `checksums.txt`, `build-manifest.json`
+3. **build** — pack embedded templates, compile four product binaries via `scripts/build-release-binaries.ts`, then build any missing OCR tools tarballs (below), stage `install.sh`, `checksums.txt`, `build-manifest.json`
 4. **verify-local** — exact asset set (no source tarball), pins, checksums, executable bits
 5. **smoke** — serve local assets over HTTP and run the real installer into a temp home (`SPINOSA_RELEASE_BASE_URL`)
 6. **git-tag** — tag must equal HEAD/state SHA
@@ -136,17 +136,17 @@ See the checklist in `docs/release/binary-distribution-contract.md` and `docs/re
 
 ```bash
 # Host platform only (faster iteration)
-bun script/build-release-binaries.ts --out-dir dist/vLOCAL --version "$(jq -r .version package.json)" --channel beta --host-only
+bun scripts/build-release-binaries.ts --out-dir dist/vLOCAL --version "$(jq -r .version package.json)" --channel beta --host-only
 
 # Full four-target matrix (release machine)
-bun script/build-release-binaries.ts --out-dir dist/v$(jq -r .version package.json) --version "$(jq -r .version package.json)" --channel beta
+bun scripts/build-release-binaries.ts --out-dir dist/v$(jq -r .version package.json) --version "$(jq -r .version package.json)" --channel beta
 ```
 
 Linux VM soak (Lima): [docs/release/lima-linux-soak.md](docs/release/lima-linux-soak.md).
 
 ---
 
-## OCR tools tarballs (local build, no CI)
+## OCR tools tarballs (pinned-source builds)
 
 `spinosa-tools-<os>-<arch>.tar.gz` (static Tesseract + pinned tessdata) is built
 from pinned source per target — nothing is downloaded as a binary.
@@ -188,4 +188,4 @@ The release `build` stage refuses to cut checksums when a tarball is missing.
 
 ## Version sync
 
-Product version source: root `package.json`. Sync with `bun script/set-version.ts <version>` (also patches `install.sh` `PINNED_VERSION`).
+Product version source: root `package.json`. Sync with `bun scripts/set-version.ts <version>` (also patches `install.sh` `PINNED_VERSION`).
