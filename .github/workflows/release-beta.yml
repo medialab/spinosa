@@ -151,6 +151,7 @@ jobs:
           bun scripts/build-tools-tarballs.ts
           --out-dir "dist/v${{ needs.resolve.outputs.version }}"
           --only "${{ matrix.target }}"
+          --reuse-previous
 
       - name: Upload target artifacts
         uses: actions/upload-artifact@v4
