@@ -1388,10 +1388,11 @@ extract_template_pack_id() {
 
 probe_spinosa_version_output() {
   local binary="$1"
+  local err_sink="${2:-/dev/null}"
   local out_file pid waited
   out_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe.XXXXXX")"
   (
-    "$binary" version --json 2>/dev/null || "$binary" version 2>/dev/null || true
+    "$binary" version --json 2>"$err_sink" || "$binary" version 2>>"$err_sink" || true
   ) >"$out_file" 2>&1 &
   pid=$!
   waited=0
@@ -1737,18 +1738,25 @@ run_staged_binary_checks() {
   local binary="$1"
   local out ver
   local version_ok=0
+  local probe_err=""
 
   [ -x "$binary" ] || die "Staged binary is not executable: ${binary}"
 
-  if out="$(probe_spinosa_version_output "$binary" 2>/dev/null || true)"; then
+  probe_err="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe-err.XXXXXX")"
+  if out="$(probe_spinosa_version_output "$binary" "$probe_err" || true)"; then
     if [ -n "$out" ] && ver="$(parse_version_output "$out")"; then
       version_ok=1
     fi
   fi
   if [ "$version_ok" -eq 0 ]; then
+    # Preserve the loader's stderr (e.g. SIGKILL / Code Signature Invalid
+    # on Tahoe) in spinosa.log instead of discarding it to /dev/null.
+    spinosa_log ERROR "staged probe stderr: $(head -c 2048 "$probe_err" 2>/dev/null)"
+    rm -f "$probe_err"
     # Fallback already included in probe (tries both --json and plain); if still not ok, fail
     [ -n "${ver:-}" ] || die "Staged binary failed version check"
   fi
+  rm -f "$probe_err"
 
   if [ "$ver" != "$VERSION" ]; then
     die "Staged binary version mismatch: got ${ver}, expected ${VERSION}"
