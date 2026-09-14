@@ -10,6 +10,17 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.19] — 2026-09-14
+
+### Added
+
+- CI verifies the published Darwin binary on macos-26 after publish. It checks checksums and runs version checks. Code: `.github/workflows/release-beta.yml`.
+
+### Fixed
+
+- Build scrub skips embedded canvas native spans. A hash gate fails closed on alteration. Darwin binaries launch on Tahoe. Code: `packages/spinosa-kernel/script/build.ts`.
+- Installer logs staged probe stderr into spinosa.log. Loader errors no longer hide behind version check failure. Code: `install.sh`.
+
 ## [1.1.0-beta.18] — 2026-09-14
 
 ### Fixed
