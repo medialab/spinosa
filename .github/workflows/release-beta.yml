@@ -297,7 +297,9 @@ jobs:
     permissions:
       contents: read
     strategy:
-      fail-fast: true
+      # Never fail fast here: a release decision needs the verdict from all
+      # four natives, not just the first failure.
+      fail-fast: false
       matrix:
         include:
           - target: darwin-arm64
@@ -315,7 +317,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: assembled-dist
-          path: .
+          # The artifact root holds the *contents* of dist/ (upload strips
+          # the top directory), so download into dist/ to reconstruct
+          # dist/v<version>/ + dist/beta/.
+          path: dist
 
       - name: Verify checksum + native smoke (${{ matrix.target }})
         shell: bash
@@ -377,7 +382,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: assembled-dist
-          path: .
+          # Same layout note as the verify jobs: artifact root holds the
+          # contents of dist/, so download into dist/.
+          path: dist
 
       - name: Publish immutable release + roll beta channel
         shell: bash
