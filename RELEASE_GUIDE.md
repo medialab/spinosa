@@ -1,6 +1,24 @@
 # Spinosa Release Guide
 
-## Quick start
+## Quick start (CI-built betas — primary path)
+
+```bash
+# 1. Prepare beta-dev: merge, CHANGELOG section, versions in sync
+bun run release plan beta patch   # shows next version, e.g. v1.1.0-beta.17.18
+# 2. Push a greater version tag — the tag push IS the release approval
+git tag v1.1.0-beta.17.18 && git push origin v1.1.0-beta.17.18
+# 3. GitHub Actions validates the tag, builds all four targets natively
+#    in parallel, assembles dist/, publishes the immutable release with
+#    build-provenance attestation, and rolls the `beta` channel.
+```
+
+Requirements: `v*` tag pushes restricted to maintainers (tag protection rules),
+tag greater than the previous beta, `package.json` matching the tag,
+CHANGELOG section present (CI validates all four fail-closed).
+
+Dry-run without publishing: `gh workflow run release-beta.yml -f version=1.1.0-beta.17.18 -f dry_run=true`.
+
+## Local fallback (release machine builds everything)
 
 ```bash
 export GH_TOKEN=$(gh auth token)   # auto-detected if gh is logged in
@@ -25,11 +43,13 @@ Binary releases should be built where native verification is possible. Cross-com
 
 | Command | Purpose |
 | ------- | ------- |
-| `bun run release:beta:patch` | Bump beta prerelease and publish |
+| `bun run release:beta:patch` | Bump beta prerelease and publish (local fallback) |
 | `bun run release:beta:minor` | Bump beta minor series |
 | `bun run release:stable:patch` | Stable patch release |
 | `bun run release:validate` | Preflight only (branch + quality) |
 | `bun run release plan beta patch` | Show version bump without publishing |
+| `bun scripts/release/validate-tag.ts vX.Y.Z` | Gate a tag before pushing (greater-than-previous, version + changelog match) |
+| `bun run release ci-assemble vX.Y.Z [--dry-run]` | Assemble dist/ from matrix artifacts + publish (CI only) |
 | `bun run release:resume` | Resume the latest incomplete release |
 | `bun run release:republish -- vX.Y.Z` | Republish only when checksums match (immutable) |
 
@@ -70,7 +90,8 @@ Contract: [docs/release/binary-distribution-contract.md](docs/release/binary-dis
 | `bun run smoke` | Local iteration | Repo-root `version`/`doctor` + cwd |
 | `bun run quality:full` | Before stable / deep sweep | Full typecheck-all, knip, syncpack, depcruise, all core+tui spinosa tests |
 
-Quality is **local only** — no GitHub Actions quality workflow.
+Quality runs locally (`release:validate`) and in the CI validate job.
+No quality-only GitHub Actions workflow beyond release.
 
 ---
 
@@ -120,9 +141,11 @@ Linux VM soak (Lima): [docs/release/lima-linux-soak.md](docs/release/lima-linux-
 ## OCR tools tarballs (local build, no CI)
 
 `spinosa-tools-<os>-<arch>.tar.gz` (static Tesseract + pinned tessdata) is built
-from pinned source on the release machine — nothing is downloaded as a binary,
-and no CI produces these assets. Darwin targets compile on the Mac; Linux
-targets compile inside local Lima guests (native arch).
+from pinned source per target — nothing is downloaded as a binary.
+Locally: Darwin targets compile on the Mac; Linux targets compile inside
+local Lima guests (native arch), or natively on matching-arch Linux.
+In CI: each matrix runner builds its own target natively
+(macos-15, macos-15-intel, ubuntu-24.04-arm, ubuntu-24.04) — no Lima.
 
 One-time guest setup (release machine only):
 
