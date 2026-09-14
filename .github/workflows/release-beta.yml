@@ -226,6 +226,9 @@ jobs:
             dist/v${{ needs.resolve.outputs.version }}/spinosa-${{ matrix.target }}
             dist/v${{ needs.resolve.outputs.version }}/spinosa-tools-${{ matrix.target }}.tar.gz
           if-no-files-found: error
+          # Re-runs of the same run re-upload; without this the second
+          # upload fails on the immutable name collision.
+          overwrite: true
           retention-days: 7
 
   assemble:
@@ -288,6 +291,8 @@ jobs:
           name: assembled-dist
           path: dist
           if-no-files-found: error
+          # Same rerun-collision note as the per-target uploads above.
+          overwrite: true
           retention-days: 7
 
   verify:
