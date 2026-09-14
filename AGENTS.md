@@ -29,6 +29,9 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
 Dry-run without publishing (after workflow changes):
 `gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true`.
 
+`.github/workflows/release-beta.yml` must exist on `main` (GitHub runs tag
+workflows from the default branch) and stay in sync with `beta-dev`.
+
 ## Building binaries and tools tarballs (what runs where)
 
 - Product binaries (`spinosa-<os>-<arch>`): `bun scripts/build-release-binaries.ts

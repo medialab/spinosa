@@ -18,6 +18,11 @@ CHANGELOG section present (CI validates all four fail-closed).
 
 Dry-run without publishing: `gh workflow run release-beta.yml -f version=1.1.0-beta.17.18 -f dry_run=true`.
 
+Workflow location rule: GitHub resolves and runs tag-triggered workflows
+from the default branch (`main`), checking out the pushed tag itself. Keep
+`.github/workflows/release-beta.yml` present on `main` and in sync with
+`beta-dev` whenever the pipeline changes — a tag release runs main's copy.
+
 ## Local fallback (release machine builds everything)
 
 ```bash
