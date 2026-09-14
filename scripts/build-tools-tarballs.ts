@@ -45,7 +45,7 @@ import {
   productToolsAssetName,
   type ProductBinaryTarget,
 } from "../packages/spinosa-core/src/distribution/contract.ts"
-import { info, ok, startTimer, step } from "./release/log.ts"
+import { info, ok, startTimer, step, warn } from "./release/log.ts"
 import {
   SOURCE_PINS,
   TESSERACT_VERSION,
@@ -247,15 +247,20 @@ async function buildLinuxViaLima(
   await run(["limactl", "start", instance])
   ok("tools", `${target}: guest ${instance} running`)
   step("tools", `${target}: waiting for guest first-boot provisioning (cloud-init — minutes on a fresh instance)`)
-  await run(["limactl", "shell", instance, "--", "bash", "-c",
-    "cloud-init status --wait",
-  ])
+  // Non-fatal: cloud-init exits nonzero when boot had errors, but its
+  // output still tells us whether provisioning settled. The apt-lock
+  // wait below is the real gate.
+  try {
+    info("tools", `${target}: cloud-init says: ${(await capture(["limactl", "shell", instance, "--", "bash", "-c", "cloud-init status --wait"])).trim().split("\n").pop()}`)
+  } catch (error) {
+    warn("tools", `${target}: cloud-init wait failed (${error instanceof Error ? error.message.split("\n")[0] : error}) — continuing, apt-lock wait gates next`)
+  }
   ok("tools", `${target}: guest provisioning settled`)
-  step("tools", `${target}: waiting for any guest apt lock to clear`)
+  step("tools", `${target}: waiting for any guest apt/dpkg lock to clear (up to 10 min)`)
   await run(["limactl", "shell", instance, "--", "bash", "-c",
-    "for i in $(seq 1 60); do sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || break; sleep 10; done; sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && exit 1 || exit 0",
+    "for i in $(seq 1 60); do sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break; sleep 10; done; sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && exit 1 || exit 0",
   ])
-  ok("tools", `${target}: apt lock free`)
+  ok("tools", `${target}: package locks free`)
   step("tools", `${target}: installing guest toolchain (apt-get — minutes, output streams below)`)
   await run(["limactl", "shell", instance, "--", "bash", "-c",
     "sudo apt-get update -qq && sudo apt-get install -y -qq build-essential cmake file",
