@@ -175,6 +175,8 @@ export async function finalizeDistAssets(
       `(product binaries + tools tarballs) and run build-release-binaries.ts --manifest-only`,
     )
   }
+  mkdirSync(paths.dist, { recursive: true })
+  mkdirSync(paths.channelDist, { recursive: true })
   const builtManifest = JSON.parse(readFileSync(paths.manifestPath, "utf-8")) as BuildManifest
   if (!builtManifest.templatePackId) {
     throw new Error("build-manifest.json missing templatePackId after binary build")
