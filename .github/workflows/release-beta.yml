@@ -1,20 +1,11 @@
 # Beta release — tag-triggered, fully built in CI.
 #
-# Flow: maintainer prepares beta-dev (merge + CHANGELOG + versions in sync),
-# then pushes a greater version tag:
-#   git tag v1.1.0-beta.17.18 && git push origin v1.1.0-beta.17.18
-# The tag push IS the release approval (tag protection rules restrict v*
-# pushes to maintainers). CI validates the tag, builds all four targets
-# natively in parallel (each with a native-imports smoke that dlopens the TUI
-# natives version/doctor never touch), assembles dist/, verifies every native
-# binary, and only then publishes the immutable GitHub release with
-# build-provenance attestation and rolls the `beta` channel.
+# The tag push IS the release approval (v* pushes are maintainer-restricted).
+# Pipeline: validate → build ×4 → assemble → verify ×4 → publish + channel.
+# Publish is gated behind verify: beta.19 shipped broken before this gate.
 #
-# Publishing before native verification shipped v1.1.0-beta.19 broken to the
-# default installer — the publish job is gated behind the verify matrix.
-#
-# workflow_dispatch (dry_run=true default) proves the pipeline without
-# publishing — use it after workflow changes before cutting a real tag.
+# Test workflow changes first (dry-run publishes nothing):
+#   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
 
 name: Beta release
 
@@ -25,15 +16,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version without leading v (e.g. 1.1.0-beta.17.18)"
+        description: "Version without leading v (e.g. 1.1.0-beta.22)"
         required: true
       dry_run:
         description: "Build + verify only, skip publish/channel"
         type: boolean
         default: true
 
-# No top-level write permissions: each job declares the minimum it needs.
-# Only the publish job gets contents:write / attestations:write / id-token:write.
+# No top-level write permissions: only publish gets write/attestations/id-token.
 permissions:
   contents: read
 
@@ -46,10 +36,10 @@ env:
   BUN_VERSION: "1.3.14"
 
 jobs:
-  resolve:
-    name: Resolve version
+  validate:
+    name: Validate tag + quality
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     permissions:
       contents: read
     outputs:
@@ -62,59 +52,33 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
             echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
-            echo "resolving manual dispatch for version ${{ inputs.version }} (dry_run=${{ inputs.dry_run }})"
           else
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "dry_run=false" >> "$GITHUB_OUTPUT"
-            echo "resolving tag push ${GITHUB_REF_NAME} (publishing)"
           fi
 
-  validate:
-    name: Validate tag + quality
-    needs: resolve
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - name: Check out tag (full history for tag comparison)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
-      - name: Validate release tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            bun scripts/release/validate-tag.ts "v${{ needs.resolve.outputs.version }}"
-          else
-            bun scripts/release/validate-tag.ts "${{ github.ref_name }}"
-          fi
+      - run: bun scripts/release/validate-tag.ts "${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.version.outputs.version) || github.ref_name }}"
 
-      - name: Install quality prerequisites
-        shell: bash
-        run: |
+      - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck bats
-          # No local OCR engine ships: no host engine needed. Doctor always
-          # reports OCR unavailable; scans transcribe via a vision model or
-          # copy-as-is, digital PDFs via pdf.js.
 
-      - name: Release quality gate
-        run: bun run quality
+      - run: bun run quality
 
   build:
     name: Build ${{ matrix.target }}
-    needs: [resolve, validate]
+    needs: validate
     permissions:
       contents: read
     strategy:
@@ -132,137 +96,90 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
-      - name: Check out tag
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
-      - name: Build product binary (${{ matrix.target }})
-        shell: bash
-        run: >
+      - run: >
           bun scripts/build-release-binaries.ts
-          --out-dir "dist/v${{ needs.resolve.outputs.version }}"
-          --version "${{ needs.resolve.outputs.version }}"
+          --out-dir "dist/v${{ needs.validate.outputs.version }}"
+          --version "${{ needs.validate.outputs.version }}"
           --channel beta
           --only "${{ matrix.target }}"
           --skip-install
 
-      # Native gate at the source: version/doctor never dlopen the TUI
-      # natives. A corrupt embedded Mach-O (beta.18/beta.19) passes version
-      # and dies on TUI launch — native-imports loads OpenTUI, FFF, watcher,
-      # node-pty, and canvas without starting an interactive UI. Fail closed.
-      # Local OCR was removed: doctor proves the no-OCR contract standalone
-      # (no tools tarball, no host-tool fallback).
-      - name: Smoke native binary (${{ matrix.target }})
-        shell: bash
-        run: |
-          BIN="dist/v${{ needs.resolve.outputs.version }}/spinosa-${{ matrix.target }}"
-          chmod +x "$BIN"
-          for i in 1 2 3; do
-            FRESH_HOME="$(mktemp -d /tmp/smoke-home-XXXXXX)"
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              "$BIN" version
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              "$BIN" doctor
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              "$BIN" internal smoke native-imports --json
-            rm -rf "$FRESH_HOME"
-          done
+      - run: bash scripts/smoke-native-binary.sh "dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}" 3
 
-      - name: Upload target artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
-          path: |
-            dist/v${{ needs.resolve.outputs.version }}/spinosa-${{ matrix.target }}
+          path: dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}
           if-no-files-found: error
-          # Re-runs of the same run re-upload; without this the second
-          # upload fails on the immutable name collision.
           overwrite: true
           retention-days: 7
 
   assemble:
     name: Assemble (no publish)
-    needs: [resolve, build]
+    needs: [validate, build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
-    # No environment gate here: the pushed tag itself is the approval
-    # (v* pushes are maintainer-restricted by tag protection rules).
-    # This job finalizes + locally gates but never publishes — publish runs
-    # only after every native verify job passes.
     steps:
-      - name: Check out tag (full history for tag verification)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
-      - name: Download all target artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           merge-multiple: true
-          path: dist/v${{ needs.resolve.outputs.version }}
+          path: dist/v${{ needs.validate.outputs.version }}
 
-      - name: Stage template manifest
-        shell: bash
-        run: >
-          bun scripts/build-release-binaries.ts
-          --out-dir "dist/v${{ needs.resolve.outputs.version }}"
-          --version "${{ needs.resolve.outputs.version }}"
-          --channel beta
-          --manifest-only
-
-      - name: Assemble + local gates (finalize-only)
-        shell: bash
-        run: |
-          if [ "${{ needs.resolve.outputs.dry_run }}" = "true" ]; then
-            bun run release ci-assemble "v${{ needs.resolve.outputs.version }}" --dry-run
+      - run: |
+          bun scripts/build-release-binaries.ts \
+            --out-dir "dist/v${{ needs.validate.outputs.version }}" \
+            --version "${{ needs.validate.outputs.version }}" \
+            --channel beta \
+            --manifest-only
+          if [ "${{ needs.validate.outputs.dry_run }}" = "true" ]; then
+            bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --dry-run
           else
-            bun run release ci-assemble "v${{ needs.resolve.outputs.version }}" --finalize-only
+            bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
           fi
 
-      - name: Upload assembled dist
-        if: needs.resolve.outputs.dry_run != 'true'
+      - if: needs.validate.outputs.dry_run != 'true'
         uses: actions/upload-artifact@v4
         with:
-          # Both dist/v<version>/ (immutable) and dist/beta/ (channel) —
-          # ci-publish needs the channel installer staged by finalize.
+          # Both dist/v<version>/ and dist/beta/ — ci-publish needs the channel installer.
           name: assembled-dist
           path: dist
           if-no-files-found: error
-          # Same rerun-collision note as the per-target uploads above.
           overwrite: true
           retention-days: 7
 
   verify:
     name: Verify ${{ matrix.target }}
-    needs: [resolve, assemble]
-    if: needs.resolve.outputs.dry_run != 'true'
+    needs: [validate, assemble]
+    if: needs.validate.outputs.dry_run != 'true'
     permissions:
       contents: read
     strategy:
-      # Never fail fast here: a release decision needs the verdict from all
-      # four natives, not just the first failure.
+      # Never fail fast: a release decision needs all four verdicts.
       fail-fast: false
       matrix:
         include:
@@ -277,41 +194,25 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
-      - name: Download assembled dist
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
+
+      - uses: actions/download-artifact@v4
         with:
           name: assembled-dist
-          # The artifact root holds the *contents* of dist/ (upload strips
-          # the top directory), so download into dist/ to reconstruct
-          # dist/v<version>/ + dist/beta/.
+          # Artifact root holds dist/ contents, so download into dist/.
           path: dist
 
-      - name: Verify checksum + native smoke (${{ matrix.target }})
-        shell: bash
-        run: |
-          cd "dist/v${{ needs.resolve.outputs.version }}"
+      - run: |
+          cd "dist/v${{ needs.validate.outputs.version }}"
           grep " spinosa-${{ matrix.target }}$" checksums.txt | shasum -a 256 -c -
-          chmod +x "spinosa-${{ matrix.target }}"
-          # The Tahoe SIGKILL is intermittent (a corrupt embedded native
-          # sometimes survives one launch), so probe repeatedly with a fresh
-          # HOME each time to force re-stage + cold dlopen. Fail closed.
-          for i in 1 2 3 4 5; do
-            FRESH_HOME="$(mktemp -d /tmp/verify-home-XXXXXX)"
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              ./spinosa-${{ matrix.target }} doctor
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              ./spinosa-${{ matrix.target }} version
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              ./spinosa-${{ matrix.target }} version --json
-            HOME="$FRESH_HOME" SPINOSA_HOME="$FRESH_HOME/.spinosa" \
-              ./spinosa-${{ matrix.target }} internal smoke native-imports --json
-            rm -rf "$FRESH_HOME"
-          done
+          bash "$GITHUB_WORKSPACE/scripts/smoke-native-binary.sh" "spinosa-${{ matrix.target }}" 5
 
   publish:
     name: Publish + roll beta channel
-    needs: [resolve, assemble, verify]
-    if: needs.resolve.outputs.dry_run != 'true'
+    needs: [validate, assemble, verify]
+    if: needs.validate.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -319,40 +220,31 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - name: Check out tag (full history for tag verification)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.ref }}
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
-      - name: Download assembled dist
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: assembled-dist
-          # Same layout note as the verify jobs: artifact root holds the
-          # contents of dist/, so download into dist/.
           path: dist
 
-      - name: Publish immutable release + roll beta channel
-        shell: bash
-        run: bun run release ci-publish "v${{ needs.resolve.outputs.version }}"
+      - run: bun run release ci-publish "v${{ needs.validate.outputs.version }}"
 
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            dist/v${{ needs.resolve.outputs.version }}/install.sh
-            dist/v${{ needs.resolve.outputs.version }}/spinosa-darwin-arm64
-            dist/v${{ needs.resolve.outputs.version }}/spinosa-darwin-x64
-            dist/v${{ needs.resolve.outputs.version }}/spinosa-linux-arm64
-            dist/v${{ needs.resolve.outputs.version }}/spinosa-linux-x64
-            dist/v${{ needs.resolve.outputs.version }}/checksums.txt
-            dist/v${{ needs.resolve.outputs.version }}/build-manifest.json
+            dist/v${{ needs.validate.outputs.version }}/install.sh
+            dist/v${{ needs.validate.outputs.version }}/spinosa-darwin-arm64
+            dist/v${{ needs.validate.outputs.version }}/spinosa-darwin-x64
+            dist/v${{ needs.validate.outputs.version }}/spinosa-linux-arm64
+            dist/v${{ needs.validate.outputs.version }}/spinosa-linux-x64
+            dist/v${{ needs.validate.outputs.version }}/checksums.txt
+            dist/v${{ needs.validate.outputs.version }}/build-manifest.json
