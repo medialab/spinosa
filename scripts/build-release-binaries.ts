@@ -20,6 +20,7 @@ import {
   buildSpinosaBinaries,
   type BinaryTarget,
 } from "../packages/spinosa-kernel/script/build.ts"
+import { info, ok, startTimer, step } from "./release/log.ts"
 
 const root = path.resolve(import.meta.dir, "..")
 
@@ -61,7 +62,7 @@ if (channel !== "stable" && channel !== "beta") {
 
 mkdirSync(outDir, { recursive: true })
 
-console.log(`→ packing workspace template for v${version}`)
+step("binaries", `packing workspace template for v${version}`)
 await $`bun scripts/pack-workspace-template.ts --version ${version}`.cwd(root)
 const packMetaPath = path.join(root, "packages/spinosa-kernel/src/generated/template-pack-meta.json")
 const packModulePath = path.join(root, "packages/spinosa-kernel/src/generated/template-pack.gen.ts")
@@ -102,7 +103,8 @@ if (targets.length === 0) {
   )
 }
 
-console.log(`→ compiling ${targets.map((t) => `${t.os}-${t.arch}`).join(", ")} via buildSpinosaBinaries`)
+step("binaries", `compiling ${targets.map((t) => `${t.os}-${t.arch}`).join(", ")} via buildSpinosaBinaries (minutes per target, per-target lines below)`)
+const compileElapsed = startTimer()
 const { assets } = await buildSpinosaBinaries({
   cwd: path.join(root, "packages/spinosa-kernel"),
   targets,
@@ -126,9 +128,9 @@ const manifest: BuildManifest = {
 }
 writeFileSync(path.join(outDir, "build-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`)
 
-console.log(`✓ binaries → ${outDir}`)
+ok("binaries", `compiled → ${outDir}`, compileElapsed())
 for (const [name, file] of Object.entries(assets)) {
-  console.log(`  ${name}: ${file}`)
+  info("binaries", `${name}: ${file}`)
 }
 
 for (const target of PRODUCT_BINARY_TARGETS) {

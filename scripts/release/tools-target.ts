@@ -13,6 +13,8 @@
  *                           is identical whether or not limactl shells out.
  */
 
+import { fmtElapsed, timestamp } from "./log.ts"
+
 export const TESSERACT_VERSION = "5.5.3"
 
 export type SourcePin = { file: string; version: string; url: string; sha256: string }
@@ -216,7 +218,9 @@ export async function buildToolTarget(opts: {
   sdkPath?: string
 }): Promise<string> {
   const { target, os, arch, sourcesDir, prefix, buildRoot, jobs, runner } = opts
-  const log = (m: string) => console.log(`  [tools:${target}] ${m}`)
+  const targetStarted = Date.now()
+  const elapsed = () => fmtElapsed(Date.now() - targetStarted)
+  const log = (m: string) => console.log(`[${timestamp()}] [tools:${target} +${elapsed()}] ${m}`)
   const fail = (m: string): never => {
     throw new Error(`[tools:${target}] FATAL ${m}`)
   }

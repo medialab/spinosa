@@ -11,6 +11,7 @@
  */
 import { $ } from "bun"
 import path from "node:path"
+import { fmtElapsed, timestamp } from "./release/log.ts"
 
 const root = path.resolve(import.meta.dir, "..")
 
@@ -87,13 +88,13 @@ async function typecheckProduct(): Promise<void> {
 
 function report(results: JobResult[]): void {
   for (const result of results) {
-    console.log(`${result.ok ? "✓" : "✗"} ${result.label} (${result.ms}ms)`)
-    if (result.detail) console.error(`  ${result.detail}`)
+    console.log(`[${timestamp()}] ${result.ok ? "✓" : "✗"} ${result.label} (${fmtElapsed(result.ms)})`)
+    if (result.detail) console.error(`[${timestamp()}]   ${result.detail.split("\n")[0]}`)
   }
 }
 
 async function wave(name: string, jobs: Array<Promise<JobResult>>): Promise<JobResult[]> {
-  console.log(`→ ${name} (${jobs.length} parallel)`)
+  console.log(`[${timestamp()}] [quality] → ${name} (${jobs.length} parallel — per-job lines below)`)
   const results = await Promise.all(jobs)
   report(results)
   return results
@@ -124,7 +125,7 @@ const wave1 = await wave("wave 1: typecheck + light checks", [
 
 const failed1 = wave1.filter((r) => !r.ok)
 if (failed1.length > 0) {
-  console.error(`✗ release quality failed in wave 1: ${failed1.map((f) => f.label).join(", ")}`)
+  console.error(`[${timestamp()}] ✗ release quality failed in wave 1: ${failed1.map((f) => f.label).join(", ")}`)
   process.exit(1)
 }
 
@@ -147,8 +148,8 @@ const wave2 = await wave("wave 2: launch / workspace regressions", [
 const totalMs = Math.round(performance.now() - started)
 const failed2 = wave2.filter((r) => !r.ok)
 if (failed2.length > 0) {
-  console.error(`✗ release quality failed in wave 2: ${failed2.map((f) => f.label).join(", ")} (${totalMs}ms)`)
+  console.error(`[${timestamp()}] ✗ release quality failed in wave 2: ${failed2.map((f) => f.label).join(", ")} (${fmtElapsed(totalMs)})`)
   process.exit(1)
 }
 
-console.log(`✓ release quality gate passed (${totalMs}ms)`)
+console.log(`[${timestamp()}] ✓ release quality gate passed (${fmtElapsed(totalMs)})`)

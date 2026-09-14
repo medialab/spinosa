@@ -45,6 +45,7 @@ import {
   productToolsAssetName,
   type ProductBinaryTarget,
 } from "../packages/spinosa-core/src/distribution/contract.ts"
+import { info, ok, startTimer, step } from "./release/log.ts"
 import {
   SOURCE_PINS,
   TESSERACT_VERSION,
@@ -166,17 +167,17 @@ async function ensureSources(sourcesDir: string): Promise<void> {
   for (const pin of SOURCE_PINS) {
     const dest = path.join(sourcesDir, pin.file)
     if (existsSync(dest) && sha256File(dest) === pin.sha256) {
-      console.log(`  = ${pin.file} (cached, SHA ok)`)
+      info("tools", `= ${pin.file} (cached, SHA ok)`)
       continue
     }
-    console.log(`  ↓ ${pin.url}`)
+    info("tools", `↓ downloading ${pin.url}`)
     await run(["curl", "-fSL", "--retry", "3", "--max-time", "600", pin.url, "-o", dest])
     const got = sha256File(dest)
     if (got !== pin.sha256) {
       rmSync(dest, { force: true })
       throw new Error(`SHA256 mismatch for ${pin.file}: want ${pin.sha256}, got ${got} — refusing to build from unverified source`)
     }
-    console.log(`  ✓ ${pin.file} (SHA ok)`)
+    ok("tools", `${pin.file} (SHA ok)`)
   }
 }
 
@@ -195,6 +196,8 @@ async function buildDarwin(target: ToolsTarget, sourcesDir: string, prefix: stri
   rmSync(prefix, { recursive: true, force: true })
   rmSync(buildRoot, { recursive: true, force: true })
   mkdirSync(buildRoot, { recursive: true })
+  step("tools", `${target}: compiling on this Mac (static tesseract — minutes, per-library lines below)`)
+  const compileElapsed = startTimer()
   await buildToolTarget({
     target,
     os: "darwin",
@@ -206,6 +209,7 @@ async function buildDarwin(target: ToolsTarget, sourcesDir: string, prefix: stri
     runner: localRunner(),
     sdkPath: sdk,
   })
+  ok("tools", `${target}: host compile finished`, compileElapsed())
 }
 
 function limaInstances(): string[] {
@@ -239,17 +243,25 @@ async function buildLinuxViaLima(
   const guestBuild = `${guestRoot}/build`
   // Toolchain inside OUR build VM (never on user machines): stock Ubuntu
   // template + build toolchain, sources copied in after host-side SHA verify.
+  step("tools", `${target}: starting Lima guest ${instance} (first boot downloads/provisions — minutes, no output until ready)`)
   await run(["limactl", "start", instance])
+  ok("tools", `${target}: guest ${instance} running`)
+  step("tools", `${target}: installing guest toolchain (apt-get — minutes, output streams below)`)
   await run(["limactl", "shell", instance, "--", "bash", "-c",
     "sudo apt-get update -qq && sudo apt-get install -y -qq build-essential cmake file",
   ])
+  ok("tools", `${target}: guest toolchain ready`)
+  step("tools", `${target}: preparing guest workspace ${guestRoot}`)
   await run(["limactl", "shell", instance, "--", "bash", "-c",
     `rm -rf ${guestRoot} && mkdir -p ${guestSources} ${guestPrefix} ${guestBuild}`,
   ])
   for (const pin of SOURCE_PINS) {
+    info("tools", `${target}: copying source ${pin.file} → guest`)
     await run(["limactl", "copy", path.join(sourcesDir, pin.file), `${instance}:${guestSources}/`])
   }
   const jobs = Number.parseInt((await capture(["limactl", "shell", instance, "--", "nproc"])).trim(), 10) || 2
+  info("tools", `${target}: compiling with ${jobs} jobs (static tesseract — tens of minutes, per-library lines below)`)
+  const compileElapsed = startTimer()
   await buildToolTarget({
     target,
     os: "linux",
@@ -260,6 +272,8 @@ async function buildLinuxViaLima(
     jobs,
     runner: limaRunner(instance),
   })
+  ok("tools", `${target}: guest compile finished`, compileElapsed())
+  step("tools", `${target}: copying built tesseract back to host`)
   const localBin = path.join(prefix, "bin", "tesseract")
   rmSync(prefix, { recursive: true, force: true })
   mkdirSync(path.join(prefix, "bin"), { recursive: true })
@@ -273,7 +287,7 @@ async function ensureTessdata(stageTess: string, pins: TessdataPins): Promise<vo
   for (const lang of ["eng", "ita", "fra"] as const) {
     const dest = path.join(stageTess, `${lang}.traineddata`)
     if (existsSync(dest) && sha256File(dest) === pins.sha[lang]) {
-      console.log(`  = ${lang}.traineddata (cached, SHA ok)`)
+      info("tools", `= ${lang}.traineddata (cached, SHA ok)`)
       continue
     }
     await run(["curl", "-fSL", "--retry", "3", "--max-time", "300", `${pins.base}/${lang}.traineddata`, "-o", dest])
@@ -282,7 +296,7 @@ async function ensureTessdata(stageTess: string, pins: TessdataPins): Promise<vo
       rmSync(dest, { force: true })
       throw new Error(`SHA256 mismatch for ${lang}.traineddata: want ${pins.sha[lang]}, got ${got}`)
     }
-    console.log(`  ✓ ${lang}.traineddata (SHA ok)`)
+    ok("tools", `${lang}.traineddata (SHA ok)`)
   }
 }
 
@@ -318,7 +332,7 @@ async function verifyTarball(tarball: string, target: ToolsTarget, pins: Tessdat
       if (!info.includes("statically linked")) {
         throw new Error(`linux tarball binary not fully static: ${info.slice(0, 200)}`)
       }
-      console.log(`  ✓ ${target}: layout + tessdata SHAs + fully static (execution verified at build time in guest)`)
+      ok("tools", `${target}: layout + tessdata SHAs + fully static (execution verified at build time in guest)`)
       return
     }
     let versionOut: string
@@ -332,7 +346,7 @@ async function verifyTarball(tarball: string, target: ToolsTarget, pins: Tessdat
       if (!archs.split(/\s+/).includes(wantArch)) throw new Error(`arch gate failed: lipo says ${archs}`)
       const linked = await capture(["otool", "-L", bin]).catch(() => "")
       if (/homebrew|\/opt\/|\/usr\/local\//i.test(linked)) throw new Error("linkage gate failed on cross-arch binary")
-      console.log(`  ✓ ${target}: layout + tessdata SHAs + arch/linkage evidence (not executable on this host)`)
+      ok("tools", `${target}: layout + tessdata SHAs + arch/linkage evidence (not executable on this host)`)
       return
     }
     if (!versionOut.includes(`tesseract ${TESSERACT_VERSION}`)) {
@@ -347,7 +361,7 @@ async function verifyTarball(tarball: string, target: ToolsTarget, pins: Tessdat
     writeFileSync(png, blankPng())
     const out = await capture([bin, png, "stdout", "-l", "eng", "--psm", "6"], { env: { TESSDATA_PREFIX: tess } })
     if (out.trim() !== "") throw new Error(`blank-PNG probe produced text: ${out.slice(0, 200)}`)
-    console.log(`  ✓ ${target}: layout + version + langs + blank-PNG OCR probe`)
+    ok("tools", `${target}: layout + version + langs + blank-PNG OCR probe`)
   } finally {
     rmSync(probe, { recursive: true, force: true })
   }
@@ -392,20 +406,25 @@ darwin targets compile on this Mac; linux targets compile in Lima guests
 
   const installSh = readFileSync(path.join(root, "install.sh"), "utf-8")
   const tessPins = parseTessdataPins(installSh)
-  console.log(`tessdata commit ${tessPins.commit}`)
+  info("tools", `tessdata commit ${tessPins.commit}`)
   mkdirSync(outDir, { recursive: true })
 
-  console.log("→ sources (pinned, SHA256-verified)")
+  step("tools", "sources (pinned, SHA256-verified)")
   await ensureSources(sourcesDir)
 
+  const totalElapsed = startTimer()
+  let index = 0
   for (const target of wanted) {
+    index += 1
+    const tag = `[${index}/${wanted.length}]`
     const tarball = path.join(outDir, toolsTarballName(target))
     if (existsSync(tarball) && !force) {
-      console.log(`→ ${target}: ${path.basename(tarball)} exists (use --force to rebuild)`)
+      info("tools", `${tag} ${target}: ${path.basename(tarball)} exists (use --force to rebuild)`)
       await verifyTarball(tarball, target, tessPins)
       continue
     }
-    console.log(`→ ${target}: building tesseract ${TESSERACT_VERSION} from source`)
+    const targetElapsed = startTimer()
+    step("tools", `${tag} ${target}: building tesseract ${TESSERACT_VERSION} from source`)
     const prefix = path.join(workDir, `prefix-${target}`)
     if (target.startsWith("darwin-")) {
       await buildDarwin(target, sourcesDir, prefix, workDir)
@@ -422,19 +441,20 @@ darwin targets compile on this Mac; linux targets compile in Lima guests
     if (!existsSync(builtBin)) throw new Error(`worker did not produce ${builtBin}`)
     await run(["cp", builtBin, path.join(stage, "bin", "tesseract")])
     chmodSync(path.join(stage, "bin", "tesseract"), 0o755)
-    console.log(`→ ${target}: tessdata (pinned ${tessPins.commit.slice(0, 12)}…)`)
+    step("tools", `${tag} ${target}: staging tessdata (pinned ${tessPins.commit.slice(0, 12)}…)`)
     await ensureTessdata(path.join(stage, "tessdata"), tessPins)
     rmSync(tarball, { force: true })
+    step("tools", `${tag} ${target}: packing ${path.basename(tarball)}`)
     await run(["tar", "-czf", tarball, "-C", stageRoot, target])
     const st = statSync(tarball)
     if (st.size < 1024 * 100) throw new Error(`tarball suspiciously small: ${tarball} (${st.size} bytes)`)
-    console.log(`→ ${target}: verifying ${path.basename(tarball)}`)
+    step("tools", `${tag} ${target}: verifying ${path.basename(tarball)}`)
     await verifyTarball(tarball, target, tessPins)
-    console.log(`✓ ${target}: ${tarball} (${st.size} bytes, sha256 ${sha256File(tarball).slice(0, 16)}…)`)
+    ok("tools", `${tag} ${target}: ${tarball} (${st.size} bytes, sha256 ${sha256File(tarball).slice(0, 16)}…)`, targetElapsed())
   }
 
   const names = wanted.map(toolsTarballName)
   const stray = readdirSync(outDir).filter((f) => f.startsWith("spinosa-tools-") && !names.includes(f))
-  if (stray.length > 0) console.log(`note: unrelated files in out-dir left alone: ${stray.join(", ")}`)
-  console.log(`✓ tools tarballs → ${outDir}`)
+  if (stray.length > 0) info("tools", `unrelated files in out-dir left alone: ${stray.join(", ")}`)
+  ok("tools", `tarballs → ${outDir}`, totalElapsed())
 }
