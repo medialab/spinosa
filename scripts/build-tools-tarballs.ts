@@ -248,7 +248,11 @@ async function ensureSources(sourcesDir: string): Promise<void> {
       continue
     }
     info("tools", `↓ downloading ${pin.url}`)
-    await run(["curl", "-fSL", "--retry", "3", "--max-time", "600", pin.url, "-o", dest])
+    // Retry through transient CDN failures (HTTP 403/429 rate limits from
+    // parallel matrix runners, 5xx, timeouts): --retry-all-errors covers
+    // 403, which plain --retry does not. A dead pin still fails loudly
+    // after retries, then the SHA gate below refuses to build.
+    await run(["curl", "-fSL", "--retry", "5", "--retry-all-errors", "--retry-delay", "5", "--max-time", "600", pin.url, "-o", dest])
     const got = sha256File(dest)
     if (got !== pin.sha256) {
       rmSync(dest, { force: true })
@@ -451,7 +455,7 @@ async function ensureTessdata(stageTess: string, pins: TessdataPins): Promise<vo
       info("tools", `= ${lang}.traineddata (cached, SHA ok)`)
       continue
     }
-    await run(["curl", "-fSL", "--retry", "3", "--max-time", "300", `${pins.base}/${lang}.traineddata`, "-o", dest])
+    await run(["curl", "-fSL", "--retry", "5", "--retry-all-errors", "--retry-delay", "5", "--max-time", "300", `${pins.base}/${lang}.traineddata`, "-o", dest])
     const got = sha256File(dest)
     if (got !== pins.sha[lang]) {
       rmSync(dest, { force: true })
