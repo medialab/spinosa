@@ -89,7 +89,7 @@ A Spinosa workspace is a bounded research corpus: approved sources live in [[raw
 Execution is owned by code, not by this file. The pipeline is:
 
 ```text
-Router chooses the class of work (fast vs orchestrated intent).
+Router chooses the class of work (general answer vs orchestrated intent).
 WorkflowRegistry selects a known WorkflowDefinition.
 WorkflowEngine controls execution and state transitions.
 Agents perform bounded cognitive work and write artifacts.
