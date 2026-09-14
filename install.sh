@@ -108,7 +108,9 @@ _spinosa_install_signal() {
     wait "$STEP_COMMAND_PID" 2>/dev/null || true
     STEP_COMMAND_PID=""
   fi
-  [ -n "${STEP_OUTPUT_FILE:-}" ] && rm -f "$STEP_OUTPUT_FILE" 2>/dev/null || true
+  if [ -n "${STEP_OUTPUT_FILE:-}" ]; then
+    rm -f "$STEP_OUTPUT_FILE" 2>/dev/null || true
+  fi
   STEP_OUTPUT_FILE=""
   step_end "$exit_code" "${STEP_LABEL:-Install} cancelled" 2>/dev/null || true
   _spinosa_cleanup_lock
@@ -909,7 +911,7 @@ spinosa_home_is_owned() {
 }
 
 legacy_source_runtime_present() {
-  local home="${1:-$SPINOSA_HOME}"
+  local home="$SPINOSA_HOME"
   [ -d "${home}/versions" ]
 }
 
@@ -1765,28 +1767,28 @@ run_staged_binary_checks() {
   local gate_tmp
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-gate.XXXXXX")"
   if "$binary" internal template ensure --json >"$gate_tmp" 2>&1; then
-    spinosa_log INFO "template ensure output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+    spinosa_log INFO "template ensure output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
     vok "Template ensure succeeded"
     if "$binary" internal template verify --json >"$gate_tmp" 2>&1; then
-      spinosa_log INFO "template verify output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+      spinosa_log INFO "template verify output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
       vok "Template verify succeeded"
     else
-      spinosa_log ERROR "template verify failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+      spinosa_log ERROR "template verify failed: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
       rm -f "$gate_tmp"
       die "Template verify failed — refusing to activate staged binary"
     fi
   else
-    spinosa_log ERROR "template ensure failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+    spinosa_log ERROR "template ensure failed: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
     rm -f "$gate_tmp"
     die "Template ensure failed — refusing to activate staged binary"
   fi
   rm -f "$gate_tmp"
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-doctor.XXXXXX")"
   if "$binary" doctor >"$gate_tmp" 2>&1; then
-    spinosa_log INFO "doctor output: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+    spinosa_log INFO "doctor output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
     vok "Doctor passed"
   else
-    spinosa_log ERROR "doctor failed: $(cat "$gate_tmp" 2>/dev/null | head -c 4096)"
+    spinosa_log ERROR "doctor failed: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
     rm -f "$gate_tmp"
     die "Doctor reported issues — refusing to activate staged binary"
   fi
@@ -2348,7 +2350,9 @@ main() {
   INSTALL_COMPLETED=1
   ACTIVATION_STARTED=0
   for _bk in "${BINARY_BACKUP:-}" "${SHIM_BACKUP:-}" "${CONFIG_BACKUP:-}" "${ENV_BACKUP:-}"; do
-    [ -n "$_bk" ] && [ -e "$_bk" ] && rm -f "$_bk" 2>/dev/null || true
+    if [ -n "$_bk" ] && [ -e "$_bk" ]; then
+      rm -f "$_bk" 2>/dev/null || true
+    fi
   done
   BINARY_BACKUP=""; SHIM_BACKUP=""; CONFIG_BACKUP=""; ENV_BACKUP=""
   rm -f "$checksums_file"
