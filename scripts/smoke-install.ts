@@ -201,6 +201,10 @@ async function smokeRepoRoot(): Promise<void> {
     SPINOSA_HOME: home,
     SPINOSA_TEMPLATE_ROOT: frameworkRoot,
     PWD: project,
+    // Repo-root smoke exercises the dev launch path: opt into the
+    // developer-only host OCR fallback (never set in production or the
+    // binary installer smoke below, which must prove bundled tools).
+    SPINOSA_DEV_HOST_TOOLS: "1",
   }
 
   for (const cmd of ["version", "doctor"] as const) {

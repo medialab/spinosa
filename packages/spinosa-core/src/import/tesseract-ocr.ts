@@ -101,6 +101,19 @@ export function tesseractAvailable(): boolean {
             return _tesseractAvailable
           }
         }
+        // Host tesseract knows its own tessdata location: ask it which
+        // languages are usable. Dev-only (this branch requires the explicit
+        // flag); production never probes the host binary.
+        try {
+          const proc = (Bun as unknown as { spawnSync?: (cmd: string[], opts?: unknown) => unknown }).spawnSync?.(["tesseract", "--list-langs"], { stdout: "pipe", stderr: "pipe" } as unknown as never) as unknown as { stdout?: Uint8Array; stderr?: Uint8Array } | undefined
+          if (proc) {
+            const out = String(proc.stdout ?? "") + String(proc.stderr ?? "")
+            if (out.includes("eng") && out.includes("ita") && out.includes("fra")) {
+              _tesseractAvailable = true
+              return _tesseractAvailable
+            }
+          }
+        } catch { /* ignore — fall through to unavailable */ }
       }
     }
     _tesseractAvailable = false
