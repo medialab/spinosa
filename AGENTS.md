@@ -20,7 +20,7 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
    The tag push IS the release approval — `v*` pushes are
    maintainer-restricted by tag protection rules.
 5. CI validates → builds all four targets natively in parallel
-   (macos-15, macos-15-intel, ubuntu-24.04-arm, ubuntu-24.04) →
+   (macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04) →
    assembles `dist/` → publishes the immutable GitHub release with
    build-provenance attestation → rolls the `beta` channel.
 6. Verify: `gh release view vX.Y.Z`, rolling `beta` tag points at the

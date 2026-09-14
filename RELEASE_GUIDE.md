@@ -150,7 +150,7 @@ from pinned source per target — nothing is downloaded as a binary.
 Locally: Darwin targets compile on the Mac; Linux targets compile inside
 local Lima guests (native arch), or natively on matching-arch Linux.
 In CI: each matrix runner builds its own target natively
-(macos-15, macos-15-intel, ubuntu-24.04-arm, ubuntu-24.04) — no Lima.
+(macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04) — no Lima.
 
 One-time guest setup (release machine only):
 

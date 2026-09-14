@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.18] — 2026-09-14
+
+### Fixed
+
+- Darwin binaries launch on macOS 26 Tahoe. CI builders moved from macos-15 to macos-26 runners. Code: `.github/workflows/release-beta.yml`.
+
 ## [1.1.0-beta.17.18] — 2026-09-14
 
 ### Added
