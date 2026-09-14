@@ -79,30 +79,23 @@ import os from "node:os"
 const builderHome = os.homedir().replaceAll("\\", "/").replace(/\/$/, "")
 const builderHomeWin = builderHome.replaceAll("/", "\\")
 const repoRoot = path.resolve(__dirname, "../..").replaceAll("\\", "/")
+// Report-only scan prefixes. Generic builder/runner paths are NOT secrets and
+// must never trigger a binary rewrite: mutating opaque native Mach-O payloads
+// (OpenTUI, FFF, watcher, node-pty, canvas) corrupts their embedded signatures
+// and macOS kills the host on dlopen (v1.1.0-beta.18/beta.19 darwin outage).
+// This list exists only to report what builder strings remain in the output.
 const EMBEDDED_BUILD_PATH_PREFIXES = [
   // Rust dependency metadata can retain the Windows cache path from the
-  // cross-build image. Keep this exact, known path scrubbed without masking
-  // arbitrary user paths (broad C:\\Users replacement corrupts binaries).
-  {
-    prefix: Buffer.from(
-      "C:\\Users\\silvi\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f",
-    ),
-    replacement: Buffer.from("/spinosa/vendor"),
-  },
-  // Repo root first (longer) so "/Users/.../spinosa-main" scrubs to "/spinosa/repo" not "/spinosa/Documents/..."
-  ...(repoRoot && repoRoot !== builderHome
-    ? [{ prefix: Buffer.from(repoRoot), replacement: Buffer.from("/spinosa/repo") }]
-    : []),
-  ...(builderHome ? [{ prefix: Buffer.from(builderHome), replacement: Buffer.from("/spinosa") }] : []),
-  ...(builderHomeWin && builderHomeWin !== builderHome
-    ? [{ prefix: Buffer.from(builderHomeWin), replacement: Buffer.from("C:\\spinosa") }]
-    : []),
+  // cross-build image. Known path, reported without masking arbitrary user
+  // paths (broad C:\\Users replacement corrupts binaries).
+  Buffer.from(
+    "C:\\Users\\silvi\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f",
+  ),
+  // Repo root first (longer) so "/Users/.../spinosa-main" reports as repo path.
+  ...(repoRoot && repoRoot !== builderHome ? [Buffer.from(repoRoot)] : []),
+  ...(builderHome ? [Buffer.from(builderHome)] : []),
+  ...(builderHomeWin && builderHomeWin !== builderHome ? [Buffer.from(builderHomeWin)] : []),
 ] as const
-
-function isEmbeddedPathByte(byte: number): boolean {
-  if (byte < 0x20 || byte === 0x7f) return false
-  return byte !== 0x22 && byte !== 0x27 && byte !== 0x60 && byte !== 0x2c && byte !== 0x3b
-}
 
 /** Byte range of pristine embedded file data inside the compiled binary. */
 export interface EmbeddedSpan {
@@ -114,8 +107,8 @@ export interface EmbeddedSpan {
  * Locate pristine embedded file bytes (e.g. a staged `.node` native) inside
  * the compiled binary. Bun may embed the same file asset more than once, so
  * every fullverbatim occurrence is returned. Slices are verified with a full
- * byte compare — fail closed when no complete copy is found, so the path
- * scrub can never clobber the wrong span.
+ * byte compare — fail closed when no complete copy is found, so packaging
+ * problems surface here instead of as a corrupt native at runtime.
  */
 export function findEmbeddedSpans(haystack: Buffer, needle: Buffer): EmbeddedSpan[] {
   if (needle.byteLength < 4096) {
@@ -138,7 +131,7 @@ export function findEmbeddedSpans(haystack: Buffer, needle: Buffer): EmbeddedSpa
     }
     if (spans.length > 0) return spans
   }
-  throw new Error("embedded native span not locatable — refusing to scrub (fail closed)")
+  throw new Error("embedded native span not locatable — refusing to proceed (fail closed)")
 }
 
 export function spanIntersects(match: number, end: number, spans: readonly EmbeddedSpan[]): boolean {
@@ -150,9 +143,8 @@ export function sha256Hex(data: Buffer | Uint8Array): string {
 }
 
 /**
- * Fail closed when post-scrub embedded bytes differ from pristine. This gate
- * would have caught the v1.1.0-beta.18 darwin outage (scrub corrupted the
- * staged canvas `.node`, macOS killed hosts on dlopen).
+ * Fail closed when embedded bytes differ from pristine. With byte scrubbing
+ * removed, this stays as a packaging-integrity probe for the canvas embed.
  */
 export function assertEmbeddedSpanIntact(
   binaryPath: string,
@@ -164,70 +156,69 @@ export function assertEmbeddedSpanIntact(
   const actual = sha256Hex(bytes.subarray(span.start, span.end))
   if (actual !== expectedHash) {
     throw new Error(
-      `scrub altered embedded ${label} (bytes ${span.start}..${span.end}): expected ${expectedHash}, got ${actual}`,
+      `embedded ${label} changed after packaging (bytes ${span.start}..${span.end}): expected ${expectedHash}, got ${actual}`,
     )
   }
 }
 
-export function scrubEmbeddedBuildPaths(binaryPath: string, skipSpans: readonly EmbeddedSpan[] = []): number {
+/**
+ * Report-only scan for builder path strings left in the compiled binary.
+ * Generic runner/checkout paths are not secrets — this never mutates the
+ * binary. Returns the match count for logging. Byte-level rewriting of the
+ * whole binary is forbidden: it corrupts embedded native Mach-O payloads
+ * (OpenTUI, FFF) that only canvas-span protection used to spare, and macOS
+ * code-signing enforcement kills the host on dlopen (beta.18/beta.19).
+ */
+export function scanEmbeddedBuildPaths(binaryPath: string): number {
   const bytes = fs.readFileSync(binaryPath)
-  let replacements = 0
-  for (const { prefix, replacement } of EMBEDDED_BUILD_PATH_PREFIXES) {
+  let matches = 0
+  for (const prefix of EMBEDDED_BUILD_PATH_PREFIXES) {
     if (prefix.length === 0) continue
     let offset = 0
     while (true) {
       const match = bytes.indexOf(prefix, offset)
       if (match < 0) break
-      let end = match + prefix.length
-      while (end < bytes.length && isEmbeddedPathByte(bytes[end])) end++
-      // Embedded native blobs (staged `.node` files) carry their own
-      // toolchain paths — clobbering them corrupts the inner Mach-O and
-      // macOS kills the host on dlopen (v1.1.0-beta.18 darwin outage).
-      // Advance by one (not to `end`): the greedy extension below may run
-      // far past the span, and later matches inside it need their own check.
-      if (spanIntersects(match, end, skipSpans)) {
-        offset = match + 1
-        continue
+      matches++
+      if (matches <= 5) {
+        console.log(`embedded build path: ${prefix.toString()} at byte ${match} (report-only, binary untouched)`)
       }
-      const length = end - match
-      const neutral = Buffer.alloc(length, 0x5f)
-      neutral.set(replacement.subarray(0, Math.min(length, replacement.length)))
-      bytes.set(neutral, match)
-      replacements++
-      offset = end
+      offset = match + 1
     }
   }
-  if (replacements > 0) fs.writeFileSync(binaryPath, bytes)
-  return replacements
+  return matches
+}
+
+/**
+ * @deprecated Whole-binary rewriting is removed. Use scanEmbeddedBuildPaths
+ * (report-only). Kept as a non-mutating alias so old callers/tests fail open
+ * toward the safe behavior instead of corrupting the binary.
+ */
+export function scrubEmbeddedBuildPaths(binaryPath: string, _skipSpans: readonly EmbeddedSpan[] = []): number {
+  return scanEmbeddedBuildPaths(binaryPath)
 }
 
 export function assertNoEmbeddedBuildPaths(binaryPath: string, skipSpans: readonly EmbeddedSpan[] = []): void {
+  // Generic builder paths are report-only (see scanEmbeddedBuildPaths).
+  // Personal markers are fail-closed in CI (release binaries must never
+  // carry a maintainer username) but warn-only for local builds, where the
+  // builder's own checkout path legitimately appears in stack-trace strings
+  // and the binary is never rewritten to hide it (beta.18/beta.19 outage).
   const bytes = fs.readFileSync(binaryPath)
-  for (const { prefix } of EMBEDDED_BUILD_PATH_PREFIXES) {
-    if (prefix.length === 0) continue
-    let offset = 0
-    while (true) {
-      const hit = bytes.indexOf(prefix, offset)
-      if (hit < 0) break
-      let end = hit + prefix.length
-      while (end < bytes.length && isEmbeddedPathByte(bytes[end])) end++
-      if (!spanIntersects(hit, end, skipSpans)) {
-        throw new Error(`binary ${binaryPath} still contains ${prefix.toString()} at byte ${hit}`)
-      }
-      offset = end
-    }
-  }
-  // Also fail on generic personal markers that should never ship.
+  // Personal markers that should never ship in CI binaries.
   // Verified-pristine spans are exempt: their bytes are hash-pinned vendored
-  // input (assertEmbeddedSpanIntact), so the scrub cannot act on them anyway.
+  // input (assertEmbeddedSpanIntact), never rewritten.
   const personal = [Buffer.from("tommasoprinetti"), Buffer.from("thdxr")]
+  const strict = Boolean(process.env.CI || process.env.GITHUB_ACTIONS)
   for (const p of personal) {
     let offset = 0
     while (true) {
       const off = bytes.indexOf(p, offset)
       if (off < 0) break
       if (!spanIntersects(off, off + p.byteLength, skipSpans)) {
-        throw new Error(`binary ${binaryPath} still contains personal marker ${p.toString()} at byte ${off}`)
+        const message = `binary ${binaryPath} still contains personal marker ${p.toString()} at byte ${off}`
+        if (strict) throw new Error(message)
+        console.warn(`warning: ${message} (local build only — CI release gates fail closed)`)
+        break
       }
       offset = off + 1
     }
@@ -283,6 +274,10 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     fs.mkdirSync(options.flatOutDir, { recursive: true })
   }
 
+  // Multi-platform optionals for cross-target local builds. CI matrix jobs
+  // build natively (target == host) from the frozen install and pass
+  // --skip-install; the per-target canvas assert below fails closed when the
+  // needed platform package is absent.
   if (!options.skipInstall) {
     await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`.cwd(cwd)
     await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`.cwd(cwd)
@@ -421,9 +416,8 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     const binBytes = fs.readFileSync(outfile)
 
     // Same fingerprint gate for canvas skia .node (OCR load path on Linux).
-    // Locate the pristine span now: the scrub below must never touch it —
-    // clobbered inner Mach-O bytes kill the host on dlopen under macOS
-    // code-signing enforcement (v1.1.0-beta.18 darwin outage).
+    // The binary is never rewritten after compile: embedded native Mach-O
+    // payloads keep their pristine signatures (beta.18/beta.19 outage).
     const canvasLibPath = path.join(canvasEmbed.libsDir, canvasEmbed.name)
     const canvasLibData = fs.readFileSync(canvasLibPath)
     if (canvasLibData.byteLength < 1024) {
@@ -444,17 +438,19 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     const canvasSpans = findEmbeddedSpans(binBytes, canvasLibData)
     const canvasHash = sha256Hex(canvasLibData)
 
-    const scrubbedPaths = scrubEmbeddedBuildPaths(outfile, canvasSpans)
+    const reportedPaths = scanEmbeddedBuildPaths(outfile)
     assertNoEmbeddedBuildPaths(outfile, canvasSpans)
     for (const span of canvasSpans) {
       assertEmbeddedSpanIntact(outfile, span, canvasHash, `canvas native ${canvasEmbed.name}`)
     }
     if (process.platform === "darwin" && item.os === "darwin") {
       const signed = await $`codesign --force --sign - ${outfile}`.nothrow()
-      if (signed.exitCode !== 0) throw new Error(`failed to re-sign sanitized binary: ${outfile}`)
+      if (signed.exitCode !== 0) throw new Error(`failed to ad-hoc sign binary: ${outfile}`)
+      const verified = await $`codesign --verify ${outfile}`.nothrow()
+      if (verified.exitCode !== 0) throw new Error(`outer signature verification failed: ${outfile}`)
     }
-    if (scrubbedPaths > 0) {
-      console.log(`scrubbed ${scrubbedPaths} embedded build path${scrubbedPaths === 1 ? "" : "s"} from ${assetName}`)
+    if (reportedPaths > 0) {
+      console.log(`reported ${reportedPaths} embedded build path${reportedPaths === 1 ? "" : "s"} in ${assetName} (binary untouched)`)
     }
 
     if (
@@ -463,13 +459,16 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       item.arch === process.arch &&
       !item.abi
     ) {
-      console.log(`Running smoke test: ${outfile} version`)
+      console.log(`Running smoke test: ${outfile} version + native-imports`)
       try {
         const versionOutput = await $`${outfile} version`.text()
         console.log(`Smoke test passed: ${versionOutput.trim()}`)
         if (!versionOutput.includes(options.version)) {
           throw new Error(`version smoke mismatch: expected ${options.version}, got ${versionOutput}`)
         }
+        // version/doctor never dlopen OpenTUI/FFF — native-imports does.
+        const nativeOutput = await $`${outfile} internal smoke native-imports --json`.text()
+        console.log(`Native-imports smoke passed: ${nativeOutput.trim().slice(0, 400)}`)
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e)
         // Release gates fail closed: smoke failures are fatal (no non-strict

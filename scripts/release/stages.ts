@@ -150,6 +150,17 @@ export async function runBuild(ctx: StageContext): Promise<void> {
     throw new Error("product binary build failed — see scripts/build-release-binaries.ts")
   }
 
+  // OCR tools tarballs (RELEASE_GUIDE.md: build stage builds them first).
+  // The tools script skips archives already present, so a prebuilt dist/
+  // (or CI matrix artifacts) is untouched; missing targets build from pinned
+  // source (Lima guests for linux) or fail closed with setup instructions.
+  const tools = await $`bun scripts/build-tools-tarballs.ts --out-dir ${paths.dist}`
+    .cwd(RELEASE_ROOT)
+    .nothrow()
+  if (tools.exitCode !== 0) {
+    throw new Error("OCR tools build failed — see scripts/build-tools-tarballs.ts")
+  }
+
   for (const binaryPath of Object.values(paths.binaryPaths)) {
     if (!existsSync(binaryPath)) throw new Error(`missing binary after build: ${binaryPath}`)
     chmodSync(binaryPath, 0o755)

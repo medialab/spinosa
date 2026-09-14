@@ -10,6 +10,15 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.20] — 2026-09-14
+
+### Fixed
+
+- Build never rewrites the compiled binary. A report-only scan replaces path scrubbing. Code: `packages/spinosa-kernel/script/build.ts`.
+- Release smoke loads all TUI natives. `internal smoke native-imports` checks OpenTUI, FFF, watcher, node-pty, canvas. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
+- CI publishes only after native verification. A four-runner verify matrix gates the immutable release and the `beta` roll. Code: `.github/workflows/release-beta.yml`.
+- Installer preserves timed-step state. Activation backups and template pack IDs survive subshell execution. Code: `install.sh`.
+
 ## [1.1.0-beta.19] — 2026-09-14
 
 ### Added

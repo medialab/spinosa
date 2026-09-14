@@ -4,7 +4,10 @@ const STABLE_URL = 'https://github.com/medialab/spinosa/releases/download/stable
 const DEV_URL = 'https://github.com/medialab/spinosa/releases/download/beta/install.sh';
 
 function bootstrapCmd(url: string): string {
-	return `curl -fsSL ${url} | bash`;
+	// Download first, then execute — ensures the full script is fetched
+	// before any installation runs and lets curl enforce deadlines
+	// (matches README cold-start instructions).
+	return `curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 2 ${url} -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh`;
 }
 
 export const STABLE_INSTALL_CMD = bootstrapCmd(STABLE_URL);

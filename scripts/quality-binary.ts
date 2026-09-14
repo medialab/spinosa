@@ -10,7 +10,7 @@
 import { $ } from "bun"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
-import { productBinaryAssetName, resolveProductBinaryTarget } from "../packages/spinosa-core/src/distribution/contract.ts"
+import { productBinaryAssetName, productToolsAssetName, resolveProductBinaryTarget } from "../packages/spinosa-core/src/distribution/contract.ts"
 
 const root = path.resolve(import.meta.dir, "..")
 const version = (
@@ -25,11 +25,18 @@ const forbiddenPersonalMarkers = [
 ]
 
 function assertPortableBinary(binaryPath: string): void {
+  // Release binaries must never carry a maintainer username — but the binary
+  // is never rewritten to hide it (beta.18/beta.19 outage), so local builds
+  // on a personal checkout warn while CI (runner paths) fails closed.
+  const strict = Boolean(process.env.CI || process.env.GITHUB_ACTIONS)
   const bytes = readFileSync(binaryPath)
   for (const marker of forbiddenPersonalMarkers) {
     const offset = bytes.indexOf(marker)
     if (offset >= 0) {
-      throw new Error(`binary ${binaryPath} contains forbidden personal marker ${marker.toString()} at byte ${offset}`)
+      const message = `binary ${binaryPath} contains forbidden personal marker ${marker.toString()} at byte ${offset}`
+      if (strict) throw new Error(message)
+      console.warn(`warning: ${message} (local build only — CI release gates fail closed)`)
+      break
     }
   }
 }
@@ -61,15 +68,27 @@ await step("host product binary build", async () => {
   if (result.exitCode !== 0) throw new Error("host binary build failed")
 })
 
-const hostAsset = productBinaryAssetName(
-  resolveProductBinaryTarget({ os: process.platform, arch: process.arch }),
-)
+const hostTarget = resolveProductBinaryTarget({ os: process.platform, arch: process.arch })
+const hostAsset = productBinaryAssetName(hostTarget)
 const hostBinary = path.join(outDir, hostAsset)
+const hostTools = path.join(outDir, productToolsAssetName(hostTarget))
 
 await step("host binary smoke", async () => {
   if (!existsSync(hostBinary)) throw new Error(`missing host binary ${hostBinary}`)
   assertPortableBinary(hostBinary)
-  const result = await $`bun scripts/smoke-install.ts --binary ${hostBinary}`.cwd(root).nothrow()
+  // Fail-closed standalone proof: doctor must pass WITHOUT the
+  // SPINOSA_DEV_HOST_TOOLS override. When a pin-verified host tools tarball
+  // sits next to the binary (CI matrix artifacts, or a local
+  // build-tools-tarballs --host-only --reuse-previous), stage it so doctor
+  // proves bundled OCR; otherwise doctor fails closed on missing tools.
+  const smokeArgs = ["--binary", hostBinary]
+  if (existsSync(hostTools)) {
+    console.log(`staging bundled tools ${path.basename(hostTools)} for smoke`)
+    smokeArgs.push("--tools", hostTools)
+  } else {
+    console.log(`no host tools tarball at ${hostTools} — doctor must still pass standalone (fail closed)`)
+  }
+  const result = await $`bun scripts/smoke-install.ts ${smokeArgs}`.cwd(root).nothrow()
   // Release gates fail closed: smoke failures are always fatal (no
   // SPINOSA_BINARY_SMOKE_STRICT escape hatch).
   if (result.exitCode !== 0) {

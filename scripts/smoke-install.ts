@@ -50,6 +50,10 @@ function argValue(flag: string): string | undefined {
 
 const distDir = argValue("--dist")
 const binaryPath = argValue("--binary")
+// Optional alongside --binary: stage this tools tarball under the smoke
+// home's tools/ dir first, so doctor proves bundled OCR standalone
+// (no SPINOSA_DEV_HOST_TOOLS override).
+const toolsTarball = argValue("--tools")
 const explicitRepo = process.argv.includes("--repo-root")
 const structureOnly =
   process.argv.includes("--structure") ||
@@ -61,6 +65,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   bun scripts/smoke-install.ts --repo-root                  # same
   bun scripts/smoke-install.ts --dist <release-dir>         # binary installer via local HTTP
   bun scripts/smoke-install.ts --binary <product-binary>    # direct binary version/doctor
+  bun scripts/smoke-install.ts --binary <bin> --tools <tarball>  # + bundled-OCR proof
 Env:
   SPINOSA_SMOKE_STRUCTURE=1     structure / asset checks only
   SPINOSA_RELEASE_BASE_URL      honored by rewritten install.sh (set by --dist)`)
@@ -70,6 +75,10 @@ Env:
 const modes = [distDir ? "dist" : null, binaryPath ? "binary" : null, explicitRepo ? "repo" : null].filter(Boolean)
 if (modes.length > 1) {
   console.error("Use only one of --dist, --binary, or --repo-root")
+  process.exit(1)
+}
+if (toolsTarball && !binaryPath) {
+  console.error("--tools requires --binary")
   process.exit(1)
 }
 
@@ -96,12 +105,28 @@ async function smokeBinary(bin: string, label: string, smokeHome: string = home)
   }
 
   const env = { ...process.env, SPINOSA_HOME: smokeHome }
+  if (toolsTarball) {
+    if (!existsSync(toolsTarball)) throw new Error(`tools tarball not found: ${toolsTarball}`)
+    // Same layout install.sh provisions: $SPINOSA_HOME/tools/<platform>/{bin,tessdata}.
+    const toolsDir = path.join(smokeHome, "tools")
+    mkdirSync(toolsDir, { recursive: true })
+    const staged = await $`tar -xzf ${toolsTarball} -C ${toolsDir}`.nothrow()
+    if (staged.exitCode !== 0) throw new Error(`failed to stage tools tarball ${toolsTarball}`)
+    console.log(`→ staged tools ${path.basename(toolsTarball)} (${label})`)
+  }
   for (const cmd of ["version", "doctor"] as const) {
     console.log(`→ smoke ${cmd} (${label})`)
     const result = await $`${bin} ${cmd}`.cwd(project).env(env).nothrow()
     if (result.exitCode !== 0) {
       throw new Error(`smoke ${cmd} failed with exit ${result.exitCode}`)
     }
+  }
+  // version/doctor never dlopen the TUI natives — native-imports does.
+  // A corrupt embedded Mach-O (beta.18/beta.19) passes version and dies here.
+  console.log(`→ smoke internal smoke native-imports (${label})`)
+  const natives = await $`${bin} internal smoke native-imports --json`.cwd(project).env(env).nothrow()
+  if (natives.exitCode !== 0) {
+    throw new Error(`smoke native-imports failed with exit ${natives.exitCode}: ${String(natives.text()).slice(0, 500)}`)
   }
   console.log(`✓ binary smoke passed (${label})`)
 }
@@ -221,6 +246,19 @@ async function smokeRepoRoot(): Promise<void> {
     const result = await $`${argv}`.cwd(project).env(env).nothrow()
     if (result.exitCode !== 0) {
       throw new Error(`smoke ${cmd} failed with exit ${result.exitCode}`)
+    }
+  }
+  {
+    console.log(`→ smoke internal smoke native-imports`)
+    const argv = buildKernelBunArgv({
+      bunPath: process.execPath,
+      frameworkRoot,
+      kernelEntry,
+      args: ["internal", "smoke", "native-imports", "--json"],
+    })
+    const result = await $`${argv}`.cwd(project).env(env).nothrow()
+    if (result.exitCode !== 0) {
+      throw new Error(`smoke native-imports failed with exit ${result.exitCode}`)
     }
   }
 

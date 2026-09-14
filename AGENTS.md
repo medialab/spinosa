@@ -20,9 +20,13 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
    The tag push IS the release approval — `v*` pushes are
    maintainer-restricted by tag protection rules.
 5. CI validates → builds all four targets natively in parallel
-   (macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04) →
-   assembles `dist/` → publishes the immutable GitHub release with
-   build-provenance attestation → rolls the `beta` channel.
+   (macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04, each with a
+   native-imports smoke that dlopens the TUI natives) →
+   assembles `dist/` → verifies every native binary (checksum + version +
+   native-imports on all four runners) → publishes the immutable GitHub
+   release with build-provenance attestation → rolls the `beta` channel.
+   Publish is gated behind the verify matrix: a broken binary must never
+   become the rolling-channel default (v1.1.0-beta.19).
 6. Verify: `gh release view vX.Y.Z`, rolling `beta` tag points at the
    release commit, live installer serves the new `PINNED_VERSION`.
 
@@ -51,8 +55,9 @@ workflows from the default branch) and stay in sync with `beta-dev`.
   and guest provisioning must stay followable. Never pipe script output
   through `tail` when diagnosing — it hides errors.
 - Release pipeline entry: `bun scripts/release/index.ts`
-  (`validate` · `plan` · `beta|stable` · `ci-assemble` · `publish` · `resume`).
-  CI uses `ci-assemble`; local fallback uses `beta patch` from `beta-dev`.
+  (`validate` · `plan` · `beta|stable` · `ci-assemble` · `ci-publish` · `publish` · `resume`).
+  CI uses `ci-assemble --finalize-only` then `ci-publish` (after the verify
+  matrix); local fallback uses `beta patch` from `beta-dev`.
 
 ## Repo conventions agents must respect
 

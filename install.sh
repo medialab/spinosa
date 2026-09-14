@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.1.0-beta.19"
+PINNED_VERSION="1.1.0-beta.20"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 DEFAULT_VERIFY_TIMEOUT_SECONDS="180"
@@ -357,23 +357,51 @@ kill_process_tree_graceful() {
   kill -KILL "$pid" 2>/dev/null || true
 }
 
+# Globals that must survive run_timed_step subshell execution. Timed steps
+# run the payload in a background subshell, so assignments made inside
+# (TEMPLATE_PACK_ID from staged checks; BINARY_BACKUP/SHIM_BACKUP/... from
+# activation) would otherwise be lost in the parent — dropping template_pack_id
+# from metadata, leaking shim.backup files, and breaking EXIT-trap rollback.
+TIMED_EXPORT_VARS="TEMPLATE_PACK_ID BINARY_BACKUP BINARY_STAGED ACTIVATION_STARTED SHIM_BACKUP CONFIG_BACKUP ENV_BACKUP SHIM_STAGE_FILE"
+
+_timed_export_state() {
+  [ -n "${SPINOSA_TIMED_STATE_FILE:-}" ] || return 0
+  {
+    for _k in $TIMED_EXPORT_VARS; do
+      printf '%s=%q\n' "$_k" "${!_k:-}"
+    done
+  } > "$SPINOSA_TIMED_STATE_FILE" 2>/dev/null || true
+}
+
+_timed_import_state() {
+  [ -n "${1:-}" ] && [ -f "$1" ] || return 0
+  # Values are %q-quoted paths/flags we wrote ourselves; safe to eval.
+  eval "$(cat "$1" 2>/dev/null || true)"
+  rm -f "$1"
+}
+
 run_timed_step() {
   local label="$1" timeout_seconds="$2"
   shift 2
   [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || die "Invalid timeout for ${label}: ${timeout_seconds}"
   local output_file pid started status=0
   output_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-step.XXXXXX")"
+  local state_file
+  state_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-state.XXXXXX")"
   STEP_OUTPUT_FILE="$output_file"
   step_begin "$label" "$timeout_seconds"
   started="$(date +%s)"
-  (trap - ERR; "$@") >"$output_file" 2>&1 &
+  export SPINOSA_TIMED_STATE_FILE="$state_file"
+  (trap '_timed_export_state' EXIT; trap - ERR; "$@") >"$output_file" 2>&1 &
   pid=$!
+  unset SPINOSA_TIMED_STATE_FILE
   STEP_COMMAND_PID="$pid"
   while kill -0 "$pid" 2>/dev/null; do
     if (( $(date +%s) - started >= timeout_seconds )); then
       kill_process_tree_graceful "$pid"
       wait "$pid" 2>/dev/null || true
       STEP_COMMAND_PID=""
+      _timed_import_state "$state_file"
       step_end 124 "${label} timed out after ${timeout_seconds}s"
       while IFS= read -r line; do spinosa_log ERROR "$line"; done < "$output_file"
       tail -n 20 "$output_file" >&2 || true
@@ -386,6 +414,7 @@ run_timed_step() {
   done
   wait "$pid" || status=$?
   STEP_COMMAND_PID=""
+  _timed_import_state "$state_file"
   while IFS= read -r line; do spinosa_log INFO "${label}: ${line}"; done < "$output_file"
   if [ "$status" -ne 0 ]; then
     step_end "$status" "${label} failed"
@@ -2354,6 +2383,11 @@ main() {
   [[ "$VERBOSE" == "1" ]] && section "Activate"
   run_timed_step "Installing" 30 _install_activate \
     || die "Installation failed — see $(spinosa_log_file)"
+
+  # Workspace launchers (binary-distribution-contract): migrate managed
+  # launchers on ownership proof, preserve modified ones. Never fails the
+  # global install.
+  migrate_workspace_launchers 2>/dev/null || true
 
   INSTALL_COMPLETED=1
   ACTIVATION_STARTED=0

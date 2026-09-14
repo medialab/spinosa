@@ -600,8 +600,15 @@ builds from source; --force always rebuilds.`)
   info("tools", `tessdata commit ${tessPins.commit}`)
   mkdirSync(outDir, { recursive: true })
 
-  step("tools", "sources (pinned, SHA256-verified)")
-  await ensureSources(sourcesDir)
+  // Pinned sources download only when a from-source build is actually needed:
+  // reuse/existing-asset paths never touch the network for source archives.
+  let sourcesReady = false
+  async function needSources(): Promise<void> {
+    if (sourcesReady) return
+    step("tools", "sources (pinned, SHA256-verified)")
+    await ensureSources(sourcesDir)
+    sourcesReady = true
+  }
 
   const totalElapsed = startTimer()
   let index = 0
@@ -618,6 +625,7 @@ builds from source; --force always rebuilds.`)
       const reused = await tryReuseFromRelease({ tarball, target, outDir, reuseTag, workDir, tessPins })
       if (reused) continue
     }
+    await needSources()
     const targetElapsed = startTimer()
     step("tools", `${tag} ${target}: building tesseract ${TESSERACT_VERSION} from source`)
     const prefix = path.join(workDir, `prefix-${target}`)

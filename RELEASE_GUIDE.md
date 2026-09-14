@@ -8,8 +8,10 @@ bun run release plan beta patch   # shows next version, e.g. v1.1.0-beta.17.18
 # 2. Push a greater version tag — the tag push IS the release approval
 git tag v1.1.0-beta.17.18 && git push origin v1.1.0-beta.17.18
 # 3. GitHub Actions validates the tag, builds all four targets natively
-#    in parallel, assembles dist/, publishes the immutable release with
-#    build-provenance attestation, and rolls the `beta` channel.
+#    in parallel (each with a native-imports smoke that dlopens the TUI
+#    natives), assembles dist/, verifies every native binary, and only then
+#    publishes the immutable release with build-provenance attestation and
+#    rolls the `beta` channel (publish is gated behind the verify matrix).
 ```
 
 Requirements: `v*` tag pushes restricted to maintainers (tag protection rules),
@@ -54,7 +56,8 @@ Binary releases should be built where native verification is possible. Cross-com
 | `bun run release:validate` | Preflight only (branch + quality) |
 | `bun run release plan beta patch` | Show version bump without publishing |
 | `bun scripts/release/validate-tag.ts vX.Y.Z` | Gate a tag before pushing (greater-than-previous, version + changelog match) |
-| `bun run release ci-assemble vX.Y.Z [--dry-run]` | Assemble dist/ from matrix artifacts + publish (CI only) |
+| `bun run release ci-assemble vX.Y.Z [--dry-run] [--finalize-only]` | Finalize dist/ + local gates; `--finalize-only` stops before publish (CI assemble job) |
+| `bun run release ci-publish vX.Y.Z` | Publish immutable release + roll channel — CI only, after every native verify passes |
 | `bun run release:resume` | Resume the latest incomplete release |
 | `bun run release:republish -- vX.Y.Z` | Republish only when checksums match (immutable) |
 

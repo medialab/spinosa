@@ -24,7 +24,8 @@ Usage:
   bun run release stable minor|patch|major [--dry-run]
   bun run release plan beta patch
   bun run release validate
-  bun run release ci-assemble <version> [--dry-run]
+  bun run release ci-assemble <version> [--dry-run] [--finalize-only]
+  bun run release ci-publish <version>
   bun run release publish <version> [--from <stage>] [--dry-run]
   bun run release resume [version] [--dry-run]
 
@@ -36,6 +37,7 @@ interface CliOptions {
   from?: StageName
   only?: StageName[]
   skipBump: boolean
+  finalizeOnly?: boolean
 }
 
 function parseStage(value: string): StageName {
@@ -65,6 +67,7 @@ function parseOptions(args: string[]): { positionals: string[]; options: CliOpti
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!
     if (arg === "--dry-run") options.dryRun = true
+    else if (arg === "--finalize-only") options.finalizeOnly = true
     else if (arg === "--from") options.from = parseStage(args[++index] ?? "")
     else if (arg === "--only") options.only = (args[++index] ?? "").split(",").map(parseStage)
     else if (arg === "--skip-bump") options.skipBump = true
@@ -169,10 +172,16 @@ async function commandPublish(version: string, options: CliOptions): Promise<voi
  * into dist/v{version}/ and stages build-manifest.json via
  * build-release-binaries --manifest-only. This command verifies the tag
  * equals HEAD, finalizes dist/ (installers, manifest, checksums), then
- * runs verify-local → smoke → publish-version → channel → verify-remote.
+ * runs verify-local → smoke. Publishing (publish-version → channel →
+ * verify-remote) happens in `ci-publish`, which the workflow runs only after
+ * every native verify job passes — a broken binary must never become the
+ * rolling-channel default (v1.1.0-beta.19 outage).
  * Quality + tag validation run in earlier workflow jobs, not here.
  */
-async function commandCiAssemble(versionArg: string, options: CliOptions): Promise<void> {
+async function commandCiAssemble(
+  versionArg: string,
+  options: CliOptions & { finalizeOnly?: boolean },
+): Promise<void> {
   const version = versionArg.replace(/^v/, "")
   const fail = (message: string): never => {
     console.error(`✗ ci-assemble: ${message}`)
@@ -210,7 +219,46 @@ async function commandCiAssemble(versionArg: string, options: CliOptions): Promi
     await runPipeline(version, { ...options, from: "gitTag", skipBump: true })
     return
   }
+  if (options.finalizeOnly) {
+    // Assemble job: finalize + local gates only. The workflow uploads dist/
+    // and runs native verification on every platform before ci-publish.
+    await runPipeline(version, {
+      ...options,
+      from: "verifyLocal",
+      only: ["verifyLocal", "smoke"],
+      skipBump: true,
+    })
+    return
+  }
   await runPipeline(version, { ...options, from: "verifyLocal", skipBump: true })
+}
+
+/**
+ * CI publish: create the immutable GitHub release and roll the channel.
+ * Runs only after every native verify job passes (see release-beta.yml).
+ */
+async function commandCiPublish(versionArg: string, options: CliOptions): Promise<void> {
+  const version = versionArg.replace(/^v/, "")
+  const fail = (message: string): never => {
+    console.error(`✗ ci-publish: ${message}`)
+    process.exit(1)
+  }
+  const head = (await $`git rev-parse HEAD`.cwd(RELEASE_ROOT).quiet()).text().trim()
+  const tagCheck = await $`git rev-list -1 v${version}`.cwd(RELEASE_ROOT).nothrow().quiet()
+  if (tagCheck.exitCode !== 0) fail(`tag v${version} not found — CI publishes from a pushed tag`)
+  const tagSha = tagCheck.text().trim()
+  if (tagSha !== head) {
+    fail(`tag v${version} points at ${tagSha.slice(0, 8)}, HEAD is ${head.slice(0, 8)} — tag the release commit`)
+  }
+  if (readCurrentVersion() !== version) {
+    fail(`package.json says v${readCurrentVersion()}, tag says v${version}`)
+  }
+  await runPipeline(version, {
+    ...options,
+    from: "publishVersion",
+    only: ["publishVersion", "channel", "verifyRemote"],
+    skipBump: true,
+  })
 }
 
 async function commandResume(versionArg: string | undefined, options: CliOptions): Promise<void> {
@@ -269,10 +317,17 @@ async function main(): Promise<void> {
       return
     case "ci-assemble":
       if (!arg1) {
-        console.error("Usage: bun run release ci-assemble <version> [--dry-run]")
+        console.error("Usage: bun run release ci-assemble <version> [--dry-run] [--finalize-only]")
         process.exit(1)
       }
       await commandCiAssemble(arg1, options)
+      return
+    case "ci-publish":
+      if (!arg1) {
+        console.error("Usage: bun run release ci-publish <version>")
+        process.exit(1)
+      }
+      await commandCiPublish(arg1, options)
       return
     case "resume":
       await commandResume(arg1, options)

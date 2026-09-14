@@ -68,6 +68,77 @@ export const InternalCommand = {
           )
           .demandCommand(1),
       )
+      .command("smoke", "Native smoke helpers (release gates)", (inner) =>
+        inner
+          .command(
+            "native-imports",
+            "Load OpenTUI, FFF, watcher, node-pty, and canvas without starting a UI",
+            (y) => y.option("json", { type: "boolean", default: false }),
+            async (args) => {
+              const checks: { name: string; ok: boolean; error?: string }[] = []
+              // Static specifiers so Bun --compile embeds the modules
+              // (variable import() cannot be traced). Each check only loads
+              // the native binding — never starts an interactive UI.
+              // A corrupt embedded Mach-O dies here (SIGKILL/dlopen failure),
+              // which is exactly what version/doctor smoke misses.
+              try {
+                const mod = await import("@opentui/core")
+                if (!mod || (typeof mod !== "object" && typeof mod !== "function")) {
+                  throw new Error("empty @opentui/core namespace")
+                }
+                checks.push({ name: "opentui", ok: true })
+              } catch (err) {
+                checks.push({ name: "opentui", ok: false, error: err instanceof Error ? err.message : String(err) })
+              }
+              try {
+                const mod = (await import("@ff-labs/fff-bun")) as {
+                  FileFinder?: { isAvailable?: () => boolean }
+                }
+                const available = mod?.FileFinder?.isAvailable?.() ?? false
+                if (!available) throw new Error("FileFinder.isAvailable() returned false")
+                checks.push({ name: "fff", ok: true })
+              } catch (err) {
+                checks.push({ name: "fff", ok: false, error: err instanceof Error ? err.message : String(err) })
+              }
+              try {
+                const mod = (await import("@spinosa/kernel-core/filesystem/watcher")) as {
+                  hasNativeBinding?: () => boolean
+                }
+                if (typeof mod?.hasNativeBinding !== "function") {
+                  throw new Error("watcher hasNativeBinding missing")
+                }
+                if (!mod.hasNativeBinding()) throw new Error("watcher native binding unavailable")
+                checks.push({ name: "watcher", ok: true })
+              } catch (err) {
+                checks.push({ name: "watcher", ok: false, error: err instanceof Error ? err.message : String(err) })
+              }
+              try {
+                const mod = (await import("@spinosa/kernel-core/pty/pty.bun")) as { spawn?: unknown }
+                if (typeof mod?.spawn !== "function") throw new Error("pty spawn missing")
+                checks.push({ name: "node-pty", ok: true })
+              } catch (err) {
+                checks.push({ name: "node-pty", ok: false, error: err instanceof Error ? err.message : String(err) })
+              }
+              try {
+                const mod = await import("@napi-rs/canvas")
+                if (!mod) throw new Error("empty @napi-rs/canvas namespace")
+                checks.push({ name: "canvas", ok: true })
+              } catch (err) {
+                checks.push({ name: "canvas", ok: false, error: err instanceof Error ? err.message : String(err) })
+              }
+              const ok = checks.every((c) => c.ok)
+              const payload = { ok, checks }
+              if (args.json || getFormat(args) === "json") printJson(payload)
+              else {
+                for (const c of checks) {
+                  emitResult("human", `native-${c.name}`, { ok: c.ok }, c.ok ? "ok" : (c.error ?? "failed"))
+                }
+              }
+              if (!ok) process.exitCode = 1
+            },
+          )
+          .demandCommand(1),
+      )
       .command({
         command: "ocr-worker [payload]",
         describe: false,

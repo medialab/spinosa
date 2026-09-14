@@ -6,6 +6,7 @@ import {
   assertEmbeddedSpanIntact,
   assertNoEmbeddedBuildPaths,
   findEmbeddedSpans,
+  scanEmbeddedBuildPaths,
   scrubEmbeddedBuildPaths,
   sha256Hex,
   type EmbeddedSpan,
@@ -47,7 +48,7 @@ function testNeedle(): Buffer {
   return Buffer.concat([variedFill(2 * 1048576, 12345), Buffer.from(`${homePrefix}/kept/inside`, "utf-8")])
 }
 
-describe("embedded native span protection (scrub must not touch staged .node bytes)", () => {
+describe("embedded native span protection (binary is never rewritten after compile)", () => {
   test("findEmbeddedSpans locates every pristine copy", () => {
     const needle = testNeedle()
     const { haystack, span } = fakeBinary(needle)
@@ -67,36 +68,47 @@ describe("embedded native span protection (scrub must not touch staged .node byt
     expect(() => findEmbeddedSpans(haystack, Buffer.alloc(16, 0x44))).toThrow(/too small/)
   })
 
-  test("scrub preserves the protected span and still scrubs outside it", () => {
+  test("scan is report-only and never mutates the binary (beta.18/beta.19 fix)", () => {
     const needle = testNeedle()
     const { haystack, span } = fakeBinary(needle)
     withTempFile(haystack, (file) => {
-      const count = scrubEmbeddedBuildPaths(file, [span])
-      expect(count).toBe(1)
-      const out = fs.readFileSync(file)
-      // Outside the span: scrubbed to /spinosa + underscores.
-      expect(out.includes(Buffer.from(`${homePrefix}/outside/path`, "utf-8"))).toBe(false)
-      // Inside the span: byte-identical to pristine.
-      expect(out.subarray(span.start, span.end).equals(needle)).toBe(true)
-      assertNoEmbeddedBuildPaths(file, [span])
+      const before = fs.readFileSync(file)
+      const count = scanEmbeddedBuildPaths(file)
+      expect(count).toBeGreaterThanOrEqual(1)
+      const after = fs.readFileSync(file)
+      expect(after.equals(before)).toBe(true)
+      // Pristine embedded bytes stay intact without any exemption list.
+      expect(after.subarray(span.start, span.end).equals(needle)).toBe(true)
       assertEmbeddedSpanIntact(file, span, sha256Hex(needle), "test blob")
     })
   })
 
-  test("scrub without span exemption clobbers the blob (the beta.18 failure)", () => {
+  test("deprecated scrub alias is non-mutating (scan-only)", () => {
     const needle = testNeedle()
     const { haystack, span } = fakeBinary(needle)
     withTempFile(haystack, (file) => {
-      scrubEmbeddedBuildPaths(file)
-      const out = fs.readFileSync(file)
-      expect(out.subarray(span.start, span.end).equals(needle)).toBe(false)
-      expect(() => assertEmbeddedSpanIntact(file, span, sha256Hex(needle), "test blob")).toThrow(/altered/)
+      const before = fs.readFileSync(file)
+      scrubEmbeddedBuildPaths(file, [span])
+      expect(fs.readFileSync(file).equals(before)).toBe(true)
     })
   })
 
-  test("assert fails closed on unexempted leftovers", () => {
-    withTempFile(Buffer.from(`prefix ${homePrefix}/leftover suffix`, "utf-8"), (file) => {
-      expect(() => assertNoEmbeddedBuildPaths(file, [])).toThrow(/still contains/)
+  test("assert ignores generic builder paths but fails closed on personal markers", () => {
+    // Generic builder path without any personal marker: report-only, no throw.
+    withTempFile(Buffer.from("prefix /Users/runner/work/spinosa-main/some/path suffix", "utf-8"), (file) => {
+      expect(() => assertNoEmbeddedBuildPaths(file, [])).not.toThrow()
     })
+    // Personal markers fail closed in CI (release binaries must never carry
+    // a maintainer username) and warn locally (local checkout paths do).
+    const prevCI = process.env.CI
+    process.env.CI = "1"
+    try {
+      withTempFile(Buffer.from("prefix tommasoprinetti suffix", "utf-8"), (file) => {
+        expect(() => assertNoEmbeddedBuildPaths(file, [])).toThrow(/personal marker/)
+      })
+    } finally {
+      if (prevCI === undefined) delete process.env.CI
+      else process.env.CI = prevCI
+    }
   })
 })
