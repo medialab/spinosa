@@ -93,7 +93,13 @@ jobs:
 
       - name: Install quality prerequisites
         shell: bash
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck bats tesseract-ocr tesseract-ocr-eng tesseract-ocr-ita tesseract-ocr-fra
+          # Test-only host OCR: repo smoke runs doctor in dev mode against an
+          # empty home, so it needs a host tesseract behind the explicit
+          # SPINOSA_DEV_HOST_TOOLS=1 override (smoke sets it). Shipped tools
+          # still come from pinned-source matrix builds, never from here.
 
       - name: Release quality gate
         run: bun run quality
