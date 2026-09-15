@@ -10,6 +10,14 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.27] — 2026-09-15
+
+### Added
+
+- Five Spinosa tools for the general harness. Route, frame, mint paths, gate, verify run as kernel tools. Code: `packages/spinosa-kernel/src/tool/spinosa-*.ts`, `packages/spinosa-core/src/application/agent-tools.ts`.
+- Tool-first loop reference and agent contract. Agents must route, frame, mint, gate, verify, then audit. Code: `.agents/references/tool-conventions.md`.
+- PDF export in the report viewer. Key P writes a typeset PDF to Downloads. Code: `packages/spinosa-core/src/export/markdown-pdf.ts`.
+
 ## [1.1.0-beta.26] — 2026-09-15
 
 ### Changed
