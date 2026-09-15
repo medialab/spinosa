@@ -58,11 +58,23 @@ describe("routeBadgeFromParts", () => {
     expect(info).toMatchObject({ kind: "workflow", workflowID: "research.targeted_evidence", runID: "r1" })
   })
 
-  test("ignores parts without route metadata or with malformed shapes", () => {
+  test("ignores parts with malformed route metadata shapes", () => {
     expect(routeBadgeFromParts(undefined)).toBeUndefined()
-    expect(routeBadgeFromParts([{ type: "text", text: "x" }])).toBeUndefined()
     expect(routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "workflow" } } }])).toBeUndefined()
-    expect(routeBadgeFromParts([{ type: "text", text: "x", metadata: "nope" }])).toBeUndefined()
+  })
+
+  test("unstamped user text falls back to general (never an empty tag)", () => {
+    // Bare sends, failed preparations, and legacy rows admitted with no
+    // routing verdict manifest General prompt — the agent decides.
+    expect(routeBadgeFromParts([{ type: "text", text: "x" }])).toMatchObject({ kind: "general" })
+    expect(routeBadgeFromParts([{ type: "text", text: "x", metadata: "nope" }])).toMatchObject({ kind: "general" })
+    expect(routeBadgeFromParts([{ type: "text", text: "x", ignored: true, metadata: {} }])).toMatchObject({
+      kind: "general",
+    })
+    // Scaffolding without a genuine user text payload stays badge-less.
+    expect(routeBadgeFromParts([])).toBeUndefined()
+    expect(routeBadgeFromParts([{ type: "file", filename: "a.png" }])).toBeUndefined()
+    expect(routeBadgeFromParts([{ type: "text", text: "ctx", synthetic: true }])).toBeUndefined()
   })
 
   test("transient outbound states never parse from server parts", () => {

@@ -1463,6 +1463,8 @@ export function Prompt(props: PromptProps) {
       move.startSubmit()
       // Route badge: stamp the workflow identity onto the (ignored) user
       // message so the transcript manifests the orchestrated path + steps.
+      // A framed non-orchestrated verdict still manifests general — the
+      // header never renders empty.
       const routeMeta =
         preparedSpinosa.kind === "workflow" && preparedSpinosa.decision.mode === "orchestrated"
           ? {
@@ -1476,7 +1478,12 @@ export function Prompt(props: PromptProps) {
                 confidence: preparedSpinosa.decision.confidence,
               },
             }
-          : {}
+          : {
+              [SPINOSA_ROUTE_METADATA]: {
+                kind: "general",
+                ...(preparedSpinosa.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
+              },
+            }
       const completion = sdk.client.session
         .prompt(
           {
@@ -1527,6 +1534,16 @@ export function Prompt(props: PromptProps) {
         {
           type: "text" as const,
           text: outboundText,
+          // Every admitted prompt manifests a badge so the header never
+          // renders empty. Routed general verdicts carry provenance;
+          // unrouted sends and failed preparations fall back to bare
+          // general — the agent decides.
+          metadata: {
+            [SPINOSA_ROUTE_METADATA]: {
+              kind: "general",
+              ...(preparedSpinosa?.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
+            },
+          },
         },
         ...snapshot.nonTextParts,
       ]

@@ -45,12 +45,24 @@ function partMetadata(part: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>
 }
 
+/** True when parts hold a genuine user text payload (not just scaffolding). */
+function hasUserTextContent(parts: readonly unknown[] | undefined): boolean {
+  if (!parts) return false
+  return parts.some((part) => {
+    if (!part || typeof part !== "object") return false
+    const candidate = part as { type?: unknown; synthetic?: unknown }
+    return candidate.type === "text" && candidate.synthetic !== true
+  })
+}
+
 /** Extract route info from synced message parts (tolerates unknown shapes). */
 export function routeBadgeFromParts(parts: readonly unknown[] | undefined): RouteBadgeInfo | undefined {
   if (!parts) return
+  let sawRouteKey = false
   for (const part of parts) {
     const info = partMetadata(part)?.[SPINOSA_ROUTE_METADATA]
     if (!info || typeof info !== "object") continue
+    sawRouteKey = true
     const v = info as Record<string, unknown>
     const routedBy = v.routedBy === "model" || v.routedBy === "rules" ? v.routedBy : undefined
     const confidence = typeof v.confidence === "number" ? v.confidence : undefined
@@ -81,6 +93,11 @@ export function routeBadgeFromParts(parts: readonly unknown[] | undefined): Rout
       }
     }
   }
+  // Fallback: a genuine user text message admitted with no routing verdict
+  // still manifests a badge — never an empty tag. The agent decides.
+  // Parts that carry the route key (even unparsable/transient kinds) keep
+  // the legacy undefined so malformed verdicts stay invisible, not general.
+  if (!sawRouteKey && hasUserTextContent(parts)) return { kind: "general" }
   return
 }
 
