@@ -55,6 +55,9 @@ export * from "./import/pipeline"
 export * from "./handoff/builder"
 export * from "./handoff/runner"
 
+// --- export
+export * from "./export/markdown-pdf"
+
 // --- commands
 export * from "./commands/create"
 export * from "./commands/add"
@@ -68,6 +71,7 @@ export * from "./commands/preflight"
 export * from "./application/router-service"
 export * from "./application/workflow-run-service"
 export * from "./application/workflow-operations"
+export * from "./application/agent-tools"
 export * from "./artifacts/contracts"
 export * from "./artifacts/validate"
 

@@ -11,12 +11,20 @@ import { useBindings } from "../../keymap"
 import { useToast } from "../../ui/toast"
 import { loadMarkdownFile, type MarkdownLoadResult } from "./load-markdown-file"
 
+export function exportDownloadPath(filePath: string, workspaceRoot: string | undefined, ext: "md" | "pdf"): string {
+  const rel = workspaceRoot ? path.relative(workspaceRoot, filePath) : filePath
+  const display = rel.startsWith("..") ? filePath : rel
+  const base = path.basename(display).replace(/\.[^.]*$/, "")
+  return path.join(homedir(), "Downloads", `${base}.${ext}`)
+}
+
 export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string }) {
   const dialog = useDialog()
   const toast = useToast()
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const [exportState, setExportState] = createSignal<"idle" | "busy" | "done">("idle")
+  const [pdfState, setPdfState] = createSignal<"idle" | "busy" | "done">("idle")
 
   const [editError, setEditError] = createSignal<string | undefined>()
 
@@ -43,11 +51,9 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     return rel.startsWith("..") ? props.filePath : rel
   })
 
-  const exportPath = createMemo(() => {
-    const rel = displayPath()
-    const filename = path.basename(rel)
-    return path.join(homedir(), "Downloads", filename)
-  })
+  const exportPath = createMemo(() => exportDownloadPath(props.filePath, props.workspaceRoot, "md"))
+
+  const pdfPath = createMemo(() => exportDownloadPath(props.filePath, props.workspaceRoot, "pdf"))
 
   const handleExport = async () => {
     if (exportState() !== "idle") return
@@ -62,6 +68,24 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     } catch (e) {
       setExportState("idle")
       toast.show({ variant: "error", message: `Export failed: ${e instanceof Error ? e.message : String(e)}` })
+    }
+  }
+
+  const handlePdfExport = async () => {
+    if (pdfState() !== "idle") return
+    const md = mdText()
+    if (!md) return
+    setPdfState("busy")
+    try {
+      const { exportMarkdownToPdf } = await import("@spinosa/core/export/markdown-pdf")
+      const pdf = await exportMarkdownToPdf(md)
+      await writeFile(pdfPath(), pdf)
+      setPdfState("done")
+      setTimeout(() => setPdfState("idle"), 3000)
+      toast.show({ variant: "success", message: `Saved to ~/Downloads/${path.basename(pdfPath())}` })
+    } catch (e) {
+      setPdfState("idle")
+      toast.show({ variant: "error", message: `PDF export failed: ${e instanceof Error ? e.message : String(e)}` })
     }
   }
 
@@ -129,7 +153,15 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     switch (exportState()) {
       case "busy": return "Exporting..."
       case "done": return "Exported!"
-      default: return "[e] Export to Downloads"
+      default: return "[e] Export MD"
+    }
+  })
+
+  const pdfLabel = createMemo(() => {
+    switch (pdfState()) {
+      case "busy": return "Exporting..."
+      case "done": return "Exported!"
+      default: return "[p] Export PDF"
     }
   })
 
@@ -141,11 +173,20 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     }
   })
 
+  const pdfColor = createMemo(() => {
+    switch (pdfState()) {
+      case "busy": return theme.warning
+      case "done": return theme.success
+      default: return theme.primary
+    }
+  })
+
   useBindings(() => ({
     bindings: [
       { key: "escape", cmd: () => dialog.clear() },
       { key: "return", cmd: () => dialog.clear() },
       { key: "e", cmd: () => void handleExport() },
+      { key: "p", cmd: () => void handlePdfExport() },
     ],
   }))
 
@@ -210,17 +251,29 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
       </scrollbox>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0} paddingTop={1} paddingBottom={1}>
         <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
-          esc return close · e export
+          esc return close · e md · p pdf
         </text>
-        <box
-          onMouseUp={() => {
-            if (renderer.getSelection()?.getSelectedText()) return
-            void handleExport()
-          }}
-          paddingLeft={2} paddingRight={2}
-          backgroundColor={exportColor()}
-        >
-          <text fg={theme.selectedListItemText}>{exportLabel()}</text>
+        <box flexDirection="row" gap={2}>
+          <box
+            onMouseUp={() => {
+              if (renderer.getSelection()?.getSelectedText()) return
+              void handleExport()
+            }}
+            paddingLeft={2} paddingRight={2}
+            backgroundColor={exportColor()}
+          >
+            <text fg={theme.selectedListItemText}>{exportLabel()}</text>
+          </box>
+          <box
+            onMouseUp={() => {
+              if (renderer.getSelection()?.getSelectedText()) return
+              void handlePdfExport()
+            }}
+            paddingLeft={2} paddingRight={2}
+            backgroundColor={pdfColor()}
+          >
+            <text fg={theme.selectedListItemText}>{pdfLabel()}</text>
+          </box>
         </box>
       </box>
     </box>
