@@ -1,5 +1,6 @@
 import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { For, Show, type Accessor, type Setter } from "solid-js"
+import { selectedForeground } from "../../context/theme"
 import { STARTUP_PROGRESS_THRESHOLD_MS } from "@spinosa/core/commands/startup"
 import { CenteredColumn } from "../../component/centered-column"
 import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
@@ -161,7 +162,9 @@ export function OnboardingView(props: OnboardingViewProps) {
                 onMouseDown={() => deferPress(props.onChangeVisionModel)}
               >
                 <text fg={(() => {
-                  if (props.visionError()) return theme.text
+                  // Tested pair: selectedForeground on the error fill, never
+                  // an assumed theme.text.
+                  if (props.visionError()) return selectedForeground(theme, theme.error)
                   if (hoveredButton() === "vision-model") return buttonText(theme, true, theme.text)
                   return theme.success
                 })()}>{props.selectedVisionLabel()} ▼</text>

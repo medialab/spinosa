@@ -20,7 +20,9 @@ import {
   retryStep,
   runnableSteps,
   startStep,
+  withRunLock,
   type AgentNode,
+  type ArtifactRef,
   type GeneralDecision,
   type OrchestratedDecision,
   type RouteInput,
@@ -190,11 +192,106 @@ export class WorkflowRunService {
     const definition = this.registry.resolve(runDecision)
     const plan = definition.build({ runID: run.id, decision: runDecision })
 
+    // Re-adopt branch registrations persisted concurrently (child starts
+    // land while outcomes are in flight). Without the merge, this
+    // invocation's own saves would wipe them.
+    const withPersistedBranches = async (local: WorkflowRun): Promise<WorkflowRun> => {
+      const fresh = await this.repository.load(workspacePath, runID).catch(() => undefined)
+      const branches = fresh?.branchSessions
+      if (!branches) return local
+      return { ...local, branchSessions: { ...(local.branchSessions ?? {}), ...branches } }
+    }
+    // A cancellation persisted while work was in flight wins over local
+    // mutations: adopt it instead of overwriting it.
+    const adoptIfSuperseded = async (current: WorkflowRun): Promise<WorkflowRun | undefined> => {
+      const persisted = await this.repository.load(workspacePath, runID).catch(() => undefined)
+      if (persisted && isWorkflowTerminal(persisted) && !isWorkflowTerminal(current)) return persisted
+      return undefined
+    }
+    const recordLateResult = async (persisted: WorkflowRun, detail: string): Promise<WorkflowRun> => {
+      await this.repository
+        .append(workspacePath, runID, {
+          at: new Date().toISOString(),
+          type: "late_result",
+          status: persisted.status,
+          detail,
+        })
+        .catch(() => {})
+      return persisted
+    }
+    // Serialize every run.json read-modify-write of this invocation through
+    // the shared per-run gate (not a private chain): the TUI facade and a
+    // concurrent cancel() are separate invocations sharing this module, and
+    // only a shared gate makes the terminal check atomic with its write.
+    const persistChildStarted = (info: { nodeID: string; sessionID: string; branch: boolean }): Promise<void> =>
+      withRunLock(workspacePath, runID, async () => {
+        const fresh = await this.repository.load(workspacePath, runID).catch(() => undefined)
+        if (!fresh || isWorkflowTerminal(fresh)) return
+        const stamp = new Date().toISOString()
+        let next = fresh
+        if (info.branch) {
+          const list = [...(next.branchSessions?.[info.nodeID] ?? [])]
+          if (!list.includes(info.sessionID)) list.push(info.sessionID)
+          next = {
+            ...next,
+            branchSessions: { ...(next.branchSessions ?? {}), [info.nodeID]: list },
+            updatedAt: stamp,
+          }
+        } else {
+          const step = next.steps[info.nodeID]
+          if (!step || (step.sessionID !== undefined && step.status !== "retrying")) return
+          next = {
+            ...next,
+            steps: {
+              ...next.steps,
+              [info.nodeID]: { ...step, status: "running" as const, sessionID: info.sessionID, startedAt: stamp },
+            },
+            updatedAt: stamp,
+          }
+        }
+        await this.repository.save(next)
+      })
+    const onChildStarted = (info: { nodeID: string; sessionID: string; branch: boolean }): Promise<void> =>
+      persistChildStarted(info)
+    // Compare-and-set commit: the freshness check and the write share the
+    // per-run gate, so a cancellation persisted by another invocation
+    // between outcome computation and commit suppresses the stale write
+    // instead of being overwritten by it. Merges concurrently-registered
+    // branches on the save path, so one writer still suffices.
+    const commit = async (
+      local: WorkflowRun,
+      detail: string,
+    ): Promise<{ status: "saved"; run: WorkflowRun } | { status: "superseded"; run: WorkflowRun }> =>
+      withRunLock(workspacePath, runID, async () => {
+        const fresh = await this.repository.load(workspacePath, runID).catch(() => undefined)
+        if (fresh && isWorkflowTerminal(fresh) && !isWorkflowTerminal(local)) {
+          await this.repository
+            .append(workspacePath, runID, {
+              at: new Date().toISOString(),
+              type: "late_result",
+              status: fresh.status,
+              detail,
+            })
+            .catch(() => {})
+          return { status: "superseded" as const, run: fresh }
+        }
+        const merged: WorkflowRun =
+          fresh?.branchSessions !== undefined
+            ? { ...local, branchSessions: { ...(local.branchSessions ?? {}), ...fresh.branchSessions } }
+            : local
+        await this.repository.save(merged)
+        return { status: "saved" as const, run: merged }
+      })
+
     while (!isWorkflowTerminal(run)) {
+      const superseded = await adoptIfSuperseded(run)
+      if (superseded) return superseded
       const runnable = runnableSteps(run, plan)
       if (runnable.length === 0) {
-        run = await this.settleNoRunnable(run, plan)
-        await this.repository.save(run)
+        const settled = await this.settleNoRunnable(run, plan)
+        const committed = await commit(settled, "settle suppressed after terminal state")
+        if (committed.status === "superseded") return committed.run
+        run = committed.run
         break
       }
       // The original user prompt goes to the first agent step (system nodes
@@ -204,16 +301,31 @@ export class WorkflowRunService {
       // graph but execute runnable branches sequentially.
       const concurrency = input.harness.capabilities.parallelAgentExecutions ? WORKFLOW_CONCURRENCY : 1
       const outcomes = await runWithConcurrency(runnable, concurrency, (node) =>
-        this.executeNode({ run: run!, plan, node, harness: input.harness, model: input.model, synthesizeForTest: input.synthesizeForTest, onEvent: input.onEvent, firstAgentID, concurrency }),
+        this.executeNode({ run: run!, plan, node, harness: input.harness, model: input.model, synthesizeForTest: input.synthesizeForTest, onEvent: input.onEvent, firstAgentID, concurrency, onChildStarted }),
       )
+      // A cancellation persisted while nodes ran wins: adopt it and record
+      // the late outcomes as evidence only — never overwrite the terminal
+      // state or schedule successors from stale results.
+      const supersededAfter = await adoptIfSuperseded(run)
+      if (supersededAfter) {
+        return recordLateResult(
+          supersededAfter,
+          `${outcomes.length} outcome(s) arrived after terminal state`,
+        )
+      }
+      run = await withPersistedBranches(run)
       for (const { node, outcome, sessionID, executionID } of outcomes) {
-        run = startStep(run, node.id, { sessionID, executionID })
-        await this.repository.save(run)
+        const started = startStep(run, node.id, { sessionID, executionID })
+        const committedStart = await commit(started, `step_started ${node.id} suppressed after terminal state`)
+        if (committedStart.status === "superseded") return committedStart.run
+        run = committedStart.run
         await this.repository.append(workspacePath, run.id, {
           at: run.updatedAt, type: "step_started", status: run.status, detail: node.id,
         })
-        run = await this.applyOutcome(run, plan, node, outcome, input.synthesizeForTest)
-        await this.repository.save(run)
+        const applied = await this.applyOutcome(run, plan, node, outcome, input.synthesizeForTest)
+        const committedOutcome = await commit(applied, `outcome for ${node.id} arrived after terminal state`)
+        if (committedOutcome.status === "superseded") return committedOutcome.run
+        run = committedOutcome.run
         await this.appendOutcomeEvent(run, node, outcome)
         input.onEvent?.({ runID: run.id, type: outcome.status, stepID: node.id })
         await this.updateGoalMirror(workspacePath, run, node.id, outcome)
@@ -221,21 +333,31 @@ export class WorkflowRunService {
       // Approval pause exits the loop; resume() continues after approval.
       if (run.status === "waiting_for_approval") break
     }
-    return run
+    // A cancellation that landed after the last commit must still win over a
+    // non-terminal in-memory tail (e.g. approval pause); terminal-vs-terminal
+    // keeps the local result (work already done is not un-done by a late cancel).
+    const tail = await adoptIfSuperseded(run)
+    if (tail) return tail
+    return withPersistedBranches(run)
   }
 
   async resume(input: { workspacePath: string; runID: string; harness: SpinosaHarness; synthesizeForTest?: boolean }): Promise<WorkflowRun> {
-    let run = await this.repository.load(input.workspacePath, input.runID)
-    if (!run) throw new Error("Spinosa workflow run was not found")
+    const loaded = await this.repository.load(input.workspacePath, input.runID)
+    if (!loaded) throw new Error("Spinosa workflow run was not found")
+    let run: WorkflowRun = loaded
     const resumeDecision = asOrchestrated(run.decision)
     const definition = this.registry.resolve(resumeDecision)
     const plan = definition.build({ runID: run.id, decision: resumeDecision })
     // Crash recovery: running steps with a valid artifact succeed; without → retry/block.
+    // Each repair commits inside the per-run gate against the fresh read: a
+    // cancellation that raced resume (or a concurrent writer) is adopted
+    // instead of overwritten, and recovery stops once the run is terminal.
     for (const node of plan.nodes) {
+      if (isWorkflowTerminal(run)) break
       const stepState: (typeof run.steps)[string] | undefined = run.steps[node.id]
       if (stepState?.status !== "running" || node.kind !== "agent") continue
       const agent = node as AgentNode
-      let recovered = false
+      let recovered: { kind: string; path: string } | undefined
       for (const expected of agent.expectedArtifacts) {
         if (!expected.required) continue
         const v = await validateArtifact({
@@ -243,20 +365,36 @@ export class WorkflowRunService {
           validator: expected.validator, runID: run.id,
         })
         if (v.ok) {
-          run = completeStep(run, node.id, {
-            status: "succeeded",
-            artifacts: [{ kind: expected.kind, path: expected.pathTemplate, producedBy: node.id, status: "recovered" }],
-          })
-          recovered = true
+          recovered = { kind: expected.kind, path: expected.pathTemplate }
           break
         }
       }
-      if (!recovered) {
-        run = (stepState.attempt ?? 0) >= agent.retry.maxAttempts
-          ? blockWorkflowRun(run, `recovery: ${node.id} exceeded retries`)
-          : retryStep(run, node.id, "recovery: no valid artifact")
-      }
-      await this.repository.save(run)
+      const recoveredArtifact = recovered
+      const attempts = stepState.attempt ?? 0
+      const maxAttempts = agent.retry.maxAttempts
+      const nodeID = node.id
+      await withRunLock(run.workspacePath, run.id, async () => {
+        const fresh = await this.repository.load(run.workspacePath, run.id).catch(() => undefined)
+        if (fresh && isWorkflowTerminal(fresh)) {
+          run = fresh
+          return
+        }
+        const base = fresh ?? run
+        const state = base.steps[nodeID]
+        if (state?.status !== "running") {
+          run = base
+          return
+        }
+        run = recoveredArtifact
+          ? completeStep(base, nodeID, {
+              status: "succeeded",
+              artifacts: [{ kind: recoveredArtifact.kind as ArtifactRef["kind"], path: recoveredArtifact.path, producedBy: nodeID, status: "recovered" }],
+            })
+          : attempts >= maxAttempts
+            ? blockWorkflowRun(base, `recovery: ${nodeID} exceeded retries`)
+            : retryStep(base, nodeID, "recovery: no valid artifact")
+        await this.repository.save(run)
+      })
     }
     return this.execute({
       prepared: { kind: "workflow", text: run.prompt, decision: asOrchestrated(run.decision), runID: run.id, workflowID: run.workflowID, goalPath: "", workspacePath: run.workspacePath },
@@ -266,16 +404,28 @@ export class WorkflowRunService {
   }
 
   async cancel(input: { workspacePath: string; runID: string; harness: SpinosaHarness }): Promise<void> {
-    const run = await this.repository.load(input.workspacePath, input.runID)
-    if (!run || isWorkflowTerminal(run)) return
-    const cancelled = cancelWorkflowRun(run)
-    await this.repository.save(cancelled)
-    await this.repository.append(input.workspacePath, input.runID, { at: cancelled.updatedAt, type: "cancelled", status: cancelled.status })
+    // Persist the terminal state inside the per-run gate: a concurrent
+    // execute commit cannot slip a stale non-terminal write between this
+    // load and save. Child/parent harness aborts stay outside the gate
+    // (slow external I/O; their IDs were persisted before being awaited).
+    const cancelled = await withRunLock(input.workspacePath, input.runID, async () => {
+      const run = await this.repository.load(input.workspacePath, input.runID)
+      if (!run || isWorkflowTerminal(run)) return undefined
+      const next = cancelWorkflowRun(run)
+      await this.repository.save(next)
+      await this.repository.append(input.workspacePath, input.runID, { at: next.updatedAt, type: "cancelled", status: next.status })
+      return next
+    })
+    if (!cancelled) return
     // Cancel every in-flight step session, then the visible parent.
     for (const step of Object.values(cancelled.steps)) {
       if (step.status === "running" && step.sessionID) {
         await input.harness.cancelExecution({ sessionID: step.sessionID }).catch(() => {})
       }
+    }
+    // Fanout branches carry their own sessions outside the step slot.
+    for (const sessionID of Object.values(cancelled.branchSessions ?? {}).flat()) {
+      await input.harness.cancelExecution({ sessionID }).catch(() => {})
     }
     await input.harness.cancelExecution({ sessionID: cancelled.parentSessionID }).catch(() => {})
   }
@@ -292,6 +442,8 @@ export class WorkflowRunService {
     onEvent?: WorkflowRunEventCallback
     firstAgentID?: string
     concurrency?: number
+    /** Fired right after a child session exists, before its execution is awaited. */
+    onChildStarted?: (info: { nodeID: string; sessionID: string; branch: boolean }) => Promise<void> | void
   }): Promise<{ node: WorkflowNode; outcome: StepOutcome; sessionID?: string; executionID?: string }> {
     const { node, run, harness } = input
     if (node.kind === "system") {
@@ -313,9 +465,9 @@ export class WorkflowRunService {
       }
     }
     if (node.kind === "fanout") {
-      return this.executeFanout({ run, node, harness, model: input.model, synthesizeForTest: input.synthesizeForTest, concurrency: input.concurrency })
+      return this.executeFanout({ run, node, harness, model: input.model, synthesizeForTest: input.synthesizeForTest, concurrency: input.concurrency, onChildStarted: input.onChildStarted })
     }
-    return this.executeAgentStep({ run, node, harness, model: input.model, synthesizeForTest: input.synthesizeForTest, isFirstAgent: node.id === input.firstAgentID })
+    return this.executeAgentStep({ run, node, harness, model: input.model, synthesizeForTest: input.synthesizeForTest, isFirstAgent: node.id === input.firstAgentID, onChildStarted: input.onChildStarted })
   }
 
   private async executeAgentStep(input: {
@@ -325,6 +477,7 @@ export class WorkflowRunService {
     model?: { providerID: string; modelID: string }
     synthesizeForTest?: boolean
     isFirstAgent?: boolean
+    onChildStarted?: (info: { nodeID: string; sessionID: string; branch: boolean }) => Promise<void> | void
   }): Promise<{ node: WorkflowNode; outcome: StepOutcome; sessionID?: string; executionID?: string }> {
     const { run, node, harness } = input
     const state = run.steps[node.id]
@@ -344,6 +497,9 @@ export class WorkflowRunService {
         toolPolicy: node.toolPolicy.map((t) => ({ tool: t.tool, resource: t.resource, effect: t.effect })),
       })
       sessionID = child.id
+      // Report the child before awaiting it so cancellation can address a
+      // running session it otherwise would never learn about.
+      await input.onChildStarted?.({ nodeID: node.id, sessionID: child.id, branch: false })
       const decision = asOrchestrated(run.decision)
       const result = await harness.executeAgent({
         sessionID: child.id,
@@ -414,6 +570,7 @@ export class WorkflowRunService {
     model?: { providerID: string; modelID: string }
     synthesizeForTest?: boolean
     concurrency?: number
+    onChildStarted?: (info: { nodeID: string; sessionID: string; branch: boolean }) => Promise<void> | void
   }): Promise<{ node: WorkflowNode; outcome: StepOutcome; sessionID?: string; executionID?: string }> {
     const { run, node, harness } = input
     let partitions: { id: string; files?: string[] }[] = []
@@ -438,6 +595,7 @@ export class WorkflowRunService {
           metadata: { spinosaInternal: true, spinosaRunID: run.id, spinosaWorkflowID: run.workflowID, spinosaStepID: `${node.id}:${branch.id}` },
           toolPolicy: [{ tool: "*", resource: "*", effect: "deny" }, { tool: "read", resource: "*", effect: "allow" }, { tool: "grep", resource: "*", effect: "allow" }, { tool: "glob", resource: "*", effect: "allow" }, { tool: "write", resource: "agent_reports/*", effect: "allow" }],
         })
+        await input.onChildStarted?.({ nodeID: node.id, sessionID: child.id, branch: true })
         const fanoutDecision = asOrchestrated(run.decision)
         const result = await harness.executeAgent({
           sessionID: child.id,

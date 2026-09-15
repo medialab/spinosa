@@ -295,6 +295,21 @@ export const {
             .then((x) => setStore("vcs", reconcile(x.data)))
             .catch(() => {}),
         ])
+        // Recovery must also repair conversation content: events missed while
+        // offline are not replayed, so re-run hydration for sessions with a
+        // local projection. Invalidation (not silent reuse) keeps failed
+        // hydrations eligible for retry instead of permanently exempt.
+        void (async () => {
+          const known = Object.keys(store.message)
+          for (const sessionID of known) fullSyncedSessions.delete(sessionID)
+          for (const sessionID of known) {
+            try {
+              await result.session.sync(sessionID)
+            } catch {
+              // Next reconnect or navigation retries; never throw into events.
+            }
+          }
+        })()
         return
       }
       // SDK gen can lag schema for newer session.next.* types; handle those first.
@@ -1817,18 +1832,26 @@ export const {
           const task = (async () => {
             const [session, messages, todo, diff] = await Promise.all([
               sdk.client.session.get({ sessionID }, { throwOnError: true }),
-              sdk.client.session.messages({ sessionID, limit: 100 }),
+              // Isolated: a failed history request must never masquerade as
+              // an empty transcript (see below).
+              sdk.client.session.messages({ sessionID, limit: 100 }).catch(() => undefined),
               sdk.client.session.todo({ sessionID }),
               sdk.client.session.diff({ sessionID }),
             ])
+            // An SDK error response carries no data: keep the last known
+            // good projection and stay eligible for a later retry instead
+            // of replacing history with [] and marking it fully synced.
+            const messageList = messages?.data
+            const messagesOk = Array.isArray(messageList)
             setStore(
               produce((draft) => {
                 const match = search(draft.session, sessionID, (s) => s.id)
                 if (match.found) draft.session[match.index] = session.data!
                 if (!match.found) draft.session.splice(match.index, 0, session.data!)
                 draft.todo[sessionID] = todo.data ?? []
+                if (!messagesOk) return
                 const currentMessages = draft.message[sessionID] ?? []
-                const infos = (messages.data ?? []).flatMap((message) => {
+                const infos = (messageList ?? []).flatMap((message) => {
                   if (!tracker.messages.has(message.info.id)) return [message.info]
                   const current = currentMessages.find((item) => item.id === message.info.id)
                   return current ? [current] : []
@@ -1841,7 +1864,7 @@ export const {
                 const removed = infos.slice(0, -100)
                 const visible = infos.slice(-100)
                 const visibleIDs = new Set(visible.map((message) => message.id))
-                for (const message of messages.data ?? []) {
+                for (const message of messageList ?? []) {
                   if (!visibleIDs.has(message.info.id)) {
                     delete draft.part[message.info.id]
                     continue
@@ -1873,7 +1896,7 @@ export const {
                 draft.session_diff[sessionID] = diff.data ?? []
               }),
             )
-            fullSyncedSessions.add(sessionID)
+            if (messagesOk) fullSyncedSessions.add(sessionID)
           })().finally(() => {
             syncingSessions.delete(sessionID)
             hydratingSessions.delete(sessionID)

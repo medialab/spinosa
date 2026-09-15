@@ -101,6 +101,8 @@ import {
   removeOutbound,
   setOutboundController,
   ownsOutboundPump,
+  outboundForSession,
+  setOutboundAdmittedID,
   SPINOSA_PROMPT_METADATA,
   waitForEcho,
   type DispatchContext,
@@ -1191,20 +1193,34 @@ export function Prompt(props: PromptProps) {
   // Slash dispatch tolerates leading whitespace (same rule as isSlashCommand
   // above); the command is parsed from the trimmed text.
   const outboundCommandText = outboundText.replace(/^\s+/, "")
-  if (dispatch.mode === "shell") {
-    move.startSubmit()
-    const completion = sdk.client.session.shell({
-      sessionID: targetSessionID,
-      agent: agentName,
-      model: {
-        providerID: selectedModel.providerID,
-        modelID: selectedModel.modelID,
-      },
-      command: outboundText,
-    })
-    setStore("mode", "normal")
-    return { completion }
-  } else if (
+    if (dispatch.mode === "shell") {
+      move.startSubmit()
+      // Toast here: the pump only toasts when no receipt was kept, and these
+      // rowless sends keep none. Rethrown so pump-side handling stays uniform.
+      const completion = sdk.client.session
+        .shell({
+          sessionID: targetSessionID,
+          agent: agentName,
+          model: {
+            providerID: selectedModel.providerID,
+            modelID: selectedModel.modelID,
+          },
+          command: outboundText,
+        })
+        .then(
+          (res) => res,
+          (error: unknown) => {
+            toast.show({
+              title: "Couldn’t send prompt",
+              message: errorMessage(error),
+              variant: "error",
+            })
+            throw error
+          },
+        )
+      setStore("mode", "normal")
+      return { completion }
+    } else if (
     outboundCommandText.startsWith("/") &&
     sync.data.command.some((x) => x.name === outboundCommandText.split("\n")[0].split(" ")[0].slice(1))
   ) {
@@ -1216,16 +1232,28 @@ export function Prompt(props: PromptProps) {
     const restOfInput = firstLineEnd === -1 ? "" : outboundCommandText.slice(firstLineEnd + 1)
     const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
 
-    const completion = sdk.client.session.command({
-      sessionID: targetSessionID,
-      command: command.slice(1),
-      arguments: args,
-      agent: agentName,
-      model: `${selectedModel.providerID}/${selectedModel.modelID}`,
-      variant,
-      parts: snapshot.nonTextParts.filter((x) => x.type === "file"),
-    })
-    return { completion }
+      const completion = sdk.client.session
+        .command({
+          sessionID: targetSessionID,
+          command: command.slice(1),
+          arguments: args,
+          agent: agentName,
+          model: `${selectedModel.providerID}/${selectedModel.modelID}`,
+          variant,
+          parts: snapshot.nonTextParts.filter((x) => x.type === "file"),
+        })
+        .then(
+          (res) => res,
+          (error: unknown) => {
+            toast.show({
+              title: "Couldn’t send prompt",
+              message: errorMessage(error),
+              variant: "error",
+            })
+            throw error
+          },
+        )
+      return { completion }
   } else if (preparedSpinosa?.framed) {
     move.startSubmit()
       // Route badge: stamp the workflow identity onto the (ignored) user
@@ -1286,13 +1314,17 @@ export function Prompt(props: PromptProps) {
             onProgress: (progress) => setRouteProgress(progress.runID, progress),
           })
         })
-      .catch((error) => {
-        toast.show({
-          title: "Couldn’t send prompt",
-          message: errorMessage(error),
-          variant: "error",
+        .catch((error) => {
+          toast.show({
+            // Admission already succeeded once the id is known: the failure
+            // belongs to the workflow, not the send. Rethrown so the pump
+            // keeps a failed receipt instead of echo-watching a dead run.
+            title: admittedID ? "Research failed" : "Couldn’t send prompt",
+            message: errorMessage(error),
+            variant: "error",
+          })
+          throw error
         })
-      })
     if (snapshot.editorParts.length > 0) editor.markSelectionSent()
     // The workflow engine runs outside the server drain: the pump awaits
     // this chain so queued prompts dispatch strictly FIFO behind it.
@@ -1399,10 +1431,27 @@ export function Prompt(props: PromptProps) {
     if (outboundEntryState(sessionID, key) === "sent") removeOutbound(sessionID, key)
   }
 
+  // Confirmation resume: re-check sent rows against fresh sync data.
+  // Runs on every pump kick (submit, idle flip, steer, interrupt) and on
+  // reconnect, so a late echo settles the row even after the 10s watcher
+  // gave up and marked it stale. Removal still requires the sent state,
+  // so meanwhile-cancelled receipts survive.
+  function settleUnsettledEchoes(sessionID: string) {
+    const messages = sync.data.message[sessionID] ?? []
+    for (const entry of outboundForSession(sessionID)) {
+      if (entry.state !== "sent") continue
+      const seen =
+        findEchoByPromptID(messages, sync.data.part, entry.key) ||
+        (entry.admittedID ? hasServerEcho(messages, entry.admittedID) : false)
+      if (seen) removeOutbound(sessionID, entry.key)
+    }
+  }
+
   // FIFO dispatcher for the outbound queue: evaluate the next dispatchable
   // entry when idle, send it, hold the sent row until the server echo takes
   // over, then continue while idle. Single-flight per session.
   async function pumpOutbound(sessionID: string): Promise<void> {
+    settleUnsettledEchoes(sessionID)
     if (!peekOutbound(sessionID)) return
     const dispatchFn = dispatchRef.fn
     if (!dispatchFn) return
@@ -1453,6 +1502,7 @@ export function Prompt(props: PromptProps) {
             // admission tap that runs after kickoff (settled there is the
             // engine result, not the admission response).
             admittedID = result.admitted?.() ?? admittedUserIDFromResponse(settled)
+            if (admittedID) setOutboundAdmittedID(sessionID, head.key, admittedID)
           }
           // Echo-handoff runs detached: the next entry dispatches without
           // waiting for sync. The stamped prompt id is the primary matcher;
@@ -1465,13 +1515,16 @@ export function Prompt(props: PromptProps) {
             markOutboundInterrupted(sessionID, head.key)
           } else {
             // Nothing was sent either, but the text must not vanish: keep a
-            // failed receipt in place instead of dropping the row.
-            markOutboundFailed(sessionID, head.key)
-            toast.show({
-              title: "Couldn’t send prompt",
-              message: errorMessage(err),
-              variant: "error",
-            })
+            // failed receipt in place instead of dropping the row. Toast only
+            // when no receipt survived — every dispatch path toasts its own
+            // failure, so a kept receipt never double-toasts.
+            if (!markOutboundFailed(sessionID, head.key)) {
+              toast.show({
+                title: "Couldn’t send prompt",
+                message: errorMessage(err),
+                variant: "error",
+              })
+            }
           }
         } finally {
           abortOutbound(sessionID, head.key)
@@ -1497,9 +1550,24 @@ export function Prompt(props: PromptProps) {
     const sid = props.sessionID
     if (!sid) return
     dispatchRef.fn = dispatchEntry
-    registerPump(sid, () => void pumpOutbound(sid))
-    void pumpOutbound(sid)
-    onCleanup(() => unregisterPump(sid))
+    const generation = registerPump(sid, () => void pumpOutbound(sid))
+    onCleanup(() => {
+      unregisterPump(sid, generation)
+      if (dispatchRef.fn === dispatchEntry) dispatchRef.fn = undefined
+    })
+  })
+
+  // Transport recovery settles what the resync delivered: sent rows whose
+  // echo arrived while offline (or after the watcher gave up) swap out.
+  // Delayed past the resync so the fresh projection is in place first.
+  createEffect(() => {
+    const sid = props.sessionID
+    if (!sid) return
+    const unsub = event.subscribe((payload) => {
+      if ((payload as { type?: string }).type !== "connection.reconnected") return
+      setTimeout(() => settleUnsettledEchoes(sid), 2000)
+    })
+    onCleanup(unsub)
   })
 
   async function submit(options?: { preferQueue?: boolean; preferSteer?: boolean }) {

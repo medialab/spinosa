@@ -198,6 +198,21 @@ export function formatImportPhaseRecapFromCounters(
 }
 
 /**
+ * Count line that never prints a substituted total: unknown work shows the
+ * processed count alone instead of a fabricated "of 1".
+ */
+export function progressCountLabel(current: number, total: number): string {
+  if (total <= 0) return `${current} processed`
+  return `${current} of ${total}`
+}
+
+/** Percentage only for known totals; unknown work shows no percentage. */
+export function progressPercentLabel(current: number, total: number): string | undefined {
+  if (total <= 0) return undefined
+  return `${Math.round(Math.min(current / total, 1) * 100)}%`
+}
+
+/**
  * Complete-state results order: failures first, then succeeded.
  * UI scrolls the full list (no hard “… +N more” truncation).
  */

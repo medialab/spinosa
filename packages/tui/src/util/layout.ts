@@ -46,3 +46,41 @@ export function sessionColumnWidth(terminalWidth: number, sidebarVisible: boolea
 export function sessionContentWidth(terminalWidth: number, sidebarVisible: boolean, expanded = false) {
   return Math.max(1, sessionColumnWidth(terminalWidth, sidebarVisible, expanded) - MAIN_CONTENT_HORIZONTAL_PADDING)
 }
+
+export type TranscriptLayoutMode = "classic" | "callout"
+
+/**
+ * Transcript budget: main text first. Annotation rails enable only when the
+ * center keeps a reading minimum AND each rail keeps a usable minimum
+ * (4 outer cells + 4 gap cells + 80 center + 2×18 rails = 124 columns).
+ * Below that the transcript stays classic so narrowing the terminal never
+ * collapses the reading width (the old formula lost ~23 columns at 85→86).
+ */
+export const TRANSCRIPT_RAIL_GAP = 2
+export const TRANSCRIPT_CENTER_MIN_CELLS = 80
+export const TRANSCRIPT_RAIL_MIN_CELLS = 18
+export const TRANSCRIPT_OUTER_CELLS = 4
+
+export type TranscriptBudget =
+  | { mode: "classic"; contentWidth: number; maxWidth: number }
+  | { mode: "callout"; contentWidth: number; railWidth: number; gap: number; maxWidth: number }
+
+export function transcriptBudget(terminalWidth: number): TranscriptBudget {
+  const totalWidth = terminalWidth - TRANSCRIPT_OUTER_CELLS
+  const railWidth = Math.floor((totalWidth * 0.4) / 2.6)
+  const centerWidth = totalWidth - railWidth * 2 - TRANSCRIPT_RAIL_GAP * 2
+  if (centerWidth < TRANSCRIPT_CENTER_MIN_CELLS || railWidth < TRANSCRIPT_RAIL_MIN_CELLS) {
+    return {
+      mode: "classic",
+      contentWidth: Math.max(1, totalWidth),
+      maxWidth: totalWidth,
+    }
+  }
+  return {
+    mode: "callout",
+    contentWidth: centerWidth,
+    railWidth,
+    gap: TRANSCRIPT_RAIL_GAP,
+    maxWidth: totalWidth,
+  }
+}

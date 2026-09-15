@@ -15,8 +15,6 @@ import {
   writeWorkspaceFrameworkVersion,
   type TemplatePackFreshness,
 } from "../../spinosa/service"
-import { useBindings, SPINOSA_BASE_MODE } from "../../keymap"
-import { usePromptRef } from "../../context/prompt"
 import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
 import { useConnected } from "../../component/use-connected"
 import { useDialog } from "../../ui/dialog"
@@ -33,19 +31,17 @@ type ActionRowItem = {
   danger?: boolean
 }
 
-export function SpinosaPromptChips(props: { suppressEnter?: boolean; onWorkspaceDeleted?: () => void | Promise<void> }) {
+export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Promise<void> }) {
   const { theme } = useTheme()
   const toast = useToast()
   const { navigate } = useRoute()
   const spinosa = useSpinosaWorkspace()
   const exit = useExit()
   const setEpilogue = useEpilogue()
-  const promptRef = usePromptRef()
   const connected = useConnected()
   const dialog = useDialog()
   const [busyAction, setBusyAction] = createSignal<"update" | "completed" | undefined>()
   const [updateLabel, setUpdateLabel] = createSignal("Updating workspace…")
-  const [selectedAction, setSelectedAction] = createSignal(0)
   const [hoveredAction, setHoveredAction] = createSignal<string | undefined>()
   const workspaceReady = createMemo(() => Boolean(spinosa.activePath && !spinosa.genericMode))
   const [bundledVersion] = createResource(
@@ -234,10 +230,8 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean; onWorkspace
   const renderRow = (items: ActionRowItem[]) => (
     <box width="100%" flexDirection="row" gap={workspaceReady() ? 2 : 1} paddingBottom={workspaceReady() ? 2 : 1}>
       <For each={items}>
-        {(item, index) => {
-          const highlighted = createMemo(
-            () => hoveredAction() === item.key || selectedAction() === index(),
-          )
+        {(item) => {
+          const highlighted = createMemo(() => hoveredAction() === item.key)
 
           return (
             <box
@@ -254,11 +248,9 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean; onWorkspace
               borderColor={buttonBorder(theme, highlighted(), undefined, Boolean(item.danger))}
               onMouseOver={() => {
                 setHoveredAction(item.key)
-                setSelectedAction(index())
               }}
               onMouseOut={() => setHoveredAction(undefined)}
               onMouseDown={() => {
-                setSelectedAction(index())
                 setTimeout(() => item.onPress(), 0)
               }}
             >
@@ -271,46 +263,6 @@ export function SpinosaPromptChips(props: { suppressEnter?: boolean; onWorkspace
       </For>
     </box>
   )
-
-  const moveSelection = (offset: number) => {
-    const total = primaryActions().length
-    if (total === 0) return
-    setSelectedAction((current) => (current + offset + total) % total)
-  }
-
-  const runSelectedAction = () => {
-    const item = primaryActions()[selectedAction()]
-    if (!item) return
-    item.onPress()
-  }
-
-  useBindings(() => ({
-    mode: SPINOSA_BASE_MODE,
-    enabled: () => !promptRef.current?.focused,
-    bindings: [
-      { key: "Left", desc: "Previous action", group: "Home", cmd: () => moveSelection(-1) },
-      { key: "Right", desc: "Next action", group: "Home", cmd: () => moveSelection(1) },
-      ...(!props.suppressEnter
-        ? [{ key: "Enter", desc: "Run selected action", group: "Home", cmd: () => runSelectedAction() }]
-        : []),
-      ...(!connected()
-        ? [{ key: "p", desc: "Select provider", group: "Home", cmd: () => dialog.replace(() => <DialogProvider />) }]
-        : workspaceReady()
-          ? [
-              { key: "n", desc: "New workspace", group: "Home", cmd: () => navigate({ type: "onboarding" }) },
-              { key: "a", desc: "Import files", group: "Home", cmd: () => navigate({ type: "add-files" }) },
-              { key: "w", desc: "Switch workspace", group: "Home", cmd: () => spinosa.showPicker() },
-              { key: "d", desc: "Delete workspace", group: "Home", cmd: () => void handleDeleteWorkspace() },
-              ...(needsWorkspaceUpdate()
-                ? [{ key: "u", desc: "Update workspace files", group: "Home", cmd: () => void runWorkspaceUpdate() }]
-                : []),
-            ]
-          : [
-              { key: "n", desc: "New workspace", group: "Home", cmd: () => navigate({ type: "onboarding" }) },
-              { key: "w", desc: "Pick a workspace", group: "Home", cmd: () => spinosa.showPicker() },
-            ]),
-    ],
-  }))
 
   return <box width="100%" flexDirection="column">{renderRow(primaryActions())}</box>
 }

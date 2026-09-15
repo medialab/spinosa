@@ -15,6 +15,33 @@ async function writeAtomic(target: string, data: string): Promise<void> {
   await rename(temporary, target)
 }
 
+// In-process per-run write gate. File replacement is atomic but
+// load→compute→save is not: two invocations (execute loop vs cancel, TUI
+// facade vs service) can interleave so a stale non-terminal write clobbers
+// a persisted cancellation. Every read-modify-write of run.json must run
+// inside this gate with its terminal check against the fresh read, so the
+// check and the write are one atomic segment. (Cross-process writers still
+// race; all in-app writers share this module.)
+const runGates = new Map<string, Promise<void>>()
+
+export async function withRunLock<T>(workspacePath: string, runID: string, work: () => Promise<T>): Promise<T> {
+  const key = `${workspacePath}\n${runID}`
+  while (runGates.get(key) !== undefined) {
+    await runGates.get(key)
+  }
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  runGates.set(key, gate)
+  try {
+    return await work()
+  } finally {
+    release()
+    runGates.delete(key)
+  }
+}
+
 export class FileResearchRunRepository {
   async create(run: ResearchRun): Promise<void> {
     await this.save(run)

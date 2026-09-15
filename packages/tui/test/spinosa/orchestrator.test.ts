@@ -185,12 +185,14 @@ describe("prepareSpinosaSubmit", () => {
     await firstStarted
     const newRun = executeSpinosaSubmit({ client, sessionID: "session-1", prepared: second, model })
     await secondStarted
-    expect(aborts).toBe(1)
+    // Fenced preemption cancels the old generation's running child AND the
+    // parent drain (barrier ack): two aborts, not just the parent.
+    expect(aborts).toBe(2)
 
     rejectFirst(new Error("old run stopped"))
     await oldRun
     expect(await cancelSpinosaSubmit({ client, sessionID: "session-1" })).toBe(true)
-    expect(aborts).toBe(2)
+    expect(aborts).toBe(4)
 
     resolveSecond({ data: { info: { id: "msg_second" }, parts: [] } })
     await newRun
@@ -213,18 +215,24 @@ describe("prepareSpinosaSubmit", () => {
         abort: async () => ({ data: {} }),
       },
     }
-    await executeSpinosaSubmit({
-      client,
-      sessionID: "session-progress",
-      prepared,
-      model: { providerID: "test", modelID: "test" },
-      localEmit: ((event: unknown) => {
-        seen.push(event as Record<string, unknown>)
-      }) as never,
-      onProgress: ((progress: unknown) => {
-        badgeFeed.push(progress as Record<string, unknown>)
-      }) as never,
-    })
+    // The bare mock produces no artifacts, so the run strictly blocks and
+    // the terminal-status contract surfaces it as a rejection (the pump
+    // keeps a failed receipt instead of a silent success). Progress events
+    // are still published per outcome before that rejection.
+    await expect(
+      executeSpinosaSubmit({
+        client,
+        sessionID: "session-progress",
+        prepared,
+        model: { providerID: "test", modelID: "test" },
+        localEmit: ((event: unknown) => {
+          seen.push(event as Record<string, unknown>)
+        }) as never,
+        onProgress: ((progress: unknown) => {
+          badgeFeed.push(progress as Record<string, unknown>)
+        }) as never,
+      }),
+    ).rejects.toThrow(/Research blocked/)
     const progress = seen
       .map((e) => e.payload as Record<string, unknown>)
       .filter((p) => p?.type === "job.progress")

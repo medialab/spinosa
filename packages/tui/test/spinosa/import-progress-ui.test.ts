@@ -12,6 +12,8 @@ import {
   importPhaseVerb,
   isImportPhaseComplete,
   isTerminalImportFileStatus,
+  progressCountLabel,
+  progressPercentLabel,
   resolveSpinosaLogsDir,
   seedImportQueue,
   selectImportFailedItems,
@@ -191,5 +193,23 @@ describe("import progress UI helpers", () => {
     const items = seedImportQueue(["memo.pdf"])
     const updated = applyImportProgressStatus(items, "memo.pdf (page 2)", "processing")
     expect(updated.find((i) => i.rel === "memo.pdf")?.status).toBe("processing")
+  })
+})
+
+describe("progressCounterLabels", () => {
+  test("known totals print count and percentage", () => {
+    expect(progressCountLabel(3, 10)).toBe("3 of 10")
+    expect(progressPercentLabel(3, 10)).toBe("30%")
+  })
+
+  test("unknown totals never print a substituted total", () => {
+    expect(progressCountLabel(4, 0)).toBe("4 processed")
+    expect(progressCountLabel(4, -1)).toBe("4 processed")
+    expect(progressPercentLabel(4, 0)).toBeUndefined()
+  })
+
+  test("overshoot clamps the percentage but keeps honest counts", () => {
+    expect(progressCountLabel(7, 5)).toBe("7 of 5")
+    expect(progressPercentLabel(7, 5)).toBe("100%")
   })
 })

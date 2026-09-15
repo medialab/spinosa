@@ -45,7 +45,6 @@ import { DialogProvider } from "../component/dialog-provider"
 import { inspectWorkspacePresence, isUsableWorkspaceStatus, workspacePresenceLabel } from "@spinosa/core/workspace/presence"
 import type { SpinosaWorkspacePresence } from "@spinosa/core/types"
 import type { SpinosaWorkspaceID } from "@spinosa/core/workspace/identity"
-import { SPINOSA_BASE_MODE, useBindings } from "../keymap"
 import { truncatePathTail } from "../spinosa/truncate-path"
 import {
   RECENT_WORKSPACE_COUNT,
@@ -470,33 +469,9 @@ export function Home() {
     if (selectedRecent() > max) setSelectedRecent(max)
   })
 
-  useBindings(() => ({
-    mode: SPINOSA_BASE_MODE,
-    enabled: () => recentListVisible() && !promptRef.current?.focused && dialog.stack.length === 0,
-    bindings: [
-      {
-        key: "Up",
-        desc: "Previous recent workspace",
-        group: "Home",
-        cmd: () => setSelectedRecent((value) => Math.max(0, value - 1)),
-      },
-      {
-        key: "Down",
-        desc: "Next recent workspace",
-        group: "Home",
-        cmd: () => setSelectedRecent((value) => Math.min(recentVisibleCount() - 1, value + 1)),
-      },
-      {
-        key: "Enter",
-        desc: "Open selected recent workspace",
-        group: "Home",
-        cmd: () => {
-          const workspace = recentWorkspaces().slice(0, recentVisibleCount())[selectedRecent()]
-          if (workspace) void pickRecentWorkspace(workspace)
-        },
-      },
-    ],
-  }))
+  // Workspace home is mouse-only: no keyboard shortcuts here (the prompt
+  // writing box owns the keyboard). The recent list opens workspaces
+  // through mouse hover + click.
 
   return (
     <HomeSessionDestinationProvider>
@@ -664,7 +639,7 @@ export function Home() {
 
           <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0}>
             <BackgroundImportChip />
-            <SpinosaPromptChips suppressEnter={recentListVisible()} onWorkspaceDeleted={loadRecentWorkspaces} />
+            <SpinosaPromptChips onWorkspaceDeleted={loadRecentWorkspaces} />
             <Show when={providerConnected() && workspaceReady()}>
               <box>
                 <pluginRuntime.Slot name="home_prompt" mode="replace" ref={bind}>

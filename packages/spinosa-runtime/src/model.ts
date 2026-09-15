@@ -141,6 +141,12 @@ export type WorkflowRun = {
   updatedAt: string
   blocker?: string
   error?: string
+  /**
+   * In-flight fanout branch sessions by node id, persisted at creation —
+   * before their execution is awaited — so cancellation can address every
+   * branch, not just the single step session slot.
+   */
+  branchSessions?: Record<string, string[]>
 }
 
 export type WorkflowRunEvent =
@@ -159,5 +165,8 @@ export type WorkflowRunEvent =
   | { at: string; type: "blocked"; status: WorkflowRunStatus; detail?: string }
   | { at: string; type: "failed"; status: WorkflowRunStatus; detail?: string }
   | { at: string; type: "cancelled"; status: WorkflowRunStatus; detail?: string }
+  // Late output from a superseded generation: recorded as evidence only,
+  // never as a state transition (a cancelled run must not reopen).
+  | { at: string; type: "late_result"; status: WorkflowRunStatus; detail?: string }
   // Legacy execution markers kept readable for old events.jsonl files.
   | { at: string; type: "classified" | "execution_started" | "execution_completed"; status: WorkflowRunStatus; detail?: string }

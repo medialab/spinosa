@@ -11,15 +11,12 @@ import { DialogModel } from "./dialog-model"
 import { DialogProvider } from "./dialog-provider"
 import { MAIN_CONTENT_MAX_WIDTH } from "../util/layout"
 import { deleteWorkspace } from "../spinosa/service"
-import { SPINOSA_BASE_MODE, useBindings } from "../keymap"
-import { usePromptRef } from "../context/prompt"
 
 export function HomeFooter() {
   const { theme } = useTheme()
   const dialog = useDialog()
   const toast = useToast()
   const spinosa = useSpinosaWorkspace()
-  const promptRef = usePromptRef()
   const [hovered, setHovered] = createSignal<string | undefined>()
   const [deleting, setDeleting] = createSignal(false)
 
@@ -55,17 +52,16 @@ export function HomeFooter() {
     }
   }
 
-  type Shortcut = { id: string; key: string; label: string; action: () => void; danger?: boolean }
+  type Shortcut = { id: string; label: string; action: () => void; danger?: boolean }
   const buttons = createMemo<Shortcut[]>(() => {
     const items: Shortcut[] = [
-      { id: "S", key: "shift+s", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
-      { id: "P", key: "shift+p", label: "Provider", action: () => dialog.replace(() => <DialogProvider />) },
-      { id: "M", key: "shift+m", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
+      { id: "S", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
+      { id: "P", label: "Provider", action: () => dialog.replace(() => <DialogProvider />) },
+      { id: "M", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
     ]
     if (!spinosa.genericMode) {
       items.splice(2, 0, {
         id: "K",
-        key: "shift+k",
         label: "Sessions",
         action: () => dialog.replace(() => <DialogSessionList />),
       })
@@ -73,7 +69,6 @@ export function HomeFooter() {
     if (spinosa.activePath && !spinosa.genericMode) {
       items.push({
         id: "D",
-        key: "shift+d",
         label: deleting() ? "Deleting…" : "Delete workspace",
         action: () => void deleteActiveWorkspace(),
         danger: true,
@@ -82,55 +77,18 @@ export function HomeFooter() {
     return items
   })
 
-  // Shortcuts only on Home picker (no active workspace). In chat the prompt is focused
-  // and typing "s" should insert "s" — user will use "/command" or mouse. Keep footer
-  // as plain hint in workspace to avoid shortcut confusion.
+  // Workspace home is mouse-only: no keyboard shortcuts here (the prompt
+  // writing box owns the keyboard). Footer actions are mouse-only
+  // everywhere; in chat use /commands.
   const isHomePicker = createMemo(() => !spinosa.activePath || spinosa.genericMode)
-  const [footerSelected, setFooterSelected] = createSignal(0)
 
-  const moveFooter = (offset: number) => {
-    const len = buttons().length
-    if (len === 0) return
-    setFooterSelected((v) => {
-      const clamped = Math.min(v, Math.max(0, len - 1))
-      const next = (clamped + offset + len) % len
-      setHovered(buttons()[next]?.id)
-      return next
-    })
-  }
-
-  useBindings(() => ({
-    mode: SPINOSA_BASE_MODE,
-    enabled: () => isHomePicker() && !promptRef.current?.focused && dialog.stack.length === 0,
-    bindings: [
-      ...buttons().map((item) => ({
-        key: item.key,
-        desc: item.label,
-        group: "Home",
-        cmd: () => item.action(),
-      })),
-      { key: "left", desc: "Previous footer action", group: "Home", cmd: () => moveFooter(-1) },
-      { key: "right", desc: "Next footer action", group: "Home", cmd: () => moveFooter(1) },
-      { key: "tab", desc: "Next footer action", group: "Home", cmd: () => moveFooter(1) },
-      {
-        key: "shift+tab",
-        desc: "Previous footer action",
-        group: "Home",
-        cmd: () => moveFooter(-1),
-      },
-    ],
-  }))
-
-  // Footer Enter is intentionally not bound — recent list's Enter takes precedence
-  // when both are visible. Footer actions are mouse-only on Home; in chat use /commands.
-
-  // Workspace chat keeps the prompt's keyboard, so footer buttons are
-  // mouse-only there (no shortcuts registered). Rendered so Settings/Models
-  // stay one click away even with text in the prompt box — where `/model`
-  // mid-text intentionally does not trigger slash commands.
+  // Chat keeps the prompt's keyboard: footer buttons stay mouse-only there.
+  // Rendered so Settings/Models stay one click away even with text in the
+  // prompt box. The "/" command menu may open mid-text, but only a
+  // line-start command executes on submit.
   const chatButtons = createMemo<Shortcut[]>(() => [
-    { id: "S", key: "shift+s", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
-    { id: "M", key: "shift+m", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
+    { id: "S", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
+    { id: "M", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
   ])
 
   const renderButton = (item: Shortcut) => (
@@ -138,8 +96,6 @@ export function HomeFooter() {
       paddingX={1}
       onMouseOver={() => {
         setHovered(item.id)
-        const idx = buttons().findIndex((b) => b.id === item.id)
-        if (idx >= 0) setFooterSelected(idx)
       }}
       onMouseOut={() => setHovered(undefined)}
       onMouseUp={item.action}

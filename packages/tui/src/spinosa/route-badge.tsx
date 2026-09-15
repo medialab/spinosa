@@ -168,7 +168,7 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
     props.info.kind === "workflow" ? routeProgress(props.info.runID) : undefined
 
   const tone = () => {
-    if (props.info.kind === "general") return theme.textMuted
+    if (props.info.kind === "general") return theme.success
     if (props.info.kind === "queued") return theme.textMuted
     if (props.info.kind === "steered") return theme.primary
     if (props.info.kind === "evaluating") return theme.textMuted

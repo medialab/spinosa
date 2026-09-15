@@ -77,6 +77,8 @@ export type OutboundEntry = {
   sentAt?: number
   /** Echo overdue but row kept: sent-but-blocked rests in place as normal. */
   stale?: boolean
+  /** Admission-response id (V2 fast path); the stamped prompt id stays primary. */
+  admittedID?: string
 }
 
 let keyCounter = 0
@@ -383,6 +385,19 @@ export function outboundEntryState(sessionID: string, key: string): OutboundStat
   return entriesBySession[sessionID]?.find((entry) => entry.key === key)?.state
 }
 
+/** Stash the admission-response id once known (secondary echo matcher). */
+export function setOutboundAdmittedID(sessionID: string, key: string, admittedID: string): boolean {
+  const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
+  if (!entry || (entry.state !== "evaluating" && entry.state !== "sent")) return false
+  setEntriesBySession(
+    produce((draft) => {
+      const found = draft[sessionID]?.find((candidate) => candidate.key === key)
+      if (found) found.admittedID = admittedID
+    }),
+  )
+  return true
+}
+
 /** Preserve a cancelled evaluation in the transcript as an explicit receipt. */
 export function markOutboundInterrupted(sessionID: string, key: string): boolean {
   const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
@@ -407,8 +422,17 @@ export function markOutboundInterrupted(sessionID: string, key: string): boolean
  * dispatch continuation loses ownership of the row before it can resume.
  * The interrupted row remains as a receipt and no other session can be
  * cancelled with a leaked/stale queue key.
+ *
+ * Pass `{ kick: false }` when the caller drives what happens next itself
+ * (steer waits for the server abort to settle first): otherwise the
+ * microtask kick could admit the replacement before the old generation's
+ * abort lands and kills it.
  */
-export function cancelOutboundEvaluation(sessionID: string, key: string): boolean {
+export function cancelOutboundEvaluation(
+  sessionID: string,
+  key: string,
+  opts?: { kick?: boolean },
+): boolean {
   const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
   if (!entry || entry.state !== "evaluating") return false
   const active = controllers.get(key)
@@ -420,7 +444,7 @@ export function cancelOutboundEvaluation(sessionID: string, key: string): boolea
   // Invalidate its pump lease and let the next queued entry start. The old
   // continuation is fenced by state + lease ownership if it ever resumes.
   invalidateOutboundPump(sessionID)
-  queueMicrotask(() => kickPump(sessionID))
+  if (opts?.kick !== false) queueMicrotask(() => kickPump(sessionID))
   return true
 }
 
@@ -449,19 +473,33 @@ export function steerOutbound(sessionID: string, key: string): boolean {
 }
 
 /** Pump registry: the prompt component owns dispatch; other views kick it. */
-const pumpHandlers = new Map<string, () => void>()
+type PumpRegistration = { generation: number; kick: () => void }
+const pumpHandlers = new Map<string, PumpRegistration>()
+let pumpOwnerCounter = 0
 
-export function registerPump(sessionID: string, kick: () => void): void {
-  pumpHandlers.set(sessionID, kick)
+/**
+ * Register the session pump, returning its generation. Cleanup must pass
+ * the generation back: a stale unmount must never remove a newer mount's
+ * registration for the same session.
+ */
+export function registerPump(sessionID: string, kick: () => void): number {
+  pumpOwnerCounter += 1
+  const generation = pumpOwnerCounter
+  pumpHandlers.set(sessionID, { generation, kick })
+  return generation
 }
 
-export function unregisterPump(sessionID: string): void {
+export function unregisterPump(sessionID: string, generation?: number): boolean {
+  const current = pumpHandlers.get(sessionID)
+  if (!current) return false
+  if (generation !== undefined && current.generation !== generation) return false
   pumpHandlers.delete(sessionID)
+  return true
 }
 
 export function kickPump(sessionID: string): void {
   try {
-    pumpHandlers.get(sessionID)?.()
+    pumpHandlers.get(sessionID)?.kick()
   } catch {
     /* pump kicks never throw into views */
   }

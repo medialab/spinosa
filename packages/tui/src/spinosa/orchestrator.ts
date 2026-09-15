@@ -7,6 +7,7 @@ import {
   cancelWorkflowRun,
   FileWorkflowRunRepository,
   WorkflowRegistry,
+  withRunLock,
   type OrchestratedDecision,
   type RouteDecision,
 } from "@spinosa/runtime"
@@ -124,10 +125,10 @@ export async function executeSpinosaSubmit(input: {
     stepID: string
     status: "done" | "failed" | "error" | "processing"
   }) => void
-}): Promise<void> {
+}): Promise<"completed" | "blocked" | "failed" | "waiting_for_approval" | "cancelled"> {
   const harness = new SpinosaKernelHarness(input.client as ConstructorParameters<typeof SpinosaKernelHarness>[0])
   if (input.prepared.kind !== "workflow" || !input.prepared.sessionId || !input.prepared.workspacePath) {
-    return
+    return "completed"
   }
   const runID = input.prepared.sessionId
   const workspacePath = input.prepared.workspacePath
@@ -167,7 +168,7 @@ export async function executeSpinosaSubmit(input: {
       total = 0
     }
     let done = 0
-    await new WorkflowRunService(undefined, undefined, harness).execute({
+    const completedRun = await new WorkflowRunService(undefined, undefined, harness).execute({
       prepared: {
         kind: "workflow",
         text: input.prepared.text,
@@ -192,9 +193,26 @@ export async function executeSpinosaSubmit(input: {
         input.onProgress?.({ runID, done, total, stepID: stepID ?? workflowID, status })
       },
     })
+    // Terminal engine states are distinct outcomes, never silent success:
+    // blocked/failed throw so the caller keeps a failed receipt with the
+    // message; approval waiting stays resumable via the conversation.
     if (!job.shouldAbort()) {
-      job.finish("completed", input.prepared.goalPath ? `goal ${input.prepared.goalPath}` : undefined)
+      if (completedRun.status === "completed") {
+        job.finish("completed", input.prepared.goalPath ? `goal ${input.prepared.goalPath}` : undefined)
+        return "completed"
+      }
+      if (completedRun.status === "waiting_for_approval") {
+        job.finish("error", "Approval needed — answer in the conversation to resume")
+        return "waiting_for_approval"
+      }
+      if (completedRun.status === "cancelled") {
+        return "cancelled"
+      }
+      const detail = completedRun.status === "blocked" ? completedRun.blocker : completedRun.error
+      job.finish("error", `Research ${completedRun.status}${detail ? `: ${detail}` : ""}`)
+      throw new Error(`Research ${completedRun.status}${detail ? `: ${detail}` : ""}`)
     }
+    return "cancelled"
   } catch (err) {
     if (!job.shouldAbort()) job.finish("error", err instanceof Error ? err.message : String(err))
     throw err
@@ -215,17 +233,35 @@ export async function cancelSpinosaSubmit(input: { client: unknown; sessionID: s
   active.job.cancel()
 
   const repository = new FileWorkflowRunRepository()
-  const run = await repository.load(active.workspacePath, active.runID)
-  if (run) {
-    const cancelled = cancelWorkflowRun(run)
+  const harness = new SpinosaKernelHarness(input.client as ConstructorParameters<typeof SpinosaKernelHarness>[0])
+  // Persist the terminal state inside the shared per-run gate (same lock the
+  // engine uses): otherwise a stale engine commit can slip between this
+  // load and save and clobber the cancellation. Harness aborts stay outside
+  // the gate; the children they address were persisted before being awaited.
+  const run = await withRunLock(active.workspacePath, active.runID, async () => {
+    const loaded = await repository.load(active.workspacePath, active.runID)
+    if (!loaded) return undefined
+    const cancelled = cancelWorkflowRun(loaded)
     await repository.save(cancelled)
     await repository.append(cancelled.workspacePath, cancelled.id, {
       at: cancelled.updatedAt,
       type: "cancelled",
       status: cancelled.status,
     })
+    return cancelled
+  })
+  if (run) {
+    // Address known children too, not just the visible parent session:
+    // running steps plus fanout branches persisted at creation.
+    for (const step of Object.values(run.steps)) {
+      if (step.status === "running" && step.sessionID) {
+        await harness.cancelExecution({ sessionID: step.sessionID }).catch(() => {})
+      }
+    }
+    for (const sessionID of Object.values(run.branchSessions ?? {}).flat()) {
+      await harness.cancelExecution({ sessionID }).catch(() => {})
+    }
   }
-  const harness = new SpinosaKernelHarness(input.client as ConstructorParameters<typeof SpinosaKernelHarness>[0])
   await harness.cancelExecution({ sessionID: input.sessionID })
   activeWorkflowRuns.delete(input.sessionID)
   return true

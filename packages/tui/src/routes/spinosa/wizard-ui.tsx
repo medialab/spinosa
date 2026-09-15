@@ -16,6 +16,8 @@ import {
   formatPageMarker,
   isImportPhaseComplete,
   isTerminalImportFileStatus,
+  progressCountLabel,
+  progressPercentLabel,
   selectImportResultsWindow,
   splitPageSuffix,
   statusAccentKey,
@@ -727,6 +729,8 @@ export function ProgressBar(props: {
   /** Used to size the complete-state results ScrollBox. */
   viewportHeight?: number
 }) {
+  // Math guard only (avoids div-by-zero in the bar): display text uses
+  // progressCountLabel/progressPercentLabel so unknown totals never print.
   const total = createMemo(() => (props.total > 0 ? props.total : 1))
   const pct = createMemo(() => Math.min(props.current / total(), 1))
   const blocks = () => props.barWidth ?? 20
@@ -774,10 +778,13 @@ export function ProgressBar(props: {
     <box flexDirection="column" gap={1} paddingTop={1}>
       <box flexDirection="row" gap={0} alignItems="center">
         <text fg={props.theme.text}>
-          {bar()} {Math.round(pct() * 100)}%
+          {bar()}
+          <Show when={progressPercentLabel(props.current, props.total)}>
+            {(label) => <> {label()}</>}
+          </Show>
         </text>
         <text fg={props.theme.textMuted} attributes={TextAttributes.DIM}>
-          {" "}{props.current} of {total()}
+          {" "}{progressCountLabel(props.current, props.total)}
         </text>
       </box>
       <Show when={recap() !== ""}>

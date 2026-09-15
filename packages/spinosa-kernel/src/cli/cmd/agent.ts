@@ -5,7 +5,7 @@ import { Global } from "@spinosa/kernel-core/global"
 import path from "path"
 import fs from "fs/promises"
 import { Filesystem } from "@/util/filesystem"
-import matter from "gray-matter"
+import { stringify as stringifyYaml } from "yaml"
 import { EOL } from "os"
 import type { Argv } from "yargs"
 import { Effect } from "effect"
@@ -205,8 +205,8 @@ const AgentCreateCommand = effectCmd({
         frontmatter.permission = permissions
       }
 
-      // Write file
-      const content = matter.stringify(generated.systemPrompt, frontmatter)
+      // Write file (same `---` fence format the skill/config parser reads back)
+      const content = `---\n${stringifyYaml(frontmatter)}---\n${generated.systemPrompt}`
       const filePath = path.join(targetPath, `${generated.identifier}.md`)
 
       await fs.mkdir(targetPath, { recursive: true })

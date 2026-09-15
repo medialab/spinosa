@@ -3,6 +3,7 @@ import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { Locale } from "../../util/locale"
 import { usePathFormatter } from "../../context/path-format"
+import { truncateHead } from "../../spinosa/truncate-path"
 import type { AssistantMessage, Todo } from "@spinosa/sdk/v2"
 
 export function SessionFooter(props: { sessionID: string }) {
@@ -62,14 +63,7 @@ export function SessionFooter(props: { sessionID: string }) {
         justifyContent="center"
       >
         <Show when={todoSummary()}>
-          {(todo) => {
-            const step = `${todo().current}/${todo().total}`
-            const content = todo().content
-            const full = `${step}: ${content}`
-            const max = 50
-            const value = full.length > max ? full.slice(0, max - 1) + "…" : full
-            return <FooterItem label="Todo" value={value} />
-          }}
+          {(todo) => <FooterItem label="Todo" value={formatTodoValue(todo())} />}
         </Show>
         <Show when={usage()}>
           {(item) => (
@@ -90,8 +84,12 @@ export function SessionFooter(props: { sessionID: string }) {
   )
 }
 
-function FooterItem(props: { label: string; value: string }) {
-  const { theme } = useTheme()
+/** Pure formatter so the reactive JSX binding stays current as todos advance. */
+export function formatTodoValue(summary: { current: number; total: number; content: string }): string {
+  return truncateHead(`${summary.current}/${summary.total}: ${summary.content}`, 50)
+}
+
+function FooterItem(props: { label: string; value: string }) {  const { theme } = useTheme()
   return (
     <text fg={theme.text} wrapMode="none" overflow="hidden" flexShrink={0}>
       <span style={{ fg: theme.textMuted }}>{props.label}</span> {props.value}

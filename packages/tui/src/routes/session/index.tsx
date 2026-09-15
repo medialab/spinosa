@@ -63,7 +63,6 @@ import { SessionFooter } from "./footer"
 import {
   assistantPartGapBefore,
   steerControlLabel,
-  toggleSteerDelivery,
   useV2SessionPrompt,
 } from "../../util/session-prompt-v2"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -82,7 +81,7 @@ import { DialogExportOptions } from "../../ui/dialog-export-options"
 import * as Model from "../../util/model"
 import { formatExportContent, type ExportFormat } from "../../util/transcript"
 import { sessionEpilogue } from "../../util/presentation"
-import { setPreLayoutSiblingMargin } from "../../util/layout"
+import { setPreLayoutSiblingMargin, transcriptBudget } from "../../util/layout"
 import { useTuiConfig } from "../../config"
 import { useClipboard } from "../../context/clipboard"
 import { nextThinkingMode, reasoningSummary, useThinkingMode, type ThinkingMode } from "../../context/thinking"
@@ -143,9 +142,6 @@ type TranscriptLayout =
       gap: number
       maxWidth: number
     }
-
-const TRANSCRIPT_RAIL_GAP = 2
-const TRANSCRIPT_CENTER_MIN_WIDTH = 54
 
 function goUpsellKeys(action: RetryAction) {
   if (!action) return
@@ -422,27 +418,7 @@ const resolveExportPath = (filename: string): string => {
   const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
 
-  const transcriptLayout = createMemo<TranscriptLayout>(() => {
-    const totalWidth = dimensions().width - 4
-    const railWidth = Math.floor(totalWidth * 0.4 / 2.6)
-    const centerWidth = totalWidth - railWidth * 2 - TRANSCRIPT_RAIL_GAP * 2
-
-    if (centerWidth < TRANSCRIPT_CENTER_MIN_WIDTH) {
-      return {
-        mode: "classic",
-        contentWidth: Math.max(1, totalWidth - 4),
-        maxWidth: totalWidth,
-      }
-    }
-
-    return {
-      mode: "callout",
-      contentWidth: centerWidth,
-      railWidth,
-      gap: TRANSCRIPT_RAIL_GAP,
-      maxWidth: totalWidth,
-    }
-  })
+  const transcriptLayout = createMemo<TranscriptLayout>(() => transcriptBudget(dimensions().width))
   const promptPadding = createMemo(() => {
     const layout = transcriptLayout()
     return layout.mode === "callout" ? layout.railWidth + layout.gap : undefined
@@ -1815,26 +1791,46 @@ function UserMessage(props: {
   })
 
   const toggleSteer = () => {
-    const current = delivery()
-    if ((current !== "queue" && current !== "steer") || steerPending() || !text()) return
+    // The server promotes queue→steer on identical full payloads; the
+    // reverse is a silent no-op there, so the UI offers only the upgrade.
+    // Text-only resubmits fail payload equivalence for file/agent prompts,
+    // so the complete prompt is always re-sent.
+    if (delivery() !== "queue" || steerPending() || !text()) return
     const body = text()
     if (!body) return
-    const next = toggleSteerDelivery(current)
-    setSteerPending(next)
+    const files = props.parts.flatMap((part) => {
+      if (part.type !== "file" || typeof part.url !== "string") return []
+      return [
+        {
+          uri: part.url,
+          ...(typeof part.filename === "string" ? { name: part.filename } : {}),
+          ...(typeof part.mime === "string" ? { mime: part.mime } : {}),
+        },
+      ]
+    })
+    const agents = props.parts.flatMap((part) => {
+      if (part.type !== "agent" || typeof part.name !== "string") return []
+      return [{ name: part.name }]
+    })
+    const payload = {
+      text: body,
+      ...(files.length > 0 ? { files } : {}),
+      ...(agents.length > 0 ? { agents } : {}),
+    }
+    setSteerPending("steer")
     void sdk.client.v2.session
       .prompt(
         {
           sessionID: props.message.sessionID,
           id: props.message.id,
-          prompt: { text: body },
-          delivery: next,
+          prompt: payload,
+          delivery: "steer",
         },
         { throwOnError: true },
       )
       .then(() => {
         // Steering to the front means now: stop the current run so the
-        // drain restarts into this item. De-steering leaves runs alone.
-        if (next !== "steer") return
+        // drain restarts into this item.
         void cancelSpinosaSubmit({ client: sdk.client, sessionID: props.message.sessionID }).then((handled) => {
           if (!handled) return sdk.client.session.abort({ sessionID: props.message.sessionID }).then(() => undefined)
         })
@@ -1842,7 +1838,7 @@ function UserMessage(props: {
       .catch((error) => {
         setSteerPending(null)
         toast.show({
-          title: next === "steer" ? "Couldn’t steer" : "Couldn’t cancel steer",
+          title: "Couldn’t steer",
           message: errorMessage(error),
           variant: "error",
         })
@@ -1856,7 +1852,7 @@ function UserMessage(props: {
           <box
             ref={(el: BoxRenderable) => alwaysSeparate.add(el)}
             border={["left"]}
-            borderColor={color()}
+            borderColor={routeInfo()?.kind === "general" ? theme.success : color()}
             customBorderChars={SplitBorder.customBorderChars}
             marginTop={props.index === 0 ? 0 : 1}
           >
@@ -1920,6 +1916,10 @@ function UserMessage(props: {
                     <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
                   </text>
                   <Show when={showSteer()}>
+                    <Show
+                      when={canSteer()}
+                      fallback={<text fg={theme.textMuted}>{steerLabel()}</text>}
+                    >
                     <box
                       onMouseOver={() => setSteerHover(true)}
                       onMouseOut={() => setSteerHover(false)}
@@ -1935,6 +1935,7 @@ function UserMessage(props: {
                         {steerLabel()}
                       </text>
                     </box>
+                    </Show>
                   </Show>
                 </box>
               </Show>
@@ -1983,11 +1984,13 @@ function OptimisticUserRow(props: { entry: OutboundEntry; queuePosition?: number
   // the in-flight local evaluation by queue-entry id AND any active server
   // run: an immediate (shell/slash) send can own the server drain while an
   // evaluation is in flight, and steer must preempt both, as before.
+  // No microtask kick here: the replacement must not be admitted before
+  // the old generation's abort settles, or the abort lands on the new run.
   const steer = () => {
     const { sessionID, key } = props.entry
     if (!steerOutbound(sessionID, key)) return
     const evaluating = evaluatingKeys(sessionID)[0]
-    if (evaluating) cancelOutboundEvaluation(sessionID, evaluating)
+    if (evaluating) cancelOutboundEvaluation(sessionID, evaluating, { kick: false })
     void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
       if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
     }).finally(() => kickPump(sessionID))

@@ -120,7 +120,6 @@
     "gitlab-ai-provider": "6.9.3",
     "glob": "13.0.5",
     "google-auth-library": "10.5.0",
-    "gray-matter": "4.0.3",
     "htmlparser2": "8.0.2",
     "ignore": "7.0.5",
     "immer": "11.1.4",
@@ -147,6 +146,7 @@
     "web-tree-sitter": "0.25.10",
     "ws": "8.21.0",
     "xdg-basedir": "5.1.0",
+    "yaml": "2.9.0",
     "yargs": "18.0.0",
     "zod": "catalog:"
   },
