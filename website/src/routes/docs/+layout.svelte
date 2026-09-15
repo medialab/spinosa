@@ -3,11 +3,13 @@
 	import { base } from '$app/paths';
 	import { afterNavigate } from '$app/navigation';
 	import { getDefaultDoc, getDocPages } from '$lib/docs/docs';
-	import { devInstallCmd } from '$lib/install-urls';
+	import { devInstallCmd, stableInstallCmd } from '$lib/install-urls';
 	import gitIcon from '$lib/assets/github.png';
 	import docFooterImg from '$lib/assets/docs_footer.png';
+	import { fade } from 'svelte/transition';
 
 	let { children } = $props();
+	let beta = $state(false);
 
 	const docTitle = $derived($page.data?.doc?.title ?? '');
 	const docDesc = $derived($page.data?.doc?.description ?? '');
@@ -18,8 +20,7 @@
 		window.scrollTo(0, 0);
 	});
 
-	/** Beta rolling tag — current development channel while product is in beta. */
-	const CMD = devInstallCmd();
+	const CMD = $derived(beta ? devInstallCmd() : stableInstallCmd());
 
 	let showCopied = $state(false);
 	const docPages = getDocPages();
@@ -71,13 +72,15 @@
 	class="bg-white absolute top-0 left-0 right-0 z-20 w-full h-10 border-b border-neutral-200 grid grid-cols-2 md:grid-cols-3 px-4 md:px-8 items-center"
 >
 	<a href={base + '/'} class="hover:underline underline-offset-2"><p>spinosa</p></a>
-	<div class="relative hidden md:flex items-center justify-self-center">
+	<div class="relative hidden md:flex items-center justify-self-center gap-3">
 		<button
 			onclick={handleCopyCmd}
-			class="flex cursor-pointer items-center rounded-md bg-black px-2 py-0.5 text-white"
+			class="flex cursor-pointer items-center rounded-md px-2 py-0.5 text-white transition-colors duration-200 {beta
+				? 'bg-red-500 hover:bg-red-600'
+				: 'bg-black hover:bg-neutral-800'}"
 			aria-label="Copy install command"
 		>
-			<p class="text-[0.65rem] leading-normal text-nowrap">{CMD}</p>
+			{#key CMD}<p in:fade={{ duration: 150 }} class="text-[0.65rem] leading-normal text-nowrap">{CMD}</p>{/key}
 		</button>
 		{#if showCopied}
 			<div
@@ -86,6 +89,29 @@
 				Copied to clipboard
 			</div>
 		{/if}
+		<label
+			class="flex items-center gap-1.5 text-[0.6rem] tracking-wide cursor-pointer select-none group"
+		>
+			<span class={!beta ? 'text-black' : 'text-neutral-400 group-hover:text-neutral-600'}>stable</span>
+			<button
+				type="button"
+				role="switch"
+				aria-checked={beta}
+				aria-label="Toggle beta channel"
+				onclick={() => (beta = !beta)}
+				class="relative inline-flex h-[14px] w-[26px] shrink-0 items-center rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 hover:border-black/20 {beta
+					? 'border-red-300 bg-red-50 hover:bg-red-100'
+					: 'border-neutral-200 bg-white hover:bg-neutral-50'}"
+			>
+				<span
+					class="pointer-events-none block h-[10px] w-[10px] rounded-full transition-transform duration-200 {beta
+						? 'bg-red-500'
+						: 'bg-black'}"
+					style="transform: translateX({beta ? '12px' : '2px'})"
+				></span>
+			</button>
+			<span class={beta ? 'text-red-500' : 'text-neutral-400 group-hover:text-neutral-600'}>beta</span>
+		</label>
 	</div>
 	<a
 		href="https://github.com/medialab/spinosa"

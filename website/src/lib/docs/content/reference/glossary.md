@@ -46,7 +46,6 @@
 |------|---------|
 | **OCR** | Optical Character Recognition — turning scanned images into searchable text |
 | **MarkItDown** | Converter for Office docs, EPUB, HTML, and text-based PDFs |
-| **PaddleOCR** | Local OCR engine for scanned PDFs and images |
 
 ## Related
 
