@@ -18,6 +18,7 @@ import { Parameters as Lsp } from "../../src/tool/lsp"
 import { Parameters as Plan } from "../../src/tool/plan"
 import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
+import { Parameters as Report } from "../../src/tool/report"
 import { Parameters as Shell } from "../../src/tool/shell"
 import { Parameters as Skill } from "../../src/tool/skill"
 import { Parameters as SpinosaFrame } from "../../src/tool/spinosa-frame"
@@ -51,6 +52,7 @@ describe("tool parameters", () => {
     test("plan", () => expect(toJsonSchema(Plan)).toMatchSnapshot())
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
+    test("write_report", () => expect(toJsonSchema(Report)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
     test("spinosa_frame", () => expect(toJsonSchema(SpinosaFrame)).toMatchSnapshot())
     test("spinosa_gate", () => expect(toJsonSchema(SpinosaGate)).toMatchSnapshot())
