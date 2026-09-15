@@ -1,6 +1,8 @@
 ---
 name: spinosa-router
 type: agent
+mode: subagent
+hidden: true
 scope: request_routing
 description: |
   Hidden constrained router. Returns ONLY a valid RouteDecision JSON.
