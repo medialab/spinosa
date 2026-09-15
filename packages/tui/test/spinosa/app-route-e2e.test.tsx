@@ -7,8 +7,17 @@ import path from "node:path"
 import { AppNodeBuilder } from "@spinosa/kernel-core/effect/app-node-builder"
 import { Global } from "@spinosa/kernel-core/global"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
-import { createEventSource, createFetch, directory, json } from "../fixture/tui-sdk"
+import { createEventSource, createFetch, directory, json, type FetchHandler } from "../fixture/tui-sdk"
 import { createWorkspaceID, type SpinosaWorkspaceID } from "@spinosa/core/workspace/identity"
+import {
+  clearOutbound,
+  enqueueOutbound,
+  kickPump,
+  markOutboundEvaluating,
+  outboundForSession,
+  type DispatchContext,
+  type OutboundSnapshot,
+} from "../../src/spinosa/outbound-queue"
 
 type SpinosaRoute = "workspace" | "global" | "onboarding" | "add-files" | "visualizer"
 type TestRenderer = Awaited<ReturnType<typeof createTestRenderer>>
@@ -21,6 +30,8 @@ async function renderRouteFrame(
     useDefaultRoute?: boolean
     cwd?: string
     height?: number
+    fetchOverride?: FetchHandler
+    enableSlots?: boolean
     act?: (setup: TestRenderer) => Promise<void> | void
   } = {},
 ) {
@@ -55,7 +66,9 @@ async function renderRouteFrame(
       },
     },
   }
-  const calls = createFetch((url) => {
+  const calls = createFetch(async (url) => {
+    const overridden = await options.fetchOverride?.(url)
+    if (overridden) return overridden
     if (url.pathname === "/config/providers") return json({ providers: [provider], default: { test: "test-model" } })
     if (url.pathname === "/provider") return json({ all: [provider], default: { test: "test-model" }, connected: ["test"] })
   }, events)
@@ -63,6 +76,7 @@ async function renderRouteFrame(
   const ready = new Promise<void>((resolve) => {
     started = resolve
   })
+  let slots: { dispose(): void } | undefined
 
   try {
     const { run } = await import("../../src/app")
@@ -75,10 +89,13 @@ async function renderRouteFrame(
         events: events.source,
         args: {},
         pluginHost: {
-          async start() {
+          async start(input) {
+            if (options.enableSlots) slots = input.runtime.setupSlots(input.api)
             started()
           },
-          async dispose() {},
+          async dispose() {
+            slots?.dispose()
+          },
         },
       }).pipe(Effect.provide(AppNodeBuilder.build(Global.node))),
     )
@@ -198,6 +215,17 @@ async function waitForTextToDisappear(setup: TestRenderer, text: string) {
   throw new Error(`Timed out waiting for "${text}" to disappear\nlastFrame:\n${frame}`)
 }
 
+// Workspace home is mouse-only (prompt box owns the keyboard): open the
+// workspace picker by clicking the "Pick a workspace" chip, not via "w".
+async function clickPickWorkspace(setup: TestRenderer) {
+  const frame = await waitForText(setup, "Pick a workspace")
+  const lines = frame.split("\n")
+  const y = lines.findIndex((line) => line.includes("Pick a workspace"))
+  const x = lines[y]!.indexOf("Pick a workspace") + 1
+  await setup.mockMouse.moveTo(x, y)
+  await setup.mockMouse.click(x, y)
+}
+
 async function waitForWorkspacePickerReady(setup: TestRenderer, workspaceName?: string) {
   await waitForText(setup, "Choose a workspace")
   if (workspaceName) {
@@ -236,7 +264,7 @@ test("Spinosa app route E2E boots and navigates key workspace flows", async () =
     const cliStartedFrame = await renderRouteFrame("global", {
         home: cliHome,
         act: async (setup) => {
-          setup.mockInput.pressKey("w")
+          await clickPickWorkspace(setup)
           await waitForWorkspacePickerReady(setup, "cli-started-demo")
         await waitForText(setup, "cli-started-demo")
         setup.mockInput.pressEnter()
@@ -275,7 +303,7 @@ test("Spinosa app route E2E boots and navigates key workspace flows", async () =
     const readyFrame = await renderRouteFrame("global", {
         home: readyHome,
         act: async (setup) => {
-          setup.mockInput.pressKey("w")
+          await clickPickWorkspace(setup)
           await waitForWorkspacePickerReady(setup, "ready-demo")
         await waitForText(setup, "ready-demo")
         setup.mockInput.pressEnter()
@@ -316,7 +344,7 @@ test("Spinosa app route E2E boots and navigates key workspace flows", async () =
         home: filteredHome,
         act: async (setup) => {
           recentFrame = await waitForAllText(setup, ["Recent workspaces", "visible-demo", "stale-demo"])
-          setup.mockInput.pressKey("w")
+          await clickPickWorkspace(setup)
         pickerFrame = await waitForWorkspacePickerReady(setup, "stale-demo")
         setup.mockInput.pressKey("ARROW_UP")
         setup.mockInput.pressEnter()
@@ -373,6 +401,192 @@ test("boot cleanup removes stale installer files before the homepage renders", a
     expect(existsSync(stale)).toBe(false)
   } finally {
     rmSync(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
+test("cancelling an evaluating row preserves its receipt and later queued prompts", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "spinosa-cancel-evaluation-"))
+  const home = path.join(root, "home")
+  mkdirSync(home, { recursive: true })
+  const sessionID = "ses_cancel_evaluation_ui"
+  const sessionDirectory = await createRegisteredWorkspace({
+    root,
+    home,
+    projectName: "cancel-evaluation",
+    setupStatus: "workspace_started",
+  })
+  const snapshot = (text: string): OutboundSnapshot => ({ text, nonTextParts: [], editorParts: [] })
+  const dispatch: DispatchContext = {
+    agentName: "build",
+    model: { providerID: "test", modelID: "test-model" },
+    variant: undefined,
+    sessionDirectory,
+    forceAgent: undefined,
+    mode: "normal",
+  }
+  const cancelledKey = enqueueOutbound(sessionID, snapshot("cancel target"), dispatch)
+  expect(markOutboundEvaluating(sessionID, cancelledKey)).toBe(true)
+  enqueueOutbound(sessionID, snapshot("queued survivor"), dispatch)
+
+  try {
+    let afterCancel = ""
+    const frame = await renderRouteFrame("workspace", {
+      home,
+      initialRoute: { type: "workspace", sessionID },
+      height: 50,
+      enableSlots: true,
+      fetchOverride: (url) => {
+        if (url.pathname === "/session/status") return json({ [sessionID]: { type: "busy" } })
+        if (url.pathname === `/session/${sessionID}`) {
+          return json({
+            id: sessionID,
+            title: "cancel evaluation",
+            directory: sessionDirectory,
+            version: "1.17.12",
+            time: { created: 1, updated: 1 },
+          })
+        }
+        if (
+          url.pathname === `/session/${sessionID}/message` ||
+          url.pathname === `/session/${sessionID}/todo` ||
+          url.pathname === `/session/${sessionID}/diff`
+        ) return json([])
+      },
+      act: async (setup) => {
+        const evaluating = await waitForAllText(setup, ["cancel target", "queued survivor", "Cancel evaluation"])
+        const lines = evaluating.split("\n")
+        const y = lines.findIndex((line) => line.includes("Cancel evaluation"))
+        const x = lines[y]!.indexOf("Cancel evaluation") + 1
+        await setup.mockMouse.moveTo(x, y)
+        await setup.mockMouse.click(x, y)
+        enqueueOutbound(sessionID, snapshot("new queued prompt"), dispatch)
+        afterCancel = await waitForAllText(setup, ["cancel target", "Interrupted", "queued survivor", "new queued prompt"])
+      },
+    })
+
+    expect(afterCancel).toContain("Interrupted")
+    expect(frame).toContain("queued survivor")
+    expect(frame).toContain("new queued prompt")
+    expect(outboundForSession(sessionID).map((entry) => [entry.text, entry.state])).toEqual([
+      ["cancel target", "interrupted"],
+      ["queued survivor", "queued"],
+      ["new queued prompt", "queued"],
+    ])
+  } finally {
+    clearOutbound(sessionID)
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
+test("steering the third prompt then cancelling keeps later prompts visible", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "spinosa-steer-cancel-"))
+  const home = path.join(root, "home")
+  mkdirSync(home, { recursive: true })
+  const sessionID = "ses_steer_cancel_ui"
+  const sessionDirectory = await createRegisteredWorkspace({
+    root,
+    home,
+    projectName: "steer-cancel",
+    setupStatus: "workspace_started",
+  })
+  const snapshot = (text: string): OutboundSnapshot => ({ text, nonTextParts: [], editorParts: [] })
+  const dispatch: DispatchContext = {
+    agentName: "build",
+    model: { providerID: "test", modelID: "test-model" },
+    variant: undefined,
+    sessionDirectory,
+    forceAgent: undefined,
+    mode: "normal",
+  }
+  const first = enqueueOutbound(sessionID, snapshot("first evaluating prompt"), dispatch)
+  const second = enqueueOutbound(sessionID, snapshot("second queued prompt"), dispatch)
+  const third = enqueueOutbound(sessionID, snapshot("third steered prompt"), dispatch)
+  const preparing: string[] = []
+  mock.module("../../src/spinosa/orchestrator", () => ({
+    cancelSpinosaSubmit: async () => false,
+    executeSpinosaSubmit: async () => undefined,
+    hasActiveWorkflowRun: () => false,
+    prepareSpinosaSubmit: async (_directory: string, text: string) => {
+      preparing.push(text)
+      return await new Promise<never>(() => {})
+    },
+    shouldPrepareSpinosaSubmit: () => true,
+  }))
+
+  try {
+    let finalFrame = ""
+    await renderRouteFrame("workspace", {
+      home,
+      initialRoute: { type: "workspace", sessionID },
+      height: 50,
+      enableSlots: true,
+      fetchOverride: (url) => {
+        if (url.pathname === "/session/status") return json({ [sessionID]: { type: "idle" } })
+        if (url.pathname === `/session/${sessionID}`) {
+          return json({
+            id: sessionID,
+            title: "steer cancel",
+            directory: sessionDirectory,
+            version: "1.17.12",
+            time: { created: 1, updated: 1 },
+          })
+        }
+        if (
+          url.pathname === `/session/${sessionID}/message` ||
+          url.pathname === `/session/${sessionID}/todo` ||
+          url.pathname === `/session/${sessionID}/diff`
+        ) return json([])
+      },
+      act: async (setup) => {
+        for (let attempt = 0; attempt < maxWaitAttempts && preparing.length === 0; attempt++) {
+          kickPump(sessionID)
+          await setup.renderOnce()
+          await new Promise((resolve) => setTimeout(resolve, 40))
+        }
+        const initial = await waitForAllText(setup, ["first evaluating prompt", "Cancel evaluation", "third steered prompt"])
+        expect(preparing).toEqual(["first evaluating prompt"])
+        const lines = initial.split("\n")
+        const textY = lines.findIndex((line) => line.includes("third steered prompt"))
+        let steerY = textY
+        while (steerY >= 0 && !lines[steerY]!.includes("Steer")) steerY -= 1
+        const steerX = lines[steerY]!.indexOf("Steer") + 1
+        await setup.mockMouse.moveTo(steerX, steerY)
+        await setup.mockMouse.click(steerX, steerY)
+
+        await waitForAllText(setup, ["first evaluating prompt", "Interrupted", "third steered prompt", "Cancel evaluation"])
+        expect(preparing).toEqual(["first evaluating prompt", "third steered prompt"])
+        // Raw Escape delivery is not wired in the test renderer (verified:
+        // single Escape never arms there), so cancel through the Cancel
+        // evaluation button — the same cancelOutboundEvaluation path a
+        // confirmed double-Esc takes.
+        const cancelling = await waitForAllText(setup, ["third steered prompt", "Cancel evaluation"])
+        const cancelLines = cancelling.split("\n")
+        const cancelY = cancelLines.findIndex((line) => line.includes("Cancel evaluation"))
+        const cancelX = cancelLines[cancelY]!.indexOf("Cancel evaluation") + 1
+        await setup.mockMouse.moveTo(cancelX, cancelY)
+        await setup.mockMouse.click(cancelX, cancelY)
+        enqueueOutbound(sessionID, snapshot("fourth later prompt"), dispatch)
+        finalFrame = await waitForAllText(setup, [
+          "first evaluating prompt",
+          "second queued prompt",
+          "third steered prompt",
+          "fourth later prompt",
+        ])
+      },
+    })
+
+    expect(outboundForSession(sessionID).map((entry) => [entry.key, entry.state])).toEqual([
+      [first, "interrupted"],
+      [second, "evaluating"],
+      [third, "interrupted"],
+      [expect.any(String), "queued"],
+    ])
+    expect(finalFrame.match(/Interrupted/g)?.length).toBe(2)
+    expect(preparing).toEqual(["first evaluating prompt", "third steered prompt", "second queued prompt"])
+  } finally {
+    clearOutbound(sessionID)
+    rmSync(root, { recursive: true, force: true })
+    mock.restore()
   }
 }, 30_000)
 

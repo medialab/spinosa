@@ -89,6 +89,12 @@ describe("routeBadgeFromParts", () => {
     expect(
       routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "interrupted" } } }]),
     ).toBeUndefined()
+    expect(
+      routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "sent" } } }]),
+    ).toBeUndefined()
+    expect(
+      routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "failed" } } }]),
+    ).toBeUndefined()
   })
 })
 
@@ -105,7 +111,10 @@ describe("routeBadgeLabel", () => {
     expect(routeBadgeLabel({ kind: "queued" })).toBe("○ queued")
     expect(routeBadgeLabel({ kind: "steered" })).toBe("→ steered")
     expect(routeBadgeLabel({ kind: "evaluating" })).toBe("Evaluating")
+    expect(routeBadgeLabel({ kind: "sent" })).toBe("✓ Sent")
+    expect(routeBadgeLabel({ kind: "sent", stale: true })).toBe("✓ Sent")
     expect(routeBadgeLabel({ kind: "interrupted" })).toBe("⛔ Interrupted")
+    expect(routeBadgeLabel({ kind: "failed" })).toBe("Failed")
   })
 
   test("routed general verdicts manifest a General prompt badge (never empty)", () => {

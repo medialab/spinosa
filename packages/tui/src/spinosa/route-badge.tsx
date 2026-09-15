@@ -29,7 +29,9 @@ export type RouteBadgeInfo =
   | { kind: "queued" }
   | { kind: "steered" }
   | { kind: "evaluating" }
+  | { kind: "sent"; stale?: boolean }
   | { kind: "interrupted" }
+  | { kind: "failed" }
 
 export type RouteStepProgress = {
   done: number
@@ -153,7 +155,9 @@ export function routeBadgeLabel(info: RouteBadgeInfo): string {
   if (info.kind === "queued") return "○ queued"
   if (info.kind === "steered") return "→ steered"
   if (info.kind === "evaluating") return "Evaluating"
+  if (info.kind === "sent") return "✓ Sent"
   if (info.kind === "interrupted") return "⛔ Interrupted"
+  if (info.kind === "failed") return "Failed"
   return `◈ ${shortWorkflow(info.workflowID)}`
 }
 
@@ -168,7 +172,9 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
     if (props.info.kind === "queued") return theme.textMuted
     if (props.info.kind === "steered") return theme.primary
     if (props.info.kind === "evaluating") return theme.textMuted
+    if (props.info.kind === "sent") return theme.textMuted
     if (props.info.kind === "interrupted") return theme.error
+    if (props.info.kind === "failed") return theme.error
     const p = progress()
     if (!p) return theme.primary
     if (p.status === "done" && p.done >= p.total && p.total > 0) return theme.success
@@ -182,7 +188,14 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
   const detail = () => {
     if (props.info.kind === "queued") return "waiting for its turn"
     if (props.info.kind === "steered") return "will go next"
-    if (props.info.kind === "evaluating" || props.info.kind === "interrupted") return undefined
+    if (props.info.kind === "sent" && props.info.stale) return "confirming…"
+    if (
+      props.info.kind === "evaluating" ||
+      props.info.kind === "sent" ||
+      props.info.kind === "interrupted" ||
+      props.info.kind === "failed"
+    )
+      return undefined
     if (props.info.kind === "general") return undefined
     const p = progress()
     if (!p || p.total === 0) return undefined

@@ -99,10 +99,12 @@ import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
 import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
 import {
-  interruptedOutboundForSession,
+  cancelOutboundEvaluation,
+  dispatchPositions,
+  evaluatingKeys,
   kickPump,
-  liveOutboundForSession,
-  mergeTranscriptWithInterrupted,
+  mergeTranscriptRows,
+  outboundForSession,
   steerOutbound,
   type OutboundEntry,
 } from "../../spinosa/outbound-queue"
@@ -398,12 +400,15 @@ const resolveExportPath = (filename: string): string => {
     return messages().findLast((x) => x.role === "assistant")
   })
 
-  // Outbound split: live entries trail the transcript; interrupted receipts
-  // merge chronologically so they scroll with the conversation instead of
-  // sticking above the prompt box.
-  const liveOutbound = createMemo(() => liveOutboundForSession(route.sessionID ?? ""))
-  const interruptedOutbound = createMemo(() => interruptedOutboundForSession(route.sessionID ?? ""))
-  const transcriptRows = createMemo(() => mergeTranscriptWithInterrupted(messages(), interruptedOutbound()))
+  // One chronological list: every outbound row (queued, steered, active,
+  // interrupted, failed) merges with server messages by birth time. Status
+  // flips happen in place — rows never move between lists.
+  const outboundEntries = createMemo(() => outboundForSession(route.sessionID ?? ""))
+  const transcriptRows = createMemo(() => mergeTranscriptRows(messages(), outboundEntries()))
+  // Dispatch-order position per live entry key (first to send = #1). Rows
+  // render chronologically; the counter visualizes queue position.
+  const queuePositions = createMemo(() => dispatchPositions(route.sessionID ?? ""))
+  const showQueuePositions = createMemo(() => queuePositions().size > 1)
 
   const dimensions = useTerminalDimensions()
   const [conceal, setConceal] = createSignal(true)
@@ -1355,8 +1360,14 @@ const resolveExportPath = (filename: string): string => {
                 <For each={transcriptRows()}>
                   {(row) => (
                     <Switch>
-                      <Match when={row.kind === "interrupted" ? row : undefined}>
-                        {(interruptedRow) => <OptimisticUserRow entry={interruptedRow().entry} />}
+                      <Match when={row.kind === "outbound" ? row : undefined}>
+                        {(outboundRow) => (
+                          <OptimisticUserRow
+                            entry={outboundRow().entry}
+                            queuePosition={queuePositions().get(outboundRow().entry.key)}
+                            showQueuePosition={showQueuePositions()}
+                          />
+                        )}
                       </Match>
                       <Match when={row.kind === "message" ? row : undefined}>
                         {(messageRow) => {
@@ -1460,9 +1471,6 @@ const resolveExportPath = (filename: string): string => {
                       </Match>
                     </Switch>
                   )}
-                </For>
-                <For each={liveOutbound()}>
-                  {(entry) => <OptimisticUserRow entry={entry} />}
                 </For>
               </scrollbox>
               <box flexShrink={0}>
@@ -1955,21 +1963,31 @@ function UserMessage(props: {
  * message; the badge slot shows each transient state, then disappears for a
  * general answer or flips to workflow state when the server echo takes over.
  */
-function OptimisticUserRow(props: { entry: OutboundEntry }) {
+function OptimisticUserRow(props: { entry: OutboundEntry; queuePosition?: number; showQueuePosition?: boolean }) {
   const { theme } = useTheme()
   const sdk = useSDK()
   const [steerHover, setSteerHover] = createSignal(false)
-  const badge = (): RouteBadgeInfo => ({ kind: props.entry.state })
+  const [cancelHover, setCancelHover] = createSignal(false)
+  const badge = (): RouteBadgeInfo => {
+    if (props.entry.state === "sent") return { kind: "sent", stale: props.entry.stale }
+    return { kind: props.entry.state }
+  }
   const border = () => {
     if (props.entry.state === "interrupted") return theme.error
+    if (props.entry.state === "failed") return theme.error
     if (props.entry.state === "steered") return theme.primary
     return theme.textMuted
   }
   // Steer: this queued prompt goes next — stop the current run first so
-  // the pump dispatches it immediately after the abort settles.
+  // the pump dispatches it immediately after the abort settles. Cancels
+  // the in-flight local evaluation by queue-entry id AND any active server
+  // run: an immediate (shell/slash) send can own the server drain while an
+  // evaluation is in flight, and steer must preempt both, as before.
   const steer = () => {
     const { sessionID, key } = props.entry
     if (!steerOutbound(sessionID, key)) return
+    const evaluating = evaluatingKeys(sessionID)[0]
+    if (evaluating) cancelOutboundEvaluation(sessionID, evaluating)
     void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
       if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
     }).finally(() => kickPump(sessionID))
@@ -2000,6 +2018,24 @@ function OptimisticUserRow(props: { entry: OutboundEntry }) {
           >
             <box flexDirection="row" gap={1} alignItems="center">
               <RouteBadge info={badge()} />
+              <Show when={props.entry.state === "evaluating"}>
+                <box
+                  onMouseOver={() => setCancelHover(true)}
+                  onMouseOut={() => setCancelHover(false)}
+                  onMouseUp={(e: { stopPropagation?: () => void }) => {
+                    e.stopPropagation?.()
+                    cancelOutboundEvaluation(props.entry.sessionID, props.entry.key)
+                  }}
+                  backgroundColor={buttonBackground(theme, cancelHover())}
+                  paddingLeft={1}
+                  paddingRight={1}
+                >
+                  <text fg={buttonText(theme, cancelHover(), theme.error)}>Cancel evaluation</text>
+                </box>
+              </Show>
+              <Show when={props.showQueuePosition && props.queuePosition !== undefined}>
+                <text fg={theme.textMuted}>#{props.queuePosition}</text>
+              </Show>
               <Show when={props.entry.state === "queued"}>
                 <box
                   onMouseOver={() => setSteerHover(true)}
