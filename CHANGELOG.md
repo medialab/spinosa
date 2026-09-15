@@ -10,6 +10,18 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.25] — 2026-09-15
+
+### Fixed
+
+- Queued prompts carry stable IDs end to end. Echo matches rows by ID. Stale rows stay visible. Code: `packages/tui/src/spinosa/outbound-queue.ts`.
+- Cancel and steer fence in-flight evaluations. Late dispatches lose row ownership. Code: `packages/tui/src/component/prompt`.
+- Interrupted receipts keep chronological order in the transcript. Failed admissions keep failed receipts. Code: `packages/tui/src`.
+- Route badge falls back to General prompt. Empty badges no longer appear. Code: `packages/tui/src`.
+- Workflow terminal states throw typed results. Failures stay visible. Code: `packages/spinosa-core/src/application/workflow-run-service.ts`.
+- Server cancel uses a shared per-run lock. Late results leave evidence. Code: `packages/spinosa-core/src`, `packages/spinosa-runtime/src`.
+- Internal router stays out of Tab cycle and autocomplete. Direct invocation still works. Code: `workspace-template/.agents`, `.agents/agents`.
+
 ## [1.1.0-beta.24] — 2026-09-14
 
 ### Fixed
