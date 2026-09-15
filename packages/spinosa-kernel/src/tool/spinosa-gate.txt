@@ -1,0 +1,3 @@
+Evaluate the Spinosa evidence-sufficiency gate for a coverage contract.
+
+Use before delivering any source-grounded claim: pass means the denominator is covered for the claimed coverage, fail names exactly what is missing. Deterministic arithmetic — never eyeball coverage yourself when this tool can decide it.

@@ -1,0 +1,3 @@
+Mint canonical Spinosa artifact paths for a run ID without creating files.
+
+Use whenever a step needs to know where its output belongs before writing. Follows the workspace artifact-naming convention exactly (run-scoped intermediates, descriptive batch slugs, numbered writer reports). Prevents filename collisions between parallel runs and branches.

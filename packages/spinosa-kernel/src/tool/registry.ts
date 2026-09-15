@@ -17,6 +17,11 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
+import { SpinosaRouteTool } from "./spinosa-route"
+import { SpinosaFrameTool } from "./spinosa-frame"
+import { SpinosaMintPathsTool } from "./spinosa-mint-paths"
+import { SpinosaGateTool } from "./spinosa-gate"
+import { SpinosaVerifyTool } from "./spinosa-verify"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@spinosa/plugin"
@@ -105,6 +110,11 @@ const layer = Layer.effect(
     const greptool = yield* GrepTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
+    const spinosaroute = yield* SpinosaRouteTool
+    const spinosaframe = yield* SpinosaFrameTool
+    const spinosamintpaths = yield* SpinosaMintPathsTool
+    const spinosagate = yield* SpinosaGateTool
+    const spinosaverify = yield* SpinosaVerifyTool
     const reporttool = yield* ReportTool
     const agent = yield* Agent.Service
 
@@ -209,6 +219,11 @@ const layer = Layer.effect(
           todo: Tool.init(todo),
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
+          spinosaroute: Tool.init(spinosaroute),
+          spinosaframe: Tool.init(spinosaframe),
+          spinosamintpaths: Tool.init(spinosamintpaths),
+          spinosagate: Tool.init(spinosagate),
+          spinosaverify: Tool.init(spinosaverify),
           report: Tool.init(reporttool),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
@@ -233,6 +248,11 @@ const layer = Layer.effect(
             tool.todo,
             tool.search,
             tool.skill,
+            tool.spinosaroute,
+            tool.spinosaframe,
+            tool.spinosamintpaths,
+            tool.spinosagate,
+            tool.spinosaverify,
             tool.patch,
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
