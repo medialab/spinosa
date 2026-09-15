@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.28] — 2026-09-15
+
+### Added
+
+- Installer shows live download progress. A wave indicator shows percent when size is known. Code: `install.sh`, `tests/installer/download-progress.bats`.
+
 ## [1.1.0-beta.27] — 2026-09-15
 
 ### Added
