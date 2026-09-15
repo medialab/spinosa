@@ -256,6 +256,8 @@ STEP_COMMAND_PID=""
 STEP_OUTPUT_FILE=""
 STEP_LABEL=""
 STEP_STARTED_AT=0
+STEP_PROGRESS_DEST=""
+STEP_PROGRESS_TOTAL=""
 
 wave_string() {
   local frame="$1" wave="" i position level
@@ -268,17 +270,61 @@ wave_string() {
   printf '%s' "$wave"
 }
 
+# Pure line formatter (testable): % when the total is known, elapsed/timeout otherwise.
+format_wave_line() {
+  local label="$1" wave="$2" pct_text="$3" elapsed="$4" timeout_seconds="$5"
+  if [ -n "$pct_text" ]; then
+    printf '%s %s %s%s' "${C}●${RESET}" "$label" "$wave" "$pct_text"
+  else
+    printf '%s %s %s %ss/%ss' "${C}●${RESET}" "$label" "$wave" "$elapsed" "$timeout_seconds"
+  fi
+}
+
 _render_wave() {
-  local label="$1" timeout_seconds="$2" started_at="$3"
-  local tick=0 elapsed wave bar
+  local label="$1" timeout_seconds="$2" started_at="$3" progress_dest="${4:-}" progress_total="${5:-}"
+  local tick=0 elapsed wave pct_text
   while :; do
     elapsed=$(( $(date +%s) - started_at ))
     wave="$(wave_string "$tick")"
-    bar="$wave"
-    printf '\r\033[2K%s %s [%s] %ss/%ss' "${C}●${RESET}" "$label" "$bar" "$elapsed" "$timeout_seconds" >&2
+    pct_text="$(step_progress_text "$progress_dest" "$progress_total" 2>/dev/null || true)"
+    printf '\r\033[2K%s' "$(format_wave_line "$label" "$wave" "$pct_text" "$elapsed" "$timeout_seconds")" >&2
     tick=$((tick + 1))
     sleep 0.2
   done
+}
+
+# Portable file size (bytes). Prints 0 when the file is missing/unreadable.
+file_size_bytes() {
+  local f="$1" sz
+  [ -f "$f" ] || { printf '0'; return 0; }
+  # BSD/macOS stat first, then GNU stat, then wc fallback.
+  if sz="$(stat -f%z "$f" 2>/dev/null)" && [[ "$sz" =~ ^[0-9]+$ ]]; then printf '%s' "$sz"; return 0; fi
+  if sz="$(stat -c%s "$f" 2>/dev/null)" && [[ "$sz" =~ ^[0-9]+$ ]]; then printf '%s' "$sz"; return 0; fi
+  if sz="$(wc -c <"$f" 2>/dev/null | tr -cd '0-9')" && [ -n "$sz" ]; then printf '%s' "$sz"; return 0; fi
+  printf '0'
+}
+
+# Pure percent math: prints 0-100 for dest bytes vs total, clamped. Fails when total is unknown.
+step_progress_percent() {
+  local dest="$1" total="$2" current pct
+  [[ "$total" =~ ^[1-9][0-9]*$ ]] || return 1
+  current="$(file_size_bytes "$dest" 2>/dev/null || true)"
+  [[ "$current" =~ ^[0-9]+$ ]] || current=0
+  pct=$(( current * 100 / total ))
+  if (( pct < 0 )); then pct=0; fi
+  if (( pct > 100 )); then pct=100; fi
+  printf '%s' "$pct"
+}
+
+# Render fragment for the wave line: "" when total is unknown, else " 42%".
+# Always succeeds so the background renderer never trips `set -e`.
+step_progress_text() {
+  local dest="${1:-}" total="${2:-}" pct=""
+  [[ "$total" =~ ^[1-9][0-9]*$ ]] || return 0
+  [ -n "$dest" ] || return 0
+  pct="$(step_progress_percent "$dest" "$total" 2>/dev/null || true)"
+  [ -n "$pct" ] || return 0
+  printf ' %s%%' "$pct"
 }
 
 step_begin() {
@@ -287,7 +333,7 @@ step_begin() {
   STEP_STARTED_AT="$(date +%s)"
   spinosa_log INFO "step=start label=${STEP_LABEL} timeout=${timeout_seconds}s"
   if [ -t 2 ]; then
-    _render_wave "$STEP_LABEL" "$timeout_seconds" "$STEP_STARTED_AT" &
+    _render_wave "$STEP_LABEL" "$timeout_seconds" "$STEP_STARTED_AT" "${STEP_PROGRESS_DEST:-}" "${STEP_PROGRESS_TOTAL:-}" &
     STEP_RENDER_PID=$!
   else
     printf '%s %s (timeout %ss)\n' "${C}●${RESET}" "$STEP_LABEL" "$timeout_seconds" >&2
@@ -313,6 +359,8 @@ step_end() {
   fi
   STEP_STARTED_AT=0
   STEP_LABEL=""
+  STEP_PROGRESS_DEST=""
+  STEP_PROGRESS_TOTAL=""
 }
 
 terminate_process_tree() {
@@ -1006,6 +1054,39 @@ download() {
   fi
 }
 
+# Pure parser: last Content-Length value from HTTP header text, or empty.
+parse_content_length() {
+  printf '%s\n' "${1:-}" | grep -i '^content-length:' | tail -n 1 | tr -cd '0-9' || true
+}
+
+# Best-effort expected download size via HEAD (follows redirects for
+# GitHub release CDN URLs). Prints bytes, or nothing when unknown.
+# Never fails the install — callers treat empty as "no % available".
+download_total_bytes() {
+  local url="$1" headers len
+  case "${url:-}" in http://*|https://*) ;; *) return 1 ;; esac
+  command -v curl >/dev/null 2>&1 || return 1
+  headers="$(curl -sIL --max-time 10 --connect-timeout 5 "$url" 2>/dev/null || true)"
+  [ -n "$headers" ] || return 1
+  len="$(parse_content_length "$headers")"
+  [[ "$len" =~ ^[1-9][0-9]*$ ]] || return 1
+  printf '%s\n' "$len"
+}
+
+# Download wrapped in a timed step with live % on the wave line.
+# Falls back to the plain elapsed/timeout display when the total size
+# is unknown (e.g. wget path, missing Content-Length, local file URL).
+run_download_step() {
+  local label="$1" timeout_seconds="$2" url="$3" dest="$4" total="" status=0
+  total="$(download_total_bytes "$url" 2>/dev/null || true)"
+  STEP_PROGRESS_DEST="$dest"
+  STEP_PROGRESS_TOTAL="$total"
+  run_timed_step "$label" "$timeout_seconds" download "$url" "$dest" || status=$?
+  STEP_PROGRESS_DEST=""
+  STEP_PROGRESS_TOTAL=""
+  return "$status"
+}
+
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
@@ -1371,7 +1452,7 @@ resolve_pinned_version_from_installer() {
   local channel="$1" url="$2"
   local installer_file resolved
   installer_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-channel.XXXXXX")"
-  run_timed_step "Resolve latest ${channel} release" 60 download "$url" "$installer_file" \
+  run_download_step "Resolve latest ${channel} release" 60 "$url" "$installer_file" \
     || { rm -f "$installer_file"; die "Could not resolve latest ${channel} version. Use --version."; }
   resolved="$(awk -F'"' '/^PINNED_VERSION=/ { print $2; exit }' "$installer_file" || true)"
   rm -f "$installer_file"
@@ -1404,7 +1485,7 @@ check_release_age() {
   local api_url="https://api.github.com/repos/${REPO}/releases/tags/v${version}"
   local release_file published_at
   release_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-release.XXXXXX")"
-  run_timed_step "Verify release age" 60 download "$api_url" "$release_file" \
+  run_download_step "Verify release age" 60 "$api_url" "$release_file" \
     || { rm -f "$release_file"; die "Could not fetch release metadata for v${version}."; }
   published_at="$(grep '"published_at":' "$release_file" | head -1 | sed 's/.*"published_at": "\([^"]*\)".*/\1/')" || true
   rm -f "$release_file"
@@ -2240,11 +2321,9 @@ main() {
   BINARY_STAGED="$staged_binary"
   rm -f "$checksums_file" "$staged_binary"
 
-  run_timed_step "Download checksums" 60 \
-    download "$checksums_url" "$checksums_file" \
+  run_download_step "Download checksums" 60 "$checksums_url" "$checksums_file" \
     || die "Failed to download checksums.txt from ${checksums_url}"
-  run_timed_step "Download ${ASSET_NAME}" "$DEFAULT_DOWNLOAD_TIMEOUT_SECONDS" \
-    download "$asset_url" "$staged_binary" \
+  run_download_step "Download ${ASSET_NAME}" "$DEFAULT_DOWNLOAD_TIMEOUT_SECONDS" "$asset_url" "$staged_binary" \
     || die "Failed to download ${ASSET_NAME}"
   verify_asset_checksum "$staged_binary" "$ASSET_NAME" "$checksums_file" "${ASSET_NAME}"
   chmod +x "$staged_binary"
