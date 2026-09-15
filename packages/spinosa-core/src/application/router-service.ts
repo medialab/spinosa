@@ -120,6 +120,15 @@ export async function routeRequest(input: {
   /** Override for tests. */
   timeoutMs?: number
 }): Promise<RoutedRequest> {
+  // TEMP BYPASS (beta-dev): route everything to "general" so prompts are
+  // handled by the default opencode harness. Delete this block (and the
+  // constant) to restore Spinosa routing (Stage 1 rules + Stage 2 model).
+  // Typed as boolean (not literal true) so the code below stays reachable
+  // for typechecking.
+  const bypassRouterToGeneral: boolean = true;
+  if (bypassRouterToGeneral) {
+    return { decision: { mode: "general" }, via: "rules" };
+  }
   // Stage 1: deterministic rules (startup before coverage heuristics).
   const hard = deterministicRoute(input.routeInput)
   if (hard) return { decision: hard, via: "rules" }
