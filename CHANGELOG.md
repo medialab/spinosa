@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.26] — 2026-09-15
+
+### Changed
+
+- Router sends every prompt to the default handler. Spinosa routing stays off. This change is temporary. Code: `packages/spinosa-core/src/application/router-service.ts`.
+
 ## [1.1.0-beta.25] — 2026-09-15
 
 ### Fixed
