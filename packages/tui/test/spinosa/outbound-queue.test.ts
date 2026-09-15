@@ -5,10 +5,13 @@ import {
   enqueueOutbound,
   evaluatingKeys,
   hasEvaluating,
+  interruptedOutboundForSession,
   isOutboundPumping,
   kickPump,
+  liveOutboundForSession,
   markOutboundEvaluating,
   markOutboundInterrupted,
+  mergeTranscriptWithInterrupted,
   outboundForSession,
   peekOutbound,
   registerPump,
@@ -19,6 +22,7 @@ import {
   steerOutbound,
   unregisterPump,
   type DispatchContext,
+  type OutboundEntry,
   type OutboundSnapshot,
 } from "../../src/spinosa/outbound-queue"
 
@@ -129,6 +133,67 @@ describe("outbound queue", () => {
     unregisterPump(sid)
     kickPump(sid)
     expect(kicks).toBe(1)
+  })
+
+  test("live split keeps interrupted out of the trailing queue", () => {
+    const sid = "ses-queue-split"
+    const first = enqueueOutbound(sid, snapshot("one"), dispatch())
+    const second = enqueueOutbound(sid, snapshot("two"), dispatch())
+    expect(markOutboundEvaluating(sid, first)).toBe(true)
+    expect(markOutboundInterrupted(sid, first)).toBe(true)
+    expect(liveOutboundForSession(sid).map((e) => e.key)).toEqual([second])
+    expect(interruptedOutboundForSession(sid).map((e) => e.key)).toEqual([first])
+    clearOutbound(sid)
+  })
+})
+
+describe("mergeTranscriptWithInterrupted", () => {
+  const interruptedEntry = (key: string, createdAt: number): OutboundEntry => ({
+    key,
+    sessionID: "ses-merge",
+    text: key,
+    snapshot: snapshot(key),
+    dispatch: dispatch(),
+    createdAt,
+    state: "interrupted",
+  })
+
+  test("places an interrupted receipt chronologically instead of trailing", () => {
+    const messages = [
+      { id: "m1", time: { created: 100 } },
+      { id: "m2", time: { created: 300 } },
+    ]
+    const rows = mergeTranscriptWithInterrupted(messages, [interruptedEntry("out-1", 200)])
+    expect(rows.map((row) => (row.kind === "message" ? row.message.id : row.entry.key))).toEqual([
+      "m1",
+      "out-1",
+      "m2",
+    ])
+    expect(rows[0]).toMatchObject({ kind: "message", messageIndex: 0 })
+    expect(rows[2]).toMatchObject({ kind: "message", messageIndex: 1 })
+  })
+
+  test("ties keep server order first so receipts trail clock-equal messages", () => {
+    const messages = [{ id: "m1", time: { created: 200 } }]
+    const rows = mergeTranscriptWithInterrupted(messages, [interruptedEntry("out-1", 200)])
+    expect(rows.map((row) => (row.kind === "message" ? row.message.id : row.entry.key))).toEqual([
+      "m1",
+      "out-1",
+    ])
+  })
+
+  test("later server messages sort after an older interrupted receipt", () => {
+    const messages = [
+      { id: "m1", time: { created: 100 } },
+      { id: "m2", time: { created: 200 } },
+    ]
+    const rows = mergeTranscriptWithInterrupted(messages, [interruptedEntry("out-1", 50)])
+    expect(rows[0]).toMatchObject({ kind: "interrupted" })
+    expect(rows.map((row) => (row.kind === "message" ? row.message.id : row.entry.key))).toEqual([
+      "out-1",
+      "m1",
+      "m2",
+    ])
   })
 })
 

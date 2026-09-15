@@ -98,7 +98,14 @@ import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
 import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
-import { kickPump, outboundForSession, steerOutbound, type OutboundEntry } from "../../spinosa/outbound-queue"
+import {
+  interruptedOutboundForSession,
+  kickPump,
+  liveOutboundForSession,
+  mergeTranscriptWithInterrupted,
+  steerOutbound,
+  type OutboundEntry,
+} from "../../spinosa/outbound-queue"
 import { cancelSpinosaSubmit } from "../../spinosa/orchestrator"
 
 addDefaultParsers(parsers.parsers)
@@ -390,6 +397,13 @@ const resolveExportPath = (filename: string): string => {
   const lastAssistant = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant")
   })
+
+  // Outbound split: live entries trail the transcript; interrupted receipts
+  // merge chronologically so they scroll with the conversation instead of
+  // sticking above the prompt box.
+  const liveOutbound = createMemo(() => liveOutboundForSession(route.sessionID ?? ""))
+  const interruptedOutbound = createMemo(() => interruptedOutboundForSession(route.sessionID ?? ""))
+  const transcriptRows = createMemo(() => mergeTranscriptWithInterrupted(messages(), interruptedOutbound()))
 
   const dimensions = useTerminalDimensions()
   const [conceal, setConceal] = createSignal(true)
@@ -1338,103 +1352,116 @@ const resolveExportPath = (filename: string): string => {
                 scrollAcceleration={scrollAcceleration()}
               >
                 <box height={1} />
-                <For each={messages()}>
-                  {(message, index) => (
+                <For each={transcriptRows()}>
+                  {(row) => (
                     <Switch>
-                      <Match when={message.id === revert()?.messageID}>
-                        {(function () {
-                          const redoShortcut = useCommandShortcut("session.redo")
-                          const [hover, setHover] = createSignal(false)
-                          const dialog = useDialog()
-
-                          const handleUnrevert = async () => {
-                            const confirmed = await DialogConfirm.show(
-                              dialog,
-                              "Confirm Redo",
-                              "Are you sure you want to restore the reverted messages?",
-                            )
-                            if (confirmed) {
-                              keymap.dispatchCommand("session.redo")
-                            }
-                          }
-
+                      <Match when={row.kind === "interrupted" ? row : undefined}>
+                        {(interruptedRow) => <OptimisticUserRow entry={interruptedRow().entry} />}
+                      </Match>
+                      <Match when={row.kind === "message" ? row : undefined}>
+                        {(messageRow) => {
+                          const message = () => messageRow().message
+                          const index = () => messageRow().messageIndex
                           return (
-                            <TranscriptRow>
-                              <box
-                                onMouseOver={() => setHover(true)}
-                                onMouseOut={() => setHover(false)}
-                                onMouseUp={handleUnrevert}
-                                marginTop={1}
-                                flexShrink={0}
-                                border={["left"]}
-                                customBorderChars={SplitBorder.customBorderChars}
-                                borderColor={theme.backgroundPanel}
-                              >
-                                <box
-                                  paddingTop={1}
-                                  paddingBottom={1}
-                                  paddingLeft={2}
-                                  backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
-                                >
-                                  <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
-                                  <text fg={theme.textMuted}>
-                                    <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
-                                  </text>
-                                  <Show when={revert()!.diffFiles?.length}>
-                                    <box marginTop={1}>
-                                      <For each={revert()!.diffFiles}>
-                                        {(file) => (
-                                          <text fg={theme.text}>
-                                            {file.filename}
-                                            <Show when={file.additions > 0}>
-                                              <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
-                                            </Show>
-                                            <Show when={file.deletions > 0}>
-                                              <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
-                                            </Show>
+                            <Switch>
+                              <Match when={message().id === revert()?.messageID}>
+                                {(function () {
+                                  const redoShortcut = useCommandShortcut("session.redo")
+                                  const [hover, setHover] = createSignal(false)
+                                  const dialog = useDialog()
+
+                                  const handleUnrevert = async () => {
+                                    const confirmed = await DialogConfirm.show(
+                                      dialog,
+                                      "Confirm Redo",
+                                      "Are you sure you want to restore the reverted messages?",
+                                    )
+                                    if (confirmed) {
+                                      keymap.dispatchCommand("session.redo")
+                                    }
+                                  }
+
+                                  return (
+                                    <TranscriptRow>
+                                      <box
+                                        onMouseOver={() => setHover(true)}
+                                        onMouseOut={() => setHover(false)}
+                                        onMouseUp={handleUnrevert}
+                                        marginTop={1}
+                                        flexShrink={0}
+                                        border={["left"]}
+                                        customBorderChars={SplitBorder.customBorderChars}
+                                        borderColor={theme.backgroundPanel}
+                                      >
+                                        <box
+                                          paddingTop={1}
+                                          paddingBottom={1}
+                                          paddingLeft={2}
+                                          backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                                        >
+                                          <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
+                                          <text fg={theme.textMuted}>
+                                            <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
                                           </text>
-                                        )}
-                                      </For>
-                                    </box>
-                                  </Show>
-                                </box>
-                              </box>
-                            </TranscriptRow>
+                                          <Show when={revert()!.diffFiles?.length}>
+                                            <box marginTop={1}>
+                                              <For each={revert()!.diffFiles}>
+                                                {(file) => (
+                                                  <text fg={theme.text}>
+                                                    {file.filename}
+                                                    <Show when={file.additions > 0}>
+                                                      <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
+                                                    </Show>
+                                                    <Show when={file.deletions > 0}>
+                                                      <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
+                                                    </Show>
+                                                  </text>
+                                                )}
+                                              </For>
+                                            </box>
+                                          </Show>
+                                        </box>
+                                      </box>
+                                    </TranscriptRow>
+                                  )
+                                })()}
+                              </Match>
+                              <Match when={revert()?.messageID && message().id >= revert()!.messageID}>
+                                <></>
+                              </Match>
+                              <Match when={message().role === "user"}>
+                                <UserMessage
+                                  index={index()}
+                                  onMouseUp={() => {
+                                    if (renderer.getSelection()?.getSelectedText()) return
+                                    dialog.replace(() => (
+                                      <DialogMessage
+                                        messageID={message().id}
+                                        sessionID={route.sessionID}
+                                        setPrompt={(promptInfo) => prompt?.set(promptInfo)}
+                                      />
+                                    ))
+                                  }}
+                                  message={message() as UserMessage}
+                                  parts={sync.data.part[message().id] ?? []}
+                                  pending={pending()}
+                                />
+                              </Match>
+                              <Match when={message().role === "assistant"}>
+                                <AssistantMessage
+                                  last={lastAssistant()?.id === message().id}
+                                  message={message() as AssistantMessage}
+                                  parts={sync.data.part[message().id] ?? []}
+                                />
+                              </Match>
+                            </Switch>
                           )
-                        })()}
-                      </Match>
-                      <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
-                        <></>
-                      </Match>
-                      <Match when={message.role === "user"}>
-                        <UserMessage
-                          index={index()}
-                          onMouseUp={() => {
-                            if (renderer.getSelection()?.getSelectedText()) return
-                            dialog.replace(() => (
-                              <DialogMessage
-                                messageID={message.id}
-                                sessionID={route.sessionID}
-                                setPrompt={(promptInfo) => prompt?.set(promptInfo)}
-                              />
-                            ))
-                          }}
-                          message={message as UserMessage}
-                          parts={sync.data.part[message.id] ?? []}
-                          pending={pending()}
-                        />
-                      </Match>
-                      <Match when={message.role === "assistant"}>
-                        <AssistantMessage
-                          last={lastAssistant()?.id === message.id}
-                          message={message as AssistantMessage}
-                          parts={sync.data.part[message.id] ?? []}
-                        />
+                        }}
                       </Match>
                     </Switch>
                   )}
                 </For>
-                <For each={outboundForSession(route.sessionID ?? "")}>
+                <For each={liveOutbound()}>
                   {(entry) => <OptimisticUserRow entry={entry} />}
                 </For>
               </scrollbox>
@@ -1767,8 +1794,9 @@ function UserMessage(props: {
   )
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
-  // Route badge: workflow identity is stamped at submit time; general
-  // answers render like ordinary conversation messages.
+  // Route badge: workflow identity is stamped at submit time; routed
+  // general verdicts stamp a General prompt badge so the header never
+  // flips from "Evaluating" to empty. Direct (unrouted) sends stay bare.
   const routeInfo = createMemo(() => routeBadgeFromParts(props.parts))
 
   createEffect(() => {

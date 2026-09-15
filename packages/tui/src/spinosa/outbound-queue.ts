@@ -102,6 +102,60 @@ export function outboundForSession(sessionID: string): OutboundEntry[] {
   return entriesBySession[sessionID] ?? []
 }
 
+/** Live entries that have not settled yet — always trail the transcript. */
+export function liveOutboundForSession(sessionID: string): OutboundEntry[] {
+  return (entriesBySession[sessionID] ?? []).filter((entry) => entry.state !== "interrupted")
+}
+
+/** Settled interrupted receipts — historical rows, rendered chronologically. */
+export function interruptedOutboundForSession(sessionID: string): OutboundEntry[] {
+  return (entriesBySession[sessionID] ?? [])
+    .filter((entry) => entry.state === "interrupted")
+    .toSorted((a, b) => a.createdAt - b.createdAt || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
+export type TranscriptMessageLike = {
+  id: string
+  time: { created: number }
+}
+
+export type MergedTranscriptRow<T extends TranscriptMessageLike = TranscriptMessageLike> =
+  | { kind: "message"; message: T; messageIndex: number }
+  | { kind: "interrupted"; entry: OutboundEntry }
+
+/**
+ * Merge server messages with interrupted receipts in chronological order so
+ * settled receipts scroll with the conversation instead of sticking to the
+ * bottom above the prompt box. Live (queued/steered/evaluating) entries are
+ * NOT included here — callers render `liveOutboundForSession` trailing.
+ *
+ * Messages are assumed pre-sorted; interrupted entries are sorted by
+ * `createdAt` (stable by key). An interrupted entry sorts before the first
+ * server message with `time.created` strictly greater than its `createdAt`,
+ * so clock ties keep server order first and the receipt trails them.
+ */
+export function mergeTranscriptWithInterrupted<T extends TranscriptMessageLike>(
+  messages: readonly T[],
+  interrupted: readonly OutboundEntry[],
+): MergedTranscriptRow<T>[] {
+  const settled = [...interrupted].sort((a, b) => a.createdAt - b.createdAt || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  const rows: MergedTranscriptRow<T>[] = []
+  let at = 0
+  messages.forEach((message, messageIndex) => {
+    const created = message.time.created
+    while (at < settled.length && settled[at]!.createdAt < created) {
+      rows.push({ kind: "interrupted", entry: settled[at]! })
+      at += 1
+    }
+    rows.push({ kind: "message", message, messageIndex })
+  })
+  while (at < settled.length) {
+    rows.push({ kind: "interrupted", entry: settled[at]! })
+    at += 1
+  }
+  return rows
+}
+
 /** Flip the head entry to evaluating. False when it is gone or not the head. */
 export function markOutboundEvaluating(sessionID: string, key: string): boolean {
   const head = peekOutbound(sessionID)
