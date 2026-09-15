@@ -143,7 +143,7 @@ export class WorkflowRunService {
       ...(input.routerTimeoutMs !== undefined ? { timeoutMs: input.routerTimeoutMs } : {}),
     })
     const { decision } = routed
-    // General answers execute as plain conversation turns. They never frame
+    // General prompts execute as plain conversation turns. They never frame
     // a workflow, write a goal, or touch the harness engine.
     if (decision.mode === "general") {
       return { kind: "direct", text, decision, routedBy: routed.via }

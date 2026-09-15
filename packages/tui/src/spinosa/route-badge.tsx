@@ -149,7 +149,7 @@ function shortAgent(stepID: string): string {
 }
 
 export function routeBadgeLabel(info: RouteBadgeInfo): string {
-  if (info.kind === "general") return "General answer"
+  if (info.kind === "general") return "General prompt"
   if (info.kind === "queued") return "○ queued"
   if (info.kind === "steered") return "→ steered"
   if (info.kind === "evaluating") return "Evaluating"

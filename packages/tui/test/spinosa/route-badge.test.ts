@@ -107,6 +107,15 @@ describe("routeBadgeLabel", () => {
     expect(routeBadgeLabel({ kind: "evaluating" })).toBe("Evaluating")
     expect(routeBadgeLabel({ kind: "interrupted" })).toBe("⛔ Interrupted")
   })
+
+  test("routed general verdicts manifest a General prompt badge (never empty)", () => {
+    expect(routeBadgeLabel({ kind: "general" })).toBe("General prompt")
+    const info = routeBadgeFromParts([
+      { type: "text", text: "hi", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "general", routedBy: "rules" } } },
+    ])
+    expect(info).toMatchObject({ kind: "general", routedBy: "rules" })
+    expect(routeBadgeLabel(info!)).toBe("General prompt")
+  })
 })
 
 describe("route progress store", () => {
