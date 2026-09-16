@@ -9,8 +9,9 @@ DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 # ensure/verify + doctor cold-start). Override per machine with
 # SPINOSA_VERIFY_TIMEOUT_SECONDS (must be a positive integer).
 DEFAULT_VERIFY_TIMEOUT_SECONDS="${SPINOSA_VERIFY_TIMEOUT_SECONDS:-400}"
-# Staged smoke-gate budget (provider catalog, native imports, PDF runtime).
-# A timeout here is a missing verdict, not a failure — install proceeds
+# Per-smoke staged budget (catalog, natives, PDF, TUI worker, parser).
+# Each smoke gets this many seconds. They do not share one timer.
+# A per-smoke timeout is a missing verdict, not a failure — install proceeds
 # flagged as unverified (see handle_smoke_gate_result).
 DEFAULT_SMOKE_TIMEOUT_SECONDS="${SPINOSA_SMOKE_TIMEOUT_SECONDS:-300}"
 WAVE_WIDTH=6
@@ -640,7 +641,7 @@ while [ $# -gt 0 ]; do
        echo "  SPINOSA_REPAIR=1            Auto-repair without prompting"
        echo "  SPINOSA_RELEASE_BASE_URL    Override release asset base URL (local smoke)"
        echo "  SPINOSA_VERIFY_TIMEOUT_SECONDS  Override staged verify timeout (default: $DEFAULT_VERIFY_TIMEOUT_SECONDS)"
-       echo "  SPINOSA_SMOKE_TIMEOUT_SECONDS  Override staged smoke timeout (default: $DEFAULT_SMOKE_TIMEOUT_SECONDS)"
+       echo "  SPINOSA_SMOKE_TIMEOUT_SECONDS  Override per-smoke timeout (default: $DEFAULT_SMOKE_TIMEOUT_SECONDS; budgets do not add up)"
       echo ""
       echo "Paths:"
       echo "  --no-modify-path  Don't modify shell config files (~/.zshrc, etc.)"
@@ -2059,17 +2060,24 @@ run_staged_core_checks() {
   rm -f "$gate_tmp"
 }
 
+# One smoke under its own timeout. Used so catalog + natives + PDF + workers
+# do not share a single 300s budget (qemu linux-x64 needs a full budget each).
+_invoke_staged_smoke() {
+  local binary="$1" smoke="$2" cwd="$3" out="$4"
+  (cd "$cwd" && "$binary" internal smoke "$smoke" --json) >"$out" 2>&1
+}
+
 # Deterministic binary-integrity smokes (no full instance doctor): the staged
 # binary must already have passed checksum, version, and template gates above.
-# Runs provider catalog, native imports, and PDF runtime — fast, deterministic,
-# credential-free — and fails closed on any of them. Returns 0 when all pass,
-# 1 otherwise (callers die with the canonical message). Publishes the gate
-# temp path in SMOKE_GATE_TMP (partial output) and the working dir in SMOKE_CWD
-# so a timed-step timeout can surface output and clean up from the parent
-# (both exported via TIMED_EXPORT_VARS); both are also in the temp registry.
+# Runs provider catalog, native imports, PDF runtime, TUI worker, and parser
+# worker — credential-free — and fails closed on any of them. Each smoke gets
+# DEFAULT_SMOKE_TIMEOUT_SECONDS of its own; elapsed time does not carry over.
+# Returns 0 when all pass, 124 when one times out, 1 on a hard failure.
+# Publishes the gate temp path in SMOKE_GATE_TMP (partial output) and the
+# working dir in SMOKE_CWD so a timeout can surface output and clean up.
 run_staged_smoke_checks() {
   local binary="$1"
-  local gate_start gate_elapsed
+  local gate_start gate_elapsed smoke_status
   local gate_tmp smoke
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-smoke.XXXXXX")"
   SMOKE_GATE_TMP="$gate_tmp"
@@ -2082,22 +2090,29 @@ run_staged_smoke_checks() {
   for smoke in provider-catalog native-imports pdf-runtime tui-worker parser-worker; do
     gate_note "Running smoke ${smoke}..."
     gate_start="$(date +%s)"
-    if (cd "$SMOKE_CWD" && "$binary" internal smoke "$smoke" --json) >"$gate_tmp" 2>&1; then
+    smoke_status=0
+    run_timed_step "Smoke ${smoke}" "$DEFAULT_SMOKE_TIMEOUT_SECONDS" \
+      _invoke_staged_smoke "$binary" "$smoke" "$SMOKE_CWD" "$gate_tmp" || smoke_status=$?
+    if [ "$smoke_status" -eq 0 ]; then
       gate_elapsed=$(( $(date +%s) - gate_start ))
       spinosa_log INFO "smoke ${smoke} output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
       gate_note "Smoke ${smoke} passed (${gate_elapsed}s)"
-    else
-      spinosa_log ERROR "smoke ${smoke} failed; full output follows"
-      while IFS= read -r line || [ -n "$line" ]; do
-        spinosa_log ERROR "smoke ${smoke}: $line"
-      done < "$gate_tmp"
-      tail -n 20 "$gate_tmp" >&2 || true
-      rm -rf "$SMOKE_CWD"
-      rm -f "$gate_tmp"
-      SMOKE_GATE_TMP=""
-      SMOKE_CWD=""
-      return 1
+      continue
     fi
+    if [ "$smoke_status" -eq 124 ]; then
+      spinosa_log ERROR "smoke ${smoke} timed out after ${DEFAULT_SMOKE_TIMEOUT_SECONDS}s"
+      return 124
+    fi
+    spinosa_log ERROR "smoke ${smoke} failed; full output follows"
+    while IFS= read -r line || [ -n "$line" ]; do
+      spinosa_log ERROR "smoke ${smoke}: $line"
+    done < "$gate_tmp"
+    tail -n 20 "$gate_tmp" >&2 || true
+    rm -rf "$SMOKE_CWD"
+    rm -f "$gate_tmp"
+    SMOKE_GATE_TMP=""
+    SMOKE_CWD=""
+    return 1
   done
   rm -rf "$SMOKE_CWD"
   rm -f "$gate_tmp"
@@ -2707,14 +2722,12 @@ main() {
   SPINOSA_GATE_TTY="$_gate_tty" run_timed_step "Verifying package" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
     run_staged_core_checks "$staged_binary" \
     || die "Staged binary failed verification"
-  # Smoke gates on their own budget: a timeout means "no verdict", not "broken".
-  # Warn (orange) and flag the install as unverified instead of blocking —
-  # checksum, version, and template gates already passed above. Failed smokes
-  # still refuse activation (red).
+  # Each smoke has its own 300s budget. Do not wrap the whole batch in one
+  # timer — qemu linux-x64 spends ~30s per earlier smoke and then the TUI
+  # worker still needs a full fetch window.
   smoke_gate_status=0
   SMOKE_GATE_TMP=""
-  SPINOSA_GATE_TTY="$_gate_tty" run_timed_step "Checking binary smokes" "$DEFAULT_SMOKE_TIMEOUT_SECONDS" \
-    run_staged_smoke_checks "$staged_binary" || smoke_gate_status=$?
+  SPINOSA_GATE_TTY="$_gate_tty" run_staged_smoke_checks "$staged_binary" || smoke_gate_status=$?
   handle_smoke_gate_result "$smoke_gate_status"
 
   [[ "$VERBOSE" == "1" ]] && section "Activate"

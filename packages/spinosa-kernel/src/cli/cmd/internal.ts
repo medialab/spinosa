@@ -16,6 +16,7 @@ import {
   evaluateTuiWorkerSmoke,
   resolveParserWorkerPath,
   restoreTuiWorkerSmokeEnv,
+  remainingDeadlineMs,
   TUI_WORKER_PROVIDER_FETCH_MS,
   waitForParserWorkerReady,
   waitForWorkerReady,
@@ -360,6 +361,7 @@ export const InternalCommand = {
                     }) => Promise<{ status: number; headers: Record<string, string>; body: string }>
                   }>(worker)
                   try {
+                    const deadline = Date.now() + TUI_WORKER_PROVIDER_FETCH_MS
                     await waitForWorkerReady({
                       ping: () => client.call("ping", undefined),
                       attachError: (handler) => {
@@ -367,10 +369,11 @@ export const InternalCommand = {
                         worker.addEventListener("error", listener)
                         return () => worker.removeEventListener("error", listener)
                       },
+                      timeoutMs: remainingDeadlineMs(deadline),
                     })
                     const natives = await withTimeout(
                       client.call("natives", undefined),
-                      TUI_WORKER_PROVIDER_FETCH_MS,
+                      remainingDeadlineMs(deadline),
                       "TUI worker pty probe timed out",
                     )
                     const directory = encodeURIComponent(process.cwd())
@@ -380,7 +383,7 @@ export const InternalCommand = {
                         method: "GET",
                         headers: {},
                       }),
-                      TUI_WORKER_PROVIDER_FETCH_MS,
+                      remainingDeadlineMs(deadline),
                       "TUI worker /provider fetch timed out",
                     )
                     const noise = await client.call("bootNoise", undefined)
@@ -460,6 +463,7 @@ export const InternalCommand = {
                       worker.addEventListener("error", listener)
                       return () => worker.removeEventListener("error", listener)
                     },
+                    timeoutMs: TUI_WORKER_PROVIDER_FETCH_MS,
                   })
                   const verdict = evaluateParserWorkerSmoke({ ready: true })
                   if (!verdict.ok) {

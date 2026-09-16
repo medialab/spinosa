@@ -512,6 +512,11 @@ EOF
   [ "$output" = "600" ]
 }
 
+@test "interactive install times each smoke instead of the whole batch" {
+  grep -F 'run_timed_step "Smoke ${smoke}" "$DEFAULT_SMOKE_TIMEOUT_SECONDS"' "$INSTALLER"
+  ! grep -F 'run_timed_step "Checking binary smokes"' "$INSTALLER"
+}
+
 @test "run_staged_smoke_checks passes when all smokes succeed" {
   local fake="$BATS_TEST_TMPDIR/fake-smoke-check-ok"
   cat >"$fake" <<'EOF'
@@ -530,6 +535,40 @@ EOF
   [[ "$output" == *"Smoke pdf-runtime passed"* ]]
   [[ "$output" == *"Smoke tui-worker passed"* ]]
   [[ "$output" == *"Smoke parser-worker passed"* ]]
+}
+
+@test "each staged smoke gets a full timeout budget" {
+  # Five 1s smokes under a 3s per-smoke budget must pass. A shared 3s
+  # batch timer would fire during the later smokes.
+  DEFAULT_SMOKE_TIMEOUT_SECONDS=3
+  local fake="$BATS_TEST_TMPDIR/fake-smoke-check-slow"
+  cat >"$fake" <<'EOF'
+#!/bin/sh
+sleep 1
+printf '{"ok":true}\n'
+exit 0
+EOF
+  chmod +x "$fake"
+  local started ended
+  started="$(date +%s)"
+  run run_staged_smoke_checks "$fake"
+  ended="$(date +%s)"
+  [ "$status" -eq 0 ]
+  [ $((ended - started)) -ge 5 ]
+}
+
+@test "a single smoke timeout returns 124" {
+  DEFAULT_SMOKE_TIMEOUT_SECONDS=1
+  local fake="$BATS_TEST_TMPDIR/fake-smoke-check-hang"
+  cat >"$fake" <<'EOF'
+#!/bin/sh
+sleep 8
+printf '{"ok":true}\n'
+exit 0
+EOF
+  chmod +x "$fake"
+  run run_staged_smoke_checks "$fake"
+  [ "$status" -eq 124 ]
 }
 
 @test "run_staged_smoke_checks returns without dying when a smoke fails" {

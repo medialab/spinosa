@@ -230,6 +230,8 @@ describe("install and release flow", () => {
     expect(installer).toContain('die "Template ensure failed — refusing to activate staged binary"')
     expect(installer).toContain('die "Binary smokes reported issues — refusing to activate staged binary"')
     expect(installer).toContain("run_staged_smoke_checks")
+    expect(installer).toContain('run_timed_step "Smoke ${smoke}" "$DEFAULT_SMOKE_TIMEOUT_SECONDS"')
+    expect(installer).not.toContain('run_timed_step "Checking binary smokes"')
     expect(installer).not.toContain("continuing; doctor will soft-check")
     expect(installer).not.toContain("non-fatal during template soft-check")
     expect(installer).not.toContain("non-fatal if templates are still warming")

@@ -13,6 +13,7 @@ import {
   shouldWriteWorkerFailureToStderr,
   TUI_WORKER_FETCH_MS,
   TUI_WORKER_PROVIDER_FETCH_MS,
+  remainingDeadlineMs,
   waitForParserWorkerReady,
   waitForWorkerReady,
 } from "../../../src/cli/tui/worker-boot"
@@ -143,8 +144,17 @@ describe("tui-worker extra-entrypoint", () => {
 })
 
 describe("tui-worker installer smoke isolation", () => {
-  test("fail-closed /provider budget stays 30s", () => {
-    expect(TUI_WORKER_PROVIDER_FETCH_MS).toBe(30_000)
+  test("installer smoke wall clock is 300s and ping/pty/fetch share it", async () => {
+    expect(TUI_WORKER_PROVIDER_FETCH_MS).toBe(300_000)
+    const source = await Bun.file(new URL("../../../src/cli/cmd/internal.ts", import.meta.url)).text()
+    expect(source).toContain("remainingDeadlineMs(deadline)")
+  })
+
+  test("remainingDeadlineMs does not stack past the wall clock", () => {
+    expect(remainingDeadlineMs(1_000, 0)).toBe(1_000)
+    expect(remainingDeadlineMs(1_000, 400)).toBe(600)
+    expect(remainingDeadlineMs(1_000, 1_000)).toBe(1)
+    expect(remainingDeadlineMs(1_000, 2_000)).toBe(1)
   })
 
   test("smoke uses a fresh HOME and disables models.dev plus plugins", async () => {

@@ -11,13 +11,18 @@ import path from "node:path"
 
 export const COMPILED_TUI_WORKER_RELATIVE = "src/cli/tui/worker.js"
 
-/** Fail closed: a healthy snapshot `/provider` through a hermetic worker is fast. */
-export const TUI_WORKER_PROVIDER_FETCH_MS = 30_000
+/** Installer TUI-worker smoke wall clock. Ping, pty, and /provider share it. */
+export const TUI_WORKER_PROVIDER_FETCH_MS = 300_000
 
 /** Live TUI worker RPC. Matches the vision-provider budget; never hang forever. */
 export const TUI_WORKER_FETCH_MS = 120_000
 
 export const PARSER_WORKER_READY_MS = 15_000
+
+/** Milliseconds left on a deadline. Always at least 1 so withTimeout still fires. */
+export function remainingDeadlineMs(deadlineMs: number, nowMs = Date.now()): number {
+  return Math.max(1, deadlineMs - nowMs)
+}
 
 const TUI_WORKER_SMOKE_ENV_KEYS = [
   "HOME",

@@ -10,6 +10,13 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.35] — 2026-09-16
+
+### Fixed
+
+- Each installer smoke has a 300 second timeout. Earlier smokes do not consume that budget. Code: `install.sh`.
+- The TUI worker smoke shares one 300 second clock for ping, pty, and `/provider`. Code: `packages/spinosa-kernel/src/cli/tui/worker-boot.ts`.
+
 ## [1.1.0-beta.34] — 2026-09-16
 
 ### Changed
