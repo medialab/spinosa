@@ -1502,35 +1502,80 @@ extract_template_pack_id() {
 probe_spinosa_version_output() {
   local binary="$1"
   local err_sink="${2:-/dev/null}"
-  local out_file pid waited
-  # Overridable for tests; default 30s budget (150 x 0.2s): a freshly
+  local out rc
+  # Overridable for tests; default 30s budget per attempt (a freshly
   # downloaded 150MB+ binary cold-starts slowly — Gatekeeper assessment on
   # the new inode, cold page cache, and a loaded host easily exceed the old
-  # 5s and killed healthy binaries.
+  # 5s and killed healthy binaries). Worst case is ~2x budget: the fallback
+  # runs only after the first attempt failed FAST, never after a timeout.
   local budget_seconds="${SPINOSA_PROBE_TIMEOUT_SECONDS:-30}"
   [[ "$budget_seconds" =~ ^[1-9][0-9]*$ ]] || budget_seconds=30
+  local out_file
   out_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe.XXXXXX")"
   timed_register_temp "$out_file"
-  (
-    "$binary" version --json 2>"$err_sink" || "$binary" version 2>>"$err_sink" || true
-  ) >"$out_file" 2>&1 &
+  : >"$err_sink" 2>/dev/null || true
+  # Phase 1 (--json). A timeout is terminal: the tree is reaped and we stop.
+  # Falling back from inside the dying shell would orphan a fresh subtree —
+  # the killed first invocation's `||` wakes the wrapper into a second
+  # invocation whose children outlive it (see timed-step.bats tree-kill test).
+  rc=0
+  probe_one_version_command "$budget_seconds" "$out_file" "$err_sink" \
+    "$binary" version --json || rc=$?
+  if [ "$rc" -eq 1 ]; then
+    rm -f "$out_file"
+    return 1
+  fi
+  out="$(cat "$out_file" 2>/dev/null || true)"
+  if [ -n "$out" ] && [ "$rc" -eq 0 ]; then
+    printf '%s\n' "$out"
+    rm -f "$out_file"
+    return 0
+  fi
+  # Normal failure (fast exit, unusable output) — fallback allowed: the first
+  # tree already exited, so a fresh budgeted attempt cannot orphan anything.
+  rc=0
+  probe_one_version_command "$budget_seconds" "$out_file" "$err_sink" \
+    "$binary" version || rc=$?
+  if [ "$rc" -eq 1 ]; then
+    rm -f "$out_file"
+    return 1
+  fi
+  cat "$out_file" 2>/dev/null || true
+  rm -f "$out_file"
+}
+
+# Single bounded probe invocation: runs one command (never a fallback chain)
+# in the background with stdout to out_file and stderr appended to err_sink.
+# Polls every 0.2s so a trapped INT stays responsive. Returns 0 when the
+# command exited in budget (inspect the output file for success), 2 when it
+# exited nonzero fast (caller may fall back), 1 on timeout — the whole tree
+# is reaped and the caller must NOT start fallback work (it would orphan).
+probe_one_version_command() {
+  local budget_seconds="${1:-30}"
+  local out_file="$2"
+  local err_sink="$3"
+  shift 3
+  [[ "$budget_seconds" =~ ^[1-9][0-9]*$ ]] || budget_seconds=30
+  local pid waited status
+  ( "$@" ) >"$out_file" 2>>"$err_sink" &
   pid=$!
   waited=0
   while kill -0 "$pid" 2>/dev/null; do
     if [ "$waited" -ge $(( budget_seconds * 5 )) ]; then
-      # Tree kill: the wrapper may have spawned children (e.g. a shim
+      # Tree kill: the command may have spawned children (e.g. a shim
       # re-exec) that would otherwise outlive the wrapper pid.
       kill_process_tree_graceful "$pid"
       wait "$pid" 2>/dev/null || true
-      rm -f "$out_file"
       return 1
     fi
     sleep 0.2
     waited=$((waited + 1))
   done
-  wait "$pid" 2>/dev/null || true
-  cat "$out_file" 2>/dev/null || true
-  rm -f "$out_file"
+  wait "$pid" 2>/dev/null || status=$?
+  if [ "${status:-0}" -eq 0 ]; then
+    return 0
+  fi
+  return 2
 }
 
 # Bounded poll for a background pid. Returns 0 when it exits within budget,
@@ -1552,19 +1597,24 @@ wait_for_pid() {
   return 0
 }
 
-# Async probe variant for direct main-shell callers: starts the version probe
+# Async probe variant for direct main-shell callers: starts ONE version command
 # in the background and echoes only its pid (fast — no waiting), writing
 # output to the caller-provided file. The caller polls with wait_for_pid so
 # CTRL+C stays responsive; a plain out="$(probe...)" here would ignore CTRL+C
 # for up to 30s because background children ignore SIGINT while the shell
 # sits in the substitution.
+# Single command only, never a fallback chain: if the caller times out and
+# tree-kills the pid, nothing inside can wake into fresh work (which would
+# orphan). Fallback across commands is orchestrated by the caller, in the
+# parent shell, only after a fast failure — never after a timeout.
+# Usage: probe_spinosa_version_output_async <binary> <err_sink> <out_file> <version-args...>
 probe_spinosa_version_output_async() {
   local binary="$1"
   local err_sink="${2:-/dev/null}"
   local out_file="$3"
-  (
-    "$binary" version --json 2>"$err_sink" || "$binary" version 2>>"$err_sink" || true
-  ) >"$out_file" 2>&1 &
+  shift 3
+  : >"$err_sink" 2>/dev/null || true
+  ( "$binary" "$@" || true ) >"$out_file" 2>>"$err_sink" &
   printf '%s\n' "$!"
 }
 
@@ -1583,21 +1633,42 @@ get_installed_version() {
   if [ -x "${SPINOSA_HOME}/bin/spinosa" ] && [ -n "$meta_ver" ]; then
     __version="$meta_ver"
   elif [ -x "${SPINOSA_HOME}/bin/spinosa" ]; then
-    local out ver probe_out probe_pid
+    local out ver probe_out probe_pid timed_out
     local probe_budget="${SPINOSA_PROBE_TIMEOUT_SECONDS:-30}"
     [[ "$probe_budget" =~ ^[1-9][0-9]*$ ]] || probe_budget=30
     probe_out="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe.XXXXXX")"
     timed_register_temp "$probe_out"
-    probe_pid="$(probe_spinosa_version_output_async "${SPINOSA_HOME}/bin/spinosa" /dev/null "$probe_out" || true)"
     out=""
+    timed_out=0
+    # Phase 1 (--json), async + polled so CTRL+C stays responsive; the
+    # signal handler reaps PROBE_PID's tree on cancel.
+    probe_pid="$(probe_spinosa_version_output_async "${SPINOSA_HOME}/bin/spinosa" /dev/null "$probe_out" version --json || true)"
     PROBE_PID="${probe_pid:-}"
     if [ -n "${probe_pid:-}" ] && wait_for_pid "$probe_pid" "$probe_budget"; then
       out="$(cat "$probe_out" 2>/dev/null || true)"
     else
-      # Tree kill: a shim/re-exec child must not outlive the wrapper.
+      # Timeout: tree-kill and stop. No fallback — the reaped tree must not
+      # be followed by fresh work that would orphan on the next kill.
+      timed_out=1
       if [ -n "${probe_pid:-}" ]; then
         kill_process_tree_graceful "$probe_pid"
         wait "$probe_pid" 2>/dev/null || true
+      fi
+      out=""
+    fi
+    # Fallback (plain version) only after a FAST failure with unusable
+    # output — same async discipline, fresh budget, same terminal timeout.
+    if [ "$timed_out" -eq 0 ] && [ -z "$(parse_version_output "$out" 2>/dev/null || true)" ]; then
+      probe_pid="$(probe_spinosa_version_output_async "${SPINOSA_HOME}/bin/spinosa" /dev/null "$probe_out" version || true)"
+      PROBE_PID="${probe_pid:-}"
+      if [ -n "${probe_pid:-}" ] && wait_for_pid "$probe_pid" "$probe_budget"; then
+        out="$(cat "$probe_out" 2>/dev/null || true)"
+      else
+        if [ -n "${probe_pid:-}" ]; then
+          kill_process_tree_graceful "$probe_pid"
+          wait "$probe_pid" 2>/dev/null || true
+        fi
+        out=""
       fi
     fi
     PROBE_PID=""

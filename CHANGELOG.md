@@ -14,6 +14,7 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ### Fixed
 
+- Version probes separate timeout from failure. A timed-out probe kills its tree and stops instead of falling back into orphaned work. Fast failures still fall back. Code: `install.sh`, `tests/installer/timed-step.bats`.
 - Installer cancel handler no longer kills its own process group on Linux. Tree kills target explicit PIDs only. The cancellation message stays visible instead of swallowed. Code: `install.sh`, `tests/installer/timed-step.bats`.
 - Website install command is the plain pipe-to-bash form. No curl flags. Code: `website/src/lib/install-urls.ts`.
 

@@ -154,6 +154,47 @@ registry_ok_fn() {
   [ -z "${PROBE_PID:-}" ]
 }
 
+@test "probe_spinosa_version_output falls back on fast --json failure" {
+  mkdir -p "$SPINOSA_HOME/bin"
+  # Old shims predate `version --json`: a fast failure must still fall back
+  # to plain `version` (only timeouts are terminal).
+  cat > "$SPINOSA_HOME/bin/spinosa" <<'EOF'
+#!/bin/sh
+if [ "$2" = "--json" ]; then
+  printf 'loader blew up\n' >&2
+  exit 1
+fi
+printf '{"version":"1.0.3-beta.9"}\n'
+EOF
+  chmod +x "$SPINOSA_HOME/bin/spinosa"
+  run probe_spinosa_version_output "$SPINOSA_HOME/bin/spinosa" /dev/null
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"version":"1.0.3-beta.9"}' ]
+}
+
+@test "probe_spinosa_version_output performs no fallback after timeout" {
+  mkdir -p "$SPINOSA_HOME/bin"
+  # If --json hangs, the plain fallback must NEVER run: starting fresh work
+  # from a timed-out probe orphans it outside the reaped tree.
+  local marker="$BATS_TEST_TMPDIR/fallback-marker"
+  rm -f "$marker"
+  cat > "$SPINOSA_HOME/bin/spinosa" <<EOF
+#!/bin/sh
+if [ "\$2" = "--json" ]; then
+  sleep 30
+  exit 0
+fi
+touch "$marker"
+printf '{"version":"1.0.3-beta.9"}\n'
+EOF
+  chmod +x "$SPINOSA_HOME/bin/spinosa"
+  SPINOSA_PROBE_TIMEOUT_SECONDS=1 run probe_spinosa_version_output "$SPINOSA_HOME/bin/spinosa" /dev/null
+  [ "$status" -ne 0 ]
+  [ ! -e "$marker" ]
+  run pgrep -f "sleep 30"
+  [ "$status" -ne 0 ]
+}
+
 @test "probe timeout tree-kills wrapper grandchildren" {
   mkdir -p "$SPINOSA_HOME/bin"
   # Fake binary that orphans a grandchild sleep: a pid-only kill would leak it.
