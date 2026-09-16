@@ -7,28 +7,22 @@
  * install.sh served over a local HTTP server (same path end users take,
  * pointed at local assets with SPINOSA_RELEASE_BASE_URL).
  *
- * The installer's staged `doctor` gate currently hangs on this machine
- * (no output, no timeout — see install.sh run_staged_binary_checks), so by
- * default this script intercepts right after template verification passes
- * and performs the installer's own activation steps manually
- * (checksum-verify → backup → activate → version-probe → shim →
- * metadata). Pass --strict to let install.sh run to completion instead.
+ * The staged installer gate runs unchanged so this exercises the same
+ * verification and activation path as an end-user installation.
  *
  * Dirty trees are fine — that is the point (test your checkout).
  *
  * Usage:
  *   bun scripts/rebuild-install.ts [--version X.Y.Z] [--home DIR]
- *     [--bin-dir DIR] [--skip-build] [--no-activate] [--strict] [--verbose]
+ *     [--bin-dir DIR] [--skip-build] [--no-activate]
  *
  *   --version X   Build + install version X. When it differs from
  *                 package.json, `scripts/set-version.ts` runs first so the
  *                 binary, installer pin, and metadata all agree.
  *   --skip-build  Skip the compile; stage + install the existing dist build.
  *   --no-activate Build (and stage) only; do not touch SPINOSA_HOME.
- *   --strict      Do not intercept the doctor gate (hangs until fixed).
  */
-import { spawnSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
 import { $ } from "bun"
@@ -49,13 +43,9 @@ if (hasFlag("--help") || hasFlag("-h")) {
   process.exit(0)
 }
 
-const verbose = hasFlag("--verbose")
 const home = path.resolve(process.env.SPINOSA_HOME ?? argValue("--home") ?? path.join(homedir(), ".spinosa"))
 const binDir = path.resolve(process.env.SPINOSA_BIN_DIR ?? argValue("--bin-dir") ?? path.join(homedir(), ".local", "bin"))
 const log = (...args: unknown[]): void => console.log("→", ...args)
-const detail = (...args: unknown[]): void => {
-  if (verbose) console.log("  ", ...args)
-}
 
 function readPkgVersion(): string {
   return (JSON.parse(readFileSync(path.join(root, "package.json"), "utf-8")) as { version: string }).version
@@ -123,7 +113,6 @@ if (hasFlag("--no-activate")) {
 }
 
 // --- 4. Serve dist + run the real installer ----------------------------------
-const stagingDir = path.join(home, ".staging")
 const installLog = path.join(home, "logs", "spinosa.log")
 
 function serveDist(dir: string): { baseUrl: string; stop: () => void } {
@@ -146,31 +135,9 @@ function serveDist(dir: string): { baseUrl: string; stop: () => void } {
   return { baseUrl: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) }
 }
 
-function installLogSize(): number {
-  try {
-    return (Bun.file(installLog).size as number) ?? 0
-  } catch {
-    return 0
-  }
-}
-
-async function installLogSince(offset: number): Promise<string> {
-  try {
-    const text = await Bun.file(installLog).text()
-    return text.slice(offset)
-  } catch {
-    return ""
-  }
-}
-
-function killPattern(pattern: string, signal: NodeJS.Signals = "SIGTERM"): void {
-  const result = spawnSync("pkill", [`-${signal === "SIGKILL" ? "9" : "TERM"}`, "-f", pattern])
-  detail(`pkill ${pattern}: exit ${result.status}`)
-}
 
 const { baseUrl, stop } = serveDist(outDir)
 log(`serving ${outDir} at ${baseUrl}`)
-const logOffset = installLogSize()
 const installer = Bun.spawn(
   ["bash", path.join(outDir, "install.sh"), "--yes", "--no-launch", "--reinstall"],
   {
@@ -184,134 +151,42 @@ const installer = Bun.spawn(
 let installerDone: "ok" | "failed" | "running" = "running"
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000
 const startedAt = Date.now()
-const GATE_GRACE_MS = 15_000
-let gateSeenAt: number | undefined
 
 for (;;) {
-  await new Promise((r) => setTimeout(r, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 2000))
   if (installer.exitCode !== null) {
     installerDone = installer.exitCode === 0 ? "ok" : "failed"
     break
   }
   if (Date.now() - startedAt > INSTALL_TIMEOUT_MS) break
-  if (!hasFlag("--strict") && gateSeenAt === undefined) {
-    const tail = await installLogSince(logOffset)
-    if (tail.includes("template verify output")) {
-      gateSeenAt = Date.now()
-      log("template verification passed — installer is at the doctor gate")
-    }
-  }
-  if (!hasFlag("--strict") && gateSeenAt !== undefined && Date.now() - gateSeenAt > GATE_GRACE_MS) {
-    log("intercepting before the hanging doctor gate")
-    break
-  }
 }
 
-if (installerDone === "ok") {
-  log("installer completed on its own (doctor gate passed)")
-} else if (installerDone === "failed") {
+if (installerDone !== "ok") {
+  if (installerDone === "failed") {
+    stop()
+    throw new Error(`installer failed with exit ${installer.exitCode} — see ${installLog}`)
+  }
+  installer.kill()
+  await Promise.race([
+    installer.exited,
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ])
   stop()
-  throw new Error(`installer failed with exit ${installer.exitCode} — see ${installLog}`)
-} else if (hasFlag("--strict")) {
-  stop()
-  throw new Error("installer still running past timeout under --strict — see " + installLog)
-} else {
-  // Intercept: terminate the installer, then the stuck doctor child it
-  // spawned (matches the staging binary path), then clear the stale
-  // install lock. Activation below replaces _install_activate.
-  try {
-    process.kill(installer.pid, "SIGTERM")
-  } catch { /* already exited */ }
-  await new Promise((r) => setTimeout(r, 2000))
-  try {
-    process.kill(installer.pid, "SIGKILL")
-  } catch { /* already exited */ }
-  killPattern(path.join(stagingDir, "spinosa-"))
-  await new Promise((r) => setTimeout(r, 1000))
-  killPattern(path.join(stagingDir, "spinosa-"), "SIGKILL")
-  await installer.exited.catch(() => {})
-  rmSync(path.join(stagingDir, ".install.lock"), { recursive: true, force: true })
-  log("installer intercepted, stale lock cleared")
+  throw new Error("installer still running past timeout — see " + installLog)
 }
+
 stop()
 
-// --- 5. Manual activation (mirrors install.sh _install_activate) -------------
-// Skipped when the installer completed on its own (it already activated).
 const activeBin = path.join(home, "bin", "spinosa")
-if (installerDone === "ok") {
-  const probed = Bun.spawnSync([activeBin, "version"], { timeout: 30_000 })
-  const out = `${probed.stdout ?? ""}`.trim() + `${probed.stderr ?? ""}`.trim()
-  if (probed.exitCode !== 0 || !out.includes(version)) {
-    throw new Error(`active binary failed version probe after installer run (want ${version}): ${out.slice(0, 200)}`)
-  }
-  log(`installer activated ${activeBin} (${version}) — nothing left to do`)
-  process.exit(0)
-}
-const hostBinary = `spinosa-${hostOs}-${hostArch}`
-const stagedBinary = path.join(stagingDir, hostBinary)
-if (!existsSync(stagedBinary)) {
-  throw new Error(`staged binary missing: ${stagedBinary} — see ${installLog}`)
-}
-const stagedHash = await $`shasum -a 256 ${stagedBinary}`.text().then((t) => t.split(/\s+/)[0])
-const expectedHash = checksums
-  .split("\n")
-  .find((line) => line.endsWith(`  ${hostBinary}`))
-  ?.split(/\s+/)[0]
-if (!expectedHash || stagedHash !== expectedHash) {
-  throw new Error(`staged checksum mismatch for ${hostBinary} (refusing to activate)`)
-}
-log(`staged checksum ok (${stagedHash.slice(0, 12)}…)`)
-
-const active = path.join(home, "bin", "spinosa")
-mkdirSync(path.join(home, "bin"), { recursive: true })
-const backup = path.join(stagingDir, `spinosa.backup.${process.pid}`)
-if (existsSync(active)) renameSync(active, backup)
-try {
-  renameSync(stagedBinary, active)
-  chmodSync(active, 0o755)
-  const probed = Bun.spawnSync([active, "version"], { timeout: 30_000 })
-  const out = `${probed.stdout ?? ""}`.trim() + `${probed.stderr ?? ""}`.trim()
-  if (probed.exitCode !== 0 || !out.includes(version)) {
-    throw new Error(`active binary failed version probe (want ${version}): ${out.slice(0, 200)}`)
-  }
-  log(`activated ${active} (${version})`)
-  rmSync(backup, { force: true })
-} catch (err) {
-  if (existsSync(backup)) {
-    try {
-      renameSync(backup, active)
-    } catch { /* best effort rollback */ }
-  }
-  throw err
+const activeProbe = Bun.spawnSync([activeBin, "version"], { timeout: 30_000 })
+const activeOutput = `${activeProbe.stdout ?? ""}`.trim() + `${activeProbe.stderr ?? ""}`.trim()
+if (activeProbe.exitCode !== 0 || !activeOutput.includes(version)) {
+  throw new Error(`active binary failed version probe after installer run (want ${version}): ${activeOutput.slice(0, 200)}`)
 }
 
-// Shim (install.sh template; version-independent forwarder).
-mkdirSync(binDir, { recursive: true })
 const shim = path.join(binDir, "spinosa")
-if (!existsSync(shim)) {
-  writeFileSync(
-    shim,
-    '#!/bin/sh\n# Managed by Spinosa install.sh\nhome="${SPINOSA_HOME:-$HOME/.spinosa}"\ntarget="$home/bin/spinosa"\nif [ ! -x "$target" ]; then\n  echo "spinosa: installation needs repair" >&2\n  exit 1\nfi\nexec "$target" "$@"\n',
-  )
-  chmodSync(shim, 0o755)
-  log(`created shim ${shim}`)
-}
-
-// Metadata: keep last_installed_version in sync on bumps.
-const configPath = path.join(home, "metadata", "config.yaml")
-try {
-  const config = readFileSync(configPath, "utf-8")
-  if (!config.includes(`last_installed_version: "${version}"`)) {
-    writeFileSync(configPath, config.replace(/^last_installed_version:.*$/m, `last_installed_version: "${version}"`))
-    log("metadata last_installed_version updated")
-  }
-} catch {
-  detail("metadata config.yaml untouched (missing?)")
-}
-rmSync(path.join(stagingDir, "checksums.txt"), { force: true })
-
-// --- 6. Smoke -----------------------------------------------------------------
 const smoke = Bun.spawnSync([shim, "version"], { timeout: 30_000 })
-const smokeOut = `${smoke.stdout ?? ""}`.trim()
-if (smoke.exitCode !== 0) throw new Error(`post-install smoke failed: ${smokeOut.slice(0, 200)}`)
-console.log(`✓ rebuilt + reinstalled: ${smokeOut} (${shim})`)
+const smokeOutput = `${smoke.stdout ?? ""}`.trim() + `${smoke.stderr ?? ""}`.trim()
+if (smoke.exitCode !== 0) throw new Error(`post-install smoke failed: ${smokeOutput.slice(0, 200)}`)
+
+console.log(`✓ rebuilt + reinstalled: ${smokeOutput} (${shim})`)

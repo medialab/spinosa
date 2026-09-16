@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.1.0-beta.28"
+PINNED_VERSION="1.1.0-beta.29"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 DEFAULT_VERIFY_TIMEOUT_SECONDS="180"
@@ -1799,11 +1799,20 @@ run_staged_binary_checks() {
   fi
   rm -f "$gate_tmp"
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-doctor.XXXXXX")"
-  if "$binary" doctor >"$gate_tmp" 2>&1; then
+  local doctor_cwd
+  doctor_cwd="$(mktemp -d "${TMPDIR:-/tmp}/spinosa-doctor-cwd.XXXXXX")"
+  # Do not bootstrap the project from the installer's invocation directory.
+  if (cd "$doctor_cwd" && "$binary" doctor) >"$gate_tmp" 2>&1; then
     spinosa_log INFO "doctor output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
+    rm -rf "$doctor_cwd"
     vok "Doctor passed"
   else
-    spinosa_log ERROR "doctor failed: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
+    spinosa_log ERROR "doctor failed; full output follows"
+    while IFS= read -r line || [ -n "$line" ]; do
+      spinosa_log ERROR "doctor: $line"
+    done < "$gate_tmp"
+    tail -n 20 "$gate_tmp" >&2 || true
+    rm -rf "$doctor_cwd"
     rm -f "$gate_tmp"
     die "Doctor reported issues — refusing to activate staged binary"
   fi

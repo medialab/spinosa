@@ -389,6 +389,68 @@ EOF
   [[ "$output" == *"Doctor reported issues"* ]]
 }
 
+@test "run_staged_binary_checks runs doctor in a fresh temporary directory" {
+  VERSION="1.0.3-beta.9"
+  local fake="$BATS_TEST_TMPDIR/fake-spinosa-doctor-cwd"
+  local invocation_dir="$BATS_TEST_TMPDIR/project-invocation-dir"
+  local cwd_capture="$BATS_TEST_TMPDIR/doctor-cwd"
+  local original_dir="$PWD"
+  mkdir -p "$invocation_dir"
+  export DOCTOR_CWD_CAPTURE="$cwd_capture"
+  cat >"$fake" <<'EOF'
+#!/bin/sh
+if [ "$1" = "version" ]; then
+  printf '{"version":"1.0.3-beta.9"}\n'
+  exit 0
+fi
+if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
+  exit 0
+fi
+if [ "$1" = "doctor" ]; then
+  printf '%s\n' "$PWD" >"$DOCTOR_CWD_CAPTURE"
+  [ -z "$(find "$PWD" -mindepth 1 -print -quit)" ]
+  exit $?
+fi
+exit 0
+EOF
+  chmod +x "$fake"
+  cd "$invocation_dir"
+  run run_staged_binary_checks "$fake"
+  cd "$original_dir"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$cwd_capture")" != "$invocation_dir" ]
+  [ ! -e "$(cat "$cwd_capture")" ]
+}
+
+@test "run_staged_binary_checks preserves full doctor failure output" {
+  VERSION="1.0.3-beta.9"
+  SPINOSA_LOG_DISABLED=0
+  SPINOSA_LOG_FILE="$BATS_TEST_TMPDIR/doctor.log"
+  local fake="$BATS_TEST_TMPDIR/fake-spinosa-doctor-output"
+  cat >"$fake" <<'EOF'
+#!/bin/sh
+if [ "$1" = "version" ]; then
+  printf '{"version":"1.0.3-beta.9"}\n'
+  exit 0
+fi
+if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
+  exit 0
+fi
+if [ "$1" = "doctor" ]; then
+  head -c 5000 /dev/zero | tr '\0' x
+  printf '\nDOCTOR_FAILURE_SENTINEL\n'
+  exit 1
+fi
+exit 0
+EOF
+  chmod +x "$fake"
+  run run_staged_binary_checks "$fake"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"DOCTOR_FAILURE_SENTINEL"* ]]
+  grep -q "DOCTOR_FAILURE_SENTINEL" "$SPINOSA_LOG_FILE"
+  grep -q "xxxxxxxx" "$SPINOSA_LOG_FILE"
+}
+
 @test "run_staged_binary_checks passes when version templates and doctor succeed" {
   VERBOSE=1
   VERSION="1.0.3-beta.9"

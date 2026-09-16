@@ -10,6 +10,17 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.29] — 2026-09-16
+
+Fixed
+
+- Installer runs staged doctor from an empty temporary directory. Mounted workspaces no longer block upgrades. Code: `install.sh`, `tests/installer/binary.bats`.
+- Installer preserves complete doctor failure output in `spinosa.log`. Code: `install.sh`, `tests/installer/binary.bats`.
+
+Changed
+
+- Local rebuild uses the real installer verification and activation path. Code: `scripts/rebuild-install.ts`.
+
 ## [1.1.0-beta.28] — 2026-09-15
 
 ### Added
