@@ -6,9 +6,11 @@ import {
   assertEmbeddedSpanIntact,
   assertNoEmbeddedBuildPaths,
   findEmbeddedSpans,
+  resolveWorkspaceBundledModule,
   scanEmbeddedBuildPaths,
   scrubEmbeddedBuildPaths,
   sha256Hex,
+  WORKSPACE_BUNDLED_MODULE_NAMES,
   type EmbeddedSpan,
 } from "./build.ts"
 
@@ -47,6 +49,22 @@ function fakeBinary(needle: Buffer): { haystack: Buffer; span: EmbeddedSpan } {
 function testNeedle(): Buffer {
   return Buffer.concat([variedFill(2 * 1048576, 12345), Buffer.from(`${homePrefix}/kept/inside`, "utf-8")])
 }
+
+describe("workspace bundled modules (unzipper / markitdown-ts)", () => {
+  test("resolve stays inside the repo and ignores HOME markitdown-ts", () => {
+    const repoRoot = path.resolve(import.meta.dir, "../../..")
+    const home = os.homedir()
+    for (const name of WORKSPACE_BUNDLED_MODULE_NAMES) {
+      const resolved = resolveWorkspaceBundledModule(name)
+      expect(resolved.startsWith(repoRoot + path.sep)).toBe(true)
+      expect(resolved.startsWith(path.join(home, "node_modules"))).toBe(false)
+    }
+  })
+
+  test("unknown specifiers fail closed", () => {
+    expect(() => resolveWorkspaceBundledModule("youtube-transcript")).toThrow(/not a workspace-bundled module/)
+  })
+})
 
 describe("embedded native span protection (binary is never rewritten after compile)", () => {
   test("findEmbeddedSpans locates every pristine copy", () => {

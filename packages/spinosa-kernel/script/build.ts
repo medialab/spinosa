@@ -76,6 +76,49 @@ function createPortableDependencyPlugin(): BunPlugin {
   }
 }
 
+/** Modules that must compile from the workspace, never `$HOME/node_modules`. */
+export const WORKSPACE_BUNDLED_MODULE_NAMES = ["unzipper", "markitdown-ts"] as const
+
+export function workspaceBundledModuleFromDir(): string {
+  return path.resolve(dir, "../spinosa-markitdown")
+}
+
+/**
+ * Pin unzipper / markitdown-ts to the workspace copy.
+ * Bun compile otherwise walks from kernel cwd into `$HOME/node_modules/markitdown-ts`,
+ * which has no unzipper (local soak failure on darwin-arm64).
+ */
+export function resolveWorkspaceBundledModule(
+  specifier: string,
+  fromDir = workspaceBundledModuleFromDir(),
+): string {
+  const pkg = WORKSPACE_BUNDLED_MODULE_NAMES.find(
+    (name) => specifier === name || specifier.startsWith(`${name}/`),
+  )
+  if (!pkg) {
+    throw new Error(`not a workspace-bundled module: ${specifier}`)
+  }
+  const resolved = path.resolve(Bun.resolveSync(specifier, fromDir))
+  const repoRootAbs = path.resolve(dir, "../..")
+  if (resolved !== repoRootAbs && !resolved.startsWith(repoRootAbs + path.sep)) {
+    throw new Error(
+      `${specifier} resolved outside the repo (${resolved}). Home node_modules must not shadow workspace ${pkg}.`,
+    )
+  }
+  return resolved
+}
+
+function createWorkspaceBundledModulePlugin(): BunPlugin {
+  return {
+    name: "spinosa-workspace-bundled-modules",
+    setup(build) {
+      build.onResolve({ filter: /^(unzipper|markitdown-ts)(\/|$)/ }, (args) => ({
+        path: resolveWorkspaceBundledModule(args.path),
+      }))
+    },
+  }
+}
+
 import os from "node:os"
 const builderHome = os.homedir().replaceAll("\\", "/").replace(/\/$/, "")
 const builderHomeWin = builderHome.replaceAll("/", "\\")
@@ -261,6 +304,7 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
   const solidPlugin = createSolidTransformPlugin()
   const coreFrom = path.resolve(cwd, "../spinosa-core")
   const plugins = [
+    createWorkspaceBundledModulePlugin(),
     createPortableDependencyPlugin(),
     solidPlugin,
   ]
