@@ -10,6 +10,14 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.32] — 2026-09-16
+
+### Fixed
+
+- Linux TUI launch survives a read-only mount. Path migration skips EROFS writes. Code: `packages/spinosa-kernel/src/config/paths.ts`.
+- Unexpected Effect errors print the real cause. Code: `packages/tui/src/util/error.ts`.
+- TUI worker installs canvas and DOMMatrix before pdf.js. Code: `packages/spinosa-kernel/src/cli/tui/worker.ts`.
+
 ## [1.1.0-beta.31] — 2026-09-16
 
 ### Fixed
