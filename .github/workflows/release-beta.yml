@@ -4,6 +4,25 @@
 # Pipeline: validate → build ×4 → assemble → verify ×4 → publish + channel.
 # Publish is gated behind verify: beta.19 shipped broken before this gate.
 #
+# Division of labor (one runtime verification phase, not stacked gates):
+#   validate  source is valid (typechecks, release-critical + installer
+#             tests, shellcheck, actionlint, tag/version validation).
+#             Functional quality runs on dry-runs; real releases skip it —
+#             same commit implies same bytes, already proven.
+#   build     each native target compiles (no runtime smoke here)
+#   assemble  the release is internally consistent (manifest, installers,
+#             checksums, structural validation only — no runtime smoke)
+#   verify    the exact artifact users receive installs and runs on every
+#             supported platform (checksum + ONE end-to-end installer smoke:
+#             version, doctor, native-imports, provider-catalog, pdf-runtime)
+#   publish   promotes the EXACT dry-run bytes (no rebuild: downloads the
+#             assembled-dist from the green dry-run for the tag commit,
+#             re-verifies layout + checksums) and ships them.
+#
+# Build-once rule: a tag with no green dry-run for its exact commit fails
+# closed in publish. Rehearse first:
+#   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
+#
 # Test workflow changes first — dry-run proves everything but publish:
 #   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
 
@@ -73,12 +92,17 @@ jobs:
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck bats
+        if: steps.version.outputs.dry_run == 'true'
 
+      # Same commit implies same bytes: real releases skip the functional
+      # rerun — the promoted dry-run already proved this tree.
       - run: bun run quality
+        if: steps.version.outputs.dry_run == 'true'
 
   build:
     name: Build ${{ matrix.target }}
     needs: validate
+    if: needs.validate.outputs.dry_run == 'true'
     permissions:
       contents: read
     strategy:
@@ -114,10 +138,11 @@ jobs:
           --channel beta
           --only "${{ matrix.target }}"
           --skip-install
+      # No runtime smoke here by design: the build gate answers "does each
+      # native target compile". The assembled artifact is smoked exactly once
+      # per platform in verify (full end-to-end installer run).
 
-      - run: bash scripts/smoke-native-binary.sh "dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}" 3
-
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.target }}
           path: dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}
@@ -128,6 +153,7 @@ jobs:
   assemble:
     name: Assemble (no publish)
     needs: [validate, build]
+    if: needs.validate.outputs.dry_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -144,7 +170,7 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           pattern: release-*
           merge-multiple: true
@@ -162,19 +188,34 @@ jobs:
             bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
           fi
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           # Both dist/v<version>/ and dist/beta/ — ci-publish needs the channel installer.
           # Uploaded in dry runs too: verify downloads it to prove the full pipeline.
+          # 90-day retention: real releases promote these exact bytes (see publish).
           name: assembled-dist
           path: dist
           if-no-files-found: error
           overwrite: true
-          retention-days: 7
+          retention-days: 90
+
+      # Build-commit binding for promotion: dispatch runs report the default
+      # branch SHA, not the built beta-dev commit — so the SHA travels inside
+      # its own tiny artifact and promote.ts matches on content, not metadata.
+      - run: git rev-parse HEAD > dist/commit-sha.txt
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-sha
+          path: dist/commit-sha.txt
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90
 
   verify:
     name: Verify ${{ matrix.target }}
     needs: [validate, assemble]
+    if: needs.validate.outputs.dry_run == 'true'
     permissions:
       contents: read
     strategy:
@@ -191,13 +232,15 @@ jobs:
           - target: linux-x64
             runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    # The end-to-end installer smoke carries 400s + 300s gate budgets for
+    # slow/cold hosts; 30min keeps headroom without masking a hung install.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: assembled-dist
           # Artifact root holds dist/ contents, so download into dist/.
@@ -206,11 +249,30 @@ jobs:
       - run: |
           cd "dist/v${{ needs.validate.outputs.version }}"
           grep " spinosa-${{ matrix.target }}$" checksums.txt | shasum -a 256 -c -
-          bash "$GITHUB_WORKSPACE/scripts/smoke-native-binary.sh" "./spinosa-${{ matrix.target }}" 5
+
+      # Full installer smoke on every matrix host (not just direct binary
+      # execution): serves the assembled dist over loopback HTTP and runs the
+      # real install.sh end-to-end (checksum → version → template gates →
+      # binary smokes → activation) into an isolated HOME. Catches
+      # installer-shell regressions on the actual target OS/arch.
+      - run: |
+          DIST="dist/v${{ needs.validate.outputs.version }}"
+          python3 -m http.server 8931 --directory "$DIST" >/tmp/spinosa-dist-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          sleep 1
+          SMOKE_HOME="$(mktemp -d)"
+          HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" \
+            SPINOSA_RELEASE_BASE_URL="http://127.0.0.1:8931" \
+            bash "$DIST/install.sh" --yes --no-launch
+          test -x "$SMOKE_HOME/.spinosa/bin/spinosa"
+          "$SMOKE_HOME/.spinosa/bin/spinosa" version
+          kill $SERVER_PID 2>/dev/null || true
+          rm -rf "$SMOKE_HOME"
 
   publish:
-    name: Publish + roll beta channel
-    needs: [validate, assemble, verify]
+    name: Promote + publish + roll beta channel
+    needs: [validate]
     if: needs.validate.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -218,6 +280,8 @@ jobs:
       contents: write
       attestations: write
       id-token: write
+      # Cross-run artifact download (promote the dry-run's bytes).
+      actions: read
     steps:
       - uses: actions/checkout@v5
         with:
@@ -230,10 +294,10 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v5
-        with:
-          name: assembled-dist
-          path: dist
+      # Build-once: download the assembled-dist from the green dry-run for
+      # this exact commit and re-verify layout + checksums. No rebuild —
+      # a tag with no green dry-run fails closed here.
+      - run: bun scripts/release/promote.ts "${{ needs.validate.outputs.version }}"
 
       - run: bun run release ci-publish "v${{ needs.validate.outputs.version }}"
 
