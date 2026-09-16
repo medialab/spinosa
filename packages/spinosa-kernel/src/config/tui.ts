@@ -23,6 +23,7 @@ import { ConfigVariable } from "@/config/variable"
 import { Npm } from "@spinosa/kernel-core/npm"
 import { FormatError, FormatUnknownError } from "@/cli/error"
 import { TuiConfig } from "@spinosa/tui/config"
+import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
 
 export const Info = TuiConfig.Info
 export type Info = TuiConfig.Info
@@ -83,6 +84,7 @@ function dropUnknownKeybinds(input: Record<string, unknown>) {
 const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: string }) {
   const afs = yield* FSUtil.Service
   let appliedOrder = 0
+  bootLog("tui.config.loadState", "loading TUI config files", { directory: ctx.directory })
 
   const resolvePlugins = (config: Info, configFilepath: string): Effect.Effect<Info> =>
     Effect.gen(function* () {
@@ -171,7 +173,9 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
   // Every config dir we may read from: global config dir, any `.spinosa`
   // folders between cwd and home, and SPINOSA_CONFIG_DIR.
   const directories = yield* ConfigPaths.directories(ctx.directory)
+  bootLog("tui.config.directories", "config directories resolved", { count: directories.length })
   yield* Effect.promise(() => migrateTuiConfig({ directories, cwd: ctx.directory }))
+  bootLog("tui.config.migrated", "tui.json migration finished")
 
   const projectFiles = Flag.SPINOSA_DISABLE_PROJECT_CONFIG ? [] : yield* ConfigPaths.files("tui", ctx.directory)
 
@@ -218,6 +222,7 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
     },
   )
 
+  bootLog("tui.config.resolved", "TUI config merged", { plugins: acc.plugin_origins.length })
   return {
     config: result,
     pluginOrigins: acc.plugin_origins,

@@ -5,7 +5,8 @@ import { existsSync } from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { UI } from "@/cli/ui"
-import { errorMessage } from "@spinosa/tui/util/error"
+import { dumpErrorChain, errorMessage } from "@spinosa/tui/util/error"
+import { isCompiledBinaryDistribution } from "@spinosa/core/distribution/bootstrap"
 import { withTimeout } from "@/util/timeout"
 import { withNetworkOptions, resolveNetworkOptionsNoConfig, hasArg } from "@/cli/network"
 import { Filesystem } from "@/util/filesystem"
@@ -262,9 +263,16 @@ export const TuiThreadCommand = cmd({
       // chdir so the thread and worker share the same directory key.
       const next = resolveThreadDirectory(args.project)
       const file = await target()
+      const workerPath = typeof file === "string" ? file : file.href
+      const workerOnDisk = typeof file === "string" ? existsSync(file) : existsSync(fileURLToPath(file))
       bootLog("tui.worker.target", "resolved worker target", {
-        path: typeof file === "string" ? file : file.href,
+        path: workerPath,
         cwd: next,
+        compiled: isCompiledBinaryDistribution(),
+        defined: typeof SPINOSA_WORKER_PATH !== "undefined",
+        onDisk: workerOnDisk,
+        importMeta: import.meta.url,
+        bunfs: typeof file === "string" && file.includes("bunfs"),
       })
       try {
         process.chdir(next)
@@ -291,6 +299,18 @@ export const TuiThreadCommand = cmd({
       }
 
       const worker = new Worker(file)
+      worker.addEventListener("error", (event) => {
+        const detail = dumpErrorChain(event.error ?? event.message)
+        bootLog("tui.worker.error", "worker error event", {
+          detail,
+          filename: event.filename,
+          message: event.message,
+        })
+        process.stderr.write(`TUI worker error event: ${detail}\n`)
+      })
+      worker.addEventListener("messageerror", (event) => {
+        bootLog("tui.worker.messageerror", "worker message deserialize failed", { data: String(event.data) })
+      })
       bootLog("tui.worker.created", "background worker spawned", { pid: process.pid })
       const client = Rpc.client<typeof rpc>(worker)
       const reload = () => {
@@ -311,10 +331,19 @@ export const TuiThreadCommand = cmd({
 
       await printLaunchingTuiWithDelay()
 
-      const config = await TuiConfig.get()
+      bootLog("tui.config.start", "loading TuiConfig.get()", { cwd })
+      let config: Awaited<ReturnType<typeof TuiConfig.get>>
+      try {
+        config = await TuiConfig.get()
+        bootLog("tui.config.done", "TuiConfig.get() returned")
+      } catch (error) {
+        bootLog("tui.config.error", "TuiConfig.get() failed", { detail: dumpErrorChain(error) })
+        throw error
+      }
 
       const network = resolveNetworkOptionsNoConfig(args)
       const external = hasArg("--port") || hasArg("--hostname") || network.mdns === true
+      bootLog("tui.network", "network options resolved", { external, mdns: network.mdns, port: network.port })
 
       const headers = external ? ServerAuth.headers() : undefined
 
@@ -415,6 +444,9 @@ export const TuiThreadCommand = cmd({
         bootLog("tui.run.done", "Tui.run completed", {
           totalMs: Date.now() - t0,
         })
+      } catch (error) {
+        bootLog("tui.run.error", "Tui.run failed", { detail: dumpErrorChain(error) })
+        throw error
       } finally {
         await stop()
       }

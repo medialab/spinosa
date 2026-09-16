@@ -48,4 +48,25 @@ describe("project config migration", () => {
       await fs.rm(root, { recursive: true, force: true })
     }
   })
+
+  test("does not throw when the launch directory is not writable", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "spinosa-project-migration-ro-"))
+    const project = path.join(root, "project")
+    const nested = path.join(project, "worktree", "nested")
+    try {
+      await fs.mkdir(path.join(project, ".opencode"), { recursive: true })
+      await fs.mkdir(path.join(project, ".spinosa"), { recursive: true })
+      await fs.mkdir(nested, { recursive: true })
+      await fs.chmod(nested, 0o555)
+
+      const results = await migrateProjectPaths(nested, project)
+      expect(results.some((result) => result.result === "conflict")).toBe(true)
+      await expect(fs.stat(path.join(nested, ".spinosa-migration-report.json"))).rejects.toMatchObject({
+        code: "ENOENT",
+      })
+    } finally {
+      await fs.chmod(nested, 0o755).catch(() => undefined)
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
 })

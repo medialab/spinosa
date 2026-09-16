@@ -284,7 +284,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       renderer.once("destroy", () => Deferred.doneUnsafe(shutdown, Effect.void))
       const pluginRuntime = createPluginRuntime()
 
-      yield* Effect.tryPromise(async () => {
+      yield* Effect.tryPromise({
+        try: async () => {
         // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         const t1 = Date.now()
         bootLog("tui.render.start", "calling render()", { elapsedMs: t1 - t0 })
@@ -424,6 +425,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             </ExitProvider>
           )
         }, renderer)
+        },
+        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
       })
       bootLog("tui.render.done", "render() call returned, awaiting shutdown")
       yield* Deferred.await(shutdown)

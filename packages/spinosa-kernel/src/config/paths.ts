@@ -13,7 +13,7 @@ const migrationReport = ".spinosa-migration-report.json"
 export type ProjectMigrationResult = {
   source: string
   target: string
-  result: "migrated" | "conflict" | "absent"
+  result: "migrated" | "conflict" | "absent" | "skipped"
 }
 
 async function exists(file: string) {
@@ -23,8 +23,13 @@ async function exists(file: string) {
 async function migratePath(source: string, target: string): Promise<ProjectMigrationResult> {
   if (!(await exists(source))) return { source, target, result: "absent" }
   if (await exists(target)) return { source, target, result: "conflict" }
-  await fs.rename(source, target)
-  return { source, target, result: "migrated" }
+  try {
+    await fs.rename(source, target)
+    return { source, target, result: "migrated" }
+  } catch {
+    // Read-only mounts (Lima virtiofs, NFS) must not abort TUI launch.
+    return { source, target, result: "skipped" }
+  }
 }
 
 async function writeMigrationReport(directory: string, conflicts: ProjectMigrationResult[]) {
@@ -36,20 +41,24 @@ async function writeMigrationReport(directory: string, conflicts: ProjectMigrati
     source: path.relative(root, conflict.source),
     target: path.relative(root, conflict.target),
   }))
-  const existing = await fs
-    .readFile(file, "utf8")
-    .then((value) => JSON.parse(value) as { version?: number; conflicts?: ProjectMigrationResult[] })
-    .catch(() => undefined)
-  if (existing?.version === 1 && JSON.stringify(existing.conflicts) === JSON.stringify(persisted)) {
+  try {
+    const existing = await fs
+      .readFile(file, "utf8")
+      .then((value) => JSON.parse(value) as { version?: number; conflicts?: ProjectMigrationResult[] })
+      .catch(() => undefined)
+    if (existing?.version === 1 && JSON.stringify(existing.conflicts) === JSON.stringify(persisted)) {
+      await fs.chmod(file, 0o600)
+      return
+    }
+    await fs.writeFile(
+      file,
+      JSON.stringify({ version: 1, migratedAt: new Date().toISOString(), conflicts: persisted }, null, 2) + "\n",
+      { mode: 0o600 },
+    )
     await fs.chmod(file, 0o600)
-    return
+  } catch {
+    // Best-effort report: EROFS/EACCES on the launch cwd is not a launch failure.
   }
-  await fs.writeFile(
-    file,
-    JSON.stringify({ version: 1, migratedAt: new Date().toISOString(), conflicts: persisted }, null, 2) + "\n",
-    { mode: 0o600 },
-  )
-  await fs.chmod(file, 0o600)
 }
 
 export async function migrateProjectPaths(directory: string, worktree?: string) {
@@ -76,7 +85,7 @@ export async function migrateProjectPaths(directory: string, worktree?: string) 
 }
 
 export const files = Effect.fn("ConfigPaths.projectFiles")(function* (name: string, directory: string, worktree?: string) {
-  yield* Effect.tryPromise(() => migrateProjectPaths(directory, worktree)).pipe(Effect.orDie)
+  yield* Effect.tryPromise(() => migrateProjectPaths(directory, worktree)).pipe(Effect.ignore)
   const afs = yield* FSUtil.Service
   const targets =
     name === productName
@@ -86,7 +95,7 @@ export const files = Effect.fn("ConfigPaths.projectFiles")(function* (name: stri
 })
 
 export const directories = Effect.fn("ConfigPaths.directories")(function* (directory: string, worktree?: string) {
-  yield* Effect.tryPromise(() => migrateProjectPaths(directory, worktree)).pipe(Effect.orDie)
+  yield* Effect.tryPromise(() => migrateProjectPaths(directory, worktree)).pipe(Effect.ignore)
   const afs = yield* FSUtil.Service
   const legacyGlobal = path.join(path.dirname(Global.Path.config), legacyName)
   return unique([

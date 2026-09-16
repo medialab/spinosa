@@ -122,7 +122,15 @@ export function errorFormat(error: unknown): string {
   return String(error)
 }
 
-export function errorMessage(error: unknown): string {
+const GENERIC_TRY_PROMISE = "An error occurred in Effect.tryPromise"
+
+function readCause(error: unknown): unknown {
+  if (!isRecord(error)) return undefined
+  if ("cause" in error && error.cause !== undefined) return error.cause
+  return undefined
+}
+
+function shallowMessage(error: unknown): string {
   if (error instanceof Error) {
     if (error.message) return error.message
     if (error.name) return error.name
@@ -142,6 +150,53 @@ export function errorMessage(error: unknown): string {
   const formatted = errorFormat(error)
   if (formatted) return formatted
   return "unknown error"
+}
+
+/** Walk Effect/Node cause chains so CLI banners show the real failure, not the wrapper. */
+export function errorMessage(error: unknown, seen = new Set<unknown>()): string {
+  if (error === undefined || error === null) return "unknown error"
+  if (seen.has(error)) return shallowMessage(error)
+  seen.add(error)
+
+  const message = shallowMessage(error)
+  const cause = readCause(error)
+  if (cause === undefined || cause === error) return message
+
+  const nested = errorMessage(cause, seen)
+  if (!nested || nested === "unknown error" || nested === message) return message
+  if (message === GENERIC_TRY_PROMISE || message === "UnknownError") return nested
+  return `${message}: ${nested}`
+}
+
+/** Multi-line dump for boot logs / stderr when FormatError has nothing useful. */
+export function dumpErrorChain(error: unknown, depth = 0, seen = new Set<unknown>()): string {
+  const indent = "  ".repeat(depth)
+  if (error === undefined) return `${indent}undefined`
+  if (error === null) return `${indent}null`
+  if (seen.has(error)) return `${indent}[circular]`
+  seen.add(error)
+
+  const lines: string[] = []
+  if (typeof error !== "object") {
+    lines.push(`${indent}${typeof error}: ${String(error)}`)
+    return lines.join("\n")
+  }
+
+  const ctor = error.constructor?.name || "Object"
+  const names = Object.getOwnPropertyNames(error)
+  lines.push(`${indent}${ctor}: ${shallowMessage(error)}`)
+  if (error instanceof Error && error.stack) {
+    for (const line of error.stack.split("\n").slice(1, 12)) {
+      lines.push(`${indent}${line}`)
+    }
+  }
+  if (names.length) lines.push(`${indent}keys: ${names.join(", ")}`)
+  const cause = readCause(error)
+  if (cause !== undefined) {
+    lines.push(`${indent}cause:`)
+    lines.push(dumpErrorChain(cause, depth + 1, seen))
+  }
+  return lines.join("\n")
 }
 
 export function errorData(error: unknown) {

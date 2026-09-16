@@ -22,7 +22,7 @@ import { AttachCommand } from "./cli/cmd/attach"
 import { TuiThreadCommand } from "./cli/cmd/tui"
 import { EOL } from "os"
 import { DbCommand } from "./cli/cmd/db"
-import { errorMessage } from "./util/error"
+import { dumpErrorChain, errorMessage } from "./util/error"
 import { WorkspaceNewCommand } from "./cli/cmd/workspace-new"
 import { WorkspaceAddCommand } from "./cli/cmd/workspace-add"
 import { WorkspaceUpdateCommand } from "./cli/cmd/workspace-update"
@@ -191,12 +191,14 @@ try {
     bootLog("kernel.parse.done", "yargs command finished")
   }
 } catch (e) {
-  bootLog("kernel.error", "unhandled error", { error: String(e) })
+  const chain = dumpErrorChain(e)
+  bootLog("kernel.error", "unhandled error", { error: String(e), chain })
   const formatted = FormatError(e)
   if (formatted) UI.error(formatted)
   if (formatted === undefined) {
     UI.error("Unexpected error" + EOL)
     process.stderr.write(errorMessage(e) + EOL)
+    process.stderr.write(chain + EOL)
   }
   process.exitCode = 1
 } finally {
