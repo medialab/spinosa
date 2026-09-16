@@ -27,11 +27,6 @@ export async function probeMarkitdown(): Promise<boolean> {
     const mod = await import("@spinosa/markitdown")
     return Boolean(mod)
   } catch {
-    try {
-      const mod = await import("markitdown-ts")
-      return Boolean(mod)
-    } catch {
-      return false
-    }
+    return false
   }
 }

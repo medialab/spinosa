@@ -22,4 +22,10 @@ describe("doctor compiled probes", () => {
   test("markitdown actually loads", async () => {
     expect(await probeMarkitdown()).toBe(true)
   })
+
+  test("markitdown probe loads the Spinosa fork, not markitdown-ts", async () => {
+    const source = await Bun.file(new URL("../../../src/cli/cmd/doctor-probes.ts", import.meta.url)).text()
+    expect(source).toContain('import("@spinosa/markitdown")')
+    expect(source).not.toContain('import("markitdown-ts")')
+  })
 })
