@@ -16,7 +16,9 @@
 # /provider list with selectable defaults (the empty connect-dialog outage
 # shipped green because no gate touched the catalog). pdf-runtime proves a
 # page actually renders through the staged canvas native (doctor only proves
-# the modules resolve).
+# the modules resolve). tui-worker proves the compiled extra-entrypoint
+# Worker starts and serves that catalog (cwd-relative worker.ts died after
+# chdir; retry toasted "Worker has been terminated").
 #
 # provider-catalog runs first: the fresh HOME guarantees an empty models
 # cache, so it exercises the embedded snapshot path, never the network.
@@ -49,6 +51,7 @@ for ((i = 1; i <= ITERS; i++)); do
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" version --json
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke native-imports --json
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke pdf-runtime --json
+  HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke tui-worker --json
   rm -rf "$SMOKE_HOME"
 done
 echo "smoke passed: $BIN (${ITERS}x)"

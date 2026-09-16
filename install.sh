@@ -2079,7 +2079,7 @@ run_staged_smoke_checks() {
   # so the parent timeout/signal paths must see the path to clean it.
   SMOKE_CWD="$(mktemp -d "${TMPDIR:-/tmp}/spinosa-smoke-cwd.XXXXXX")"
   timed_register_temp "$SMOKE_CWD"
-  for smoke in provider-catalog native-imports pdf-runtime; do
+  for smoke in provider-catalog native-imports pdf-runtime tui-worker; do
     gate_note "Running smoke ${smoke}..."
     gate_start="$(date +%s)"
     if (cd "$SMOKE_CWD" && "$binary" internal smoke "$smoke" --json) >"$gate_tmp" 2>&1; then

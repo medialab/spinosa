@@ -14,6 +14,7 @@ import {
   napiCanvasPlatformPackage,
   restoreCanvasNativeStub,
 } from "./canvas-embed.ts"
+import { compiledTuiWorkerPath } from "../src/cli/tui/worker-boot.ts"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -389,7 +390,7 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
         SPINOSA_VERSION: `'${options.version}'`,
         SPINOSA_MODELS_DEV: generated.modelsData,
         OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
-        SPINOSA_WORKER_PATH: workerPath,
+        SPINOSA_WORKER_PATH: compiledTuiWorkerPath(bunfsRoot),
         SPINOSA_CHANNEL: `'${options.channel}'`,
         SPINOSA_DISTRIBUTION: `'${distribution}'`,
         SPINOSA_TEMPLATE_PACK_ID: `'${templatePackId}'`,
@@ -458,7 +459,7 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       item.arch === process.arch &&
       !item.abi
     ) {
-      console.log(`Running smoke test: ${outfile} version + native-imports`)
+      console.log(`Running smoke test: ${outfile} version + native-imports + tui-worker`)
       try {
         const versionOutput = await $`${outfile} version`.text()
         console.log(`Smoke test passed: ${versionOutput.trim()}`)
@@ -468,6 +469,15 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
         // version/doctor never dlopen OpenTUI/FFF — native-imports does.
         const nativeOutput = await $`${outfile} internal smoke native-imports --json`.text()
         console.log(`Native-imports smoke passed: ${nativeOutput.trim().slice(0, 400)}`)
+        // Run tui-worker from a temp cwd. Kernel `src/cli/tui/worker.ts` exists
+        // on disk here, so a cwd-relative worker path would false-pass.
+        const smokeCwd = fs.mkdtempSync(path.join(os.tmpdir(), "spinosa-tui-worker-smoke-"))
+        try {
+          const tuiWorkerOutput = await $`${outfile} internal smoke tui-worker --json`.cwd(smokeCwd).text()
+          console.log(`TUI-worker smoke passed: ${tuiWorkerOutput.trim().slice(0, 400)}`)
+        } finally {
+          fs.rmSync(smokeCwd, { recursive: true, force: true })
+        }
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e)
         // Release gates fail closed: smoke failures are fatal (no non-strict

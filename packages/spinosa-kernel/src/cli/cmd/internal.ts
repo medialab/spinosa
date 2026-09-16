@@ -8,6 +8,9 @@ import {
 } from "@spinosa/core/distribution/bootstrap"
 import { getFormat, emitResult } from "../output"
 import { decodeWorkerPayload } from "@spinosa/core/import/worker-payload"
+import { Rpc } from "@/util/rpc"
+import { withTimeout } from "@/util/timeout"
+import { evaluateTuiWorkerSmoke, waitForWorkerReady } from "../tui/worker-boot"
 
 function printJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
@@ -293,6 +296,96 @@ export const InternalCommand = {
                   }
                 } finally {
                   await fs.rm(dir, { recursive: true, force: true })
+                }
+              } catch (err) {
+                fail(err instanceof Error ? err.message : String(err))
+              }
+            },
+          )
+          .command(
+            "tui-worker",
+            "Prove the compiled TUI worker starts and serves a non-empty /provider catalog",
+            (y) => y.option("json", { type: "boolean", default: false }),
+            async (args) => {
+              // Release gate for the empty connect-dialog + "Worker has been
+              // terminated" toast: provider-catalog and pdf-runtime run in
+              // the parent isolate (index.ts polyfills DOMMatrix). The TUI
+              // talks to a compiled extra-entrypoint Worker. A cwd-relative
+              // worker.ts path dies after chdir, and bootstrap is non-fatal,
+              // so the UI stays up with an empty list. This smoke spawns the
+              // same worker the TUI uses and round-trips /provider.
+              const fail = (message: string) => {
+                if (args.json || getFormat(args) === "json") printJson({ ok: false, error: message })
+                else emitResult("human", "tui-worker", { ok: false }, message)
+                process.exitCode = 1
+              }
+              try {
+                const file =
+                  typeof SPINOSA_WORKER_PATH !== "undefined"
+                    ? SPINOSA_WORKER_PATH
+                    : new URL("../tui/worker.ts", import.meta.url)
+                const worker = new Worker(file)
+                const client = Rpc.client<{
+                  ping: (input: void) => { ok: true }
+                  fetch: (input: {
+                    url: string
+                    method: string
+                    headers: Record<string, string>
+                    body?: string
+                  }) => Promise<{ status: number; headers: Record<string, string>; body: string }>
+                }>(worker)
+                try {
+                  await waitForWorkerReady({
+                    ping: () => client.call("ping", undefined),
+                    attachError: (handler) => {
+                      const listener = (event: ErrorEvent) => handler(event.error ?? event.message)
+                      worker.addEventListener("error", listener)
+                      return () => worker.removeEventListener("error", listener)
+                    },
+                  })
+                  const directory = encodeURIComponent(process.cwd())
+                  const result = await withTimeout(
+                    client.call("fetch", {
+                      url: `http://spinosa.internal/provider?directory=${directory}`,
+                      method: "GET",
+                      headers: {},
+                    }),
+                    30_000,
+                    "TUI worker /provider fetch timed out",
+                  )
+                  let providerCount = 0
+                  try {
+                    const body = JSON.parse(result.body) as { all?: unknown[] }
+                    providerCount = Array.isArray(body.all) ? body.all.length : 0
+                  } catch {
+                    const verdict = evaluateTuiWorkerSmoke({
+                      pingOk: true,
+                      fetchError: `provider body was not JSON (HTTP ${result.status})`,
+                    })
+                    fail(verdict.error ?? "provider body was not JSON")
+                    return
+                  }
+                  const verdict = evaluateTuiWorkerSmoke({
+                    pingOk: true,
+                    status: result.status,
+                    providerCount,
+                  })
+                  if (!verdict.ok) {
+                    fail(verdict.error ?? "TUI worker smoke failed")
+                    return
+                  }
+                  if (args.json || getFormat(args) === "json") {
+                    printJson({ ok: true, providers: verdict.providers })
+                  } else {
+                    emitResult(
+                      "human",
+                      "tui-worker",
+                      { ok: true, providers: verdict.providers },
+                      `ok (${verdict.providers} providers via TUI worker)`,
+                    )
+                  }
+                } finally {
+                  worker.terminate()
                 }
               } catch (err) {
                 fail(err instanceof Error ? err.message : String(err))

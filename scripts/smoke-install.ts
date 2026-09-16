@@ -134,6 +134,13 @@ async function smokeBinary(bin: string, label: string, smokeHome: string = home)
   if (pdf.exitCode !== 0) {
     throw new Error(`smoke pdf-runtime failed with exit ${pdf.exitCode}: ${String(pdf.text()).slice(0, 500)}`)
   }
+  // Parent-process catalog/pdf smokes miss a dead TUI worker (beta.31 empty
+  // connect dialog). This round-trips /provider through the compiled worker.
+  console.log(`→ smoke internal smoke tui-worker (${label})`)
+  const tuiWorker = await $`${bin} internal smoke tui-worker --json`.cwd(project).env(env).nothrow()
+  if (tuiWorker.exitCode !== 0) {
+    throw new Error(`smoke tui-worker failed with exit ${tuiWorker.exitCode}: ${String(tuiWorker.text()).slice(0, 500)}`)
+  }
   console.log(`✓ binary smoke passed (${label})`)
 }
 

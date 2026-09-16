@@ -17,6 +17,9 @@ Release rule: The maintainer must approve a release. No automatic release.
 - Linux TUI launch survives a read-only mount. Path migration skips EROFS writes. Code: `packages/spinosa-kernel/src/config/paths.ts`.
 - Unexpected Effect errors print the real cause. Code: `packages/tui/src/util/error.ts`.
 - TUI worker installs canvas and DOMMatrix before pdf.js. Code: `packages/spinosa-kernel/src/cli/tui/worker.ts`.
+- Compiled TUI worker loads from bunfs. Project chdir no longer resolves a missing worker.ts. Code: `packages/spinosa-kernel/script/build.ts`.
+- TUI waits for a worker ping before render. A dead worker fails launch instead of an empty provider list. Code: `packages/spinosa-kernel/src/cli/cmd/tui.ts`.
+- Release smoke round-trips `/provider` through the TUI worker. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
 
 ## [1.1.0-beta.31] — 2026-09-16
 

@@ -455,6 +455,7 @@ EOF
   run run_staged_binary_checks "$fake"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Smoke pdf-runtime passed"* ]]
+  [[ "$output" == *"Smoke tui-worker passed"* ]]
   [[ "$output" == *"Template verify succeeded"* ]]
 }
 
@@ -484,6 +485,8 @@ EOF
   [[ "$output" == *"Verifying templates"* ]]
   [[ "$output" == *"Running smoke pdf-runtime"* ]]
   [[ "$output" == *"Smoke pdf-runtime passed"* ]]
+  [[ "$output" == *"Running smoke tui-worker"* ]]
+  [[ "$output" == *"Smoke tui-worker passed"* ]]
 }
 
 @test "DEFAULT_VERIFY_TIMEOUT_SECONDS defaults to 400" {
@@ -522,6 +525,7 @@ EOF
   [[ "$output" == *"Smoke provider-catalog passed"* ]]
   [[ "$output" == *"Smoke native-imports passed"* ]]
   [[ "$output" == *"Smoke pdf-runtime passed"* ]]
+  [[ "$output" == *"Smoke tui-worker passed"* ]]
 }
 
 @test "run_staged_smoke_checks returns without dying when a smoke fails" {

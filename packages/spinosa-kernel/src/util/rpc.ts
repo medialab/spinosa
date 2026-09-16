@@ -45,15 +45,18 @@ export function emit<Data>(event: string, data: Data) {
 }
 
 export function client<T extends Definition>(target: RpcTarget) {
-  const pending = new Map<number, (result: never) => void>()
+  const pending = new Map<
+    number,
+    { resolve: (result: never) => void; reject: (error: unknown) => void }
+  >()
   const listeners = new Map<string, Set<(data: never) => void>>()
   let id = 0
   target.onmessage = async (evt: MessageEvent<string>) => {
     const parsed = JSON.parse(evt.data) as RpcResponse
     if (parsed.type === "rpc.result") {
-      const resolve = pending.get(parsed.id)
-      if (resolve) {
-        resolve(parsed.result)
+      const waiter = pending.get(parsed.id)
+      if (waiter) {
+        waiter.resolve(parsed.result)
         pending.delete(parsed.id)
       }
     }
@@ -74,7 +77,7 @@ export function client<T extends Definition>(target: RpcTarget) {
       const { promise, resolve, reject } =
         Promise.withResolvers<ReturnType<T[Method]>>()
       const requestId = id++
-      pending.set(requestId, resolve)
+      pending.set(requestId, { resolve, reject })
       try {
         target.postMessage(
           JSON.stringify({ type: "rpc.request", method, input, id: requestId }),
@@ -84,6 +87,10 @@ export function client<T extends Definition>(target: RpcTarget) {
         reject(err)
       }
       return promise
+    },
+    failAll(error: unknown) {
+      for (const waiter of pending.values()) waiter.reject(error)
+      pending.clear()
     },
     on<Data>(event: string, handler: (data: Data) => void) {
       let handlers = listeners.get(event)

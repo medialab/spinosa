@@ -32,7 +32,7 @@ console.error = (...args: unknown[]) => {
  * Commands that never touch canvas: skip the native staging work (up to 3s
  * filesystem probes, doubled on cache miss, painful on restricted/noexec
  * Linux) for them. Everything else stages eagerly — doctor probes canvas
- * availability, native-imports/pdf-runtime smokes exercise it, and the TUI
+ * availability, native-imports/pdf-runtime/tui-worker smokes exercise it, and the TUI
  * renders through it. SPINOSA_SKIP_CANVAS_STAGE=1 forces the skip (restricted
  * hosts); the canvas consumer then reports missing instead of hanging.
  */

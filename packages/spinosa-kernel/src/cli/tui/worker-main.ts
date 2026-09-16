@@ -62,6 +62,9 @@ GlobalBus.on("event", onGlobalEvent)
 let server: Awaited<ReturnType<typeof Server.listen>> | undefined
 
 export const rpc = {
+  ping() {
+    return { ok: true as const }
+  },
   async fetch(input: { url: string; method: string; headers: Record<string, string>; body?: string }) {
     const headers = { ...input.headers }
     const auth = ServerAuth.header()

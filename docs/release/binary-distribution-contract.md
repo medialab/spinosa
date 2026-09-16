@@ -99,7 +99,7 @@ Modified launchers are preserved and reported. Migration never fails global inst
 1. Stage binary outside active path.
 2. Verify checksum, `version --json`, template ensure/verify, then the
    deterministic binary smokes (`internal smoke provider-catalog`,
-   `native-imports`, `pdf-runtime`). Full `spinosa doctor` stays the deeper
+   `native-imports`, `pdf-runtime`, `tui-worker`). Full `spinosa doctor` stays the deeper
    application diagnostic and is intentionally not an integrity gate (it boots
    the whole instance plus providers). A smoke timeout (no verdict) warns and
    records `doctor_unverified` instead of blocking; a failed smoke blocks.
@@ -153,7 +153,7 @@ See `docs/release/stable-promotion-gates.md`.
 - Canvas skia natives (`skia.<triple>.node`) are written under `src/generated/canvas-libs/<os>-<arch>/` via `canvas-native.gen.ts` and staged at start into `$SPINOSA_HOME/cache/canvas-native` (home → XDG → tmpdir fallback order). `NAPI_RS_NATIVE_LIBRARY_PATH` is set before any canvas import so nested loads work on Linux Bun `--compile` (optional `@napi-rs/canvas-*` `require()` fails there even when doctor's direct canvas import succeeds).
 - Host verification is one end-to-end installer smoke per platform (`install.sh`
   from local HTTP into an isolated HOME, then version / doctor / `internal
-  smoke native-imports` / `provider-catalog` / `pdf-runtime` on the installed
+  smoke native-imports` / `provider-catalog` / `pdf-runtime` / `tui-worker` on the installed
   binary). It is fail-closed: any smoke failure fails the release.
   `version`/`doctor` never dlopen the TUI natives; `native-imports` loads
   OpenTUI, FFF, watcher, node-pty, and canvas without starting an interactive
@@ -161,5 +161,8 @@ See `docs/release/stable-promotion-gates.md`.
   a `/provider` list with selectable defaults (the empty connect-dialog
   outage shipped green because no gate touched the catalog); `pdf-runtime`
   proves a page actually renders through the staged canvas native.
+  `tui-worker` proves the compiled extra-entrypoint Worker starts and serves
+  that catalog (beta.31 resolved `./src/cli/tui/worker.ts` after chdir, so
+  retry toasted "Worker has been terminated").
 - pdfjs may warn that `@napi-rs/canvas` cannot load from some BunFS chunks while doctor still reports Canvas/PDF available. Non-blocking for CLI smoke; PDF raster follow-up tracked in the beta.10 checklist.
 

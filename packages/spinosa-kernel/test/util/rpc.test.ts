@@ -86,4 +86,12 @@ describe("util.rpc", () => {
 
     await expect(client.call("greet", "Ada")).rejects.toThrow("target closed")
   })
+
+  test("failAll rejects in-flight calls when the worker dies", async () => {
+    const { target } = createTarget()
+    const client = Rpc.client<typeof methods>(target)
+    const pending = client.call("greet", "Ada")
+    client.failAll(new Error("Worker has been terminated"))
+    await expect(pending).rejects.toThrow("Worker has been terminated")
+  })
 })

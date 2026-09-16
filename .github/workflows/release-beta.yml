@@ -14,7 +14,7 @@
 #             checksums, structural validation only — no runtime smoke)
 #   verify    the exact artifact users receive installs and runs on every
 #             supported platform (checksum + ONE end-to-end installer smoke:
-#             version, doctor, native-imports, provider-catalog, pdf-runtime)
+#             version, doctor, native-imports, provider-catalog, pdf-runtime, tui-worker)
 #   publish   promotes the EXACT dry-run bytes (no rebuild: downloads the
 #             assembled-dist from the green dry-run for the tag commit,
 #             re-verifies layout + checksums) and ships them.

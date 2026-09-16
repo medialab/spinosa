@@ -18,6 +18,7 @@ import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@spinosa/tui/terminal-win32"
 import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
+import { describeWorkerCallError, waitForWorkerReady } from "../tui/worker-boot"
 import {
   printLaunchingTuiWithDelay,
   runLaunchPreflight,
@@ -34,12 +35,17 @@ function createWorkerFetch(client: RpcClient): typeof fetch {
   const fn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init)
     const body = request.body ? await request.text() : undefined
-    const result = await client.call("fetch", {
-      url: request.url,
-      method: request.method,
-      headers: Object.fromEntries(request.headers.entries()),
-      body,
-    })
+    let result: { status: number; headers: Record<string, string>; body: string }
+    try {
+      result = await client.call("fetch", {
+        url: request.url,
+        method: request.method,
+        headers: Object.fromEntries(request.headers.entries()),
+        body,
+      })
+    } catch (error) {
+      throw describeWorkerCallError(error)
+    }
     return new Response(result.body, {
       status: result.status,
       headers: result.headers,
@@ -299,6 +305,7 @@ export const TuiThreadCommand = cmd({
       }
 
       const worker = new Worker(file)
+      const client = Rpc.client<typeof rpc>(worker)
       worker.addEventListener("error", (event) => {
         const detail = dumpErrorChain(event.error ?? event.message)
         bootLog("tui.worker.error", "worker error event", {
@@ -307,12 +314,12 @@ export const TuiThreadCommand = cmd({
           message: event.message,
         })
         process.stderr.write(`TUI worker error event: ${detail}\n`)
+        client.failAll(new Error(`TUI worker error: ${detail}`))
       })
       worker.addEventListener("messageerror", (event) => {
         bootLog("tui.worker.messageerror", "worker message deserialize failed", { data: String(event.data) })
       })
       bootLog("tui.worker.created", "background worker spawned", { pid: process.pid })
-      const client = Rpc.client<typeof rpc>(worker)
       const reload = () => {
         client.call("reload", undefined).catch(() => {})
       }
@@ -325,6 +332,24 @@ export const TuiThreadCommand = cmd({
         process.off("SIGUSR2", reload)
         await withTimeout(client.call("shutdown", undefined), 5000).catch(() => {})
         worker.terminate()
+      }
+
+      try {
+        await waitForWorkerReady({
+          ping: () => client.call("ping", undefined),
+          attachError: (handler) => {
+            const listener = (event: ErrorEvent) => handler(event.error ?? event.message)
+            worker.addEventListener("error", listener)
+            return () => worker.removeEventListener("error", listener)
+          },
+        })
+        bootLog("tui.worker.ready", "worker ping succeeded")
+      } catch (error) {
+        bootLog("tui.worker.ready.error", "worker failed to start", { detail: dumpErrorChain(error) })
+        UI.error(errorMessage(error))
+        await stop()
+        process.exitCode = 1
+        return
       }
 
       const prompt = await input(args.prompt)
@@ -458,4 +483,3 @@ export const TuiThreadCommand = cmd({
     process.exit(0)
   },
 })
-// scratch
