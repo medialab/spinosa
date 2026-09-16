@@ -2663,7 +2663,10 @@ main() {
   BINARY_STAGED="$staged_binary"
   rm -f "$checksums_file" "$staged_binary"
 
-  run_download_step "Download checksums" 60 "$checksums_url" "$checksums_file" \
+  # Generous budget for a tiny file: slow or proxied networks should stall,
+  # not fail, the checksums fetch (curl still caps each attempt at 30s
+  # connect / 600s total and retries).
+  run_download_step "Download checksums" 180 "$checksums_url" "$checksums_file" \
     || die "Failed to download checksums.txt from ${checksums_url}"
   run_download_step "Download ${ASSET_NAME}" "$DEFAULT_DOWNLOAD_TIMEOUT_SECONDS" "$asset_url" "$staged_binary" \
     || die "Failed to download ${ASSET_NAME}"
