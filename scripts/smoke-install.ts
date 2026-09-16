@@ -127,6 +127,13 @@ async function smokeBinary(bin: string, label: string, smokeHome: string = home)
   if (catalog.exitCode !== 0) {
     throw new Error(`smoke provider-catalog failed with exit ${catalog.exitCode}: ${String(catalog.text()).slice(0, 500)}`)
   }
+  // Doctor and native-imports only prove the PDF modules resolve — pdf-runtime
+  // proves a page actually renders through the staged canvas native.
+  console.log(`→ smoke internal smoke pdf-runtime (${label})`)
+  const pdf = await $`${bin} internal smoke pdf-runtime --json`.cwd(project).env(env).nothrow()
+  if (pdf.exitCode !== 0) {
+    throw new Error(`smoke pdf-runtime failed with exit ${pdf.exitCode}: ${String(pdf.text()).slice(0, 500)}`)
+  }
   console.log(`✓ binary smoke passed (${label})`)
 }
 

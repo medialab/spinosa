@@ -83,15 +83,20 @@ export function parseOptions(args: string[]): { positionals: string[]; options: 
  */
 export type CiAssemblePlan =
   | { mode: "dry-run"; from: "verifyLocal"; only: ["verifyLocal", "smoke"]; remotePrintOnly: true }
-  | { mode: "finalize-only"; from: "verifyLocal"; only: ["verifyLocal", "smoke"] }
+  | { mode: "finalize-only"; from: "verifyLocal"; only: ["verifyLocal"] }
   | { mode: "full"; from: "verifyLocal"; only: undefined }
 
 export function planCiAssemble(options: { dryRun: boolean; finalizeOnly?: boolean }): CiAssemblePlan {
   if (options.dryRun) {
+    // Local dry-runs keep the full installer smoke: with no CI verify jobs in
+    // play, it is the only end-to-end proof before a tag is cut.
     return { mode: "dry-run", from: "verifyLocal", only: ["verifyLocal", "smoke"], remotePrintOnly: true }
   }
   if (options.finalizeOnly) {
-    return { mode: "finalize-only", from: "verifyLocal", only: ["verifyLocal", "smoke"] }
+    // CI assemble answers "are the files correct" (manifest, installers,
+    // checksums). Runtime proof lives in the verify matrix on real target
+    // hosts — re-smoking on the assembler would duplicate it.
+    return { mode: "finalize-only", from: "verifyLocal", only: ["verifyLocal"] }
   }
   return { mode: "full", from: "verifyLocal", only: undefined }
 }
@@ -220,12 +225,14 @@ async function commandPublish(version: string, options: CliOptions): Promise<voi
  *
  * The workflow downloads one product binary + one tools tarball per target
  * into dist/v{version}/ and stages build-manifest.json via
- * build-release-binaries --manifest-only. This command verifies the tag
- * equals HEAD, finalizes dist/ (installers, manifest, checksums), then
- * runs verify-local → smoke. Publishing (publish-version → channel →
- * verify-remote) happens in `ci-publish`, which the workflow runs only after
- * every native verify job passes — a broken binary must never become the
- * rolling-channel default (v1.1.0-beta.19 outage).
+  * build-release-binaries --manifest-only. This command verifies the tag
+  * equals HEAD, finalizes dist/ (installers, manifest, checksums), then runs
+  * structural verify-local only (no runtime smoke — the verify matrix smokes
+  * the assembled artifact on real target hosts; local `ci-assemble --dry-run`
+  * keeps the full installer smoke instead). Publishing (publish-version →
+  * channel → verify-remote) happens in `ci-publish`, which the workflow runs
+  * only after every native verify job passes — a broken binary must never
+  * become the rolling-channel default (v1.1.0-beta.19 outage).
  * Quality + tag validation run in earlier workflow jobs, not here.
  */
 async function commandCiAssemble(

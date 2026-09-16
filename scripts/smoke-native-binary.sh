@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Smoke a built product binary: provider-catalog + doctor + version +
-# native-imports + pdf-runtime, N times, each in a fresh HOME to force
-# re-stage + cold dlopen. Fail closed.
+# Manual-use probe for a built product binary: provider-catalog + doctor +
+# version + native-imports + pdf-runtime, N times, each in a fresh HOME to
+# force re-stage + cold dlopen. Fail closed.
+#
+# NOTE: not wired into CI anymore. Release integrity comes from the verify
+# matrix's end-to-end installer smoke (install.sh on real target hosts),
+# which covers every check below including pdf-runtime. Keep this script for
+# ad-hoc binary probing (e.g. Lima guests) only.
 #
 # A corrupt embedded native can pass version yet die on TUI launch, and an
 # intermittent loader failure can survive a single probe — hence repetition.

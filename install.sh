@@ -431,7 +431,12 @@ terminate_process_tree() {
     [ -n "$child" ] || continue
     terminate_process_tree "$child" "$sig"
   done
-  kill "-${sig}" "$pid" 2>/dev/null || kill "-${sig}" "-$pid" 2>/dev/null || kill -"${sig}" "$pid" 2>/dev/null || true
+  # Direct-pid kill only: never fall back to a process-GROUP kill (-$pid).
+  # Timed payloads and direct-shell probes share the caller's process group
+  # (no job control in non-interactive shells), so a group kill murders the
+  # installer/test caller itself — observed as a silent step_end plus a
+  # SIGINT-dead parent on Linux. A racy already-dead pid stays harmless.
+  kill "-${sig}" "$pid" 2>/dev/null || true
 }
 
 kill_process_tree_graceful() {

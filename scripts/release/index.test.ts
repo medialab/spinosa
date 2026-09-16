@@ -23,12 +23,15 @@ describe("ci-assemble routing (publish must stay unreachable)", () => {
     expect(plan.mode).toBe("dry-run")
   })
 
-  test("finalize-only plans local gates only, never publish stages", () => {
+  test("finalize-only plans structural gates only, never publish stages", () => {
     const plan = planCiAssemble({ dryRun: false, finalizeOnly: true })
     expect(plan.mode).toBe("finalize-only")
     if (plan.mode !== "finalize-only") throw new Error("unreachable")
     expect(plan.from).toBe("verifyLocal")
-    expect([...plan.only]).toEqual(["verifyLocal", "smoke"])
+    // No runtime smoke here by design: CI verify jobs smoke the assembled
+    // artifact on real target hosts. (Local dry-runs keep smoke instead.)
+    expect([...plan.only]).toEqual(["verifyLocal"])
+    expect(plan.only).not.toContain("smoke")
     expect(plan.only).not.toContain("publishVersion")
     expect(plan.only).not.toContain("channel")
     expect(plan.only).not.toContain("verifyRemote")

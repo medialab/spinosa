@@ -8,8 +8,8 @@ bun run release plan beta patch   # shows next version, e.g. v1.1.0-beta.17.18
 # 2. Push a greater version tag — the tag push IS the release approval
 git tag v1.1.0-beta.17.18 && git push origin v1.1.0-beta.17.18
 # 3. GitHub Actions validates the tag, builds all four targets natively
-#    in parallel (each with a native-imports smoke that dlopens the TUI
-#    natives), assembles dist/, verifies every native binary, and only then
+#    in parallel (compile only), assembles dist/ (structural checks only),
+#    verifies with one end-to-end installer smoke per platform, and only then
 #    publishes the immutable release with build-provenance attestation and
 #    rolls the `beta` channel (publish is gated behind the verify matrix).
 ```
@@ -56,7 +56,7 @@ Binary releases should be built where native verification is possible. Cross-com
 | `bun run release:validate` | Preflight only (branch + quality) |
 | `bun run release plan beta patch` | Show version bump without publishing |
 | `bun scripts/release/validate-tag.ts vX.Y.Z` | Gate a tag before pushing (greater-than-previous, version + changelog match) |
-| `bun run release ci-assemble vX.Y.Z [--dry-run] [--finalize-only]` | Finalize dist/ + local gates; `--finalize-only` stops before publish (CI assemble job) |
+| `bun run release ci-assemble vX.Y.Z [--dry-run] [--finalize-only]` | Finalize dist/ + local gates; `--finalize-only` runs structural checks only (CI assemble job — runtime proof lives in the verify matrix); `--dry-run` keeps the full installer smoke for local prediction |
 | `bun run release ci-publish vX.Y.Z` | Publish immutable release + roll channel — CI only, after every native verify passes |
 | `bun run release:resume` | Resume the latest incomplete release |
 | `bun run release:republish -- vX.Y.Z` | Republish only when checksums match (immutable) |
@@ -93,13 +93,25 @@ Contract: [docs/release/binary-distribution-contract.md](docs/release/binary-dis
 
 | Command | When | What |
 | ------- | ---- | ---- |
-| `bun run quality` | Every beta cut / `release:validate` | Parallel: product typechecks, frozen lockfile (dev), shellcheck, release-critical unit/TUI tests, installer bats, repo smoke |
+| `bun run quality` | Every beta cut / `release:validate` | Parallel: product typechecks, shellcheck, actionlint, release-critical unit/TUI tests, installer bats, repo smoke |
 | `bun run quality:binary` | Before binary cut / local binary sign-off | Distribution contract tests, installer bats, host binary build, installer HTTP smoke when assets exist |
 | `bun run smoke` | Local iteration | Repo-root `version`/`doctor` + cwd |
 | `bun run quality:full` | Before stable / deep sweep | Full typecheck-all, knip, syncpack, depcruise, all core+tui spinosa tests |
 
-Quality runs locally (`release:validate`) and in the CI validate job.
-No quality-only GitHub Actions workflow beyond release.
+Quality runs locally (`release:validate`), in the CI validate job, and as the
+required PR gate (`quality.yml` functional-quality). The metrics baseline
+(`quality:report`) is advisory only; coverage/mutation run manually.
+
+Three levels, in order — each catches a different failure class:
+
+1. **Local preflight** (`bun run quality`): typechecks, unit tests,
+   installer bats, shellcheck, actionlint. Catches code and workflow
+   errors before GitHub runs anything.
+2. **GitHub dry run** (`dry_run=true`): the real pipeline on real runners
+   (validate → build ×4 → assemble → verify ×4) with publish skipped.
+   Catches runner-specific issues (macOS/ARM, artifacts, permissions).
+3. **Real release** (tag push): the proven pipeline plus publish and the
+   rolling-channel move — publish only, no new verification.
 
 ---
 

@@ -4,6 +4,18 @@
 # Pipeline: validate → build ×4 → assemble → verify ×4 → publish + channel.
 # Publish is gated behind verify: beta.19 shipped broken before this gate.
 #
+# Division of labor (one runtime verification phase, not stacked gates):
+#   validate  source is valid (typechecks, release-critical + installer
+#             tests, shellcheck, tag/version validation)
+#   build     each native target compiles (no runtime smoke here)
+#   assemble  the release is internally consistent (manifest, installers,
+#             checksums, structural validation only — no runtime smoke)
+#   verify    the exact artifact users receive installs and runs on every
+#             supported platform (checksum + ONE end-to-end installer smoke:
+#             version, doctor, native-imports, provider-catalog, pdf-runtime)
+#   publish   only artifacts that passed all of the above ship (needs:
+#             validate, assemble, verify)
+#
 # Test workflow changes first — dry-run proves everything but publish:
 #   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
 
@@ -114,8 +126,9 @@ jobs:
           --channel beta
           --only "${{ matrix.target }}"
           --skip-install
-
-      - run: bash scripts/smoke-native-binary.sh "dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}" 3
+      # No runtime smoke here by design: the build gate answers "does each
+      # native target compile". The assembled artifact is smoked exactly once
+      # per platform in verify (full end-to-end installer run).
 
       - uses: actions/upload-artifact@v5
         with:
@@ -191,7 +204,9 @@ jobs:
           - target: linux-x64
             runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    # The end-to-end installer smoke carries 400s + 300s gate budgets for
+    # slow/cold hosts; 30min keeps headroom without masking a hung install.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
@@ -206,7 +221,6 @@ jobs:
       - run: |
           cd "dist/v${{ needs.validate.outputs.version }}"
           grep " spinosa-${{ matrix.target }}$" checksums.txt | shasum -a 256 -c -
-          bash "$GITHUB_WORKSPACE/scripts/smoke-native-binary.sh" "./spinosa-${{ matrix.target }}" 5
 
       # Full installer smoke on every matrix host (not just direct binary
       # execution): serves the assembled dist over loopback HTTP and runs the

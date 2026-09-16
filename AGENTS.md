@@ -20,11 +20,13 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
    The tag push IS the release approval — `v*` pushes are
    maintainer-restricted by tag protection rules.
 5. CI validates → builds all four targets natively in parallel
-   (macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04, each with a
-   native-imports smoke that dlopens the TUI natives) →
-   assembles `dist/` → verifies every native binary (checksum + version +
-   native-imports on all four runners) → publishes the immutable GitHub
-   release with build-provenance attestation → rolls the `beta` channel.
+   (macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04; compile only,
+   no runtime smoke) → assembles `dist/` (manifest, installers, checksums,
+   structural validation only) → verifies on all four runners (checksum +
+   ONE end-to-end installer smoke per platform: version, doctor,
+   native-imports, provider-catalog, pdf-runtime) → publishes the immutable
+   GitHub release with build-provenance attestation → rolls the `beta`
+   channel. One runtime verification phase, not stacked gates.
    Publish is gated behind the verify matrix: a broken binary must never
    become the rolling-channel default (v1.1.0-beta.19).
 6. Verify: `gh release view vX.Y.Z`, rolling `beta` release advertises
@@ -35,8 +37,10 @@ Dry-run without publishing (after workflow changes):
 `ci-assemble --dry-run` runs finalize/verify/smoke FOR REAL and only
 prints remote steps — a green local dry-run (with complete `dist/`)
 predicts a green publish. Anticipate CI before pushing: run
-`validate-tag`, `ci-assemble --dry-run`, and `quality` locally; clean-runner
-gaps get fixed by making the job provision them, never by weakening gates.
+`validate-tag`, `ci-assemble --dry-run`, and `quality` locally (`quality`
+covers typechecks, release-critical tests, installer bats, shellcheck, and
+actionlint for the workflows themselves); clean-runner gaps get fixed by
+making the job provision them, never by weakening gates.
 
 `.github/workflows/release-beta.yml` must exist on `main` (GitHub runs tag
 workflows from the default branch) and stay in sync with `beta-dev`.
