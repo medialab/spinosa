@@ -49,6 +49,32 @@ type ProviderOption =
       type: "custom"
     })
 
+type FreeSpinosaModel = {
+  id: string
+  cost?: { input?: number }
+  status?: string
+}
+
+type FreeSpinosaProvider = {
+  id: string
+  models?: Record<string, FreeSpinosaModel>
+}
+
+/** Free OpenCode Zen model the connect dialog can use without a key. */
+export function findFreeSpinosaDefault(input: {
+  connected?: readonly FreeSpinosaProvider[]
+  catalog?: readonly FreeSpinosaProvider[]
+}): { providerID: string; modelID: string } | undefined {
+  for (const provider of [...(input.connected ?? []), ...(input.catalog ?? [])]) {
+    if (provider.id !== "opencode") continue
+    const model = Object.values(provider.models ?? {}).find(
+      (item) => (item.cost?.input ?? 0) === 0 && item.status !== "deprecated",
+    )
+    if (model) return { providerID: provider.id, modelID: model.id }
+  }
+  return undefined
+}
+
 export function providerOptions(list: { id: string; name: string }[]): ProviderOption[] {
   return [
     ...pipe(
@@ -226,9 +252,11 @@ export function createDialogProviderOptions() {
       onRetry: () => void retryProviders(),
     })
     const spinosaDefault = (() => {
-      const provider = sync.data.provider.find((item) => item.id === "opencode")
-      const model = Object.values(provider?.models ?? {}).find((item) => item.cost?.input === 0 && item.status !== "deprecated")
-      if (!provider || !model) return []
+      const picked = findFreeSpinosaDefault({
+        connected: sync.data.provider,
+        catalog: sync.data.provider_next.all,
+      })
+      if (!picked) return []
       return [{
         title: "Spinosa default",
         value: "__spinosa_default__",
@@ -241,7 +269,7 @@ export function createDialogProviderOptions() {
             "Your prompts and source-derived content will transit through Spinosa's servers. Spinosa does not control that processing.",
           )
           if (!confirmed) return
-          local.model.set({ providerID: provider.id, modelID: model.id }, { recent: true })
+          local.model.set({ providerID: picked.providerID, modelID: picked.modelID }, { recent: true })
           dialog.clear()
         },
       }]

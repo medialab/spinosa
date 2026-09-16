@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test"
-import { resolvePluginProviders } from "../../src/cli/cmd/providers"
+import { availableCatalogProviders, resolvePluginProviders } from "../../src/cli/cmd/providers"
 import type { Hooks } from "@spinosa/plugin"
 
 function hookWithAuth(provider: string): Hooks {
@@ -116,5 +116,41 @@ describe("resolvePluginProviders", () => {
       providerNames: {},
     })
     expect(result).toEqual([])
+  })
+})
+
+describe("availableCatalogProviders", () => {
+  test("lists OpenCode Zen and OpenCode Go when they are in the catalog", () => {
+    expect(
+      availableCatalogProviders({
+        catalog: {
+          opencode: { name: "OpenCode Zen" },
+          "opencode-go": { name: "OpenCode Go" },
+          openai: { name: "OpenAI" },
+        },
+        credentialIDs: ["openai"],
+      }),
+    ).toEqual([
+      { id: "opencode", name: "OpenCode Zen" },
+      { id: "opencode-go", name: "OpenCode Go" },
+    ])
+  })
+
+  test("hides a popular provider that already has a credential", () => {
+    expect(
+      availableCatalogProviders({
+        catalog: { opencode: { name: "OpenCode Zen" }, "opencode-go": { name: "OpenCode Go" } },
+        credentialIDs: ["opencode"],
+      }),
+    ).toEqual([{ id: "opencode-go", name: "OpenCode Go" }])
+  })
+
+  test("omits popular ids that are missing from the catalog", () => {
+    expect(
+      availableCatalogProviders({
+        catalog: { openai: { name: "OpenAI" } },
+        credentialIDs: [],
+      }),
+    ).toEqual([])
   })
 })

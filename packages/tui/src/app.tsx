@@ -26,7 +26,7 @@ import {
 } from "solid-js"
 import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, useTuiStartup } from "./context/runtime"
 import { DialogProvider, useDialog } from "./ui/dialog"
-import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
+import { DialogProvider as DialogProviderList, findFreeSpinosaDefault } from "./component/dialog-provider"
 import { ErrorComponent } from "./component/error-component"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { ProjectProvider, useProject } from "./context/project"
@@ -709,12 +709,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       sync.status === "complete" &&
       !connected()
     ) {
-      const provider = sync.data.provider.find((item) => item.id === "opencode")
-      const model = Object.values(provider?.models ?? {}).find(
-        (item) => item.cost?.input === 0 && item.status !== "deprecated",
-      )
-      if (provider && model) {
-        local.model.set({ providerID: provider.id, modelID: model.id }, { recent: true })
+      const picked = findFreeSpinosaDefault({
+        connected: sync.data.provider,
+        catalog: sync.data.provider_next.all,
+      })
+      if (picked) {
+        local.model.set({ providerID: picked.providerID, modelID: picked.modelID }, { recent: true })
       }
     }
   })

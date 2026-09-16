@@ -52,7 +52,7 @@ export const Model = Schema.Struct({
   release_date: Schema.String,
   attachment: Schema.Boolean,
   reasoning: Schema.Boolean,
-  temperature: Schema.Boolean,
+  temperature: Schema.optional(Schema.Boolean),
   tool_call: Schema.Boolean,
   interleaved: Schema.optional(
     Schema.Union([
@@ -136,6 +136,31 @@ export function formatModelsDevFetchFailure(cause: unknown): string {
   return "models.dev fetch failed"
 }
 
+/**
+ * Keep a provider when at least one model decodes. One malformed model must
+ * not drop OpenCode Zen or OpenCode Go from the connect list.
+ */
+export function salvageProvider(entry: unknown): Provider | undefined {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return undefined
+  const models = (entry as { models?: unknown }).models
+  if (typeof models !== "object" || models === null || Array.isArray(models)) return undefined
+  const kept: Record<string, unknown> = {}
+  for (const [modelID, model] of Object.entries(models)) {
+    try {
+      Schema.decodeUnknownSync(Model)(model)
+      kept[modelID] = model
+    } catch {
+      /* skip unusable models */
+    }
+  }
+  if (Object.keys(kept).length === 0) return undefined
+  try {
+    return Schema.decodeUnknownSync(Provider)({ ...(entry as object), models: kept })
+  } catch {
+    return undefined
+  }
+}
+
 export function decodeUsableCatalog(input: unknown): {
   usable: Record<string, Provider>
   dropped: number
@@ -147,7 +172,9 @@ export function decodeUsableCatalog(input: unknown): {
     try {
       usable[id] = Schema.decodeUnknownSync(Provider)(entry)
     } catch {
-      dropped += 1
+      const salvaged = salvageProvider(entry)
+      if (salvaged) usable[id] = salvaged
+      else dropped += 1
     }
   }
   if (Object.keys(usable).length === 0) return undefined

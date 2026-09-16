@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   LOADING_PROVIDERS_VALUE,
   RETRY_PROVIDERS_VALUE,
+  findFreeSpinosaDefault,
   normalizeCustomProviderID,
   providerCatalogStatus,
   providerOptions,
@@ -133,5 +134,58 @@ describe("providerCatalogStatus", () => {
         failed: false,
       })
     }
+  })
+})
+
+describe("findFreeSpinosaDefault", () => {
+  const free = { id: "grok-code", cost: { input: 0 }, status: "active" as const }
+  const paid = { id: "paid-model", cost: { input: 5 }, status: "active" as const }
+
+  test("prefers a connected free OpenCode model", () => {
+    expect(
+      findFreeSpinosaDefault({
+        connected: [{ id: "opencode", models: { "grok-code": free, paid } }],
+        catalog: [{ id: "opencode", models: { other: { id: "other", cost: { input: 0 } } } }],
+      }),
+    ).toEqual({ providerID: "opencode", modelID: "grok-code" })
+  })
+
+  test("uses the catalog when OpenCode is not connected", () => {
+    expect(
+      findFreeSpinosaDefault({
+        connected: [{ id: "openai", models: { gpt: paid } }],
+        catalog: [{ id: "opencode", models: { "grok-code": free } }],
+      }),
+    ).toEqual({ providerID: "opencode", modelID: "grok-code" })
+  })
+
+  test("skips deprecated free models", () => {
+    expect(
+      findFreeSpinosaDefault({
+        catalog: [
+          {
+            id: "opencode",
+            models: { old: { id: "old", cost: { input: 0 }, status: "deprecated" } },
+          },
+        ],
+      }),
+    ).toBeUndefined()
+  })
+
+  test("returns nothing when every OpenCode model is paid", () => {
+    expect(
+      findFreeSpinosaDefault({
+        connected: [{ id: "opencode", models: { paid } }],
+        catalog: [{ id: "opencode", models: { paid } }],
+      }),
+    ).toBeUndefined()
+  })
+
+  test("treats a missing cost as free", () => {
+    expect(
+      findFreeSpinosaDefault({
+        catalog: [{ id: "opencode", models: { legacy: { id: "legacy" } } }],
+      }),
+    ).toEqual({ providerID: "opencode", modelID: "legacy" })
   })
 })

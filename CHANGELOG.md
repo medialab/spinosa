@@ -10,6 +10,21 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.34] — 2026-09-16
+
+### Changed
+
+- `spinosa upgrade` no longer asks to update workspace files. Code: `packages/spinosa-kernel/src/cli/cmd/upgrade.ts`.
+- Launch preflight still offers that workspace update.
+
+### Fixed
+
+- A models.dev model without a temperature field no longer hides the provider. Code: `packages/core/src/models-dev.ts`.
+- OpenCode Zen and OpenCode Go stay in the connect list when one model is incomplete.
+- `spinosa providers list` shows OpenCode Zen and OpenCode Go from the catalog. Code: `packages/spinosa-kernel/src/cli/cmd/providers.ts`.
+- The connect dialog shows the free OpenCode Zen default when that provider is not yet connected. Code: `packages/tui/src/component/dialog-provider.tsx`.
+- OpenCode Zen keeps models with no cost field when no API key is set. Code: `packages/spinosa-kernel/src/provider/custom-loaders-basic.ts`.
+
 ## [1.1.0-beta.33] — 2026-09-16
 
 ### Fixed

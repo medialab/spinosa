@@ -22,6 +22,16 @@ export function customAnthropic(dep: CustomDep): CustomLoader {
     });
 }
 
+/** Keep models that are free to run without an OpenCode key. Missing cost is free. */
+export function keepFreeOpencodeModels(
+  models: Record<string, { cost?: { input?: number } }>,
+): void {
+  for (const [key, value] of Object.entries(models)) {
+    if ((value.cost?.input ?? 0) === 0) continue;
+    delete models[key];
+  }
+}
+
 export function customOpencode(dep: CustomDep): CustomLoader {
   return Effect.fnUntraced(function* (input: Info) {
     const env = yield* dep.env();
@@ -34,12 +44,7 @@ export function customOpencode(dep: CustomDep): CustomLoader {
       Boolean(yield* dep.auth(input.id)) ||
       Boolean((yield* dep.config()).provider?.["opencode"]?.options?.apiKey);
 
-    if (!ok) {
-      for (const [key, value] of Object.entries(input.models)) {
-        if (value.cost.input === 0) continue;
-        delete input.models[key];
-      }
-    }
+    if (!ok) keepFreeOpencodeModels(input.models);
 
     return {
       autoload: Object.keys(input.models).length > 0,

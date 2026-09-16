@@ -303,6 +303,67 @@ describe("ModelsDev catalog validation", () => {
     expect(ModelsDev.decodeUsableCatalog(fixture)?.usable).toEqual(fixture)
   })
 
+  test("keeps OpenCode when one model omits temperature", () => {
+    const free = {
+      ...fixture.acme.models["acme-1"],
+      id: "nemotron-3-ultra-free",
+      name: "Free",
+      cost: { input: 0, output: 0 },
+    }
+    const unionAlpha = {
+      id: "union-alpha",
+      name: "Union Alpha",
+      release_date: "2026-01-01",
+      attachment: false,
+      reasoning: false,
+      tool_call: true,
+      limit: { context: 128000, output: 8192 },
+    }
+    const decoded = ModelsDev.decodeUsableCatalog({
+      opencode: {
+        id: "opencode",
+        name: "OpenCode Zen",
+        env: ["OPENCODE_API_KEY"],
+        models: { free, "union-alpha": unionAlpha },
+      },
+      "opencode-go": {
+        id: "opencode-go",
+        name: "OpenCode Go",
+        env: ["OPENCODE_API_KEY"],
+        models: { "union-alpha": unionAlpha },
+      },
+    })
+    expect(decoded?.dropped).toBe(0)
+    expect(decoded?.usable.opencode?.name).toBe("OpenCode Zen")
+    expect(decoded?.usable["opencode-go"]?.name).toBe("OpenCode Go")
+    expect(decoded?.usable.opencode?.models["union-alpha"]).toBeDefined()
+    expect(decoded?.usable.opencode?.models.free).toBeDefined()
+  })
+
+  test("keeps a provider when one model is unusable and drops only that model", () => {
+    const decoded = ModelsDev.decodeUsableCatalog({
+      opencode: {
+        id: "opencode",
+        name: "OpenCode Zen",
+        env: ["OPENCODE_API_KEY"],
+        models: {
+          good: fixture.acme.models["acme-1"],
+          broken: { id: "broken" },
+        },
+      },
+    })
+    expect(decoded?.dropped).toBe(0)
+    expect(Object.keys(decoded?.usable.opencode?.models ?? {})).toEqual(["good"])
+  })
+
+  test("drops a provider when every model is unusable", () => {
+    expect(
+      ModelsDev.decodeUsableCatalog({
+        x: { id: "x", name: "X", env: [], models: { a: { id: "a" } } },
+      }),
+    ).toBeUndefined()
+  })
+
   test("formatModelsDevFetchFailure never dumps Effect Cause objects", () => {
     expect(ModelsDev.formatModelsDevFetchFailure({ _id: "Cause", failures: [{ message: "secret" }] })).toBe(
       "models.dev fetch failed",
