@@ -15,13 +15,19 @@ type RpcResult = {
   id: number
 }
 
+type RpcError = {
+  type: "rpc.error"
+  error: string
+  id: number
+}
+
 type RpcEvent = {
   type: "rpc.event"
   event: string
   data: never
 }
 
-type RpcResponse = RpcResult | RpcEvent
+type RpcResponse = RpcResult | RpcError | RpcEvent
 
 type RpcTarget = {
   postMessage: (data: string) => void | null
@@ -34,8 +40,13 @@ export function listen<T extends Definition>(rpc: T) {
   onmessage = async (evt: MessageEvent<string>) => {
     const parsed = JSON.parse(evt.data) as RpcRequest<T>
     if (parsed.type === "rpc.request") {
-      const result = await rpc[parsed.method](parsed.input)
-      postMessage(JSON.stringify({ type: "rpc.result", result, id: parsed.id }))
+      try {
+        const result = await rpc[parsed.method](parsed.input)
+        postMessage(JSON.stringify({ type: "rpc.result", result, id: parsed.id }))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        postMessage(JSON.stringify({ type: "rpc.error", error: message, id: parsed.id }))
+      }
     }
   }
 }
@@ -57,6 +68,13 @@ export function client<T extends Definition>(target: RpcTarget) {
       const waiter = pending.get(parsed.id)
       if (waiter) {
         waiter.resolve(parsed.result)
+        pending.delete(parsed.id)
+      }
+    }
+    if (parsed.type === "rpc.error") {
+      const waiter = pending.get(parsed.id)
+      if (waiter) {
+        waiter.reject(new Error(parsed.error))
         pending.delete(parsed.id)
       }
     }

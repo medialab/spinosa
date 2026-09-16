@@ -162,10 +162,38 @@ export async function waitForParserWorkerReady(input: {
   }
 }
 
+export function isRecoverableWorkerFailure(error: unknown): boolean {
+  const message = formatWorkerFailureForParent(error)
+  return /worker has been terminated|TUI background worker died|TUI worker request timed out|TUI background worker failed/i.test(
+    message,
+  )
+}
+
 export function describeWorkerCallError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error)
+  const message = formatWorkerFailureForParent(error)
   if (/worker has been terminated/i.test(message)) {
     return new Error("TUI background worker died. Restart Spinosa.")
   }
-  return error instanceof Error ? error : new Error(message)
+  return error instanceof Error && error.message === message ? error : new Error(message)
+}
+
+export type TuiWorkerPhase = "boot" | "running"
+
+/** Boot failures abort launch. Mid-session worker death must not kill the parent TUI. */
+export function parentActionForWorkerFailure(phase: TuiWorkerPhase): "fail-launch" | "isolate" {
+  return phase === "boot" ? "fail-launch" : "isolate"
+}
+
+export function shouldWriteWorkerFailureToStderr(phase: TuiWorkerPhase): boolean {
+  return phase === "boot"
+}
+
+/** Short parent-facing text. Never dump Effect Cause graphs onto the TUI. */
+export function formatWorkerFailureForParent(error: unknown): string {
+  if (typeof error === "object" && error !== null && "_id" in error && error._id === "Cause") {
+    return "TUI background worker failed"
+  }
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === "string" && error) return error
+  return "TUI background worker failed"
 }

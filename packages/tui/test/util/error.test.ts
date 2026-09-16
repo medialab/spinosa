@@ -47,6 +47,13 @@ describe("util.error", () => {
     expect(String(data.formatted)).toContain("ResolveMessage")
   })
 
+  test("never dumps Effect Cause objects", () => {
+    const cause = { _id: "Cause", failures: [{ message: "secret" }] }
+    expect(errorFormat(cause)).toBe("Internal failure")
+    expect(dumpErrorChain(cause)).toContain("Internal failure")
+    expect(dumpErrorChain(cause)).not.toContain("failures")
+  })
+
   test("unwraps Effect.tryPromise UnknownError cause", () => {
     const inner = new Error("ENOENT: no such file ./src/cli/tui/worker.ts")
     const wrapped = new Error("An error occurred in Effect.tryPromise")

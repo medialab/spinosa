@@ -267,5 +267,11 @@ export async function cancelSpinosaSubmit(input: { client: unknown; sessionID: s
   return true
 }
 
+/** Cancel every in-memory workflow run (TUI exit / terminal close). */
+export async function cancelAllSpinosaSubmits(client: unknown): Promise<void> {
+  const ids = [...activeWorkflowRuns.keys()]
+  await Promise.all(ids.map((sessionID) => cancelSpinosaSubmit({ client, sessionID })))
+}
+
 /** Cancel any Spinosa domain job (import / research / future processors) by id. */
 export { cancelSpinosaJob }

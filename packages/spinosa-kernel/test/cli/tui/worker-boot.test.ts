@@ -5,8 +5,12 @@ import {
   describeWorkerCallError,
   evaluateParserWorkerSmoke,
   evaluateTuiWorkerSmoke,
+  formatWorkerFailureForParent,
+  isRecoverableWorkerFailure,
+  parentActionForWorkerFailure,
   resolveParserWorkerPath,
   restoreTuiWorkerSmokeEnv,
+  shouldWriteWorkerFailureToStderr,
   TUI_WORKER_FETCH_MS,
   TUI_WORKER_PROVIDER_FETCH_MS,
   waitForParserWorkerReady,
@@ -102,6 +106,22 @@ describe("describeWorkerCallError", () => {
     expect(describeWorkerCallError(new Error("Worker has been terminated")).message).toBe(
       "TUI background worker died. Restart Spinosa.",
     )
+  })
+
+  test("does not dump Effect Cause objects to the parent", () => {
+    const cause = { _id: "Cause", failures: [{ message: "secret" }] }
+    expect(formatWorkerFailureForParent(cause)).toBe("TUI background worker failed")
+    expect(formatWorkerFailureForParent(cause)).not.toContain("failures")
+    expect(describeWorkerCallError(cause).message).toBe("TUI background worker failed")
+  })
+
+  test("isolates mid-session worker death from the parent process", () => {
+    expect(parentActionForWorkerFailure("boot")).toBe("fail-launch")
+    expect(parentActionForWorkerFailure("running")).toBe("isolate")
+    expect(shouldWriteWorkerFailureToStderr("boot")).toBe(true)
+    expect(shouldWriteWorkerFailureToStderr("running")).toBe(false)
+    expect(isRecoverableWorkerFailure(new Error("Worker has been terminated"))).toBe(true)
+    expect(isRecoverableWorkerFailure(new Error("config is invalid"))).toBe(false)
   })
 })
 

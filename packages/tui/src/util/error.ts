@@ -94,7 +94,13 @@ function field(input: Record<string, unknown>, key: string) {
   return typeof input[key] === "string" ? input[key] : undefined
 }
 
+function isEffectCause(input: unknown): boolean {
+  return isRecord(input) && input._id === "Cause"
+}
+
 export function errorFormat(error: unknown): string {
+  if (isEffectCause(error)) return "Internal failure"
+
   if (error instanceof Error) {
     return error.stack ?? `${error.name}: ${error.message}`
   }
@@ -183,6 +189,10 @@ export function dumpErrorChain(error: unknown, depth = 0, seen = new Set<unknown
   }
 
   const ctor = error.constructor?.name || "Object"
+  if (isEffectCause(error)) {
+    lines.push(`${indent}Internal failure`)
+    return lines.join("\n")
+  }
   const names = Object.getOwnPropertyNames(error)
   lines.push(`${indent}${ctor}: ${shallowMessage(error)}`)
   if (error instanceof Error && error.stack) {

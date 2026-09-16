@@ -11,6 +11,7 @@ import { InstallationChannel, InstallationVersion } from "./installation/version
 import { EventV2 } from "./event"
 import { makeGlobalNode } from "./effect/app-node"
 import { httpClient } from "./effect/app-node-platform"
+import { bootLog } from "./observability/boot-log"
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
@@ -125,6 +126,16 @@ export function selectCatalogFallback(input: {
   if (input.disk && Object.keys(input.disk).length > 0) return input.disk
   return input.snapshotUsable
 }
+/** One-line fetch failure. Never stringify Effect Cause graphs into the TUI. */
+export function formatModelsDevFetchFailure(cause: unknown): string {
+  if (typeof cause === "object" && cause !== null && "_id" in cause && cause._id === "Cause") {
+    return "models.dev fetch failed"
+  }
+  if (cause instanceof Error && cause.message) return `models.dev fetch failed: ${cause.message}`
+  if (typeof cause === "string" && cause) return `models.dev fetch failed: ${cause}`
+  return "models.dev fetch failed"
+}
+
 export function decodeUsableCatalog(input: unknown): {
   usable: Record<string, Provider>
   dropped: number
@@ -300,7 +311,9 @@ const layer = Layer.effect(
           yield* events.publish(Event.Refreshed, {})
         }),
       ).pipe(
-        Effect.tapCause((cause) => Effect.logError("Failed to fetch models.dev", { cause: cause })),
+        Effect.tapCause((cause) =>
+          Effect.sync(() => bootLog("models.dev.fetch", formatModelsDevFetchFailure(cause))),
+        ),
         Effect.ignore,
       )
     })

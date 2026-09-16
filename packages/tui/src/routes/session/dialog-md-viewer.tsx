@@ -7,6 +7,7 @@ import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
+import { MARKDOWN_VIEWER_HEIGHT_RATIO } from "../../ui/dialog"
 import { useBindings } from "../../keymap"
 import { useToast } from "../../ui/toast"
 import { loadMarkdownFile, type MarkdownLoadResult } from "./load-markdown-file"
@@ -28,7 +29,10 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
 
   const [editError, setEditError] = createSignal<string | undefined>()
 
-  onMount(() => dialog.setSize("xlarge"))
+  onMount(() => {
+    dialog.setSize("xlarge")
+    dialog.setHeightRatio(MARKDOWN_VIEWER_HEIGHT_RATIO)
+  })
 
   const [loaded, { mutate: setLoaded }] = createResource(
     () => props.filePath,

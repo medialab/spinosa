@@ -9,9 +9,18 @@ import { useBindings, useOpencodeModeStack } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 import { useExit } from "../context/exit"
 
+export const DEFAULT_DIALOG_HEIGHT_RATIO = 0.6
+export const MARKDOWN_VIEWER_HEIGHT_RATIO = 0.8
+
+export function dialogMaxHeight(terminalHeight: number, ratio = DEFAULT_DIALOG_HEIGHT_RATIO): number {
+  if (terminalHeight < 30) return Math.max(1, terminalHeight - 2)
+  return Math.max(1, Math.floor(terminalHeight * ratio))
+}
+
 export function Dialog(
   props: ParentProps<{
     size?: "medium" | "large" | "xlarge"
+    heightRatio?: number
     onClose: () => void
   }>,
 ) {
@@ -26,10 +35,7 @@ export function Dialog(
     if (props.size === "large") return 88
     return 60
   }
-  const maxHeight = () =>
-    dimensions().height < 30
-      ? Math.max(1, dimensions().height - 2)
-      : Math.floor(dimensions().height * 0.6)
+  const maxHeight = () => dialogMaxHeight(dimensions().height, props.heightRatio ?? DEFAULT_DIALOG_HEIGHT_RATIO)
 
   return (
     <box
@@ -88,6 +94,7 @@ function init() {
       onEscape?: () => void
     }[],
     size: "medium" as "medium" | "large" | "xlarge",
+    heightRatio: DEFAULT_DIALOG_HEIGHT_RATIO,
   })
 
   const renderer = useRenderer()
@@ -158,6 +165,7 @@ function init() {
       }
       batch(() => {
         setStore("size", "medium")
+        setStore("heightRatio", DEFAULT_DIALOG_HEIGHT_RATIO)
         setStore("stack", [])
       })
       refocus()
@@ -171,6 +179,7 @@ function init() {
         if (item.onClose) item.onClose()
       }
       setStore("size", "medium")
+      setStore("heightRatio", DEFAULT_DIALOG_HEIGHT_RATIO)
       setStore("stack", [
         {
           element: input,
@@ -183,6 +192,7 @@ function init() {
     dismiss() {
       batch(() => {
         setStore("size", "medium")
+        setStore("heightRatio", DEFAULT_DIALOG_HEIGHT_RATIO)
         setStore("stack", [])
       })
       refocus()
@@ -193,8 +203,14 @@ function init() {
     get size() {
       return store.size
     },
+    get heightRatio() {
+      return store.heightRatio
+    },
     setSize(size: "medium" | "large" | "xlarge") {
       setStore("size", size)
+    },
+    setHeightRatio(ratio: number) {
+      setStore("heightRatio", ratio)
     },
   }
 }
@@ -241,7 +257,7 @@ export function DialogProvider(props: ParentProps) {
           }}
           onMouseUp={!Flag.SPINOSA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? copySelection : undefined}
         >
-          <Dialog onClose={() => value.clear()} size={value.size}>
+          <Dialog onClose={() => value.clear()} size={value.size} heightRatio={value.heightRatio}>
             {(() => {
               const element = value.stack.at(-1)!.element
               return typeof element === "function" ? element() : element

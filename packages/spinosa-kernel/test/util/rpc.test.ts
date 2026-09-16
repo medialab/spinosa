@@ -94,4 +94,16 @@ describe("util.rpc", () => {
     client.failAll(new Error("Worker has been terminated"))
     await expect(pending).rejects.toThrow("Worker has been terminated")
   })
+
+  test("rejects in-flight calls when the worker returns rpc.error", async () => {
+    const { target } = createTarget()
+    const client = Rpc.client<typeof methods>(target)
+    const pending = client.call("greet", "Ada")
+    await target.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({ type: "rpc.error", error: "models.dev fetch failed", id: 0 }),
+      }),
+    )
+    await expect(pending).rejects.toThrow("models.dev fetch failed")
+  })
 })

@@ -303,6 +303,16 @@ describe("ModelsDev catalog validation", () => {
     expect(ModelsDev.decodeUsableCatalog(fixture)?.usable).toEqual(fixture)
   })
 
+  test("formatModelsDevFetchFailure never dumps Effect Cause objects", () => {
+    expect(ModelsDev.formatModelsDevFetchFailure({ _id: "Cause", failures: [{ message: "secret" }] })).toBe(
+      "models.dev fetch failed",
+    )
+    expect(ModelsDev.formatModelsDevFetchFailure(new Error("ENOTFOUND"))).toBe(
+      "models.dev fetch failed: ENOTFOUND",
+    )
+    expect(ModelsDev.formatModelsDevFetchFailure({ _id: "Cause", failures: [{}] })).not.toContain("failures")
+  })
+
   test("selectCatalogFallback prefers disk, then snapshot, then undefined", () => {
     expect(ModelsDev.selectCatalogFallback({ disk: fixture, snapshotUsable: fixture2 })).toEqual(
       fixture,

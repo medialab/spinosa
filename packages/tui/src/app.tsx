@@ -92,6 +92,9 @@ import { createTuiAttention } from "./attention"
 import * as TuiAudio from "./audio"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
+import { registerTuiExitHook, runTuiExitHooks } from "./util/tui-exit-hooks"
+import { listBusySessionIDs, stopBusySessions } from "./util/stop-sessions"
+import { cancelAllSpinosaSubmits, cancelSpinosaSubmit } from "./spinosa/orchestrator"
 import { AddFiles } from "./routes/spinosa/add-files"
 import { Onboarding } from "./routes/spinosa/onboarding"
 import { Visualizer } from "./routes/spinosa/visualizer"
@@ -273,7 +276,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       yield* Effect.addFinalizer(() => Effect.sync(TuiAudio.dispose))
       const shutdown = yield* Deferred.make<unknown>()
       const onProcessSignal = () => {
-        destroyRenderer(renderer)
+        void runTuiExitHooks().finally(() => destroyRenderer(renderer))
       }
       for (const signal of ["SIGHUP", "SIGINT"] as const) {
         yield* Effect.acquireRelease(
@@ -300,7 +303,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                 if (renderer.isDestroyed) return
                 exit.reason = reason
                 exit.exiting = true
-                destroyRenderer(renderer)
+                void runTuiExitHooks().finally(() => destroyRenderer(renderer))
               }}
             >
               {/* Once exit begins, teardown unmounts wipe their epilogue via
@@ -500,6 +503,23 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   })
   onCleanup(() => {
     if (retryTimer) clearTimeout(retryTimer)
+  })
+
+  onMount(() => {
+    const unregister = registerTuiExitHook(async () => {
+      const current = route.data
+      const extra = current.type === "workspace" && current.sessionID ? [current.sessionID] : []
+      const sessionIDs = listBusySessionIDs({
+        sessionStatus: sync.data.session_status,
+        extraIDs: extra,
+      })
+      await cancelAllSpinosaSubmits(sdk.client)
+      await stopBusySessions({
+        sessionIDs,
+        abort: (sessionID) => sdk.client.session.abort({ sessionID }),
+      })
+    })
+    onCleanup(unregister)
   })
 
   const api = createTuiApi(
@@ -764,7 +784,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           const leave = await DialogConfirm.show(
             dialog,
             "Switch workspace?",
-            "A session is still running. Open the workspace picker anyway? The run continues in the background until you abort it.",
+            "A session is still running. Open the workspace picker anyway? This stops the running session.",
             {
               confirmLabel: "Open picker",
               cancelLabel: "Stay",
@@ -775,6 +795,9 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             spinosa.restorePickerRoute()
             return
           }
+          const sessionID = current.sessionID
+          await sdk.client.session.abort({ sessionID }).catch(() => {})
+          await cancelSpinosaSubmit({ client: sdk.client, sessionID }).catch(() => {})
         }
       }
       const restore = () => spinosa.restorePickerRoute()

@@ -21,3 +21,25 @@ describe("legacy environment compatibility", () => {
     expect(truthy("SPINOSA_PURE", env)).toBe(false)
   })
 })
+
+describe("SPINOSA_DISABLE_MODELS_FETCH", () => {
+  test("reads process.env at access time instead of module load", async () => {
+    const { Flag } = await import("../src/flag/flag")
+    const previous = Flag.SPINOSA_DISABLE_MODELS_FETCH
+    const previousEnv = process.env.SPINOSA_DISABLE_MODELS_FETCH
+    try {
+      Flag.SPINOSA_DISABLE_MODELS_FETCH = undefined
+      process.env.SPINOSA_DISABLE_MODELS_FETCH = "1"
+      expect(Flag.SPINOSA_DISABLE_MODELS_FETCH).toBe(true)
+      process.env.SPINOSA_DISABLE_MODELS_FETCH = "0"
+      expect(Flag.SPINOSA_DISABLE_MODELS_FETCH).toBe(false)
+      Flag.SPINOSA_DISABLE_MODELS_FETCH = true
+      process.env.SPINOSA_DISABLE_MODELS_FETCH = "0"
+      expect(Flag.SPINOSA_DISABLE_MODELS_FETCH).toBe(true)
+    } finally {
+      Flag.SPINOSA_DISABLE_MODELS_FETCH = previous
+      if (previousEnv === undefined) delete process.env.SPINOSA_DISABLE_MODELS_FETCH
+      else process.env.SPINOSA_DISABLE_MODELS_FETCH = previousEnv
+    }
+  })
+})

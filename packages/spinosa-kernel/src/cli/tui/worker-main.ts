@@ -28,7 +28,6 @@ let fatal = false
 
 function reportWorkerError(kind: "unhandledRejection" | "uncaughtException", error: unknown): string {
   const detail = error instanceof Error ? error.stack ?? error.message : String(error)
-  process.stderr.write(`TUI worker ${kind}: ${detail}\n`)
   bootLog("worker.error", `TUI worker ${kind}`, { error: String(error) })
   return detail
 }

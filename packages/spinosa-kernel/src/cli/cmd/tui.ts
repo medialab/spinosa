@@ -18,7 +18,7 @@ import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@spinosa/tui/terminal-win32"
 import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
-import { describeWorkerCallError, TUI_WORKER_FETCH_MS, waitForWorkerReady } from "../tui/worker-boot"
+import { describeWorkerCallError, TUI_WORKER_FETCH_MS, waitForWorkerReady, formatWorkerFailureForParent, parentActionForWorkerFailure, shouldWriteWorkerFailureToStderr, isRecoverableWorkerFailure, type TuiWorkerPhase } from "../tui/worker-boot"
 import {
   printLaunchingTuiWithDelay,
   runLaunchPreflight,
@@ -310,15 +310,18 @@ export const TuiThreadCommand = cmd({
 
       const worker = new Worker(file)
       const client = Rpc.client<typeof rpc>(worker)
+      let workerPhase: TuiWorkerPhase = "boot"
+      const isolateWorkerFailure = (error: unknown) => {
+        const message = formatWorkerFailureForParent(error)
+        bootLog("tui.worker.error", "worker error event", { message, phase: workerPhase })
+        if (shouldWriteWorkerFailureToStderr(workerPhase)) {
+          process.stderr.write(`TUI worker error event: ${message}\n`)
+        }
+        client.failAll(new Error(message))
+        return parentActionForWorkerFailure(workerPhase)
+      }
       worker.addEventListener("error", (event) => {
-        const detail = dumpErrorChain(event.error ?? event.message)
-        bootLog("tui.worker.error", "worker error event", {
-          detail,
-          filename: event.filename,
-          message: event.message,
-        })
-        process.stderr.write(`TUI worker error event: ${detail}\n`)
-        client.failAll(new Error(`TUI worker error: ${detail}`))
+        isolateWorkerFailure(event.error ?? event.message)
       })
       worker.addEventListener("messageerror", (event) => {
         bootLog("tui.worker.messageerror", "worker message deserialize failed", { data: String(event.data) })
@@ -348,6 +351,7 @@ export const TuiThreadCommand = cmd({
           },
         })
         bootLog("tui.worker.ready", "worker ping succeeded")
+        workerPhase = "running"
       } catch (error) {
         bootLog("tui.worker.ready.error", "worker failed to start", { detail: dumpErrorChain(error) })
         UI.error(errorMessage(error))
@@ -474,7 +478,11 @@ export const TuiThreadCommand = cmd({
           totalMs: Date.now() - t0,
         })
       } catch (error) {
-        bootLog("tui.run.error", "Tui.run failed", { detail: dumpErrorChain(error) })
+        bootLog("tui.run.error", "Tui.run failed", { detail: errorMessage(error) })
+        if (workerPhase === "running" && isRecoverableWorkerFailure(error)) {
+          UI.error(errorMessage(describeWorkerCallError(error)))
+          return
+        }
         throw error
       } finally {
         await stop()

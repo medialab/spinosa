@@ -1268,6 +1268,7 @@ const resolveExportPath = (filename: string): string => {
                   )
                   if (!leave) return
                   await sdk.client.session.abort({ sessionID: currentID }).catch(() => {})
+                  await cancelSpinosaSubmit({ client: sdk.client, sessionID: currentID }).catch(() => {})
                 }
                 navigate(dest)
               }}

@@ -14,11 +14,19 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ### Fixed
 
+- The TUI stops a running session when you leave it or close the terminal. Code: `packages/tui/src/util/stop-sessions.ts`, `packages/tui/src/app.tsx`.
+- A past session opens in a stopped state. It does not resume live work. Code: `packages/tui/src/util/session.ts`, `packages/tui/src/component/dialog-session-list.tsx`.
+- A models.dev fetch failure uses the snapshot. The TUI does not dump Effect Cause objects. Code: `packages/core/src/models-dev.ts`, `packages/core/src/flag/flag.ts`.
+- A TUI worker crash stays in the worker. The parent TUI process stays up. Code: `packages/spinosa-kernel/src/cli/tui/worker-boot.ts`, `packages/spinosa-kernel/src/cli/cmd/tui.ts`.
 - TUI worker no longer imports `@napi-rs/canvas`. That extra isolate loaded a pdf.js bunfs chunk that cannot resolve the native module. The installer then printed ImageData/Path2D polyfill warnings and `/provider` never returned. The worker stubs DOM globals and suppresses leftover boot noise. The smoke uses a fresh HOME and the embedded snapshot. Code: `packages/spinosa-kernel/src/cli/tui/worker.ts`, `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
 - Compiled `doctor` loads PDF, canvas, and markitdown. It no longer trusts a bundled-name probe. Code: `packages/spinosa-kernel/src/cli/cmd/doctor-probes.ts`.
 - TUI worker smoke fails when the isolate prints canvas or pdf.js boot noise. It also proves `bun-pty` loads in that worker. Code: `packages/spinosa-kernel/src/cli/tui/worker-boot.ts`.
 - TUI worker fetch times out after 120s. A hung `/provider` no longer blocks the session forever. Code: `packages/spinosa-kernel/src/cli/cmd/tui.ts`.
 - Release smoke starts the OpenTUI parser worker extra-entrypoint. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
+
+### Changed
+
+- The markdown editor uses 80 percent of the available terminal height. Code: `packages/tui/src/ui/dialog.tsx`, `packages/tui/src/routes/session/dialog-md-viewer.tsx`.
 
 ## [1.1.0-beta.32] — 2026-09-16
 
