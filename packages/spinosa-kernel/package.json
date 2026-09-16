@@ -98,6 +98,7 @@
     "@solid-primitives/scheduled": "1.5.2",
     "@spinosa/core": "workspace:*",
     "@spinosa/llm": "workspace:*",
+    "@spinosa/markitdown": "workspace:*",
     "@spinosa/plugin": "workspace:*",
     "@spinosa/protocol": "workspace:*",
     "@spinosa/schema": "workspace:*",

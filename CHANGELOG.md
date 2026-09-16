@@ -18,6 +18,7 @@ Release rule: The maintainer must approve a release. No automatic release.
 - A past session opens in a stopped state. It does not resume live work. Code: `packages/tui/src/util/session.ts`, `packages/tui/src/component/dialog-session-list.tsx`.
 - A models.dev fetch failure uses the snapshot. The TUI does not dump Effect Cause objects. Code: `packages/core/src/models-dev.ts`, `packages/core/src/flag/flag.ts`.
 - A TUI worker crash stays in the worker. The parent TUI process stays up. Code: `packages/spinosa-kernel/src/cli/tui/worker-boot.ts`, `packages/spinosa-kernel/src/cli/cmd/tui.ts`.
+- Kernel doctor typechecks the markitdown probe. Code: `packages/spinosa-kernel/package.json`.
 - TUI worker no longer imports `@napi-rs/canvas`. That extra isolate loaded a pdf.js bunfs chunk that cannot resolve the native module. The installer then printed ImageData/Path2D polyfill warnings and `/provider` never returned. The worker stubs DOM globals and suppresses leftover boot noise. The smoke uses a fresh HOME and the embedded snapshot. Code: `packages/spinosa-kernel/src/cli/tui/worker.ts`, `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
 - Compiled `doctor` loads PDF, canvas, and markitdown. It no longer trusts a bundled-name probe. Code: `packages/spinosa-kernel/src/cli/cmd/doctor-probes.ts`.
 - TUI worker smoke fails when the isolate prints canvas or pdf.js boot noise. It also proves `bun-pty` loads in that worker. Code: `packages/spinosa-kernel/src/cli/tui/worker-boot.ts`.
