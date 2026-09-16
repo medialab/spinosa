@@ -10,6 +10,16 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Installer staged verification uses a 400 second timeout and reports gate progress. Slow hosts complete doctor verification. Override the timeout with `SPINOSA_VERIFY_TIMEOUT_SECONDS`. Code: `install.sh`, `tests/installer/binary.bats`.
+
+### Fixed
+
+- Connect dialog shows a loading row while the provider list loads. A failed load shows a retry row that reloads the list. Code: `packages/tui/src/component/dialog-provider.tsx`, `packages/tui/src/context/sync.tsx`.
+- One malformed models.dev entry no longer empties the provider list. Bad entries skip with a warning. Code: `packages/spinosa-kernel/src/provider/provider.ts`, `packages/spinosa-kernel/src/server/routes/instance/httpapi/handlers/provider.ts`.
+- Release smoke proves a non-empty provider catalog. `internal smoke provider-catalog` runs first on a fresh HOME. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`, `scripts/smoke-native-binary.sh`, `scripts/smoke-install.ts`.
+
 ## [1.1.0-beta.29] — 2026-09-16
 
 Fixed

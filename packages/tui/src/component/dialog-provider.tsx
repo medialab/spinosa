@@ -88,6 +88,56 @@ export function normalizeCustomProviderID(value: string) {
   return providerID
 }
 
+export const LOADING_PROVIDERS_VALUE = "__spinosa_loading_providers__"
+export const RETRY_PROVIDERS_VALUE = "__spinosa_retry_providers__"
+
+export type ProviderStatusRow = {
+  title: string
+  value: string
+  description: string
+  category: string
+  disabled?: boolean
+  onSelect?: () => void
+}
+
+/**
+ * Status rows for the connect dialog while the provider catalog is
+ * unavailable. Loading takes precedence over failure: a failed fetch
+ * that is still covered by an in-flight bootstrap shows the spinner,
+ * not the retry row.
+ */
+export function providerStatusRows(input: {
+  loading: boolean
+  failed: boolean
+  retrying: boolean
+  onRetry: () => void
+}): ProviderStatusRow[] {
+  if (input.loading) {
+    return [
+      {
+        title: "Loading providers…",
+        value: LOADING_PROVIDERS_VALUE,
+        description: "Fetching the provider list",
+        category: "Providers",
+        disabled: true,
+      },
+    ]
+  }
+  if (input.failed) {
+    return [
+      {
+        title: input.retrying ? "Retrying…" : "Retry loading providers",
+        value: RETRY_PROVIDERS_VALUE,
+        description: "Couldn't load the provider list",
+        category: "Providers",
+        disabled: input.retrying,
+        onSelect: () => input.onRetry(),
+      },
+    ]
+  }
+  return []
+}
+
 export function createDialogProviderOptions() {
   const sync = useSync()
   const dialog = useDialog()
@@ -119,7 +169,31 @@ export function createDialogProviderOptions() {
     return promptCustomProviderID()
   }
 
+  const [retrying, setRetrying] = createSignal(false)
+
+  async function retryProviders() {
+    if (retrying()) return
+    setRetrying(true)
+    try {
+      await sync.refreshProviders()
+    } catch (error) {
+      toast.show({
+        variant: "error",
+        message: `Couldn't reload providers: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+      })
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   const options = createMemo(() => {
+    const catalogEmpty = sync.data.provider_next.all.length === 0
+    const statusRows = providerStatusRows({
+      loading: sync.status === "loading" && catalogEmpty,
+      failed: sync.data.provider_error !== undefined && catalogEmpty,
+      retrying: retrying(),
+      onRetry: () => void retryProviders(),
+    })
     const spinosaDefault = (() => {
       const provider = sync.data.provider.find((item) => item.id === "opencode")
       const model = Object.values(provider?.models ?? {}).find((item) => item.cost?.input === 0 && item.status !== "deprecated")
@@ -162,6 +236,7 @@ export function createDialogProviderOptions() {
     return [
       ...spinosaDefault,
       ...localSynthetic,
+      ...statusRows,
       ...pipe(
       providerOptions(sync.data.provider_next.all),
       map((provider) => {

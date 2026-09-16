@@ -241,4 +241,15 @@ const layer = Layer.effect(
 
 export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node, EventV2.node, httpClient] })
 
+/**
+ * Embedded models.dev snapshot baked in at release-build time
+ * (SPINOSA_MODELS_DEV define). Undefined in dev/source runs.
+ * Lets `internal smoke provider-catalog` prove the shipped binary
+ * carries a non-empty catalog without touching the network.
+ */
+export function embeddedModelsSnapshot(): Record<string, Provider> | undefined {
+  if (typeof SPINOSA_MODELS_DEV === "undefined") return undefined
+  return SPINOSA_MODELS_DEV
+}
+
 export * as ModelsDev from "./models-dev"

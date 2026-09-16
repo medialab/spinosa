@@ -172,7 +172,15 @@ export function toPublicInfo(provider: Info): Info {
 export function defaultModelIDs<
   T extends { models: Record<string, { id: string }> },
 >(providers: Record<string, T>) {
-  return mapValues(providers, (item) => sort(Object.values(item.models))[0].id);
+  const result: Record<string, string> = {};
+  for (const [key, item] of Object.entries(providers)) {
+    // A catalog entry with zero models must not fail the whole list —
+    // skip it so one malformed provider cannot 500 /provider and empty
+    // the TUI connect dialog.
+    const first = sort(Object.values(item.models))[0];
+    if (first) result[key] = first.id;
+  }
+  return result;
 }
 
 export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundError>()(
@@ -412,6 +420,28 @@ export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
     options: {},
     models,
   };
+}
+
+/**
+ * Convert a raw models.dev catalog into provider records. One malformed
+ * entry must never fail the whole provider list (which would empty the
+ * TUI connect dialog), so bad entries are skipped and reported.
+ */
+export function buildCatalogProviders(input: {
+  catalog: Record<string, ModelsDev.Provider>;
+  onSkipped?: (providerID: string, error: unknown) => void;
+}): { providers: Record<string, Info>; skipped: string[] } {
+  const providers: Record<string, Info> = {};
+  const skipped: string[] = [];
+  for (const [key, value] of Object.entries(input.catalog)) {
+    try {
+      providers[key] = fromModelsDevProvider(value);
+    } catch (error) {
+      skipped.push(key);
+      input.onSkipped?.(key, error);
+    }
+  }
+  return { providers, skipped };
 }
 
 function modelSuggestions(

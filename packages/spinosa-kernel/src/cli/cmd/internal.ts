@@ -155,6 +155,57 @@ export const InternalCommand = {
               if (!ok) process.exitCode = 1
             },
           )
+          .command(
+            "provider-catalog",
+            "Prove the embedded models.dev snapshot converts to a non-empty /provider catalog",
+            (y) => y.option("json", { type: "boolean", default: false }),
+            async (args) => {
+              // Release gate for the empty connect-dialog outage: version and
+              // native-imports smoke never touch the provider catalog, so a
+              // binary with a missing snapshot or an unconvertible entry
+              // shipped green. This runs the exact /provider list transform
+              // (snapshot + pure conversion, no network, no server, no
+              // credentials) and fails closed on an empty catalog.
+              const fail = (message: string) => {
+                if (args.json || getFormat(args) === "json") printJson({ ok: false, error: message })
+                else emitResult("human", "provider-catalog", { ok: false }, message)
+                process.exitCode = 1
+              }
+              try {
+                // Static specifiers so Bun --compile embeds the modules
+                // (variable import() cannot be traced).
+                const { embeddedModelsSnapshot } = await import("@spinosa/kernel-core/models-dev")
+                const { Provider } = await import("@/provider/provider")
+                const snapshot = embeddedModelsSnapshot()
+                if (!snapshot || Object.keys(snapshot).length === 0) {
+                  fail("embedded models.dev snapshot is missing or empty (expected in dev runs — this gate targets release binaries)")
+                  return
+                }
+                const { providers, skipped } = Provider.buildCatalogProviders({ catalog: snapshot })
+                const ids = Object.keys(providers)
+                if (ids.length === 0) {
+                  fail(`provider catalog converted to zero providers (skipped ${skipped.length})`)
+                  return
+                }
+                const defaults = Provider.defaultModelIDs(providers)
+                if (args.json || getFormat(args) === "json") {
+                  printJson({ ok: true, providers: ids.length, skipped, defaults: Object.keys(defaults).length })
+                } else {
+                  emitResult("human", "provider-catalog", { ok: true, providers: ids.length }, `ok (${ids.length} providers)`)
+                  if (skipped.length > 0) {
+                    emitResult(
+                      "human",
+                      "provider-catalog-skipped",
+                      { skipped },
+                      `skipped malformed entries: ${skipped.join(", ")}`,
+                    )
+                  }
+                }
+              } catch (err) {
+                fail(err instanceof Error ? err.message : String(err))
+              }
+            },
+          )
           .demandCommand(1),
       )
       .command({

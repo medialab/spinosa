@@ -3,7 +3,6 @@ import { Config } from "@/config/config"
 import { ModelsDev } from "@spinosa/kernel-core/models-dev"
 import { Provider } from "@/provider/provider"
 
-import { mapValues } from "remeda"
 import { Effect, Schema } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
@@ -51,11 +50,12 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       for (const [key, value] of Object.entries(all)) {
         if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) filtered[key] = value
       }
+      const { providers: catalogProviders, skipped } = Provider.buildCatalogProviders({ catalog: filtered })
+      if (skipped.length > 0) {
+        yield* Effect.logWarning("Skipping malformed provider catalog entries", { skipped })
+      }
       const connected = yield* provider.list()
-      const providers = Object.assign(
-        mapValues(filtered, (item) => Provider.fromModelsDevProvider(item)),
-        connected,
-      )
+      const providers = Object.assign(catalogProviders, connected)
       return {
         all: Object.values(providers).map(Provider.toPublicInfo),
         default: Provider.defaultModelIDs(providers),

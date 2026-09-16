@@ -120,6 +120,13 @@ async function smokeBinary(bin: string, label: string, smokeHome: string = home)
   if (natives.exitCode !== 0) {
     throw new Error(`smoke native-imports failed with exit ${natives.exitCode}: ${String(natives.text()).slice(0, 500)}`)
   }
+  // The empty connect-dialog outage shipped green because no gate touched
+  // the provider catalog. Product binaries carry the embedded snapshot.
+  console.log(`→ smoke internal smoke provider-catalog (${label})`)
+  const catalog = await $`${bin} internal smoke provider-catalog --json`.cwd(project).env(env).nothrow()
+  if (catalog.exitCode !== 0) {
+    throw new Error(`smoke provider-catalog failed with exit ${catalog.exitCode}: ${String(catalog.text()).slice(0, 500)}`)
+  }
   console.log(`✓ binary smoke passed (${label})`)
 }
 

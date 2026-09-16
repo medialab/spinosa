@@ -36,6 +36,7 @@ import { usePermission } from "./permission"
 import { dbg } from "../util/debug-log"
 import { KV } from "../constants/kv-keys"
 import { normalizeToolInputForDisplay, normalizeToolMetadataForDisplay } from "../util/tool-display"
+import { errorMessage } from "../util/error"
 import { sessionMatchesWorkspaceScope } from "../util/session"
 
 const emptyConsoleState: ConsoleState = {
@@ -111,6 +112,8 @@ export const {
       provider: Provider[]
       provider_default: Record<string, string>
       provider_next: ProviderListResponse
+      /** Last provider-catalog fetch failure; cleared on success. */
+      provider_error: string | undefined
       console_state: ConsoleState
       capabilities: {
         experimentalBackgroundSubagents: boolean
@@ -173,6 +176,7 @@ export const {
       command: [],
       provider: [],
       provider_default: {},
+      provider_error: undefined,
       session: [],
       session_status: {},
       session_diff: {},
@@ -327,7 +331,9 @@ export const {
           void bootstrap()
           break
         case "catalog.updated":
-          void refreshProviders()
+          // refreshProviders records failures in provider_error; swallow
+          // here so a failed refresh never throws into the event loop.
+          void refreshProviders().catch(() => {})
           break
         case "permission.replied": {
           const requests = store.permission[event.properties.sessionID]
@@ -1651,15 +1657,24 @@ export const {
 
     async function refreshProviders() {
       const workspace = project.workspace.current()
-      const [providers, providerList] = await Promise.all([
-        sdk.client.config.providers({ workspace }, { throwOnError: true }),
-        sdk.client.provider.list({ workspace }, { throwOnError: true }),
-      ])
-      batch(() => {
-        setStore("provider", reconcile(providers.data!.providers))
-        setStore("provider_default", reconcile(providers.data!.default))
-        setStore("provider_next", reconcile(providerList.data!))
-      })
+      try {
+        const [providers, providerList] = await Promise.all([
+          sdk.client.config.providers({ workspace }, { throwOnError: true }),
+          sdk.client.provider.list({ workspace }, { throwOnError: true }),
+        ])
+        batch(() => {
+          setStore("provider", reconcile(providers.data!.providers))
+          setStore("provider_default", reconcile(providers.data!.default))
+          setStore("provider_next", reconcile(providerList.data!))
+          setStore("provider_error", undefined)
+        })
+      } catch (error) {
+        // Record the failure so the connect dialog can offer a retry
+        // instead of showing a bare empty list. Rethrow: callers decide
+        // whether to toast.
+        setStore("provider_error", errorMessage(error).slice(0, 300))
+        throw error
+      }
     }
 
     async function runBootstrap(input: { fatal?: boolean } = {}) {
@@ -1670,7 +1685,19 @@ export const {
 
       // blocking - include session.list when continuing a session
       const providersPromise = sdk.client.config.providers({ workspace }, { throwOnError: true })
-      const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true })
+      // Attribute catalog failures precisely: the bootstrap catch below
+      // cannot tell which fetch failed, but the connect dialog needs to
+      // know the provider list specifically failed so it can offer a retry.
+      const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true }).then(
+        (response) => {
+          setStore("provider_error", undefined)
+          return response
+        },
+        (error) => {
+          setStore("provider_error", errorMessage(error).slice(0, 300))
+          throw error
+        },
+      )
       const capabilitiesPromise = sdk.client.experimental.capabilities
         .get({ workspace }, { throwOnError: true })
         .then((x) => x.data)

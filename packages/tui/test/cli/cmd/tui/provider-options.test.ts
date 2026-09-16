@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeCustomProviderID, providerOptions } from "../../../../src/component/dialog-provider"
+import {
+  LOADING_PROVIDERS_VALUE,
+  RETRY_PROVIDERS_VALUE,
+  normalizeCustomProviderID,
+  providerOptions,
+  providerStatusRows,
+} from "../../../../src/component/dialog-provider"
 
 describe("providerOptions", () => {
   test("includes a synthetic Other option for custom providers", () => {
@@ -37,5 +43,51 @@ describe("providerOptions", () => {
     expect(normalizeCustomProviderID("@ai-sdk/custom-provider")).toBe("custom-provider")
     expect(normalizeCustomProviderID("-custom-provider")).toBeUndefined()
     expect(normalizeCustomProviderID("Custom Provider")).toBeUndefined()
+  })
+})
+
+describe("providerStatusRows", () => {
+  test("shows a disabled loading row while the catalog loads", () => {
+    expect(
+      providerStatusRows({ loading: true, failed: false, retrying: false, onRetry: () => {} }),
+    ).toEqual([
+      {
+        title: "Loading providers…",
+        value: LOADING_PROVIDERS_VALUE,
+        description: "Fetching the provider list",
+        category: "Providers",
+        disabled: true,
+      },
+    ])
+  })
+
+  test("loading takes precedence over a recorded failure", () => {
+    const rows = providerStatusRows({ loading: true, failed: true, retrying: false, onRetry: () => {} })
+    expect(rows.map((row) => row.value)).toEqual([LOADING_PROVIDERS_VALUE])
+  })
+
+  test("shows a retry row that triggers the reload callback", () => {
+    let calls = 0
+    const rows = providerStatusRows({
+      loading: false,
+      failed: true,
+      retrying: false,
+      onRetry: () => {
+        calls += 1
+      },
+    })
+    expect(rows.map((row) => row.value)).toEqual([RETRY_PROVIDERS_VALUE])
+    expect(rows[0]?.disabled).not.toBe(true)
+    rows[0]?.onSelect?.()
+    expect(calls).toBe(1)
+  })
+
+  test("disables the retry row while a retry is in flight", () => {
+    const rows = providerStatusRows({ loading: false, failed: true, retrying: true, onRetry: () => {} })
+    expect(rows[0]).toMatchObject({ title: "Retrying…", disabled: true })
+  })
+
+  test("shows no status rows once the catalog is available", () => {
+    expect(providerStatusRows({ loading: false, failed: false, retrying: false, onRetry: () => {} })).toEqual([])
   })
 })
