@@ -199,6 +199,19 @@ jobs:
           overwrite: true
           retention-days: 90
 
+      # Build-commit binding for promotion: dispatch runs report the default
+      # branch SHA, not the built beta-dev commit — so the SHA travels inside
+      # its own tiny artifact and promote.ts matches on content, not metadata.
+      - run: git rev-parse HEAD > dist/commit-sha.txt
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-sha
+          path: dist/commit-sha.txt
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90
+
   verify:
     name: Verify ${{ matrix.target }}
     needs: [validate, assemble]

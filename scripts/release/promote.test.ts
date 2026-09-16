@@ -4,16 +4,12 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { productBinaryAssetName, PRODUCT_BINARY_TARGETS } from "../../packages/spinosa-core/src/distribution/contract.ts"
-import { selectPromotionRun, verifyPromotedDist, type DryRunRecord } from "./promote.ts"
+import { selectPromotionRun, verifyPromotedDist, type ResolvedDryRun } from "./promote.ts"
 
-const run = (id: number, headSha: string): DryRunRecord => ({
-  id,
-  headSha,
-  createdAt: `2026-09-16T10:${String(id).padStart(2, "0")}:00Z`,
-})
+const run = (id: number, buildSha: string): ResolvedDryRun => ({ id, buildSha })
 
 describe("selectPromotionRun", () => {
-  test("picks the newest run for the commit", () => {
+  test("picks the newest run built from the commit", () => {
     const runs = [run(1, "aaa"), run(2, "bbb"), run(3, "aaa")]
     expect(selectPromotionRun(runs, "aaa")?.id).toBe(3)
   })
@@ -22,7 +18,7 @@ describe("selectPromotionRun", () => {
     expect(selectPromotionRun([run(1, "ABCDEF")], "abcdef")?.id).toBe(1)
   })
 
-  test("returns undefined when no run matches the commit", () => {
+  test("returns undefined when no run was built from the commit", () => {
     expect(selectPromotionRun([run(1, "aaa")], "zzz")).toBeUndefined()
     expect(selectPromotionRun([], "aaa")).toBeUndefined()
   })

@@ -3,9 +3,15 @@
  * Build-once promotion for beta releases.
  *
  * The real release never rebuilds: it downloads the `assembled-dist`
- * artifact from the newest green dry-run for the exact tag commit, verifies
- * its layout + checksums, and hands `dist/` to `ci-publish`. Same commit →
- * same bytes; a tag with no green dry-run fails closed instead of rebuilding.
+ * artifact from the newest green dry-run built from the exact tag commit,
+ * verifies its layout + checksums, and hands `dist/` to `ci-publish`.
+ * A tag with no green dry-run fails closed instead of rebuilding.
+ *
+ * Commit binding uses artifact CONTENT, not run metadata: dispatch runs
+ * report the default branch's SHA (where the workflow file lives), not the
+ * checked-out beta-dev commit they actually built. So the assemble job
+ * writes `dist/commit-sha.txt` (also uploaded alone as `release-sha`), and
+ * promotion matches that embedded SHA against the tag commit.
  *
  * Version binding needs no extra check: dry-runs run validate-tag, which
  * forces the dispatch version to equal the tree's package.json — and the
@@ -26,13 +32,19 @@ import { RELEASE_ROOT } from "./lib.ts"
 
 export interface DryRunRecord {
   id: number
-  headSha: string
   createdAt: string
 }
 
-/** Newest run for the commit (API lists newest-first; tie-break on id). */
-export function selectPromotionRun(runs: DryRunRecord[], sha: string): DryRunRecord | undefined {
-  const matches = runs.filter((r) => r.headSha.toLowerCase() === sha.toLowerCase())
+/** A dry-run with its embedded build-commit SHA resolved. */
+export interface ResolvedDryRun {
+  id: number
+  buildSha: string
+}
+
+/** Newest run whose embedded build SHA equals the tag commit. */
+export function selectPromotionRun(runs: ResolvedDryRun[], sha: string): ResolvedDryRun | undefined {
+  const want = sha.toLowerCase()
+  const matches = runs.filter((r) => r.buildSha.toLowerCase() === want)
   if (matches.length === 0) return undefined
   return [...matches].sort((a, b) => b.id - a.id)[0]
 }
@@ -85,17 +97,29 @@ if (import.meta.main) {
     ?? (await $`gh repo view --json nameWithOwner --jq .nameWithOwner`.cwd(RELEASE_ROOT).nothrow().quiet()).text().trim()
   if (!repo || !repo.includes("/")) fail("cannot determine owner/repo (need GITHUB_REPOSITORY or gh auth)")
   const data = (await ghApi(
-    `repos/${repo}/actions/workflows/release-beta.yml/runs?event=workflow_dispatch&status=success&per_page=30`,
-  ).catch((e) => fail(String(e)))) as { workflow_runs?: Array<{ id: number; head_sha: string; created_at: string }> }
-  const runs = (data.workflow_runs ?? []).map((r) => ({ id: r.id, headSha: r.head_sha, createdAt: r.created_at }))
-  const pick = selectPromotionRun(runs, head)
+    `repos/${repo}/actions/workflows/release-beta.yml/runs?event=workflow_dispatch&status=success&per_page=10`,
+  ).catch((e) => fail(String(e)))) as { workflow_runs?: Array<{ id: number; created_at: string }> }
+  // Resolve each candidate's embedded build SHA via its tiny release-sha
+  // artifact (dispatch head_sha is the default branch, not the built commit).
+  const resolved: ResolvedDryRun[] = []
+  for (const run of (data.workflow_runs ?? []).slice(0, 10)) {
+    const shaDir = join(RELEASE_ROOT, ".promote-tmp", String(run.id))
+    mkdirSync(shaDir, { recursive: true })
+    const dl = await $`gh run download ${run.id} --repo ${repo} -n release-sha -D ${shaDir}`.cwd(RELEASE_ROOT).nothrow().quiet()
+    if (dl.exitCode !== 0) continue
+    const file = join(shaDir, "commit-sha.txt")
+    if (!existsSync(file)) continue
+    resolved.push({ id: run.id, buildSha: readFileSync(file, "utf-8").trim() })
+  }
+  await $`rm -rf ${join(RELEASE_ROOT, ".promote-tmp")}`.cwd(RELEASE_ROOT).nothrow().quiet()
+  const pick = selectPromotionRun(resolved, head)
   if (!pick) {
     fail(
-      `no green dry-run for commit ${head.slice(0, 8)} — dispatch one first: ` +
+      `no green dry-run built from commit ${head.slice(0, 8)} — dispatch one first: ` +
         `gh workflow run release-beta.yml -f version=${version} -f dry_run=true`,
     )
   }
-  console.log(`promoting dry-run ${pick.id} (${pick.createdAt}) for ${head.slice(0, 8)}`)
+  console.log(`promoting dry-run ${pick.id} (built from ${head.slice(0, 8)})`)
   const dest = join(RELEASE_ROOT, "dist")
   mkdirSync(dest, { recursive: true })
   const dl = await $`gh run download ${pick.id} --repo ${repo} -n assembled-dist -D ${dest}`.cwd(RELEASE_ROOT).nothrow()
