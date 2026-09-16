@@ -14,6 +14,16 @@ DEFAULT_VERIFY_TIMEOUT_SECONDS="${SPINOSA_VERIFY_TIMEOUT_SECONDS:-400}"
 # A per-smoke timeout is a missing verdict, not a failure — install proceeds
 # flagged as unverified (see handle_smoke_gate_result).
 DEFAULT_SMOKE_TIMEOUT_SECONDS="${SPINOSA_SMOKE_TIMEOUT_SECONDS:-300}"
+# Version probe after a 150MB binary lands. Cold page cache on qemu linux-x64
+# can spend most of this. Nested inside the activate timed step — activate
+# budget must stay strictly larger.
+DEFAULT_PROBE_TIMEOUT_SECONDS="${SPINOSA_PROBE_TIMEOUT_SECONDS:-30}"
+# Activate: rename + version probe + shims + metadata. Must exceed the probe
+# budget so the outer timer cannot kill a still-running probe. qemu linux-x64
+# spent 33s here against a 30s wrap.
+DEFAULT_ACTIVATE_TIMEOUT_SECONDS="${SPINOSA_ACTIVATE_TIMEOUT_SECONDS:-300}"
+DEFAULT_PATH_TIMEOUT_SECONDS="${SPINOSA_PATH_TIMEOUT_SECONDS:-60}"
+DEFAULT_CHECKSUMS_TIMEOUT_SECONDS="${SPINOSA_CHECKSUMS_TIMEOUT_SECONDS:-180}"
 WAVE_WIDTH=6
 
 if [ -z "${BASH_VERSION-}" ]; then
@@ -642,6 +652,9 @@ while [ $# -gt 0 ]; do
        echo "  SPINOSA_RELEASE_BASE_URL    Override release asset base URL (local smoke)"
        echo "  SPINOSA_VERIFY_TIMEOUT_SECONDS  Override staged verify timeout (default: $DEFAULT_VERIFY_TIMEOUT_SECONDS)"
        echo "  SPINOSA_SMOKE_TIMEOUT_SECONDS  Override per-smoke timeout (default: $DEFAULT_SMOKE_TIMEOUT_SECONDS; budgets do not add up)"
+       echo "  SPINOSA_ACTIVATE_TIMEOUT_SECONDS  Override activate timeout (default: $DEFAULT_ACTIVATE_TIMEOUT_SECONDS; must exceed probe)"
+       echo "  SPINOSA_PATH_TIMEOUT_SECONDS  Override PATH-setup timeout (default: $DEFAULT_PATH_TIMEOUT_SECONDS)"
+       echo "  SPINOSA_PROBE_TIMEOUT_SECONDS  Override version-probe timeout (default: $DEFAULT_PROBE_TIMEOUT_SECONDS)"
       echo ""
       echo "Paths:"
       echo "  --no-modify-path  Don't modify shell config files (~/.zshrc, etc.)"
@@ -1511,8 +1524,8 @@ probe_spinosa_version_output() {
   # the new inode, cold page cache, and a loaded host easily exceed the old
   # 5s and killed healthy binaries). Worst case is ~2x budget: the fallback
   # runs only after the first attempt failed FAST, never after a timeout.
-  local budget_seconds="${SPINOSA_PROBE_TIMEOUT_SECONDS:-30}"
-  [[ "$budget_seconds" =~ ^[1-9][0-9]*$ ]] || budget_seconds=30
+  local budget_seconds="${SPINOSA_PROBE_TIMEOUT_SECONDS:-$DEFAULT_PROBE_TIMEOUT_SECONDS}"
+  [[ "$budget_seconds" =~ ^[1-9][0-9]*$ ]] || budget_seconds="$DEFAULT_PROBE_TIMEOUT_SECONDS"
   local out_file
   out_file="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe.XXXXXX")"
   timed_register_temp "$out_file"
@@ -1637,8 +1650,8 @@ get_installed_version() {
     __version="$meta_ver"
   elif [ -x "${SPINOSA_HOME}/bin/spinosa" ]; then
     local out ver probe_out probe_pid timed_out
-    local probe_budget="${SPINOSA_PROBE_TIMEOUT_SECONDS:-30}"
-    [[ "$probe_budget" =~ ^[1-9][0-9]*$ ]] || probe_budget=30
+    local probe_budget="${SPINOSA_PROBE_TIMEOUT_SECONDS:-$DEFAULT_PROBE_TIMEOUT_SECONDS}"
+    [[ "$probe_budget" =~ ^[1-9][0-9]*$ ]] || probe_budget="$DEFAULT_PROBE_TIMEOUT_SECONDS"
     probe_out="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe.XXXXXX")"
     timed_register_temp "$probe_out"
     out=""
@@ -2545,8 +2558,12 @@ handle_verify_only() {
     die "No Spinosa binary installation found at ${SPINOSA_HOME}"
   fi
   VERSION="$existing_version"
+  # Core gates and smokes must not share one timer. qemu linux-x64 spends
+  # 80s+ on templates, then each smoke needs its own budget.
   run_timed_step "Verify Spinosa v${existing_version}" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
-    run_staged_binary_checks "${SPINOSA_HOME}/bin/spinosa" \
+    run_staged_core_checks "${SPINOSA_HOME}/bin/spinosa" \
+    || die "Spinosa v${existing_version} failed verification"
+  run_staged_smoke_checks "${SPINOSA_HOME}/bin/spinosa" \
     || die "Spinosa v${existing_version} failed verification"
   ok "Verified Spinosa v${existing_version}"
 }
@@ -2688,7 +2705,7 @@ main() {
   # Generous budget for a tiny file: slow or proxied networks should stall,
   # not fail, the checksums fetch (curl still caps each attempt at 30s
   # connect / 600s total and retries).
-  run_download_step "Download checksums" 180 "$checksums_url" "$checksums_file" \
+  run_download_step "Download checksums" "$DEFAULT_CHECKSUMS_TIMEOUT_SECONDS" "$checksums_url" "$checksums_file" \
     || die "Failed to download checksums.txt from ${checksums_url}"
   run_download_step "Download ${ASSET_NAME}" "$DEFAULT_DOWNLOAD_TIMEOUT_SECONDS" "$asset_url" "$staged_binary" \
     || die "Failed to download ${ASSET_NAME}"
@@ -2731,7 +2748,9 @@ main() {
   handle_smoke_gate_result "$smoke_gate_status"
 
   [[ "$VERBOSE" == "1" ]] && section "Activate"
-  run_timed_step "Installing" 30 _install_activate \
+  # Activate includes a version probe. Do not wrap that probe in a 30s
+  # outer clock — qemu linux-x64 spent 33s here after smokes already passed.
+  run_timed_step "Installing" "$DEFAULT_ACTIVATE_TIMEOUT_SECONDS" _install_activate \
     || die "Installation failed — see $(spinosa_log_file)"
 
   # Workspace launchers (binary-distribution-contract): migrate managed
@@ -2761,7 +2780,7 @@ main() {
 
   if [ "$PREFIX_MODE" -eq 0 ]; then
     if [[ "$VERBOSE" == "1" ]]; then
-      run_timed_step "Configure shell PATH" 15 setup_shell_path \
+      run_timed_step "Configure shell PATH" "$DEFAULT_PATH_TIMEOUT_SECONDS" setup_shell_path \
         || warn "Shell PATH configuration timed out or failed — add ${SPINOSA_BIN_DIR} to PATH manually; see $(spinosa_log_file)"
     else
       setup_shell_path 2>/dev/null || true

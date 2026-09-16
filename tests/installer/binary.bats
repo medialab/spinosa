@@ -517,6 +517,31 @@ EOF
   ! grep -F 'run_timed_step "Checking binary smokes"' "$INSTALLER"
 }
 
+@test "DEFAULT_ACTIVATE_TIMEOUT_SECONDS exceeds the version probe budget" {
+  [ "$DEFAULT_PROBE_TIMEOUT_SECONDS" = "30" ]
+  [ "$DEFAULT_ACTIVATE_TIMEOUT_SECONDS" = "300" ]
+  [ "$DEFAULT_PATH_TIMEOUT_SECONDS" = "60" ]
+  [ "$DEFAULT_ACTIVATE_TIMEOUT_SECONDS" -gt "$DEFAULT_PROBE_TIMEOUT_SECONDS" ]
+}
+
+@test "SPINOSA_ACTIVATE_TIMEOUT_SECONDS overrides the activate default" {
+  run bash -c "SPINOSA_INSTALLER_LIB_ONLY=1 SPINOSA_ACTIVATE_TIMEOUT_SECONDS=120 NO_COLOR=1 SPINOSA_LOG_DISABLED=1 source \"$INSTALLER\" >/dev/null 2>&1; printf '%s' \"\$DEFAULT_ACTIVATE_TIMEOUT_SECONDS\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "120" ]
+}
+
+@test "install timed steps never use a bare integer budget" {
+  grep -F 'run_timed_step "Installing" "$DEFAULT_ACTIVATE_TIMEOUT_SECONDS"' "$INSTALLER"
+  grep -F 'run_timed_step "Configure shell PATH" "$DEFAULT_PATH_TIMEOUT_SECONDS"' "$INSTALLER"
+  ! grep -E 'run_timed_step "[^"]+" [0-9]+' "$INSTALLER"
+}
+
+@test "verify-only does not wrap smokes in the core verify timer" {
+  grep -F 'run_timed_step "Verify Spinosa v${existing_version}" "$DEFAULT_VERIFY_TIMEOUT_SECONDS"' "$INSTALLER"
+  grep -F 'run_staged_core_checks "${SPINOSA_HOME}/bin/spinosa"' "$INSTALLER"
+  ! sed -n '/^handle_verify_only()/,/^}$/p' "$INSTALLER" | grep -F 'run_staged_binary_checks'
+}
+
 @test "run_staged_smoke_checks passes when all smokes succeed" {
   local fake="$BATS_TEST_TMPDIR/fake-smoke-check-ok"
   cat >"$fake" <<'EOF'

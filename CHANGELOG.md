@@ -10,6 +10,14 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.36] — 2026-09-16
+
+### Fixed
+
+- Activate no longer shares a 30 second clock with the version probe. qemu linux-x64 spent 33 seconds there after smokes passed. Code: `install.sh`.
+- Install timed steps use named budgets. A step that contains a probe has a larger outer budget.
+- `--verify-only` no longer wraps smokes inside the core verify timer.
+
 ## [1.1.0-beta.35] — 2026-09-16
 
 ### Fixed
