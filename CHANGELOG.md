@@ -10,6 +10,20 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.31] — 2026-09-16
+
+### Fixed
+
+- Installer cancel handler no longer kills its own process group on Linux. Tree kills target explicit PIDs only. The cancellation message stays visible instead of swallowed. Code: `install.sh`, `tests/installer/timed-step.bats`.
+- Website install command is the plain pipe-to-bash form. No curl flags. Code: `website/src/lib/install-urls.ts`.
+
+### Changed
+
+- Releases build once and publish the exact dry-run bytes. A tag without a green dry-run for its commit fails closed instead of rebuilding. Code: `.github/workflows/release-beta.yml`, `scripts/release/promote.ts`.
+- The verify matrix runs one end-to-end installer smoke per platform. Build and assemble carry no runtime smoke. The installer smoke proves PDF runtime too. Code: `.github/workflows/release-beta.yml`, `scripts/smoke-install.ts`, `scripts/release/index.ts`.
+- Pull requests run the functional quality gate. Metrics reports stay advisory. Local preflight gains a self-provisioning actionlint check. Code: `.github/workflows/quality.yml`, `scripts/quality-release.ts`, `scripts/lint-actions.sh`.
+- CI actions run on Node 24 majors. Code: `.github/workflows/release-beta.yml`, `.github/workflows/quality.yml`, `.github/workflows/deploy-website.yml`.
+
 ## [1.1.0-beta.30] — 2026-09-16
 
 ### Fixed
