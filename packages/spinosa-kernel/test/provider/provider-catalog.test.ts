@@ -64,3 +64,36 @@ describe("buildCatalogProviders", () => {
     expect(Provider.defaultModelIDs(providers)).toEqual({})
   })
 })
+
+describe("evaluateProviderCatalogSmoke", () => {
+  test("fails on a missing or empty snapshot", () => {
+    expect(Provider.evaluateProviderCatalogSmoke(undefined)).toEqual({
+      ok: false,
+      error:
+        "embedded models.dev snapshot is missing or empty (expected in dev runs — this gate targets release binaries)",
+    })
+    expect(Provider.evaluateProviderCatalogSmoke({}).ok).toBe(false)
+  })
+
+  test("fails when every entry is malformed", () => {
+    const broken = { nope: true } as unknown as ModelsDev.Provider
+    const result = Provider.evaluateProviderCatalogSmoke({ broken })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/zero providers/)
+  })
+
+  test("fails when providers exist but yield zero selectable defaults", () => {
+    const result = Provider.evaluateProviderCatalogSmoke({ empty: entry("empty", {}) })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/zero selectable defaults/)
+  })
+
+  test("passes a healthy catalog and reports counts", () => {
+    const broken = { nope: true } as unknown as ModelsDev.Provider
+    const result = Provider.evaluateProviderCatalogSmoke({
+      good: entry("good", { m1: model("m1") }),
+      broken,
+    })
+    expect(result).toEqual({ ok: true, providers: 1, skipped: ["broken"], defaults: 1 })
+  })
+})

@@ -1,4 +1,4 @@
-import { describe, expect, beforeAll, beforeEach, afterAll } from "bun:test"
+import { describe, expect, test, beforeAll, beforeEach, afterAll } from "bun:test"
 import { Effect, Layer, Ref } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { AppNodeBuilder } from "@spinosa/kernel-core/effect/app-node-builder"
@@ -285,6 +285,134 @@ describe("ModelsDev Service", () => {
       // retryTransient retries 5xx, so calls may be > 1.
       const final = yield* Ref.get(state)
       expect(final.calls.length).toBeGreaterThanOrEqual(1)
+    }),
+  )
+})
+
+describe("ModelsDev catalog validation", () => {
+  test("decodeUsableCatalog keeps valid entries and drops the rest", () => {
+    expect(ModelsDev.decodeUsableCatalog({})).toBeUndefined()
+    expect(ModelsDev.decodeUsableCatalog(null)).toBeUndefined()
+    expect(ModelsDev.decodeUsableCatalog([])).toBeUndefined()
+    expect(ModelsDev.decodeUsableCatalog({ version: 1 })).toBeUndefined()
+    // Old incompatible envelope: providers nested under a key.
+    expect(ModelsDev.decodeUsableCatalog({ providers: fixture })).toBeUndefined()
+    const mixed = ModelsDev.decodeUsableCatalog({ ...fixture, broken: { nope: true } })
+    expect(mixed?.usable).toEqual(fixture)
+    expect(mixed?.dropped).toBe(1)
+    expect(ModelsDev.decodeUsableCatalog(fixture)?.usable).toEqual(fixture)
+  })
+
+  test("selectCatalogFallback prefers disk, then snapshot, then undefined", () => {
+    expect(ModelsDev.selectCatalogFallback({ disk: fixture, snapshotUsable: fixture2 })).toEqual(
+      fixture,
+    )
+    expect(
+      ModelsDev.selectCatalogFallback({ disk: undefined, snapshotUsable: fixture2 }),
+    ).toEqual(fixture2)
+    expect(
+      ModelsDev.selectCatalogFallback({ disk: undefined, snapshotUsable: undefined }),
+    ).toBeUndefined()
+  })
+
+  it.live("get() discards an empty cache file and fetches instead", () =>
+    Effect.gen(function* () {
+      yield* writeCache({})
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const context = yield* Layer.build(buildLayer(state))
+      const result = yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          Flag.SPINOSA_DISABLE_MODELS_FETCH = false
+        }),
+        () => ModelsDev.Service.use((s) => s.get()).pipe(Effect.provide(context)),
+        () =>
+          Effect.sync(() => {
+            Flag.SPINOSA_DISABLE_MODELS_FETCH = true
+          }),
+      )
+      expect(result).toEqual(fixture2)
+      // Poisoned file is replaced by the fetched catalog.
+      expect(yield* Effect.promise(() => readFile(cacheFile, "utf8"))).toBe(JSON.stringify(fixture2))
+    }),
+  )
+
+  it.live("get() discards an incompatible cache structure and fetches instead", () =>
+    Effect.gen(function* () {
+      yield* writeCache({ providers: fixture, version: 2 })
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const context = yield* Layer.build(buildLayer(state))
+      const result = yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          Flag.SPINOSA_DISABLE_MODELS_FETCH = false
+        }),
+        () => ModelsDev.Service.use((s) => s.get()).pipe(Effect.provide(context)),
+        () =>
+          Effect.sync(() => {
+            Flag.SPINOSA_DISABLE_MODELS_FETCH = true
+          }),
+      )
+      expect(result).toEqual(fixture2)
+    }),
+  )
+
+  it.live("get() keeps valid entries from a partially corrupt cache without fetching", () =>
+    Effect.gen(function* () {
+      yield* writeCache({ ...fixture, broken: { nope: true } })
+      const state = yield* Ref.make(initialState)
+      const result = yield* provided(
+        state,
+        ModelsDev.Service.use((s) => s.get()),
+      )
+      expect(result).toEqual(fixture)
+      const final = yield* Ref.get(state)
+      expect(final.calls).toEqual([])
+    }),
+  )
+
+  it.live("get() survives an invalid fetch body without crashing or poisoning the cache", () =>
+    Effect.gen(function* () {
+      yield* writeCacheText("{")
+      const state = yield* Ref.make({ ...initialState, body: "not json" })
+      const context = yield* Layer.build(buildLayer(state))
+      const result = yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          Flag.SPINOSA_DISABLE_MODELS_FETCH = false
+        }),
+        () => ModelsDev.Service.use((s) => s.get()).pipe(Effect.provide(context)),
+        () =>
+          Effect.sync(() => {
+            Flag.SPINOSA_DISABLE_MODELS_FETCH = true
+          }),
+      )
+      expect(result).toEqual({})
+      // Corrupt file was removed and the invalid fetch was never cached.
+      expect(yield* Effect.promise(() => readFile(cacheFile, "utf8").catch(() => "absent"))).toBe(
+        "absent",
+      )
+    }),
+  )
+
+  it.live("get() fails loudly when an explicit override has no usable providers", () =>
+    Effect.gen(function* () {
+      const overridePath = path.join(Global.Path.cache, "override-empty.json")
+      yield* Effect.promise(async () => {
+        await mkdir(Global.Path.cache, { recursive: true })
+        await writeFile(overridePath, "{}")
+      })
+      const state = yield* Ref.make(initialState)
+      const context = yield* Layer.build(buildLayer(state))
+      const exit = yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          Flag.SPINOSA_MODELS_PATH = overridePath
+        }),
+        () => Effect.exit(ModelsDev.Service.use((s) => s.get()).pipe(Effect.provide(context))),
+        () =>
+          Effect.sync(() => {
+            Flag.SPINOSA_MODELS_PATH = undefined
+          }),
+      )
+      expect(exit._tag).toBe("Failure")
+      yield* Effect.promise(() => rm(overridePath, { force: true }))
     }),
   )
 })

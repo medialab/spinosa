@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
 import {
@@ -223,6 +223,28 @@ export function readDoctorUnverifiedReason(home = spinosaHome()): string {
     return match?.[1]?.trim() ?? ""
   } catch {
     return ""
+  }
+}
+
+/**
+ * Clear a stale `doctor_unverified` flag after a subsequent full doctor
+ * passes healthy. Returns true when a flag was present and removed.
+ * No-op (false) when the metadata file or flag is absent — never throws.
+ */
+export function clearDoctorUnverifiedReason(home = spinosaHome()): boolean {
+  const configPath = path.join(home, HOME_LAYOUT.metadataDir, HOME_LAYOUT.configFile)
+  if (!existsSync(configPath)) return false
+  try {
+    const text = readFileSync(configPath, "utf-8")
+    if (!/^doctor_unverified:/m.test(text)) return false
+    const next = text
+      .split("\n")
+      .filter((line) => !/^doctor_unverified:\s*/.test(line))
+      .join("\n")
+    writeFileSync(configPath, next)
+    return true
+  } catch {
+    return false
   }
 }
 

@@ -10,17 +10,30 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.1.0-beta.30] — 2026-09-16
+
 ### Fixed
 
-- Installer staged verification uses a 400 second timeout and reports gate progress. Slow hosts complete doctor verification. Override the timeout with `SPINOSA_VERIFY_TIMEOUT_SECONDS`. Code: `install.sh`, `tests/installer/binary.bats`.
-- Staged doctor timeouts warn instead of blocking the install. The install records `doctor_unverified` in metadata and `spinosa doctor` reports it. A completed doctor that reports issues still blocks. Code: `install.sh`, `packages/spinosa-core/src/distribution`, `packages/spinosa-kernel/src/cli/cmd/doctor.ts`, `tests/installer/binary.bats`.
+- Installer staged verification uses a 400 second timeout and reports gate progress. Slow hosts complete staged verification. Override the timeout with `SPINOSA_VERIFY_TIMEOUT_SECONDS`. Code: `install.sh`, `tests/installer/binary.bats`.
+- Staged verification runs deterministic binary smokes instead of full doctor. Provider catalog, native imports, and PDF runtime must pass. A smoke timeout warns and records `doctor_unverified` instead of blocking. A failed smoke still blocks. Code: `install.sh`, `packages/spinosa-kernel/src/cli/cmd/internal.ts`, `packages/spinosa-kernel/src/cli/cmd/doctor.ts`, `tests/installer/binary.bats`.
+- Provider catalog smoke requires selectable defaults. A catalog with zero defaults fails. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
+- PDF runtime smoke renders one tiny page. It proves PDF.js and canvas globals work through the staged native. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`, `scripts/smoke-native-binary.sh`.
+- Corrupt models.dev caches fall back instead of emptying providers. Empty or incompatible disk data discards to snapshot or fetch. Fetches validate before caching. Explicit overrides fail loudly. Code: `packages/core/src/models-dev.ts`.
 - CTRL+C stops every installer step promptly with cleanup and exit 130. Version probes poll instead of blocking, stray probes are reaped, and signal traps install before any blocking work. Code: `install.sh`, `tests/installer/timed-step.bats`.
+- Version probes assign through parent variables and tree-kill on timeout. Command substitution no longer hides probe PIDs from the cancel handler. Probe timeouts use the process tree killer. Override the budget with `SPINOSA_PROBE_TIMEOUT_SECONDS`. Code: `install.sh`, `tests/installer/timed-step.bats`.
+- Timed steps clean registered temp files on every exit path. Payloads register temps once, the runner deletes them on success, failure, timeout, and cancel. The smoke working dir no longer leaks. Code: `install.sh`, `tests/installer/timed-step.bats`.
+- Doctor clears a stale unverified flag after a healthy run. Doctor JSON reports verification state. Code: `packages/spinosa-core/src/distribution/bootstrap.ts`, `packages/spinosa-kernel/src/cli/cmd/doctor.ts`, `packages/spinosa-core/test/distribution.test.ts`.
 
 ### Fixed
 
 - Connect dialog shows a loading row while the provider list loads. A failed load shows a retry row that reloads the list. Code: `packages/tui/src/component/dialog-provider.tsx`, `packages/tui/src/context/sync.tsx`.
 - One malformed models.dev entry no longer empties the provider list. Bad entries skip with a warning. Code: `packages/spinosa-kernel/src/provider/provider.ts`, `packages/spinosa-kernel/src/server/routes/instance/httpapi/handlers/provider.ts`.
 - Release smoke proves a non-empty provider catalog. `internal smoke provider-catalog` runs first on a fresh HOME. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`, `scripts/smoke-native-binary.sh`, `scripts/smoke-install.ts`.
+- Provider dialog tracks a dedicated catalog state. The retry row appears whenever the catalog never commits, even if only config fails. Code: `packages/tui/src/context/sync.tsx`, `packages/tui/src/component/dialog-provider.tsx`, `packages/tui/test/cli/cmd/tui/provider-options.test.ts`.
+- Release quality gates the provider regression tests. Kernel catalog, core models, and TUI provider options run in the gate. Code: `scripts/quality-release.ts`.
+- Matrix verification runs the full installer on every host. Each target installs from local HTTP into an isolated HOME. Code: `.github/workflows/release-beta.yml`.
+- CLI skips canvas staging for canvas-free commands. Version, template, and catalog smoke commands start faster. `SPINOSA_SKIP_CANVAS_STAGE=1` forces the skip. Boot noise suppression covers all polyfill warnings. Code: `packages/spinosa-kernel/src/index.ts`.
+- Linux support declares a glibc floor. Binaries need glibc 2.39 or newer. Code: `packages/spinosa-core/src/distribution/contract.ts`, `docs/release/binary-distribution-contract.md`.
 
 ## [1.1.0-beta.29] — 2026-09-16
 

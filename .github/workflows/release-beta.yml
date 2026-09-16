@@ -208,6 +208,26 @@ jobs:
           grep " spinosa-${{ matrix.target }}$" checksums.txt | shasum -a 256 -c -
           bash "$GITHUB_WORKSPACE/scripts/smoke-native-binary.sh" "./spinosa-${{ matrix.target }}" 5
 
+      # Full installer smoke on every matrix host (not just direct binary
+      # execution): serves the assembled dist over loopback HTTP and runs the
+      # real install.sh end-to-end (checksum → version → template gates →
+      # binary smokes → activation) into an isolated HOME. Catches
+      # installer-shell regressions on the actual target OS/arch.
+      - run: |
+          DIST="dist/v${{ needs.validate.outputs.version }}"
+          python3 -m http.server 8931 --directory "$DIST" >/tmp/spinosa-dist-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          sleep 1
+          SMOKE_HOME="$(mktemp -d)"
+          HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" \
+            SPINOSA_RELEASE_BASE_URL="http://127.0.0.1:8931" \
+            bash "$DIST/install.sh" --yes --no-launch
+          test -x "$SMOKE_HOME/.spinosa/bin/spinosa"
+          "$SMOKE_HOME/.spinosa/bin/spinosa" version
+          kill $SERVER_PID 2>/dev/null || true
+          rm -rf "$SMOKE_HOME"
+
   publish:
     name: Publish + roll beta channel
     needs: [validate, assemble, verify]

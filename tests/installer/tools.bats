@@ -95,16 +95,16 @@ setup() {
   python3 -c "import json; d=json.load(open('$SPINOSA_HOME/tools/TOOLS_MANIFEST.json')); assert d['source']!='host' and d['source']!='package-manager', d"
 }
 
-@test "bundled tools provision before staged doctor verification" {
+@test "bundled tools provision before staged smoke verification" {
   # The removal-manifest step still runs before staged verification so the
   # ordering invariant keeps holding. Staged verification is split into core
-  # gates plus a standalone doctor gate — both must come after tools.
+  # gates plus standalone smoke gates — both must come after tools.
   tools_line="$(grep -nF 'install_bundled_tools "$checksums_file"' "$INSTALLER" | cut -d: -f1)"
   verify_line="$(grep -nF 'run_staged_core_checks "$staged_binary"' "$INSTALLER" | cut -d: -f1)"
-  doctor_line="$(grep -nF 'run_staged_doctor_check "$staged_binary"' "$INSTALLER" | cut -d: -f1)"
+  smoke_line="$(grep -nF 'run_staged_smoke_checks "$staged_binary"' "$INSTALLER" | cut -d: -f1)"
   [ -n "$tools_line" ]
   [ -n "$verify_line" ]
-  [ -n "$doctor_line" ]
+  [ -n "$smoke_line" ]
   [ "$tools_line" -lt "$verify_line" ]
-  [ "$tools_line" -lt "$doctor_line" ]
+  [ "$tools_line" -lt "$smoke_line" ]
 }

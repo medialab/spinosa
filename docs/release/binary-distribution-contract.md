@@ -34,6 +34,12 @@ Canonical keys use `x64` (never `amd64` in asset names):
 
 Unsupported: Windows, musl/Alpine (glibc Linux only), baseline non-AVX variants (first cut).
 
+Linux binaries are built on Ubuntu 24.04 runners: **glibc ≥ 2.39 required**
+(Ubuntu 24.04+, Debian 13+, or any distribution shipping glibc 2.39+).
+Older glibc (Ubuntu 22.04 / Debian 12) fails at load time, before `version`
+ever runs — on those hosts use a newer distribution. Typed source of truth:
+`LINUX_MIN_GLIBC` in `packages/spinosa-core/src/distribution/contract.ts`.
+
 Installer (`install.sh`) and `resolveProductBinaryTarget` refuse musl when detectable
 (`/etc/alpine-release`, `/lib/ld-musl-*`, or `ldd --version` mentioning musl) before download.
 
@@ -67,7 +73,7 @@ $SPINOSA_HOME/env.sh
 | `distribution: binary` | Install mode after hard cut |
 | `template_pack_id` | Embedded pack SHA-256 |
 | `beta: true\|false` | Release channel toggle |
-| `doctor_unverified` | Staged doctor never returned a verdict (e.g. timeout); install proceeded flagged, health unconfirmed |
+| `doctor_unverified` | Staged verification never returned a verdict (e.g. smoke timeout); install proceeded flagged, health unconfirmed |
 | `legacy_source_runtime: true` | Optional: dormant `versions/` still present |
 
 Legacy keys remain readable.
@@ -91,9 +97,12 @@ Modified launchers are preserved and reported. Migration never fails global inst
 ## Activation / rollback
 
 1. Stage binary outside active path.
-2. Verify checksum, `version --json`, template ensure/verify, doctor. A doctor
-   timeout (no verdict) warns and records `doctor_unverified` instead of
-   blocking; a completed doctor that reports issues still blocks.
+2. Verify checksum, `version --json`, template ensure/verify, then the
+   deterministic binary smokes (`internal smoke provider-catalog`,
+   `native-imports`, `pdf-runtime`). Full `spinosa doctor` stays the deeper
+   application diagnostic and is intentionally not an integrity gate (it boots
+   the whole instance plus providers). A smoke timeout (no verdict) warns and
+   records `doctor_unverified` instead of blocking; a failed smoke blocks.
 3. Backup active binary → atomic rename staged → active.
 4. Verify active binary; commit metadata only after success.
 5. On post-activation failure: restore backup; leave metadata at previous version.

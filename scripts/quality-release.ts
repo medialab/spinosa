@@ -35,6 +35,7 @@ const CORE_RELEASE_TESTS = [
   "test/uninstall.test.ts",
   "test/version-cache.test.ts",
   "test/distribution.test.ts",
+  "test/models.test.ts",
   "../../scripts/release/github.test.ts",
   "../../scripts/release/bump.test.ts",
   "../../scripts/release/lib.test.ts",
@@ -50,6 +51,7 @@ const TUI_RELEASE_TESTS = [
   "test/spinosa/boot.test.ts",
   "test/spinosa/preflight.test.ts",
   "test/spinosa/entry.test.ts",
+  "test/cli/cmd/tui/provider-options.test.ts",
 ] as const
 
 type JobResult = { label: string; ok: boolean; ms: number; detail?: string }
@@ -137,7 +139,11 @@ const wave2 = await wave("wave 2: launch / workspace regressions", [
   runJob("kernel smoke aggregation", () =>
     bunTest(
       path.join(root, "packages/spinosa-kernel"),
-      ["src/cli/cmd/internal-smoke.test.ts", "script/embedded-span.test.ts"],
+      [
+        "src/cli/cmd/internal-smoke.test.ts",
+        "test/provider/provider-catalog.test.ts",
+        "script/embedded-span.test.ts",
+      ],
       30_000,
     ),
   ),

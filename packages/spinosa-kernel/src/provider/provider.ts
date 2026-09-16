@@ -444,6 +444,49 @@ export function buildCatalogProviders(input: {
   return { providers, skipped };
 }
 
+/**
+ * Pure evaluation for `internal smoke provider-catalog`: snapshot plus the
+ * exact /provider list transform (no network, no server, no credentials).
+ * Fails closed on a missing snapshot, on zero converted providers, and on
+ * zero selectable defaults (providers without models yield no default, so a
+ * catalog of model-less providers is equally unusable in the connect
+ * dialog). Extracted so unit tests pin the fail-closed semantics.
+ */
+export function evaluateProviderCatalogSmoke(
+  snapshot: Record<string, ModelsDev.Provider> | undefined,
+):
+  | { ok: true; providers: number; skipped: string[]; defaults: number }
+  | { ok: false; error: string } {
+  if (!snapshot || Object.keys(snapshot).length === 0) {
+    return {
+      ok: false,
+      error:
+        "embedded models.dev snapshot is missing or empty (expected in dev runs — this gate targets release binaries)",
+    };
+  }
+  const { providers, skipped } = buildCatalogProviders({ catalog: snapshot });
+  const ids = Object.keys(providers);
+  if (ids.length === 0) {
+    return {
+      ok: false,
+      error: `provider catalog converted to zero providers (skipped ${skipped.length})`,
+    };
+  }
+  const defaults = defaultModelIDs(providers);
+  if (Object.keys(defaults).length === 0) {
+    return {
+      ok: false,
+      error: `provider catalog has ${ids.length} providers but zero selectable defaults (skipped ${skipped.length}) — nothing usable in the connect dialog`,
+    };
+  }
+  return {
+    ok: true,
+    providers: ids.length,
+    skipped,
+    defaults: Object.keys(defaults).length,
+  };
+}
+
 function modelSuggestions(
   provider: Info | undefined,
   modelID: ModelV2.ID,

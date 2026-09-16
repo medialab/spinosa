@@ -19,6 +19,17 @@ export type ProductBinaryTarget = (typeof PRODUCT_BINARY_TARGETS)[number]
 export const PRODUCT_DISTRIBUTION = "binary" as const
 export type ProductDistribution = typeof PRODUCT_DISTRIBUTION | "source" | "dev"
 
+/**
+ * Minimum supported glibc for Linux product binaries. They are compiled on
+ * Ubuntu 24.04 runners, so older distributions (e.g. Ubuntu 22.04 with
+ * glibc 2.35, Debian 12 with glibc 2.36) cannot load them — the loader fails
+ * before `version` ever runs, which used to masquerade as staged-verification
+ * timeouts on "some Linux x64 GNU machines".
+ */
+export const LINUX_MIN_GLIBC = "2.39" as const
+/** Human hint shown alongside glibc-floor errors. */
+export const LINUX_MIN_GLIBC_HINT = "Ubuntu 24.04+, Debian 13+ (or any glibc ≥ 2.39 distribution)" as const
+
 export const TEMPLATE_PACK_MANIFEST_NAME = "template-pack.json"
 export const TEMPLATE_PACK_COMPLETE_MARKER = ".pack-complete"
 

@@ -35,6 +35,22 @@ bridge_leak_fn() {
   SPINOSA_TIMED_LEAK_CHECK="leaked"
 }
 
+registry_leak_fn() {
+  local dir
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/spinosa-reg-leak.XXXXXX")"
+  timed_register_temp "$dir"
+  printf '%s' "$dir" > "$BATS_TEST_TMPDIR/reg-leak-path"
+  sleep 30
+}
+
+registry_ok_fn() {
+  local dir
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/spinosa-reg-ok.XXXXXX")"
+  timed_register_temp "$dir"
+  printf '%s' "$dir" > "$BATS_TEST_TMPDIR/reg-ok-path"
+  echo "registered ok"
+}
+
 @test "run_timed_step preserves listed globals on success" {
   TEMPLATE_PACK_ID=""
   BINARY_BACKUP=""
@@ -63,6 +79,22 @@ bridge_leak_fn() {
   SPINOSA_TIMED_LEAK_CHECK=""
   run_timed_step "Bridge isolation" 30 bridge_leak_fn >/dev/null 2>&1
   [ -z "$SPINOSA_TIMED_LEAK_CHECK" ]
+}
+
+@test "timed temp registry cleans payload temps on timeout" {
+  rm -f "$BATS_TEST_TMPDIR/reg-leak-path"
+  local status=0
+  run_timed_step "Registry timeout" 1 registry_leak_fn >/dev/null 2>&1 || status=$?
+  [ "$status" -eq 124 ]
+  [ -f "$BATS_TEST_TMPDIR/reg-leak-path" ]
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/reg-leak-path")" ]
+}
+
+@test "timed temp registry cleans payload temps on success" {
+  rm -f "$BATS_TEST_TMPDIR/reg-ok-path"
+  run_timed_step "Registry success" 30 registry_ok_fn >/dev/null 2>&1
+  [ -f "$BATS_TEST_TMPDIR/reg-ok-path" ]
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/reg-ok-path")" ]
 }
 
 @test "_spinosa_install_signal kills the step tree and exits 130 with cleanup" {
@@ -109,6 +141,54 @@ bridge_leak_fn() {
   run get_installed_version
   [ "$status" -eq 0 ]
   [ "$output" = "1.0.3-beta.9" ]
+}
+
+@test "get_installed_version assigns via parent var without subshell loss" {
+  mkdir -p "$SPINOSA_HOME/bin"
+  printf '#!/bin/sh\nprintf "{\\"version\\":\\"1.0.3-beta.9\\"}\\n"\n' > "$SPINOSA_HOME/bin/spinosa"
+  chmod +x "$SPINOSA_HOME/bin/spinosa"
+  local probed=""
+  get_installed_version probed
+  [ "$probed" = "1.0.3-beta.9" ]
+  # Parent-shell form leaves no stray probe behind for the signal handler.
+  [ -z "${PROBE_PID:-}" ]
+}
+
+@test "probe timeout tree-kills wrapper grandchildren" {
+  mkdir -p "$SPINOSA_HOME/bin"
+  # Fake binary that orphans a grandchild sleep: a pid-only kill would leak it.
+  cat > "$SPINOSA_HOME/bin/spinosa" <<'EOF'
+#!/bin/sh
+sleep 30 &
+sleep 30
+EOF
+  chmod +x "$SPINOSA_HOME/bin/spinosa"
+  SPINOSA_PROBE_TIMEOUT_SECONDS=1 run probe_spinosa_version_output "$SPINOSA_HOME/bin/spinosa" /dev/null
+  [ "$status" -ne 0 ]
+  run pgrep -f "sleep 30"
+  [ "$status" -ne 0 ]
+}
+
+@test "version probe wait stays SIGINT-responsive at process level" {
+  mkdir -p "$SPINOSA_HOME/bin"
+  printf '#!/bin/sh\nsleep 30\n' > "$SPINOSA_HOME/bin/spinosa"
+  chmod +x "$SPINOSA_HOME/bin/spinosa"
+  local started elapsed waiter_status=0
+  started="$(date +%s)"
+  SPINOSA_INSTALLER_LIB_ONLY=1 SPINOSA_PROBE_TIMEOUT_SECONDS=30 NO_COLOR=1 SPINOSA_LOG_DISABLED=1 \
+    bash -c 'source "$1"; get_installed_version VAR' _ "$INSTALLER" &
+  waiter=$!
+  sleep 1
+  kill -INT "$waiter" 2>/dev/null || true
+  wait "$waiter" || waiter_status=$?
+  elapsed=$(( $(date +%s) - started ))
+  # Without the async-probe design the shell would sit in command substitution
+  # (background children ignore SIGINT) for the full 30s budget.
+  [ "$waiter_status" -ne 0 ]
+  [ "$elapsed" -lt 10 ]
+  # Lib mode has no INT trap by design (real installer reaps PROBE_PID via
+  # _spinosa_install_signal) — clean up the orphaned probe tree explicitly.
+  pkill -f "sleep 30" 2>/dev/null || true
 }
 
 @test "step_end reaps the wave renderer" {

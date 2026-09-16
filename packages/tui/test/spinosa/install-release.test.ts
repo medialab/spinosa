@@ -228,7 +228,8 @@ describe("install and release flow", () => {
     // Activation gates fail closed (binary-distribution-contract).
     expect(installer).toContain('die "Template verify failed — refusing to activate staged binary"')
     expect(installer).toContain('die "Template ensure failed — refusing to activate staged binary"')
-    expect(installer).toContain('die "Doctor reported issues — refusing to activate staged binary"')
+    expect(installer).toContain('die "Binary smokes reported issues — refusing to activate staged binary"')
+    expect(installer).toContain("run_staged_smoke_checks")
     expect(installer).not.toContain("continuing; doctor will soft-check")
     expect(installer).not.toContain("non-fatal during template soft-check")
     expect(installer).not.toContain("non-fatal if templates are still warming")

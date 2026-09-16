@@ -113,6 +113,36 @@ export const Event = ModelsDev.Event
 
 declare const SPINOSA_MODELS_DEV: Record<string, Provider> | undefined
 
+/**
+ * Source precedence for the catalog: validated disk cache first, then the
+ * validated embedded snapshot. Returns undefined when neither yields a usable
+ * catalog and the caller must fetch or stay empty.
+ */
+export function selectCatalogFallback(input: {
+  disk: Record<string, Provider> | undefined
+  snapshotUsable: Record<string, Provider> | undefined
+}): Record<string, Provider> | undefined {
+  if (input.disk && Object.keys(input.disk).length > 0) return input.disk
+  return input.snapshotUsable
+}
+export function decodeUsableCatalog(input: unknown): {
+  usable: Record<string, Provider>
+  dropped: number
+} | undefined {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined
+  const usable: Record<string, Provider> = {}
+  let dropped = 0
+  for (const [id, entry] of Object.entries(input)) {
+    try {
+      usable[id] = Schema.decodeUnknownSync(Provider)(entry)
+    } catch {
+      dropped += 1
+    }
+  }
+  if (Object.keys(usable).length === 0) return undefined
+  return { usable, dropped }
+}
+
 export interface Interface {
   readonly get: () => Effect.Effect<Record<string, Provider>>
   readonly refresh: (force?: boolean) => Effect.Effect<void>
@@ -159,19 +189,46 @@ const layer = Layer.effect(
       )
     })
 
-    const loadFromDisk = fs.readJson(Flag.SPINOSA_MODELS_PATH ?? filepath).pipe(
-      Effect.catch((error) => {
-        if (
-          Flag.SPINOSA_MODELS_PATH === undefined &&
-          error._tag === "FileSystemError" &&
-          error.method === "readJson"
-        ) {
-          return fs.remove(filepath, { force: true }).pipe(Effect.ignore, Effect.as(undefined))
+    // An explicit SPINOSA_MODELS_PATH override keeps strict user-controlled
+    // semantics: a missing file falls through like before, but a present file
+    // with no usable providers fails loudly instead of silently emptying the
+    // catalog. Default cache poisoning is removed and falls through instead.
+    const loadFromDisk = Effect.gen(function* () {
+      const isOverride = Flag.SPINOSA_MODELS_PATH !== undefined
+      const raw: unknown = yield* fs
+        .readJson(Flag.SPINOSA_MODELS_PATH ?? filepath)
+        .pipe(
+          Effect.catch((error) => {
+            if (
+              !isOverride &&
+              error._tag === "FileSystemError" &&
+              error.method === "readJson"
+            ) {
+              return fs.remove(filepath, { force: true }).pipe(Effect.ignore, Effect.as(undefined))
+            }
+            return Effect.succeed(undefined)
+          }),
+        )
+      if (raw === undefined) return undefined
+      const decoded = decodeUsableCatalog(raw)
+      if (decoded) {
+        if (decoded.dropped > 0) {
+          yield* Effect.logWarning(
+            `ModelsDev disk catalog dropped ${decoded.dropped} unusable entries, kept ${Object.keys(decoded.usable).length}`,
+          )
         }
-        return Effect.succeed(undefined)
-      }),
-      Effect.map((v) => v as Record<string, Provider> | undefined),
-    )
+        return decoded.usable
+      }
+      if (isOverride) {
+        return yield* Effect.die(
+          new Error(
+            `SPINOSA_MODELS_PATH points at a catalog with no usable providers: ${Flag.SPINOSA_MODELS_PATH}`,
+          ),
+        )
+      }
+      yield* fs.remove(filepath, { force: true }).pipe(Effect.ignore)
+      return undefined
+    })
 
     const loadSnapshot = Effect.sync(() =>
       typeof SPINOSA_MODELS_DEV === "undefined" ? undefined : SPINOSA_MODELS_DEV,
@@ -179,6 +236,22 @@ const layer = Layer.effect(
 
     const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
       const text = yield* fetchApi()
+      // Validate before caching: a corrupt or incompatible fetch must never
+      // poison the disk cache (or crash JSON.parse in populate below).
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        return yield* Effect.fail(
+          new Error("models.dev fetch returned invalid JSON — refusing to cache"),
+        )
+      }
+      const decoded = decodeUsableCatalog(parsed)
+      if (!decoded) {
+        return yield* Effect.fail(
+          new Error("models.dev fetch contained no usable providers — refusing to cache"),
+        )
+      }
       const tempfile = `${filepath}.${process.pid}.${Date.now()}.tmp`
       yield* fs.writeWithDirs(tempfile, text).pipe(
         Effect.andThen(fs.rename(tempfile, filepath)),
@@ -189,23 +262,25 @@ const layer = Layer.effect(
           }),
         ),
       )
-      return text
+      return decoded.usable
     })
 
     const populate = Effect.gen(function* () {
       const fromDisk = yield* loadFromDisk
-      if (fromDisk) return fromDisk
       const snapshot = yield* loadSnapshot
-      if (snapshot) return snapshot
+      const validSnapshot = snapshot ? decodeUsableCatalog(snapshot)?.usable : undefined
+      const fallback = selectCatalogFallback({ disk: fromDisk, snapshotUsable: validSnapshot })
+      if (fallback) return fallback
       if (Flag.SPINOSA_DISABLE_MODELS_FETCH) return {}
       // Flock is cross-process: concurrent opencode CLIs can race on this cache file.
-      const text = yield* Effect.scoped(
+      // An invalid fetch falls back to an empty catalog rather than crashing.
+      const fetched: Record<string, Provider> | undefined = yield* Effect.scoped(
         Effect.gen(function* () {
           yield* Flock.effect(lockKey)
           return yield* fetchAndWrite()
         }),
-      )
-      return JSON.parse(text) as Record<string, Provider>
+      ).pipe(Effect.orElseSucceed(() => undefined))
+      return fetched ?? {}
     }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)

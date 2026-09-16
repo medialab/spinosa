@@ -3,6 +3,7 @@ import {
   LOADING_PROVIDERS_VALUE,
   RETRY_PROVIDERS_VALUE,
   normalizeCustomProviderID,
+  providerCatalogStatus,
   providerOptions,
   providerStatusRows,
 } from "../../../../src/component/dialog-provider"
@@ -89,5 +90,48 @@ describe("providerStatusRows", () => {
 
   test("shows no status rows once the catalog is available", () => {
     expect(providerStatusRows({ loading: false, failed: false, retrying: false, onRetry: () => {} })).toEqual([])
+  })
+})
+
+describe("providerCatalogStatus", () => {
+  test("idle/loading with an empty catalog shows the spinner", () => {
+    for (const catalog of ["idle", "loading"] as const) {
+      expect(providerCatalogStatus({ catalog, catalogEmpty: true, providerError: undefined })).toEqual({
+        loading: true,
+        failed: false,
+      })
+    }
+  })
+
+  test("error with an empty catalog offers a retry", () => {
+    expect(
+      providerCatalogStatus({ catalog: "error", catalogEmpty: true, providerError: "boom" }),
+    ).toEqual({ loading: false, failed: true })
+  })
+
+  test("config-providers failure after a /provider success still offers a retry", () => {
+    // Bootstrap commit never runs in this combination, so the catalog is
+    // still loading — but a recorded error alone must surface the retry row.
+    expect(
+      providerCatalogStatus({ catalog: "loading", catalogEmpty: true, providerError: "config failed" }),
+    ).toEqual({ loading: true, failed: true })
+    expect(
+      providerCatalogStatus({ catalog: "error", catalogEmpty: true, providerError: undefined }),
+    ).toEqual({ loading: false, failed: true })
+  })
+
+  test("ready with zero providers is a genuine empty catalog (no status row)", () => {
+    expect(
+      providerCatalogStatus({ catalog: "ready", catalogEmpty: true, providerError: undefined }),
+    ).toEqual({ loading: false, failed: false })
+  })
+
+  test("non-empty catalogs never show status rows", () => {
+    for (const catalog of ["idle", "loading", "ready", "error"] as const) {
+      expect(providerCatalogStatus({ catalog, catalogEmpty: false, providerError: "boom" })).toEqual({
+        loading: false,
+        failed: false,
+      })
+    }
   })
 })

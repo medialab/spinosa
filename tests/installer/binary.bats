@@ -366,9 +366,9 @@ EOF
   [[ "$output" == *"Template ensure failed"* ]]
 }
 
-@test "run_staged_binary_checks fails closed when doctor fails" {
+@test "run_staged_binary_checks fails closed when a smoke fails" {
   VERSION="1.0.3-beta.9"
-  local fake="$BATS_TEST_TMPDIR/fake-spinosa-doctor"
+  local fake="$BATS_TEST_TMPDIR/fake-spinosa-smoke"
   cat >"$fake" <<'EOF'
 #!/bin/sh
 if [ "$1" = "version" ]; then
@@ -378,7 +378,7 @@ fi
 if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
   exit 0
 fi
-if [ "$1" = "doctor" ]; then
+if [ "$1" = "internal" ] && [ "$2" = "smoke" ]; then
   exit 1
 fi
 exit 0
@@ -386,28 +386,20 @@ EOF
   chmod +x "$fake"
   run run_staged_binary_checks "$fake"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Doctor reported issues"* ]]
+  [[ "$output" == *"Binary smokes reported issues"* ]]
 }
 
-@test "run_staged_binary_checks runs doctor in a fresh temporary directory" {
-  VERSION="1.0.3-beta.9"
-  local fake="$BATS_TEST_TMPDIR/fake-spinosa-doctor-cwd"
+@test "run_staged_smoke_checks runs smokes in a fresh temporary directory" {
+  local fake="$BATS_TEST_TMPDIR/smoke-cwd-probe"
   local invocation_dir="$BATS_TEST_TMPDIR/project-invocation-dir"
-  local cwd_capture="$BATS_TEST_TMPDIR/doctor-cwd"
+  local cwd_capture="$BATS_TEST_TMPDIR/smoke-cwd"
   local original_dir="$PWD"
   mkdir -p "$invocation_dir"
-  export DOCTOR_CWD_CAPTURE="$cwd_capture"
+  export SMOKE_CWD_CAPTURE="$cwd_capture"
   cat >"$fake" <<'EOF'
 #!/bin/sh
-if [ "$1" = "version" ]; then
-  printf '{"version":"1.0.3-beta.9"}\n'
-  exit 0
-fi
-if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
-  exit 0
-fi
-if [ "$1" = "doctor" ]; then
-  printf '%s\n' "$PWD" >"$DOCTOR_CWD_CAPTURE"
+if [ "$1" = "internal" ] && [ "$2" = "smoke" ]; then
+  printf '%s\n' "$PWD" >"$SMOKE_CWD_CAPTURE"
   [ -z "$(find "$PWD" -mindepth 1 -print -quit)" ]
   exit $?
 fi
@@ -415,43 +407,36 @@ exit 0
 EOF
   chmod +x "$fake"
   cd "$invocation_dir"
-  run run_staged_binary_checks "$fake"
+  run run_staged_smoke_checks "$fake"
   cd "$original_dir"
   [ "$status" -eq 0 ]
   [ "$(cat "$cwd_capture")" != "$invocation_dir" ]
   [ ! -e "$(cat "$cwd_capture")" ]
 }
 
-@test "run_staged_binary_checks preserves full doctor failure output" {
+@test "run_staged_smoke_checks preserves full smoke failure output" {
   VERSION="1.0.3-beta.9"
   SPINOSA_LOG_DISABLED=0
-  SPINOSA_LOG_FILE="$BATS_TEST_TMPDIR/doctor.log"
-  local fake="$BATS_TEST_TMPDIR/fake-spinosa-doctor-output"
+  SPINOSA_LOG_FILE="$BATS_TEST_TMPDIR/smoke.log"
+  local fake="$BATS_TEST_TMPDIR/fake-spinosa-smoke-output"
   cat >"$fake" <<'EOF'
 #!/bin/sh
-if [ "$1" = "version" ]; then
-  printf '{"version":"1.0.3-beta.9"}\n'
-  exit 0
-fi
-if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
-  exit 0
-fi
-if [ "$1" = "doctor" ]; then
+if [ "$1" = "internal" ] && [ "$2" = "smoke" ]; then
   head -c 5000 /dev/zero | tr '\0' x
-  printf '\nDOCTOR_FAILURE_SENTINEL\n'
+  printf '\nSMOKE_FAILURE_SENTINEL\n'
   exit 1
 fi
 exit 0
 EOF
   chmod +x "$fake"
-  run run_staged_binary_checks "$fake"
+  run run_staged_smoke_checks "$fake"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"DOCTOR_FAILURE_SENTINEL"* ]]
-  grep -q "DOCTOR_FAILURE_SENTINEL" "$SPINOSA_LOG_FILE"
+  [[ "$output" == *"SMOKE_FAILURE_SENTINEL"* ]]
+  grep -q "SMOKE_FAILURE_SENTINEL" "$SPINOSA_LOG_FILE"
   grep -q "xxxxxxxx" "$SPINOSA_LOG_FILE"
 }
 
-@test "run_staged_binary_checks passes when version templates and doctor succeed" {
+@test "run_staged_binary_checks passes when version templates and smokes succeed" {
   VERBOSE=1
   VERSION="1.0.3-beta.9"
   local fake="$BATS_TEST_TMPDIR/fake-spinosa-ok"
@@ -461,10 +446,7 @@ if [ "$1" = "version" ]; then
   printf '{"version":"1.0.3-beta.9","templatePackId":"pack1"}\n'
   exit 0
 fi
-if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
-  exit 0
-fi
-if [ "$1" = "doctor" ]; then
+if [ "$1" = "internal" ]; then
   exit 0
 fi
 exit 0
@@ -472,7 +454,7 @@ EOF
   chmod +x "$fake"
   run run_staged_binary_checks "$fake"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Doctor passed"* ]]
+  [[ "$output" == *"Smoke pdf-runtime passed"* ]]
   [[ "$output" == *"Template verify succeeded"* ]]
 }
 
@@ -489,7 +471,7 @@ fi
 if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
   exit 0
 fi
-if [ "$1" = "doctor" ]; then
+if [ "$1" = "internal" ] && [ "$2" = "smoke" ]; then
   exit 0
 fi
 exit 0
@@ -500,8 +482,8 @@ EOF
   [[ "$output" == *"Checking staged version"* ]]
   [[ "$output" == *"Ensuring templates"* ]]
   [[ "$output" == *"Verifying templates"* ]]
-  [[ "$output" == *"Running doctor"* ]]
-  [[ "$output" == *"Doctor passed"* ]]
+  [[ "$output" == *"Running smoke pdf-runtime"* ]]
+  [[ "$output" == *"Smoke pdf-runtime passed"* ]]
 }
 
 @test "DEFAULT_VERIFY_TIMEOUT_SECONDS defaults to 400" {
@@ -514,60 +496,74 @@ EOF
   [ "$output" = "600" ]
 }
 
-@test "run_staged_doctor_check passes when doctor succeeds" {
-  VERSION="1.0.3-beta.9"
-  local fake="$BATS_TEST_TMPDIR/fake-doctor-check-ok"
+@test "DEFAULT_SMOKE_TIMEOUT_SECONDS defaults to 300" {
+  [ "$DEFAULT_SMOKE_TIMEOUT_SECONDS" = "300" ]
+}
+
+@test "SPINOSA_SMOKE_TIMEOUT_SECONDS overrides the smoke default" {
+  run bash -c "SPINOSA_INSTALLER_LIB_ONLY=1 SPINOSA_SMOKE_TIMEOUT_SECONDS=600 NO_COLOR=1 SPINOSA_LOG_DISABLED=1 source \"$INSTALLER\" >/dev/null 2>&1; printf '%s' \"\$DEFAULT_SMOKE_TIMEOUT_SECONDS\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "600" ]
+}
+
+@test "run_staged_smoke_checks passes when all smokes succeed" {
+  local fake="$BATS_TEST_TMPDIR/fake-smoke-check-ok"
   cat >"$fake" <<'EOF'
 #!/bin/sh
-if [ "$1" = "doctor" ]; then
+if [ "$1" = "internal" ] && [ "$2" = "smoke" ]; then
+  printf '{"ok":true}\n'
   exit 0
 fi
 exit 0
 EOF
   chmod +x "$fake"
-  run run_staged_doctor_check "$fake"
+  run run_staged_smoke_checks "$fake"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Doctor passed"* ]]
+  [[ "$output" == *"Smoke provider-catalog passed"* ]]
+  [[ "$output" == *"Smoke native-imports passed"* ]]
+  [[ "$output" == *"Smoke pdf-runtime passed"* ]]
 }
 
-@test "run_staged_doctor_check returns without dying when doctor fails" {
-  VERSION="1.0.3-beta.9"
+@test "run_staged_smoke_checks returns without dying when a smoke fails" {
   SPINOSA_LOG_DISABLED=0
-  SPINOSA_LOG_FILE="$BATS_TEST_TMPDIR/doctor-check.log"
-  local fake="$BATS_TEST_TMPDIR/fake-doctor-check-fail"
+  SPINOSA_LOG_FILE="$BATS_TEST_TMPDIR/smoke-check.log"
+  local fake="$BATS_TEST_TMPDIR/fake-smoke-check-fail"
   cat >"$fake" <<'EOF'
 #!/bin/sh
-if [ "$1" = "doctor" ]; then
-  printf 'DOCTOR_CHECK_SENTINEL\n'
+if [ "$1" = "internal" ] && [ "$2" = "smoke" ] && [ "$3" = "pdf-runtime" ]; then
+  printf 'SMOKE_CHECK_SENTINEL\n'
   exit 1
+fi
+if [ "$1" = "internal" ] && [ "$2" = "smoke" ]; then
+  exit 0
 fi
 exit 0
 EOF
   chmod +x "$fake"
-  run run_staged_doctor_check "$fake"
+  run run_staged_smoke_checks "$fake"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"DOCTOR_CHECK_SENTINEL"* ]]
+  [[ "$output" == *"SMOKE_CHECK_SENTINEL"* ]]
 }
 
-@test "handle_doctor_gate_result flags unverified on timeout" {
-  printf 'partial-line\n' >"$BATS_TEST_TMPDIR/partial-doctor.log"
-  DOCTOR_GATE_TMP="$BATS_TEST_TMPDIR/partial-doctor.log"
+@test "handle_smoke_gate_result flags unverified on timeout" {
+  printf 'partial-line\n' >"$BATS_TEST_TMPDIR/partial-smoke.log"
+  SMOKE_GATE_TMP="$BATS_TEST_TMPDIR/partial-smoke.log"
   DOCTOR_UNVERIFIED=""
-  handle_doctor_gate_result 124 >/dev/null 2>&1
+  handle_smoke_gate_result 124 >/dev/null 2>&1
   [ "$DOCTOR_UNVERIFIED" = "timeout" ]
-  [ ! -e "$BATS_TEST_TMPDIR/partial-doctor.log" ]
+  [ ! -e "$BATS_TEST_TMPDIR/partial-smoke.log" ]
 }
 
-@test "handle_doctor_gate_result clears flag when doctor passes" {
+@test "handle_smoke_gate_result clears flag when smokes pass" {
   DOCTOR_UNVERIFIED="timeout"
-  handle_doctor_gate_result 0 >/dev/null 2>&1
+  handle_smoke_gate_result 0 >/dev/null 2>&1
   [ -z "$DOCTOR_UNVERIFIED" ]
 }
 
-@test "handle_doctor_gate_result dies when doctor reports issues" {
-  run handle_doctor_gate_result 1
+@test "handle_smoke_gate_result dies when smokes report issues" {
+  run handle_smoke_gate_result 1
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Doctor reported issues"* ]]
+  [[ "$output" == *"Binary smokes reported issues"* ]]
 }
 
 @test "write_install_metadata records and clears doctor_unverified" {

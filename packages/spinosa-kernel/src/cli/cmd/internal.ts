@@ -32,6 +32,41 @@ export function evaluateNativeImportChecks(checks: NativeImportCheck[]): {
   return { ok, payload: { ok, checks } }
 }
 
+/**
+ * Minimal one-page PDF for `internal smoke pdf-runtime` (inline bytes — the
+ * smoke must be self-contained inside the compiled binary, no fixtures).
+ * Stream Length 43 = 42 content bytes + trailing newline; pdf.js recovers
+ * the missing xref table on its own.
+ */
+const TINY_SMOKE_PDF = Buffer.from(
+  [
+    "%PDF-1.4",
+    "1 0 obj",
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "endobj",
+    "2 0 obj",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "endobj",
+    "3 0 obj",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    "endobj",
+    "4 0 obj",
+    "<< /Length 43 >>",
+    "stream",
+    "BT /F1 12 Tf 50 150 Td (Hello smoke) Tj ET",
+    "endstream",
+    "endobj",
+    "5 0 obj",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "endobj",
+    "trailer",
+    "<< /Root 1 0 R >>",
+    "%%EOF",
+    "",
+  ].join("\n"),
+  "utf-8",
+)
+
 export const InternalCommand = {
   command: "internal",
   describe: false as const,
@@ -157,7 +192,7 @@ export const InternalCommand = {
           )
           .command(
             "provider-catalog",
-            "Prove the embedded models.dev snapshot converts to a non-empty /provider catalog",
+            "Prove the embedded models.dev snapshot converts to a non-empty /provider catalog with selectable defaults",
             (y) => y.option("json", { type: "boolean", default: false }),
             async (args) => {
               // Release gate for the empty connect-dialog outage: version and
@@ -166,6 +201,9 @@ export const InternalCommand = {
               // shipped green. This runs the exact /provider list transform
               // (snapshot + pure conversion, no network, no server, no
               // credentials) and fails closed on an empty catalog.
+              // A catalog with providers but zero selectable defaults is
+              // equally unusable (nothing to select in the dialog), so it
+              // fails too — see defaultModelIDs skipping zero-model entries.
               const fail = (message: string) => {
                 if (args.json || getFormat(args) === "json") printJson({ ok: false, error: message })
                 else emitResult("human", "provider-catalog", { ok: false }, message)
@@ -175,31 +213,86 @@ export const InternalCommand = {
                 // Static specifiers so Bun --compile embeds the modules
                 // (variable import() cannot be traced).
                 const { embeddedModelsSnapshot } = await import("@spinosa/kernel-core/models-dev")
-                const { Provider } = await import("@/provider/provider")
-                const snapshot = embeddedModelsSnapshot()
-                if (!snapshot || Object.keys(snapshot).length === 0) {
-                  fail("embedded models.dev snapshot is missing or empty (expected in dev runs — this gate targets release binaries)")
+                const { evaluateProviderCatalogSmoke } = await import("@/provider/provider")
+                const result = evaluateProviderCatalogSmoke(embeddedModelsSnapshot())
+                if (!result.ok) {
+                  fail(result.error)
                   return
                 }
-                const { providers, skipped } = Provider.buildCatalogProviders({ catalog: snapshot })
-                const ids = Object.keys(providers)
-                if (ids.length === 0) {
-                  fail(`provider catalog converted to zero providers (skipped ${skipped.length})`)
-                  return
-                }
-                const defaults = Provider.defaultModelIDs(providers)
                 if (args.json || getFormat(args) === "json") {
-                  printJson({ ok: true, providers: ids.length, skipped, defaults: Object.keys(defaults).length })
+                  printJson({ ok: true, providers: result.providers, skipped: result.skipped, defaults: result.defaults })
                 } else {
-                  emitResult("human", "provider-catalog", { ok: true, providers: ids.length }, `ok (${ids.length} providers)`)
-                  if (skipped.length > 0) {
+                  emitResult("human", "provider-catalog", { ok: true, providers: result.providers }, `ok (${result.providers} providers)`)
+                  if (result.skipped.length > 0) {
                     emitResult(
                       "human",
                       "provider-catalog-skipped",
-                      { skipped },
-                      `skipped malformed entries: ${skipped.join(", ")}`,
+                      { skipped: result.skipped },
+                      `skipped malformed entries: ${result.skipped.join(", ")}`,
                     )
                   }
+                }
+              } catch (err) {
+                fail(err instanceof Error ? err.message : String(err))
+              }
+            },
+          )
+          .command(
+            "pdf-runtime",
+            "Prove the PDF engine renders: import PDF.js, install canvas globals, raster one tiny page",
+            (y) => y.option("json", { type: "boolean", default: false }),
+            async (args) => {
+              // Release gate for the "bundled but broken" PDF path: doctor
+              // and native-imports only prove the modules resolve, not that a
+              // page renders through the staged canvas native. Renders one
+              // tiny page at 72 DPI and fails closed on any error or on
+              // output without a PNG signature.
+              const fail = (message: string) => {
+                if (args.json || getFormat(args) === "json") printJson({ ok: false, error: message })
+                else emitResult("human", "pdf-runtime", { ok: false }, message)
+                process.exitCode = 1
+              }
+              try {
+                // Static specifiers so Bun --compile embeds the modules
+                // (variable import() cannot be traced).
+                const { withPdfDocument } = await import("@spinosa/core/extension/pdf-js")
+                const { renderPage } = await import("@spinosa/core/pdf/render")
+                const os = await import("node:os")
+                const path = await import("node:path")
+                const fs = await import("node:fs/promises")
+                const dir = await fs.mkdtemp(path.join(os.tmpdir(), "spinosa-pdf-smoke-"))
+                const pdfPath = path.join(dir, "tiny.pdf")
+                try {
+                  await fs.writeFile(pdfPath, TINY_SMOKE_PDF)
+                  const png = await withPdfDocument(pdfPath, (doc) => renderPage(doc, 1, { dpi: 72 }))
+                  if (
+                    png.length < 100 ||
+                    png[0] !== 0x89 ||
+                    png[1] !== 0x50 ||
+                    png[2] !== 0x4e ||
+                    png[3] !== 0x47
+                  ) {
+                    fail(`pdf render produced ${png.length} bytes without a PNG signature`)
+                    return
+                  }
+                  const g = globalThis as Record<string, unknown>
+                  const globals = {
+                    ImageData: typeof g.ImageData,
+                    Path2D: typeof g.Path2D,
+                    DOMMatrix: typeof g.DOMMatrix,
+                  }
+                  if (args.json || getFormat(args) === "json") {
+                    printJson({ ok: true, pngBytes: png.length, globals })
+                  } else {
+                    emitResult(
+                      "human",
+                      "pdf-runtime",
+                      { ok: true, pngBytes: png.length },
+                      `ok (${png.length} png bytes)`,
+                    )
+                  }
+                } finally {
+                  await fs.rm(dir, { recursive: true, force: true })
                 }
               } catch (err) {
                 fail(err instanceof Error ? err.message : String(err))

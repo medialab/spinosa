@@ -120,16 +120,9 @@ EOF
       warn "missing $name (ok for partial soak trees)"
     fi
   done
-  # Spinosa-owned OCR tool tarballs: the installer only accepts them with a
-  # checksums.txt entry (fail closed otherwise), and the staged doctor gate
-  # fails closed on missing OCR — so a green guest smoke needs them staged.
-  for name in spinosa-tools-darwin-arm64.tar.gz spinosa-tools-darwin-x64.tar.gz spinosa-tools-linux-arm64.tar.gz spinosa-tools-linux-x64.tar.gz; do
-    if [ -f "$DIST/$name" ]; then
-      hashed+=("$name")
-    else
-      warn "missing $name (guest doctor will fail closed on OCR)"
-    fi
-  done
+  # Local OCR was removed: no spinosa-tools tarballs are published anymore.
+  # The installer provisions no OCR assets and reports OCR unsupported by
+  # design (never a failure), so nothing else needs staging here.
 
   (
     cd "$DIST"
@@ -164,7 +157,6 @@ copy_into_guest() {
   [ -f "$DIST/$asset" ] || die "missing $DIST/$asset for guest arch $arch"
   [ -f "$DIST/install.sh" ] || die "missing $DIST/install.sh — run --stage-only first"
   [ -f "$DIST/checksums.txt" ] || die "missing $DIST/checksums.txt — run --stage-only first"
-  tools_asset="spinosa-tools-${asset#spinosa-}.tar.gz"
 
   info "copying $asset + installer into ${INSTANCE}:/tmp/spinosa-dist/"
   limactl shell "$INSTANCE" -- bash -lc 'rm -rf /tmp/spinosa-dist && mkdir -p /tmp/spinosa-dist'
@@ -174,12 +166,6 @@ copy_into_guest() {
     "$DIST/checksums.txt" \
     "$DIST/build-manifest.json" \
     "${INSTANCE}:/tmp/spinosa-dist/"
-  if [ -f "$DIST/$tools_asset" ]; then
-    info "copying $tools_asset (bundled OCR tools)"
-    limactl copy "$DIST/$tools_asset" "${INSTANCE}:/tmp/spinosa-dist/"
-  else
-    warn "missing $DIST/$tools_asset — guest doctor will fail closed on OCR"
-  fi
   ok "assets in guest /tmp/spinosa-dist"
 }
 

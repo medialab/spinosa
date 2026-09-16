@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Smoke a built product binary: provider-catalog + doctor + version +
-# native-imports, N times, each in a fresh HOME to force re-stage + cold
-# dlopen. Fail closed.
+# native-imports + pdf-runtime, N times, each in a fresh HOME to force
+# re-stage + cold dlopen. Fail closed.
 #
 # A corrupt embedded native can pass version yet die on TUI launch, and an
 # intermittent loader failure can survive a single probe — hence repetition.
 # version/doctor never dlopen the TUI natives; native-imports loads OpenTUI,
 # FFF, watcher, node-pty, and canvas without starting an interactive UI.
 # provider-catalog proves the embedded models.dev snapshot converts to a
-# non-empty /provider list (the empty connect-dialog outage shipped green
-# because no gate touched the catalog).
+# /provider list with selectable defaults (the empty connect-dialog outage
+# shipped green because no gate touched the catalog). pdf-runtime proves a
+# page actually renders through the staged canvas native (doctor only proves
+# the modules resolve).
 #
 # provider-catalog runs first: the fresh HOME guarantees an empty models
 # cache, so it exercises the embedded snapshot path, never the network.
@@ -41,6 +43,7 @@ for ((i = 1; i <= ITERS; i++)); do
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" version
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" version --json
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke native-imports --json
+  HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke pdf-runtime --json
   rm -rf "$SMOKE_HOME"
 done
 echo "smoke passed: $BIN (${ITERS}x)"

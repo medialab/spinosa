@@ -114,6 +114,12 @@ export const {
       provider_next: ProviderListResponse
       /** Last provider-catalog fetch failure; cleared on success. */
       provider_error: string | undefined
+      /**
+       * Dedicated provider-catalog fetch state (not derived from the global
+       * TUI bootstrap status): only `ready` means provider data was actually
+       * committed to the store. `error` offers a retry in the connect dialog.
+       */
+      provider_catalog: "idle" | "loading" | "ready" | "error"
       console_state: ConsoleState
       capabilities: {
         experimentalBackgroundSubagents: boolean
@@ -177,6 +183,7 @@ export const {
       provider: [],
       provider_default: {},
       provider_error: undefined,
+      provider_catalog: "idle",
       session: [],
       session_status: {},
       session_diff: {},
@@ -1657,6 +1664,7 @@ export const {
 
     async function refreshProviders() {
       const workspace = project.workspace.current()
+      setStore("provider_catalog", "loading")
       try {
         const [providers, providerList] = await Promise.all([
           sdk.client.config.providers({ workspace }, { throwOnError: true }),
@@ -1667,12 +1675,16 @@ export const {
           setStore("provider_default", reconcile(providers.data!.default))
           setStore("provider_next", reconcile(providerList.data!))
           setStore("provider_error", undefined)
+          setStore("provider_catalog", "ready")
         })
       } catch (error) {
         // Record the failure so the connect dialog can offer a retry
         // instead of showing a bare empty list. Rethrow: callers decide
         // whether to toast.
-        setStore("provider_error", errorMessage(error).slice(0, 300))
+        batch(() => {
+          setStore("provider_error", errorMessage(error).slice(0, 300))
+          setStore("provider_catalog", "error")
+        })
         throw error
       }
     }
@@ -1688,13 +1700,22 @@ export const {
       // Attribute catalog failures precisely: the bootstrap catch below
       // cannot tell which fetch failed, but the connect dialog needs to
       // know the provider list specifically failed so it can offer a retry.
+      // NOTE: success clears nothing here — provider_error is only cleared
+      // (and the catalog marked ready) in the commit batch below, so a
+      // config.providers() failure cannot leave a committed-looking empty
+      // catalog with no retry row.
+      let providerListSettled = false
+      setStore("provider_catalog", "loading")
       const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true }).then(
         (response) => {
-          setStore("provider_error", undefined)
           return response
         },
         (error) => {
-          setStore("provider_error", errorMessage(error).slice(0, 300))
+          providerListSettled = true
+          batch(() => {
+            setStore("provider_error", errorMessage(error).slice(0, 300))
+            setStore("provider_catalog", "error")
+          })
           throw error
         },
       )
@@ -1747,6 +1768,8 @@ export const {
               setStore("provider", reconcile(providers.providers))
               setStore("provider_default", reconcile(providers.default))
               setStore("provider_next", reconcile(providerList))
+              setStore("provider_error", undefined)
+              setStore("provider_catalog", "ready")
               setStore("capabilities", "experimentalBackgroundSubagents", capabilities?.backgroundSubagents === true)
               setStore("console_state", reconcile(consoleState))
               setStore("agent", reconcile(agents))
@@ -1784,6 +1807,19 @@ export const {
             name: e instanceof Error ? e.name : undefined,
             stack: e instanceof Error ? e.stack : undefined,
           })
+          // The commit batch above never ran: provider data (if any) was not
+          // stored. A still-loading catalog here means /provider succeeded but
+          // a sibling leg (e.g. config.providers) failed — surface a retry
+          // instead of an empty list with no recovery row.
+          if (store.provider_catalog === "loading" && !providerListSettled) {
+            batch(() => {
+              setStore(
+                "provider_error",
+                `Provider list did not finish loading: ${errorMessage(e).slice(0, 200)}`,
+              )
+              setStore("provider_catalog", "error")
+            })
+          }
           setStore("status", "partial")
           if (fatal) {
             exit(e)

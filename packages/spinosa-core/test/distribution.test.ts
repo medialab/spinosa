@@ -25,6 +25,7 @@ import {
 } from "../src/distribution/workspace-launcher"
 import {
   readDoctorUnverifiedReason,
+  clearDoctorUnverifiedReason,
   readInstalledBinaryVersion,
 } from "../src/distribution/bootstrap"
 
@@ -163,6 +164,24 @@ describe("install health metadata", () => {
       )
       expect(readDoctorUnverifiedReason(home)).toBe("timeout")
       expect(readInstalledBinaryVersion(home)).toBe("1.1.0-beta.29")
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  test("clears a stale doctor_unverified flag without touching other keys", () => {
+    const home = join(tmpdir(), `spinosa-doctor-clear-${Date.now()}`)
+    try {
+      expect(clearDoctorUnverifiedReason(home)).toBe(false)
+      mkdirSync(join(home, "metadata"), { recursive: true })
+      writeFileSync(
+        join(home, "metadata", "config.yaml"),
+        'spinosa: true\ndoctor_unverified: "timeout"\nlast_installed_version: "1.1.0-beta.29"\n',
+      )
+      expect(clearDoctorUnverifiedReason(home)).toBe(true)
+      expect(readDoctorUnverifiedReason(home)).toBe("")
+      expect(readInstalledBinaryVersion(home)).toBe("1.1.0-beta.29")
+      expect(clearDoctorUnverifiedReason(home)).toBe(false)
     } finally {
       rmSync(home, { recursive: true, force: true })
     }

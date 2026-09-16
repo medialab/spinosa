@@ -91,6 +91,29 @@ export function normalizeCustomProviderID(value: string) {
 export const LOADING_PROVIDERS_VALUE = "__spinosa_loading_providers__"
 export const RETRY_PROVIDERS_VALUE = "__spinosa_retry_providers__"
 
+export type ProviderCatalogState = "idle" | "loading" | "ready" | "error"
+
+/**
+ * Map the dedicated provider-catalog fetch state to dialog status rows.
+ * Pure (no Solid) so the bootstrap matrix is unit-pinned:
+ * - `config.providers` fails + `/provider` succeeds (commit never runs) →
+ *   catalog stays non-ready → retry row, never a bare empty list.
+ * - `ready` with zero providers is a genuine empty catalog (release smoke
+ *   gate fails closed on it) — no status row.
+ * - Non-empty catalogs never show status rows, even mid-load.
+ */
+export function providerCatalogStatus(input: {
+  catalog: ProviderCatalogState
+  catalogEmpty: boolean
+  providerError: string | undefined
+}): { loading: boolean; failed: boolean } {
+  return {
+    loading: (input.catalog === "loading" || input.catalog === "idle") && input.catalogEmpty,
+    failed:
+      (input.catalog === "error" || input.providerError !== undefined) && input.catalogEmpty,
+  }
+}
+
 export type ProviderStatusRow = {
   title: string
   value: string
@@ -188,9 +211,17 @@ export function createDialogProviderOptions() {
 
   const options = createMemo(() => {
     const catalogEmpty = sync.data.provider_next.all.length === 0
+    // Dedicated catalog state (not the global bootstrap status): `ready` is
+    // only set after provider data commits, so an empty catalog with a
+    // failed/stalled fetch always offers a retry instead of a bare list.
+    const { loading, failed } = providerCatalogStatus({
+      catalog: sync.data.provider_catalog,
+      catalogEmpty,
+      providerError: sync.data.provider_error,
+    })
     const statusRows = providerStatusRows({
-      loading: sync.status === "loading" && catalogEmpty,
-      failed: sync.data.provider_error !== undefined && catalogEmpty,
+      loading,
+      failed,
       retrying: retrying(),
       onRetry: () => void retryProviders(),
     })

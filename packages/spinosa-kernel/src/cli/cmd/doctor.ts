@@ -21,6 +21,7 @@ import {
   verifyEmbeddedTemplateCache,
   readCompiledDistribution,
   readDoctorUnverifiedReason,
+  clearDoctorUnverifiedReason,
   readInstalledBinaryVersion,
 } from "@spinosa/core/distribution/bootstrap"
 import { isOcrPlatformSupported, ocrUnsupportedReason } from "@spinosa/core/tools/ocr-support"
@@ -96,7 +97,7 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
       log(fmt, `Installation metadata: ${metaVersion ? `valid (${metaVersion})` : "missing"}`)
       const unverifiedReason = readDoctorUnverifiedReason()
       if (unverifiedReason) {
-        log(fmt, `Install health: unverified (staged doctor ${unverifiedReason} at install) — re-run 'spinosa doctor' when idle`)
+        log(fmt, `Install health: unverified (staged verification ${unverifiedReason} at install) — re-run 'spinosa doctor' when idle`)
       }
       if (!verified.ok) healthy = false
       if (!existsSync(cacheRoot) && !verified.ok) healthy = false
@@ -209,6 +210,17 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
     }
 
     const frameworkRoot = resolveFrameworkRoot()
+    // Self-clearing install-health flag: a later full doctor that reaches the
+    // end healthy proves the machine the installer could not verify — drop the
+    // stale `doctor_unverified` marker so the next doctor stops warning.
+    // Verification state is also exposed in the JSON payload below.
+    let unverifiedReason = binaryMode ? readDoctorUnverifiedReason() : ""
+    if (unverifiedReason && healthy) {
+      if (clearDoctorUnverifiedReason()) {
+        log(fmt, `Install health: verified (cleared stale unverified flag from install)`)
+      }
+      unverifiedReason = ""
+    }
     emitResult(
       fmt,
       "doctor",
@@ -218,6 +230,10 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
         frameworkRoot,
         version: readFrameworkVersionFromRoot(frameworkRoot),
         templatePackId: binaryMode ? compiledTemplatePackId() : undefined,
+        verification: {
+          status: unverifiedReason ? "unverified" : "verified",
+          ...(unverifiedReason ? { reason: unverifiedReason } : {}),
+        },
       },
       healthy ? "healthy" : "issues found",
     )
