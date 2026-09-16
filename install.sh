@@ -229,7 +229,9 @@ gate_note() {
   spinosa_log INFO "$msg"
   printf '%s %s\n' "${C}●${RESET}" "$msg"
   if [ -n "${SPINOSA_GATE_TTY:-}" ] && [ -c "${SPINOSA_GATE_TTY}" ]; then
-    printf '%s %s\n' "${C}●${RESET}" "$msg" >"${SPINOSA_GATE_TTY}" 2>/dev/null || true
+    # Leading newline: the wave renderer leaves its progress line unterminated
+    # (\r redraws), so without this the note glues onto it ("…s/400s● …").
+    printf '\n%s %s\n' "${C}●${RESET}" "$msg" >"${SPINOSA_GATE_TTY}" 2>/dev/null || true
   fi
 }
 die()   { spinosa_log ERROR "$1"; printf '\n%s %s\n\n' "${R}●${RESET}" "$1" >&2; exit 1; }
@@ -2484,17 +2486,22 @@ print_path_instructions() {
   spinosa_log INFO "Run Spinosa with: spinosa"
   printf '%s Run Spinosa with: %s%s%s\n' "${C}●${RESET}" "${BOLD}" "spinosa" "${RESET}"
 
+  # Pipe subshells inherit the parent PATH, so on upgrades the command may
+  # already work here — only lecture about PATH when it genuinely doesn't.
+  local on_path_now=0
   if "${SPINOSA_BIN_DIR}/spinosa" version >/dev/null 2>&1 \
     || "${SPINOSA_HOME}/bin/spinosa" version >/dev/null 2>&1; then
     vok "Command 'spinosa' is ready in this install session"
+    on_path_now=1
   elif command -v spinosa >/dev/null 2>&1; then
     warn "Command 'spinosa' is on PATH but not runnable — run: ${reload_hint}"
+    on_path_now=1
   else
     warn "Command 'spinosa' is still not on PATH in this session"
     note "Run: ${reload_hint}"
   fi
 
-  if install_stdin_is_piped; then
+  if install_stdin_is_piped && [ "$on_path_now" -eq 0 ]; then
     note "Pipe install (curl|bash) — your interactive shell still needs PATH"
     note "In your terminal, run: ${reload_hint}"
     note "Or open a new terminal window"

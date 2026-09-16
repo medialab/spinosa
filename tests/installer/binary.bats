@@ -582,3 +582,27 @@ EOF
   [ "$status" -eq 124 ]
   [[ "$output" == *"timed out after 1s"* ]]
 }
+
+@test "print_path_instructions skips the pipe PATH block when spinosa already runs" {
+  mkdir -p "$SPINOSA_BIN_DIR" "$SPINOSA_HOME/bin"
+  printf '#!/bin/sh\nexit 0\n' > "$SPINOSA_BIN_DIR/spinosa"
+  chmod +x "$SPINOSA_BIN_DIR/spinosa"
+  # Under `run` stdin is not a tty, so this exercises the pipe-install path.
+  run print_path_instructions
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Run Spinosa with:"* ]]
+  [[ "$output" != *"still needs PATH"* ]]
+  [[ "$output" != *"new terminal window"* ]]
+}
+
+@test "print_path_instructions keeps the pipe PATH block on fresh installs" {
+  mkdir -p "$SPINOSA_BIN_DIR" "$SPINOSA_HOME/bin"
+  printf '#!/bin/sh\nexit 1\n' > "$SPINOSA_BIN_DIR/spinosa"
+  printf '#!/bin/sh\nexit 1\n' > "$SPINOSA_HOME/bin/spinosa"
+  chmod +x "$SPINOSA_BIN_DIR/spinosa" "$SPINOSA_HOME/bin/spinosa"
+  PATH="/usr/bin:/bin"
+  run print_path_instructions
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"still needs PATH"* ]]
+  [[ "$output" == *"new terminal window"* ]]
+}
