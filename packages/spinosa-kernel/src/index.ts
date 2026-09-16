@@ -27,6 +27,7 @@ function _commandNeedsCanvas(argv: string[]): boolean {
   if (cmd === "internal" && sub === "template") return false
   if (cmd === "internal" && sub === "smoke" && subsub === "provider-catalog") return false
   if (cmd === "internal" && sub === "smoke" && subsub === "tui-worker") return false
+  if (cmd === "internal" && sub === "smoke" && subsub === "parser-worker") return false
   return true
 }
 

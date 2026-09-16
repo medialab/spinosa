@@ -13,6 +13,10 @@ Release rule: The maintainer must approve a release. No automatic release.
 ### Fixed
 
 - TUI worker no longer imports `@napi-rs/canvas`. That extra isolate loaded a pdf.js bunfs chunk that cannot resolve the native module. The installer then printed ImageData/Path2D polyfill warnings and `/provider` never returned. The worker stubs DOM globals and suppresses leftover boot noise. The smoke uses a fresh HOME and the embedded snapshot. Code: `packages/spinosa-kernel/src/cli/tui/worker.ts`, `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
+- Compiled `doctor` loads PDF, canvas, and markitdown. It no longer trusts a bundled-name probe. Code: `packages/spinosa-kernel/src/cli/cmd/doctor-probes.ts`.
+- TUI worker smoke fails when the isolate prints canvas or pdf.js boot noise. It also proves `bun-pty` loads in that worker. Code: `packages/spinosa-kernel/src/cli/tui/worker-boot.ts`.
+- TUI worker fetch times out after 120s. A hung `/provider` no longer blocks the session forever. Code: `packages/spinosa-kernel/src/cli/cmd/tui.ts`.
+- Release smoke starts the OpenTUI parser worker extra-entrypoint. Code: `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
 
 ## [1.1.0-beta.32] — 2026-09-16
 

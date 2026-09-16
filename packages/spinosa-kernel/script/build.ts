@@ -459,7 +459,7 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       item.arch === process.arch &&
       !item.abi
     ) {
-      console.log(`Running smoke test: ${outfile} version + native-imports + tui-worker`)
+      console.log(`Running smoke test: ${outfile} version + native-imports + tui-worker + parser-worker`)
       try {
         const versionOutput = await $`${outfile} version`.text()
         console.log(`Smoke test passed: ${versionOutput.trim()}`)
@@ -475,6 +475,8 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
         try {
           const tuiWorkerOutput = await $`${outfile} internal smoke tui-worker --json`.cwd(smokeCwd).text()
           console.log(`TUI-worker smoke passed: ${tuiWorkerOutput.trim().slice(0, 400)}`)
+          const parserWorkerOutput = await $`${outfile} internal smoke parser-worker --json`.cwd(smokeCwd).text()
+          console.log(`Parser-worker smoke passed: ${parserWorkerOutput.trim().slice(0, 400)}`)
         } finally {
           fs.rmSync(smokeCwd, { recursive: true, force: true })
         }

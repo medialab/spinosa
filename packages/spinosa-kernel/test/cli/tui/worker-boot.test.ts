@@ -3,9 +3,13 @@ import {
   applyTuiWorkerSmokeEnv,
   compiledTuiWorkerPath,
   describeWorkerCallError,
+  evaluateParserWorkerSmoke,
   evaluateTuiWorkerSmoke,
+  resolveParserWorkerPath,
   restoreTuiWorkerSmokeEnv,
+  TUI_WORKER_FETCH_MS,
   TUI_WORKER_PROVIDER_FETCH_MS,
+  waitForParserWorkerReady,
   waitForWorkerReady,
 } from "../../../src/cli/tui/worker-boot"
 
@@ -76,6 +80,21 @@ describe("evaluateTuiWorkerSmoke (fail closed)", () => {
       providers: 4,
     })
   })
+
+  test("canvas/pdf.js boot noise from the worker isolate fails the smoke", () => {
+    expect(
+      evaluateTuiWorkerSmoke({
+        pingOk: true,
+        status: 200,
+        providerCount: 4,
+        bootNoise: ['Warning: Cannot polyfill `ImageData`, rendering may be broken.'],
+      }).ok,
+    ).toBe(false)
+  })
+
+  test("missing pty native in the worker isolate fails the smoke", () => {
+    expect(evaluateTuiWorkerSmoke({ pingOk: true, status: 200, providerCount: 4, ptyOk: false }).ok).toBe(false)
+  })
 })
 
 describe("describeWorkerCallError", () => {
@@ -92,13 +111,14 @@ describe("tui-worker extra-entrypoint", () => {
     expect(source).not.toMatch(/import\(["'][^"']*napi-canvas-force/)
     expect(source).not.toContain("ensureCanvasNativeBinding")
     expect(source).not.toMatch(/from ["']@napi-rs\/canvas["']/)
-    expect(source).toContain("installSpinosaBootNoiseSuppression")
+    expect(source).toContain("installSpinosaBootNoiseCapture")
     expect(source).toContain("installDomMatrixPolyfill")
   })
 
-  test("parent skip-list includes tui-worker smoke so it does not stage canvas", async () => {
+  test("parent skip-list includes tui-worker and parser-worker smokes so they do not stage canvas", async () => {
     const source = await Bun.file(new URL("../../../src/index.ts", import.meta.url)).text()
     expect(source).toContain('subsub === "tui-worker"')
+    expect(source).toContain('subsub === "parser-worker"')
   })
 })
 
@@ -121,10 +141,51 @@ describe("tui-worker installer smoke isolation", () => {
     expect(env.SPINOSA_HOME).toBe("/tmp/smoke-home/.spinosa")
     expect(env.SPINOSA_DISABLE_MODELS_FETCH).toBe("1")
     expect(env.SPINOSA_PURE).toBe("1")
+    expect(env.SPINOSA_FAIL_ON_BOOT_NOISE).toBe("1")
     restoreTuiWorkerSmokeEnv(env, previous)
     expect(env.HOME).toBe("/real-home")
     expect(env.SPINOSA_HOME).toBe("/real-home/.spinosa")
     expect(env.SPINOSA_DISABLE_MODELS_FETCH).toBeUndefined()
     expect(env.SPINOSA_PURE).toBeUndefined()
+    expect(env.SPINOSA_FAIL_ON_BOOT_NOISE).toBeUndefined()
+  })
+})
+
+describe("parser-worker extra-entrypoint", () => {
+  test("resolves the OpenTUI parser worker from kernel or repo node_modules", () => {
+    expect(resolveParserWorkerPath({ compiledPath: "/$bunfs/root/parser.worker.js" })).toBe(
+      "/$bunfs/root/parser.worker.js",
+    )
+    const found = resolveParserWorkerPath({
+      kernelCwd: "/pkg",
+      exists: (p) => p.endsWith("node_modules/@opentui/core/parser.worker.js") && p.includes("/pkg/"),
+    })
+    expect(found).toContain("@opentui/core/parser.worker.js")
+  })
+
+  test("GET_PERFORMANCE response passes; timeout and start error fail closed", () => {
+    expect(evaluateParserWorkerSmoke({ ready: true })).toEqual({ ok: true })
+    expect(evaluateParserWorkerSmoke({ ready: false }).ok).toBe(false)
+    expect(evaluateParserWorkerSmoke({ ready: true, error: "boom" }).error).toBe("boom")
+  })
+
+  test("waitForParserWorkerReady resolves on PERFORMANCE_RESPONSE", async () => {
+    await waitForParserWorkerReady({
+      post: () => {},
+      attachMessage: (handler) => {
+        queueMicrotask(() => handler({ type: "PERFORMANCE_RESPONSE" }))
+        return () => {}
+      },
+      attachError: () => () => {},
+      timeoutMs: 100,
+    })
+  })
+})
+
+describe("live TUI worker fetch", () => {
+  test("budget is bounded", async () => {
+    expect(TUI_WORKER_FETCH_MS).toBe(120_000)
+    const source = await Bun.file(new URL("../../../src/cli/cmd/tui.ts", import.meta.url)).text()
+    expect(source).toContain("TUI_WORKER_FETCH_MS")
   })
 })

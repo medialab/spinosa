@@ -13,6 +13,37 @@ export function isSpinosaBootNoise(msg: string): boolean {
 }
 
 let installed = false
+let captureInstalled = false
+let captured: string[] = []
+
+export function capturedSpinosaBootNoise(): readonly string[] {
+  return captured
+}
+
+export function resetSpinosaBootNoiseCapture(): void {
+  captured = []
+}
+
+export function installSpinosaBootNoiseCapture(): void {
+  if (captureInstalled) return
+  captureInstalled = true
+  const origWarn = console.warn.bind(console)
+  const origError = console.error.bind(console)
+  console.warn = (...args: unknown[]) => {
+    if (args.length > 0 && isSpinosaBootNoise(String(args[0]))) {
+      captured.push(String(args[0]))
+      return
+    }
+    origWarn(...args as never[])
+  }
+  console.error = (...args: unknown[]) => {
+    if (args.length > 0 && isSpinosaBootNoise(String(args[0]))) {
+      captured.push(String(args[0]))
+      return
+    }
+    origError(...args as never[])
+  }
+}
 
 export function installSpinosaBootNoiseSuppression(): void {
   if (installed) return

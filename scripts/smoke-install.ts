@@ -141,6 +141,11 @@ async function smokeBinary(bin: string, label: string, smokeHome: string = home)
   if (tuiWorker.exitCode !== 0) {
     throw new Error(`smoke tui-worker failed with exit ${tuiWorker.exitCode}: ${String(tuiWorker.text()).slice(0, 500)}`)
   }
+  console.log(`→ smoke internal smoke parser-worker (${label})`)
+  const parserWorker = await $`${bin} internal smoke parser-worker --json`.cwd(project).env(env).nothrow()
+  if (parserWorker.exitCode !== 0) {
+    throw new Error(`smoke parser-worker failed with exit ${parserWorker.exitCode}: ${String(parserWorker.text()).slice(0, 500)}`)
+  }
   console.log(`✓ binary smoke passed (${label})`)
 }
 

@@ -143,6 +143,7 @@ const wave2 = await wave("wave 2: launch / workspace regressions", [
         "test/cli/tui/worker-boot.test.ts",
         "test/native/boot-noise.test.ts",
         "test/native/dom-matrix-polyfill.test.ts",
+        "test/cli/cmd/doctor-probes.test.ts",
         "test/provider/provider-catalog.test.ts",
         "script/embedded-span.test.ts",
       ],

@@ -18,7 +18,7 @@ import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@spinosa/tui/terminal-win32"
 import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
-import { describeWorkerCallError, waitForWorkerReady } from "../tui/worker-boot"
+import { describeWorkerCallError, TUI_WORKER_FETCH_MS, waitForWorkerReady } from "../tui/worker-boot"
 import {
   printLaunchingTuiWithDelay,
   runLaunchPreflight,
@@ -37,12 +37,16 @@ function createWorkerFetch(client: RpcClient): typeof fetch {
     const body = request.body ? await request.text() : undefined
     let result: { status: number; headers: Record<string, string>; body: string }
     try {
-      result = await client.call("fetch", {
-        url: request.url,
-        method: request.method,
-        headers: Object.fromEntries(request.headers.entries()),
-        body,
-      })
+      result = await withTimeout(
+        client.call("fetch", {
+          url: request.url,
+          method: request.method,
+          headers: Object.fromEntries(request.headers.entries()),
+          body,
+        }),
+        TUI_WORKER_FETCH_MS,
+        "TUI worker request timed out",
+      )
     } catch (error) {
       throw describeWorkerCallError(error)
     }

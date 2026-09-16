@@ -12,10 +12,14 @@
  * evaluation does not throw ReferenceError. Swallow leftover createRequire
  * noise if a shared chunk still loads.
  */
-import { installSpinosaBootNoiseSuppression } from "../../native/boot-noise"
+import { installSpinosaBootNoiseCapture, installSpinosaBootNoiseSuppression } from "../../native/boot-noise"
 import { installDomMatrixPolyfill } from "../../native/dom-matrix-polyfill"
 
-installSpinosaBootNoiseSuppression()
+if (process.env.SPINOSA_FAIL_ON_BOOT_NOISE === "1") {
+  installSpinosaBootNoiseCapture()
+} else {
+  installSpinosaBootNoiseSuppression()
+}
 installDomMatrixPolyfill()
 await import("./worker-main.ts")
 

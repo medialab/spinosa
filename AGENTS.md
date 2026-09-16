@@ -24,7 +24,7 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
    no runtime smoke) → assembles `dist/` (manifest, installers, checksums,
    structural validation only) → verifies on all four runners (checksum +
    ONE end-to-end installer smoke per platform: version, doctor,
-   native-imports, provider-catalog, pdf-runtime, tui-worker). One runtime verification
+   native-imports, provider-catalog, pdf-runtime, tui-worker, parser-worker). One runtime verification
    phase, not stacked gates. Real releases build nothing: publish promotes
    the EXACT dry-run bytes for the tag commit (layout + checksums
    re-verified, fail closed with no green dry-run), then publishes the

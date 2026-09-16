@@ -42,3 +42,14 @@ describe("internal smoke native-imports aggregation (fail closed)", () => {
     expect(evaluateNativeImportChecks([]).ok).toBe(false)
   })
 })
+
+describe("extra-isolate smokes are registered", () => {
+  test("internal smoke includes tui-worker and parser-worker", async () => {
+    const source = await Bun.file(new URL("./internal.ts", import.meta.url)).text()
+    expect(source).toContain('"tui-worker"')
+    expect(source).toContain('"parser-worker"')
+    expect(source).toContain("waitForParserWorkerReady")
+    expect(source).toContain("bootNoise")
+    expect(source).toContain("natives")
+  })
+})

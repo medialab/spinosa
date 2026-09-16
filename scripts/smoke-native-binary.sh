@@ -18,7 +18,8 @@
 # page actually renders through the staged canvas native (doctor only proves
 # the modules resolve). tui-worker proves the compiled extra-entrypoint
 # Worker starts and serves that catalog (cwd-relative worker.ts died after
-# chdir; retry toasted "Worker has been terminated").
+# chdir; retry toasted "Worker has been terminated"). parser-worker proves
+# the OpenTUI parser.worker extra-entrypoint starts.
 #
 # provider-catalog runs first: the fresh HOME guarantees an empty models
 # cache, so it exercises the embedded snapshot path, never the network.
@@ -52,6 +53,7 @@ for ((i = 1; i <= ITERS; i++)); do
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke native-imports --json
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke pdf-runtime --json
   HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke tui-worker --json
+  HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" "$BIN" internal smoke parser-worker --json
   rm -rf "$SMOKE_HOME"
 done
 echo "smoke passed: $BIN (${ITERS}x)"

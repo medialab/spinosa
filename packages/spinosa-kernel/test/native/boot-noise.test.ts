@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { isSpinosaBootNoise, installSpinosaBootNoiseSuppression } from "../../src/native/boot-noise"
+import { isSpinosaBootNoise, installSpinosaBootNoiseSuppression, installSpinosaBootNoiseCapture, capturedSpinosaBootNoise, resetSpinosaBootNoiseCapture } from "../../src/native/boot-noise"
 
 describe("spinosa boot noise", () => {
   test("matches the canvas and pdf.js polyfill warnings", () => {
@@ -30,6 +30,25 @@ describe("spinosa boot noise", () => {
       expect(printed).toEqual(["keep this"])
     } finally {
       console.warn = orig
+    }
+  })
+
+  test("capture records canvas/pdf.js warnings instead of printing them", () => {
+    resetSpinosaBootNoiseCapture()
+    const printed: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => {
+      printed.push(String(args[0]))
+    }
+    try {
+      installSpinosaBootNoiseCapture()
+      console.warn("Warning: Cannot polyfill `Path2D`, rendering may be broken.")
+      console.warn("keep this")
+      expect(printed).toEqual(["keep this"])
+      expect(capturedSpinosaBootNoise().some((line) => line.includes("Path2D"))).toBe(true)
+    } finally {
+      console.warn = orig
+      resetSpinosaBootNoiseCapture()
     }
   })
 })

@@ -99,7 +99,7 @@ Modified launchers are preserved and reported. Migration never fails global inst
 1. Stage binary outside active path.
 2. Verify checksum, `version --json`, template ensure/verify, then the
    deterministic binary smokes (`internal smoke provider-catalog`,
-   `native-imports`, `pdf-runtime`, `tui-worker`). Full `spinosa doctor` stays the deeper
+   `native-imports`, `pdf-runtime`, `tui-worker`, `parser-worker`). Full `spinosa doctor` stays the deeper
    application diagnostic and is intentionally not an integrity gate (it boots
    the whole instance plus providers). A smoke timeout (no verdict) warns and
    records `doctor_unverified` instead of blocking; a failed smoke blocks.
@@ -153,7 +153,8 @@ See `docs/release/stable-promotion-gates.md`.
 - Canvas skia natives (`skia.<triple>.node`) are written under `src/generated/canvas-libs/<os>-<arch>/` via `canvas-native.gen.ts` and staged at start into `$SPINOSA_HOME/cache/canvas-native` (home → XDG → tmpdir fallback order). `NAPI_RS_NATIVE_LIBRARY_PATH` is set before any canvas import so nested loads work on Linux Bun `--compile` (optional `@napi-rs/canvas-*` `require()` fails there even when doctor's direct canvas import succeeds).
 - Host verification is one end-to-end installer smoke per platform (`install.sh`
   from local HTTP into an isolated HOME, then version / doctor / `internal
-  smoke native-imports` / `provider-catalog` / `pdf-runtime` / `tui-worker` on the installed
+  smoke native-imports` / `provider-catalog` / `pdf-runtime` / `tui-worker` /
+  `parser-worker` on the installed
   binary). It is fail-closed: any smoke failure fails the release.
   `version`/`doctor` never dlopen the TUI natives; `native-imports` loads
   OpenTUI, FFF, watcher, node-pty, and canvas without starting an interactive
@@ -167,4 +168,7 @@ See `docs/release/stable-promotion-gates.md`.
   import `@napi-rs/canvas`: bunfs chunks cannot createRequire it, pdf.js then
   warns `Cannot polyfill ImageData/Path2D`, and `/provider` never returns.
   PDF raster stays on `pdf-runtime` in the parent isolate.
+  `parser-worker` proves the compiled OpenTUI `parser.worker.js` extra
+  entrypoint starts (`GET_PERFORMANCE`). Compiled `doctor` must import
+  pdf.js and canvas; a bundled-name probe is not enough.
 

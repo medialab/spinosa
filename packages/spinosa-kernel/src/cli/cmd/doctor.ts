@@ -25,7 +25,7 @@ import {
   readInstalledBinaryVersion,
 } from "@spinosa/core/distribution/bootstrap"
 import { isOcrPlatformSupported, ocrUnsupportedReason } from "@spinosa/core/tools/ocr-support"
-import { moduleAvailable, pdfjsAvailable } from "@spinosa/core/tools/detection"
+import { probeCanvas, probeMarkitdown, probePdfEngine } from "./doctor-probes"
 import { getFormat, log, emitResult, errorOut, type OutputFormat } from "../output"
 import { effectCmd } from "../effect-cmd"
 
@@ -35,17 +35,6 @@ interface DoctorArgs {
   quiet?: boolean
 }
 
-/** Static-specifier probes so Bun --compile can embed the modules (variable import() cannot). */
-async function probePdfEngine(compiled: boolean): Promise<boolean> {
-  if (compiled) return pdfjsAvailable()
-  try {
-    await import("pdfjs-dist/legacy/build/pdf.mjs")
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function probeOcrEngine(compiled: boolean): Promise<{ ok: boolean; unsupported?: boolean; error?: string }> {
   void compiled
   const unsupported = ocrUnsupportedReason()
@@ -53,20 +42,6 @@ async function probeOcrEngine(compiled: boolean): Promise<{ ok: boolean; unsuppo
     return { ok: false, unsupported: true, error: unsupported }
   }
   return { ok: false }
-}
-
-async function probeMarkitdown(): Promise<boolean> {
-  return (await moduleAvailable("@spinosa/markitdown", true)) || (await moduleAvailable("markitdown-ts", true))
-}
-
-async function probeCanvas(compiled: boolean): Promise<boolean> {
-  if (compiled) return moduleAvailable("@napi-rs/canvas", true)
-  try {
-    await import("@napi-rs/canvas")
-    return true
-  } catch {
-    return false
-  }
 }
 
 export const DoctorCommand = effectCmd<DoctorArgs, void>({
@@ -103,7 +78,7 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
       if (!existsSync(cacheRoot) && !verified.ok) healthy = false
 
       const [pdf, ocr, markitdown, canvas] = yield* Effect.promise(() =>
-        Promise.all([probePdfEngine(binaryMode), probeOcrEngine(binaryMode), probeMarkitdown(), probeCanvas(binaryMode)]),
+        Promise.all([probePdfEngine(), probeOcrEngine(binaryMode), probeMarkitdown(), probeCanvas()]),
       )
       log(fmt, `Document converter: ${markitdown ? "available" : "missing"}`)
       log(fmt, `PDF engine: ${pdf ? "available" : "missing"}`)
@@ -118,7 +93,7 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
         log(fmt, `OCR tools: local OCR engine removed — pick a vision model to transcribe scans, or copy files as-is (digital PDFs extract via pdf.js)`)
       }
       log(fmt, `Canvas: ${canvas ? "available" : "missing"}`)
-      if (!pdf || !markitdown) healthy = false
+      if (!pdf || !markitdown || !canvas) healthy = false
       if (isOcrPlatformSupported() && !ocr.ok) healthy = false
     } else {
       const frameworkRoot = resolveFrameworkRoot()

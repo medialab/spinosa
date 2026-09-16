@@ -11,6 +11,7 @@ import { Heap } from "@/cli/heap"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import { capturedSpinosaBootNoise } from "../../native/boot-noise"
 import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
 
 Heap.start()
@@ -64,6 +65,13 @@ let server: Awaited<ReturnType<typeof Server.listen>> | undefined
 export const rpc = {
   ping() {
     return { ok: true as const }
+  },
+  bootNoise() {
+    return { lines: [...capturedSpinosaBootNoise()] }
+  },
+  async natives() {
+    const mod = (await import("@spinosa/kernel-core/pty/pty.bun")) as { spawn?: unknown }
+    return { pty: typeof mod.spawn === "function" }
   },
   async fetch(input: { url: string; method: string; headers: Record<string, string>; body?: string }) {
     const headers = { ...input.headers }

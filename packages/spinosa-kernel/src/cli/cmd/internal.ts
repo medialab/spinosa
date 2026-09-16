@@ -12,14 +12,20 @@ import { Rpc } from "@/util/rpc"
 import { withTimeout } from "@/util/timeout"
 import {
   applyTuiWorkerSmokeEnv,
+  evaluateParserWorkerSmoke,
   evaluateTuiWorkerSmoke,
+  resolveParserWorkerPath,
   restoreTuiWorkerSmokeEnv,
   TUI_WORKER_PROVIDER_FETCH_MS,
+  waitForParserWorkerReady,
   waitForWorkerReady,
 } from "../tui/worker-boot"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+
+declare const SPINOSA_WORKER_PATH: string
+declare const OTUI_TREE_SITTER_WORKER_PATH: string
 
 function printJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
@@ -344,6 +350,8 @@ export const InternalCommand = {
                   const worker = new Worker(file)
                   const client = Rpc.client<{
                     ping: (input: void) => { ok: true }
+                    bootNoise: (input: void) => { lines: string[] }
+                    natives: (input: void) => Promise<{ pty: boolean }>
                     fetch: (input: {
                       url: string
                       method: string
@@ -360,6 +368,11 @@ export const InternalCommand = {
                         return () => worker.removeEventListener("error", listener)
                       },
                     })
+                    const natives = await withTimeout(
+                      client.call("natives", undefined),
+                      TUI_WORKER_PROVIDER_FETCH_MS,
+                      "TUI worker pty probe timed out",
+                    )
                     const directory = encodeURIComponent(process.cwd())
                     const result = await withTimeout(
                       client.call("fetch", {
@@ -370,6 +383,7 @@ export const InternalCommand = {
                       TUI_WORKER_PROVIDER_FETCH_MS,
                       "TUI worker /provider fetch timed out",
                     )
+                    const noise = await client.call("bootNoise", undefined)
                     let providerCount = 0
                     try {
                       const body = JSON.parse(result.body) as { all?: unknown[] }
@@ -377,6 +391,8 @@ export const InternalCommand = {
                     } catch {
                       const verdict = evaluateTuiWorkerSmoke({
                         pingOk: true,
+                        bootNoise: noise.lines,
+                        ptyOk: natives.pty,
                         fetchError: `provider body was not JSON (HTTP ${result.status})`,
                       })
                       fail(verdict.error ?? "provider body was not JSON")
@@ -384,6 +400,8 @@ export const InternalCommand = {
                     }
                     const verdict = evaluateTuiWorkerSmoke({
                       pingOk: true,
+                      bootNoise: noise.lines,
+                      ptyOk: natives.pty,
                       status: result.status,
                       providerCount,
                     })
@@ -407,6 +425,51 @@ export const InternalCommand = {
                 } finally {
                   restoreTuiWorkerSmokeEnv(process.env, previousEnv)
                   await fs.rm(homeDir, { recursive: true, force: true })
+                }
+              } catch (err) {
+                fail(err instanceof Error ? err.message : String(err))
+              }
+            },
+          )
+          .command(
+            "parser-worker",
+            "Prove the compiled OpenTUI parser.worker extra-entrypoint starts",
+            (y) => y.option("json", { type: "boolean", default: false }),
+            async (args) => {
+              const fail = (message: string) => {
+                if (args.json || getFormat(args) === "json") printJson({ ok: false, error: message })
+                else emitResult("human", "parser-worker", { ok: false }, message)
+                process.exitCode = 1
+              }
+              try {
+                const file =
+                  typeof OTUI_TREE_SITTER_WORKER_PATH !== "undefined"
+                    ? OTUI_TREE_SITTER_WORKER_PATH
+                    : resolveParserWorkerPath({ kernelCwd: path.resolve(import.meta.dir, "../../..") })
+                const worker = new Worker(file)
+                try {
+                  await waitForParserWorkerReady({
+                    post: (message) => worker.postMessage(message),
+                    attachMessage: (handler) => {
+                      const listener = (event: MessageEvent) => handler(event.data as { type?: string; error?: string })
+                      worker.addEventListener("message", listener)
+                      return () => worker.removeEventListener("message", listener)
+                    },
+                    attachError: (handler) => {
+                      const listener = (event: ErrorEvent) => handler(event.error ?? event.message)
+                      worker.addEventListener("error", listener)
+                      return () => worker.removeEventListener("error", listener)
+                    },
+                  })
+                  const verdict = evaluateParserWorkerSmoke({ ready: true })
+                  if (!verdict.ok) {
+                    fail(verdict.error ?? "parser worker smoke failed")
+                    return
+                  }
+                  if (args.json || getFormat(args) === "json") printJson({ ok: true })
+                  else emitResult("human", "parser-worker", { ok: true }, "ok")
+                } finally {
+                  worker.terminate()
                 }
               } catch (err) {
                 fail(err instanceof Error ? err.message : String(err))

@@ -456,6 +456,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Smoke pdf-runtime passed"* ]]
   [[ "$output" == *"Smoke tui-worker passed"* ]]
+  [[ "$output" == *"Smoke parser-worker passed"* ]]
   [[ "$output" == *"Template verify succeeded"* ]]
 }
 
@@ -487,6 +488,8 @@ EOF
   [[ "$output" == *"Smoke pdf-runtime passed"* ]]
   [[ "$output" == *"Running smoke tui-worker"* ]]
   [[ "$output" == *"Smoke tui-worker passed"* ]]
+  [[ "$output" == *"Running smoke parser-worker"* ]]
+  [[ "$output" == *"Smoke parser-worker passed"* ]]
 }
 
 @test "DEFAULT_VERIFY_TIMEOUT_SECONDS defaults to 400" {
@@ -526,6 +529,7 @@ EOF
   [[ "$output" == *"Smoke native-imports passed"* ]]
   [[ "$output" == *"Smoke pdf-runtime passed"* ]]
   [[ "$output" == *"Smoke tui-worker passed"* ]]
+  [[ "$output" == *"Smoke parser-worker passed"* ]]
 }
 
 @test "run_staged_smoke_checks returns without dying when a smoke fails" {
