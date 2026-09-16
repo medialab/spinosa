@@ -133,7 +133,7 @@ _spinosa_install_signal() {
     wait "$PROBE_PID" 2>/dev/null || true
     PROBE_PID=""
   fi
-  step_end "$exit_code" "${STEP_LABEL:-Install} cancelled" 2>/dev/null || true
+  step_end "$exit_code" "${STEP_LABEL:-Install} cancelled" || true
   _spinosa_cleanup_lock
   if [ -n "${SPINOSA_EARLY_LOG:-}" ] && [ -f "$SPINOSA_EARLY_LOG" ]; then
     rm -f "$SPINOSA_EARLY_LOG" 2>/dev/null || true
@@ -497,7 +497,9 @@ timed_register_temp() {
 _timed_cleanup_registered_temps() {
   [ -n "${1:-}" ] && [ -f "$1" ] || return 0
   while IFS= read -r _p || [ -n "$_p" ]; do
-    [ -n "$_p" ] && rm -rf "$_p" 2>/dev/null || true
+    if [ -n "$_p" ]; then
+      rm -rf "$_p" 2>/dev/null || true
+    fi
   done < "$1"
   rm -f "$1" 2>/dev/null || true
 }
