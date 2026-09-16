@@ -20,6 +20,7 @@ import {
   resolveTemplateCacheRoot,
   verifyEmbeddedTemplateCache,
   readCompiledDistribution,
+  readDoctorUnverifiedReason,
   readInstalledBinaryVersion,
 } from "@spinosa/core/distribution/bootstrap"
 import { isOcrPlatformSupported, ocrUnsupportedReason } from "@spinosa/core/tools/ocr-support"
@@ -93,6 +94,10 @@ export const DoctorCommand = effectCmd<DoctorArgs, void>({
       log(fmt, `Template pack: ${packId || "unknown"}`)
       log(fmt, `Template cache: ${verified.ok ? "valid" : `invalid (${verified.error})`}`)
       log(fmt, `Installation metadata: ${metaVersion ? `valid (${metaVersion})` : "missing"}`)
+      const unverifiedReason = readDoctorUnverifiedReason()
+      if (unverifiedReason) {
+        log(fmt, `Install health: unverified (staged doctor ${unverifiedReason} at install) — re-run 'spinosa doctor' when idle`)
+      }
       if (!verified.ok) healthy = false
       if (!existsSync(cacheRoot) && !verified.ok) healthy = false
 

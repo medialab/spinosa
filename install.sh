@@ -5,7 +5,13 @@
 PINNED_VERSION="1.1.0-beta.29"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
-DEFAULT_VERIFY_TIMEOUT_SECONDS="180"
+# Staged-verify budget for slow hosts (qemu linux-x64 needs 100s+ for template
+# ensure/verify + doctor cold-start). Override per machine with
+# SPINOSA_VERIFY_TIMEOUT_SECONDS (must be a positive integer).
+DEFAULT_VERIFY_TIMEOUT_SECONDS="${SPINOSA_VERIFY_TIMEOUT_SECONDS:-400}"
+# Staged doctor gate budget (see run_staged_doctor_check). A timeout here is a
+# missing verdict, not a failure — install proceeds flagged as unverified.
+DEFAULT_DOCTOR_TIMEOUT_SECONDS="${SPINOSA_DOCTOR_TIMEOUT_SECONDS:-300}"
 WAVE_WIDTH=6
 
 if [ -z "${BASH_VERSION-}" ]; then
@@ -112,6 +118,14 @@ _spinosa_install_signal() {
     rm -f "$STEP_OUTPUT_FILE" 2>/dev/null || true
   fi
   STEP_OUTPUT_FILE=""
+  # Stray direct-shell version probe (see get_installed_version): timed-step
+  # trees are covered by STEP_COMMAND_PID above, but a probe started directly
+  # in the main shell is not — reap its tree so cancel leaves no strays behind.
+  if [ -n "${PROBE_PID:-}" ]; then
+    kill_process_tree_graceful "$PROBE_PID"
+    wait "$PROBE_PID" 2>/dev/null || true
+    PROBE_PID=""
+  fi
   step_end "$exit_code" "${STEP_LABEL:-Install} cancelled" 2>/dev/null || true
   _spinosa_cleanup_lock
   if [ -n "${SPINOSA_EARLY_LOG:-}" ] && [ -f "$SPINOSA_EARLY_LOG" ]; then
@@ -151,6 +165,12 @@ REPO="medialab/spinosa"
 PLATFORM=""
 ASSET_NAME=""
 TEMPLATE_PACK_ID=""
+# Set to "timeout" when the staged doctor gate times out: install proceeds with
+# an orange warning and records doctor_unverified in install metadata.
+DOCTOR_UNVERIFIED=""
+# Background version-probe pid when started directly in the main shell
+# (get_installed_version); reaped by the signal handler on cancel.
+PROBE_PID=""
 INSTALL_COMPLETED=0
 BINARY_BACKUP=""
 BINARY_STAGED=""
@@ -168,10 +188,10 @@ ENV_BACKUP=""
 # ══════════════════════════════════════════════════════════════════════════════
 
 if [ -t 2 ] && [ "${NO_COLOR:-}" != "1" ]; then
-  G=$'\033[32m' R=$'\033[31m' C=$'\033[36m'
+  G=$'\033[32m' R=$'\033[31m' C=$'\033[36m' Y=$'\033[33m'
   BOLD=$'\033[1m' RESET=$'\033[0m'
 else
-  G='' R='' C='' BOLD='' RESET=''
+  G='' R='' C='' Y='' BOLD='' RESET=''
 fi
 
 info()  { spinosa_log INFO "$1"; printf '%s %s\n' "${C}●${RESET}" "$1"; }
@@ -179,8 +199,27 @@ vinfo() { [[ "$VERBOSE" == "1" ]] || return 0; info "$1"; }
 ok()    { spinosa_log INFO "$1"; printf '%s %s\n' "${G}●${RESET}" "$1" >&2; }
 vok()   { [[ "$VERBOSE" == "1" ]] || return 0; ok "$1"; }
 warn()  { spinosa_log WARN "$1"; printf '%s %s\n' "${R}●${RESET}" "$1" >&2; }
+# Amber (orange) warning: same log level as warn, but visually distinct from
+# fatal red — used for non-blocking degradations (e.g. unverified doctor).
+amber() { spinosa_log WARN "$1"; printf '%s %s\n' "${Y}●${RESET}" "$1" >&2; }
 note()  { spinosa_log INFO "$1"; printf '%s\n' "$1"; }
 vnote() { [[ "$VERBOSE" == "1" ]] || return 0; note "$1"; }
+# Live gate progress for staged verification (run_staged_binary_checks).
+# run_timed_step captures this function's stdout/stderr into a temp file that is
+# only tailed on failure/timeout — without explicit start markers a timeout log
+# cannot tell which gate hung (and verbose-gated vok lines vanish entirely by
+# default). Each marker is always logged and captured; it is additionally
+# mirrored to the controlling terminal when the caller exports
+# SPINOSA_GATE_TTY (interactive installs only — direct function calls in tests
+# leave it unset, so nothing ever writes to a tty from here).
+gate_note() {
+  local msg="$1"
+  spinosa_log INFO "$msg"
+  printf '%s %s\n' "${C}●${RESET}" "$msg"
+  if [ -n "${SPINOSA_GATE_TTY:-}" ] && [ -c "${SPINOSA_GATE_TTY}" ]; then
+    printf '%s %s\n' "${C}●${RESET}" "$msg" >"${SPINOSA_GATE_TTY}" 2>/dev/null || true
+  fi
+}
 die()   { spinosa_log ERROR "$1"; printf '\n%s %s\n\n' "${R}●${RESET}" "$1" >&2; exit 1; }
 divider() { printf '\n'; }
 
@@ -410,7 +449,7 @@ kill_process_tree_graceful() {
 # (TEMPLATE_PACK_ID from staged checks; BINARY_BACKUP/SHIM_BACKUP/... from
 # activation) would otherwise be lost in the parent — dropping template_pack_id
 # from metadata, leaking shim.backup files, and breaking EXIT-trap rollback.
-TIMED_EXPORT_VARS="TEMPLATE_PACK_ID BINARY_BACKUP BINARY_STAGED ACTIVATION_STARTED SHIM_BACKUP CONFIG_BACKUP ENV_BACKUP SHIM_STAGE_FILE"
+TIMED_EXPORT_VARS="TEMPLATE_PACK_ID BINARY_BACKUP BINARY_STAGED ACTIVATION_STARTED SHIM_BACKUP CONFIG_BACKUP ENV_BACKUP SHIM_STAGE_FILE DOCTOR_GATE_TMP"
 
 _timed_export_state() {
   [ -n "${SPINOSA_TIMED_STATE_FILE:-}" ] || return 0
@@ -545,8 +584,10 @@ while [ $# -gt 0 ]; do
       echo "  --min-days N      Reject releases newer than N days old"
       echo ""
       echo "Environment:"
-      echo "  SPINOSA_REPAIR=1            Auto-repair without prompting"
-      echo "  SPINOSA_RELEASE_BASE_URL    Override release asset base URL (local smoke)"
+       echo "  SPINOSA_REPAIR=1            Auto-repair without prompting"
+       echo "  SPINOSA_RELEASE_BASE_URL    Override release asset base URL (local smoke)"
+       echo "  SPINOSA_VERIFY_TIMEOUT_SECONDS  Override staged verify timeout (default: $DEFAULT_VERIFY_TIMEOUT_SECONDS)"
+       echo "  SPINOSA_DOCTOR_TIMEOUT_SECONDS  Override staged doctor timeout (default: $DEFAULT_DOCTOR_TIMEOUT_SECONDS)"
       echo ""
       echo "Paths:"
       echo "  --no-modify-path  Don't modify shell config files (~/.zshrc, etc.)"
@@ -1285,13 +1326,20 @@ EOF
   trap - RETURN
 
   if [ ! -f "$config" ]; then
-    local config_tmp
+    local config_tmp beta_toggle legacy_runtime
+    # Hoisted above the RETURN trap: under functrace (e.g. bats) RETURN traps
+    # fire on every nested function return (including command substitutions),
+    # so any function call here would run the cleanup early and delete the
+    # staged config. No function calls may run while the trap is armed.
+    beta_toggle="$(installer_beta_toggle)"
+    legacy_runtime=""
+    if legacy_source_runtime_present; then legacy_runtime=1; fi
     config_tmp="$(mktemp "${config}.tmp.XXXXXX")" || die "Cannot stage spinosa config"
     trap 'rm -f "$config_tmp"' RETURN
     cat > "$config_tmp" << CONFIG_EOF
 # Spinosa installation marker — do not remove
 spinosa: true
-beta: $(installer_beta_toggle)
+beta: ${beta_toggle}
 auto_upgrade: true
 distribution: binary
 last_installed_version: "${VERSION}"
@@ -1299,7 +1347,7 @@ CONFIG_EOF
     if [ -n "${TEMPLATE_PACK_ID:-}" ]; then
       printf 'template_pack_id: "%s"\n' "$TEMPLATE_PACK_ID" >> "$config_tmp"
     fi
-    if legacy_source_runtime_present; then
+    if [ -n "$legacy_runtime" ]; then
       printf 'legacy_source_runtime: true\n' >> "$config_tmp"
     fi
     mv "$config_tmp" "$config"
@@ -1318,6 +1366,13 @@ CONFIG_EOF
     else
       config_delete_key "$config" "legacy_source_runtime"
     fi
+  fi
+  # Staged-doctor verdict: a timeout installs anyway (orange) and records why;
+  # a green doctor clears any previous flag. Applies to fresh and existing homes.
+  if [ -n "${DOCTOR_UNVERIFIED:-}" ]; then
+    config_set_key "$config" "doctor_unverified" "\"${DOCTOR_UNVERIFIED}\""
+  else
+    config_delete_key "$config" "doctor_unverified"
   fi
 }
 
@@ -1423,6 +1478,41 @@ probe_spinosa_version_output() {
   rm -f "$out_file"
 }
 
+# Bounded poll for a background pid. Returns 0 when it exits within budget,
+# 1 on timeout (the caller kills and reaps). Poll sleeps are short foreground
+# children, so a trapped INT is serviced within ~0.2s instead of blacking out
+# for the whole budget inside a command substitution (see get_installed_version).
+wait_for_pid() {
+  local pid="$1" budget_seconds="$2"
+  local waited=0
+  [[ "$budget_seconds" =~ ^[1-9][0-9]*$ ]] || return 1
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge $(( budget_seconds * 5 )) ]; then
+      return 1
+    fi
+    sleep 0.2
+    waited=$((waited + 1))
+  done
+  wait "$pid" 2>/dev/null || true
+  return 0
+}
+
+# Async probe variant for direct main-shell callers: starts the version probe
+# in the background and echoes only its pid (fast — no waiting), writing
+# output to the caller-provided file. The caller polls with wait_for_pid so
+# CTRL+C stays responsive; a plain out="$(probe...)" here would ignore CTRL+C
+# for up to 30s because background children ignore SIGINT while the shell
+# sits in the substitution.
+probe_spinosa_version_output_async() {
+  local binary="$1"
+  local err_sink="${2:-/dev/null}"
+  local out_file="$3"
+  (
+    "$binary" version --json 2>"$err_sink" || "$binary" version 2>>"$err_sink" || true
+  ) >"$out_file" 2>&1 &
+  printf '%s\n' "$!"
+}
+
 get_installed_version() {
   local meta_ver=""
   meta_ver="$(read_last_installed_version 2>/dev/null || true)"
@@ -1431,12 +1521,24 @@ get_installed_version() {
     return 0
   fi
   if [ -x "${SPINOSA_HOME}/bin/spinosa" ]; then
-    local out ver
-    if out="$(probe_spinosa_version_output "${SPINOSA_HOME}/bin/spinosa" 2>/dev/null || true)"; then
-      if [ -n "$out" ] && ver="$(parse_version_output "$out")"; then
-        printf '%s\n' "$ver"
-        return 0
-      fi
+    local out ver probe_out probe_pid
+    probe_out="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe.XXXXXX")"
+    probe_pid="$(probe_spinosa_version_output_async "${SPINOSA_HOME}/bin/spinosa" /dev/null "$probe_out" || true)"
+    out=""
+    PROBE_PID="${probe_pid:-}"
+    if [ -n "${probe_pid:-}" ] && wait_for_pid "$probe_pid" 30; then
+      out="$(cat "$probe_out" 2>/dev/null || true)"
+    else
+      kill "$probe_pid" 2>/dev/null || true
+      sleep 0.2
+      kill -KILL "$probe_pid" 2>/dev/null || true
+      wait "$probe_pid" 2>/dev/null || true
+    fi
+    PROBE_PID=""
+    rm -f "$probe_out"
+    if [ -n "$out" ] && ver="$(parse_version_output "$out")"; then
+      printf '%s\n' "$ver"
+      return 0
     fi
     # Probe timed out or failed — treat as unhealthy, fall through to metadata
     spinosa_log WARN "version probe timed out or failed for ${SPINOSA_HOME}/bin/spinosa"
@@ -1741,14 +1843,19 @@ migrate_workspace_launchers() {
   fi
 }
 
-run_staged_binary_checks() {
+# Fail-closed staged gates: staged version match plus template ensure/verify.
+# Any failure here refuses activation (never soft-continue).
+run_staged_core_checks() {
   local binary="$1"
   local out ver
   local version_ok=0
   local probe_err=""
+  local gate_start gate_elapsed
 
   [ -x "$binary" ] || die "Staged binary is not executable: ${binary}"
 
+  gate_note "Checking staged version..."
+  gate_start="$(date +%s)"
   probe_err="$(mktemp "${TMPDIR:-/tmp}/spinosa-probe-err.XXXXXX")"
   if out="$(probe_spinosa_version_output "$binary" "$probe_err" || true)"; then
     if [ -n "$out" ] && ver="$(parse_version_output "$out")"; then
@@ -1768,7 +1875,8 @@ run_staged_binary_checks() {
   if [ "$ver" != "$VERSION" ]; then
     die "Staged binary version mismatch: got ${ver}, expected ${VERSION}"
   fi
-  vok "Staged binary reports version ${ver}"
+  gate_elapsed=$(( $(date +%s) - gate_start ))
+  gate_note "Staged binary reports version ${ver} (${gate_elapsed}s)"
 
   local pack
   pack="$(extract_template_pack_id "$out" || true)"
@@ -1780,13 +1888,19 @@ run_staged_binary_checks() {
   # must pass before the staged binary is activated. Fail closed — never soft-continue.
   # Preserve diagnostics in the log instead of discarding to /dev/null.
   local gate_tmp
+  gate_note "Ensuring templates..."
+  gate_start="$(date +%s)"
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-gate.XXXXXX")"
   if "$binary" internal template ensure --json >"$gate_tmp" 2>&1; then
+    gate_elapsed=$(( $(date +%s) - gate_start ))
     spinosa_log INFO "template ensure output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
-    vok "Template ensure succeeded"
+    gate_note "Template ensure succeeded (${gate_elapsed}s)"
+    gate_note "Verifying templates..."
+    gate_start="$(date +%s)"
     if "$binary" internal template verify --json >"$gate_tmp" 2>&1; then
+      gate_elapsed=$(( $(date +%s) - gate_start ))
       spinosa_log INFO "template verify output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
-      vok "Template verify succeeded"
+      gate_note "Template verify succeeded (${gate_elapsed}s)"
     else
       spinosa_log ERROR "template verify failed: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
       rm -f "$gate_tmp"
@@ -1798,14 +1912,32 @@ run_staged_binary_checks() {
     die "Template ensure failed — refusing to activate staged binary"
   fi
   rm -f "$gate_tmp"
+}
+
+# Doctor activation gate, standalone so a timeout (no verdict) can warn instead
+# of blocking: checksum, version, and template gates already passed in
+# run_staged_core_checks. Returns 0 when doctor passes, 1 when doctor reports
+# issues (callers die with the canonical message). Publishes the gate temp path
+# in DOCTOR_GATE_TMP so a timed-step timeout can still surface partial doctor
+# output from the parent (exported via TIMED_EXPORT_VARS).
+run_staged_doctor_check() {
+  local binary="$1"
+  local gate_start gate_elapsed
+  local gate_tmp
   gate_tmp="$(mktemp "${TMPDIR:-/tmp}/spinosa-doctor.XXXXXX")"
+  DOCTOR_GATE_TMP="$gate_tmp"
   local doctor_cwd
   doctor_cwd="$(mktemp -d "${TMPDIR:-/tmp}/spinosa-doctor-cwd.XXXXXX")"
+  gate_note "Running doctor (first run can take minutes on slow machines)..."
+  gate_start="$(date +%s)"
   # Do not bootstrap the project from the installer's invocation directory.
   if (cd "$doctor_cwd" && "$binary" doctor) >"$gate_tmp" 2>&1; then
+    gate_elapsed=$(( $(date +%s) - gate_start ))
     spinosa_log INFO "doctor output: $(head -c 4096 "$gate_tmp" 2>/dev/null)"
     rm -rf "$doctor_cwd"
-    vok "Doctor passed"
+    rm -f "$gate_tmp"
+    DOCTOR_GATE_TMP=""
+    gate_note "Doctor passed (${gate_elapsed}s)"
   else
     spinosa_log ERROR "doctor failed; full output follows"
     while IFS= read -r line || [ -n "$line" ]; do
@@ -1814,9 +1946,45 @@ run_staged_binary_checks() {
     tail -n 20 "$gate_tmp" >&2 || true
     rm -rf "$doctor_cwd"
     rm -f "$gate_tmp"
-    die "Doctor reported issues — refusing to activate staged binary"
+    DOCTOR_GATE_TMP=""
+    return 1
   fi
-  rm -f "$gate_tmp"
+}
+
+# Full staged gate sequence (fail-closed): used by --verify-only and covered by
+# installer tests. The interactive install path instead runs the core gates and
+# the doctor gate as separate timed steps so a doctor timeout can warn (orange,
+# flagged unverified) instead of refusing activation.
+run_staged_binary_checks() {
+  run_staged_core_checks "$1" || return $?
+  run_staged_doctor_check "$1" || die "Doctor reported issues — refusing to activate staged binary"
+}
+
+# Maps the staged doctor timed-step exit to green/orange/red. Returns 0 to
+# proceed (recording DOCTOR_UNVERIFIED on orange); dies red otherwise.
+# Orange (124, timeout) means "no verdict": checksum, version, and template
+# gates already passed, so install proceeds flagged health-unverified.
+handle_doctor_gate_result() {
+  local doctor_gate_status="$1"
+  case "$doctor_gate_status" in
+    0)
+      DOCTOR_UNVERIFIED=""
+      ;;
+    124)
+      if [ -n "${DOCTOR_GATE_TMP:-}" ] && [ -f "${DOCTOR_GATE_TMP}" ]; then
+        spinosa_log WARN "partial doctor output before timeout (last 20 lines):"
+        tail -n 20 "${DOCTOR_GATE_TMP}" 2>/dev/null | while IFS= read -r line || [ -n "$line" ]; do spinosa_log WARN "doctor: $line"; done
+        rm -f "${DOCTOR_GATE_TMP}"
+      fi
+      DOCTOR_GATE_TMP=""
+      amber "Doctor timed out after ${DEFAULT_DOCTOR_TIMEOUT_SECONDS}s — installing anyway (health unverified)"
+      amber "Run 'spinosa doctor' once the machine is idle to confirm health"
+      DOCTOR_UNVERIFIED="timeout"
+      ;;
+    *)
+      die "Doctor reported issues — refusing to activate staged binary"
+      ;;
+  esac
 }
 
 restore_binary_backup_if_needed() {
@@ -2244,6 +2412,13 @@ main() {
   } >> "$early_log" 2>/dev/null || true
   vinfo "install attempt log: $early_log"
 
+  # Install signal/exit traps before any blocking work (version resolve,
+  # prompts, lock): CTRL+C then cancels gracefully with cleanup and exit 130
+  # instead of dying without it. Safe this early — every referenced variable is
+  # initialized at the top of the file and each guard no-ops when unset.
+  trap 'restore_binary_backup_if_needed; _spinosa_cleanup_lock; if [ -n "${SHIM_STAGE_FILE:-}" ]; then rm -f "$SHIM_STAGE_FILE"; fi; if [ -n "${SPINOSA_EARLY_LOG:-}" ] && [ -f "$SPINOSA_EARLY_LOG" ]; then rm -f "$SPINOSA_EARLY_LOG"; fi' EXIT
+  trap '_spinosa_install_signal 130' INT TERM HUP
+
   validate_install_paths
   preflight_tools
   detect_platform
@@ -2298,8 +2473,6 @@ main() {
     fi
   fi
   printf '%s\n' "$$" > "${lockdir}/pid"
-  trap 'restore_binary_backup_if_needed; _spinosa_cleanup_lock; if [ -n "${SHIM_STAGE_FILE:-}" ]; then rm -f "$SHIM_STAGE_FILE"; fi; if [ -n "${SPINOSA_EARLY_LOG:-}" ] && [ -f "$SPINOSA_EARLY_LOG" ]; then rm -f "$SPINOSA_EARLY_LOG"; fi' EXIT
-  trap '_spinosa_install_signal 130' INT TERM HUP
 
   init_global_metadata
 
@@ -2356,9 +2529,23 @@ main() {
     || warn "OCR tools step failed — continuing without local OCR (vision model or copy-as-is); see $(spinosa_log_file)"
 
   [[ "$VERBOSE" == "1" ]] && section "Stage checks"
-  run_timed_step "Verifying package" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
-    run_staged_binary_checks "$staged_binary" \
+  # Mirror gate progress to the controlling terminal when interactive:
+  # run_timed_step captures the child's output, so without this the console
+  # shows only the wave line until the whole verify budget resolves.
+  _gate_tty=""
+  if [ -t 2 ] && [ -c /dev/tty ]; then _gate_tty=/dev/tty; fi
+  SPINOSA_GATE_TTY="$_gate_tty" run_timed_step "Verifying package" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
+    run_staged_core_checks "$staged_binary" \
     || die "Staged binary failed verification"
+  # Doctor gate on its own budget: a timeout means "no verdict", not "broken".
+  # Warn (orange) and flag the install as unverified instead of blocking —
+  # checksum, version, and template gates already passed above. A completed
+  # doctor that reports issues still refuses activation (red).
+  doctor_gate_status=0
+  DOCTOR_GATE_TMP=""
+  SPINOSA_GATE_TTY="$_gate_tty" run_timed_step "Checking doctor" "$DEFAULT_DOCTOR_TIMEOUT_SECONDS" \
+    run_staged_doctor_check "$staged_binary" || doctor_gate_status=$?
+  handle_doctor_gate_result "$doctor_gate_status"
 
   [[ "$VERBOSE" == "1" ]] && section "Activate"
   run_timed_step "Installing" 30 _install_activate \

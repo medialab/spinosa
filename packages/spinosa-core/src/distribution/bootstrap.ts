@@ -210,6 +210,22 @@ export function readInstalledBinaryVersion(home = spinosaHome()): string {
   }
 }
 
+/**
+ * Reason the install was flagged health-unverified (e.g. "timeout" when the
+ * staged doctor gate never returned a verdict). Empty when verified.
+ */
+export function readDoctorUnverifiedReason(home = spinosaHome()): string {
+  const configPath = path.join(home, HOME_LAYOUT.metadataDir, HOME_LAYOUT.configFile)
+  if (!existsSync(configPath)) return ""
+  try {
+    const text = readFileSync(configPath, "utf-8")
+    const match = text.match(/^doctor_unverified:\s*["']?([^\s"']+)/m)
+    return match?.[1]?.trim() ?? ""
+  } catch {
+    return ""
+  }
+}
+
 export function installedBinaryPath(home = spinosaHome()): string {
   return path.join(home, HOME_LAYOUT.binDir, HOME_LAYOUT.binaryName)
 }

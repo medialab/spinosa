@@ -13,6 +13,8 @@ Release rule: The maintainer must approve a release. No automatic release.
 ### Fixed
 
 - Installer staged verification uses a 400 second timeout and reports gate progress. Slow hosts complete doctor verification. Override the timeout with `SPINOSA_VERIFY_TIMEOUT_SECONDS`. Code: `install.sh`, `tests/installer/binary.bats`.
+- Staged doctor timeouts warn instead of blocking the install. The install records `doctor_unverified` in metadata and `spinosa doctor` reports it. A completed doctor that reports issues still blocks. Code: `install.sh`, `packages/spinosa-core/src/distribution`, `packages/spinosa-kernel/src/cli/cmd/doctor.ts`, `tests/installer/binary.bats`.
+- CTRL+C stops every installer step promptly with cleanup and exit 130. Version probes poll instead of blocking, stray probes are reaped, and signal traps install before any blocking work. Code: `install.sh`, `tests/installer/timed-step.bats`.
 
 ### Fixed
 

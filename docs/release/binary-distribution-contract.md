@@ -67,6 +67,7 @@ $SPINOSA_HOME/env.sh
 | `distribution: binary` | Install mode after hard cut |
 | `template_pack_id` | Embedded pack SHA-256 |
 | `beta: true\|false` | Release channel toggle |
+| `doctor_unverified` | Staged doctor never returned a verdict (e.g. timeout); install proceeded flagged, health unconfirmed |
 | `legacy_source_runtime: true` | Optional: dormant `versions/` still present |
 
 Legacy keys remain readable.
@@ -90,7 +91,9 @@ Modified launchers are preserved and reported. Migration never fails global inst
 ## Activation / rollback
 
 1. Stage binary outside active path.
-2. Verify checksum, `version --json`, template ensure/verify, doctor.
+2. Verify checksum, `version --json`, template ensure/verify, doctor. A doctor
+   timeout (no verdict) warns and records `doctor_unverified` instead of
+   blocking; a completed doctor that reports issues still blocks.
 3. Backup active binary → atomic rename staged → active.
 4. Verify active binary; commit metadata only after success.
 5. On post-activation failure: restore backup; leave metadata at previous version.

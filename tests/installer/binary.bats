@@ -475,3 +475,114 @@ EOF
   [[ "$output" == *"Doctor passed"* ]]
   [[ "$output" == *"Template verify succeeded"* ]]
 }
+
+@test "run_staged_binary_checks reports gate progress without verbose" {
+  VERBOSE=0
+  VERSION="1.0.3-beta.9"
+  local fake="$BATS_TEST_TMPDIR/fake-spinosa-gates"
+  cat >"$fake" <<'EOF'
+#!/bin/sh
+if [ "$1" = "version" ]; then
+  printf '{"version":"1.0.3-beta.9","templatePackId":"pack1"}\n'
+  exit 0
+fi
+if [ "$1" = "internal" ] && [ "$2" = "template" ]; then
+  exit 0
+fi
+if [ "$1" = "doctor" ]; then
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$fake"
+  run run_staged_binary_checks "$fake"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Checking staged version"* ]]
+  [[ "$output" == *"Ensuring templates"* ]]
+  [[ "$output" == *"Verifying templates"* ]]
+  [[ "$output" == *"Running doctor"* ]]
+  [[ "$output" == *"Doctor passed"* ]]
+}
+
+@test "DEFAULT_VERIFY_TIMEOUT_SECONDS defaults to 400" {
+  [ "$DEFAULT_VERIFY_TIMEOUT_SECONDS" = "400" ]
+}
+
+@test "SPINOSA_VERIFY_TIMEOUT_SECONDS overrides the verify default" {
+  run bash -c "SPINOSA_INSTALLER_LIB_ONLY=1 SPINOSA_VERIFY_TIMEOUT_SECONDS=600 NO_COLOR=1 SPINOSA_LOG_DISABLED=1 source \"$INSTALLER\" >/dev/null 2>&1; printf '%s' \"\$DEFAULT_VERIFY_TIMEOUT_SECONDS\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "600" ]
+}
+
+@test "run_staged_doctor_check passes when doctor succeeds" {
+  VERSION="1.0.3-beta.9"
+  local fake="$BATS_TEST_TMPDIR/fake-doctor-check-ok"
+  cat >"$fake" <<'EOF'
+#!/bin/sh
+if [ "$1" = "doctor" ]; then
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$fake"
+  run run_staged_doctor_check "$fake"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Doctor passed"* ]]
+}
+
+@test "run_staged_doctor_check returns without dying when doctor fails" {
+  VERSION="1.0.3-beta.9"
+  SPINOSA_LOG_DISABLED=0
+  SPINOSA_LOG_FILE="$BATS_TEST_TMPDIR/doctor-check.log"
+  local fake="$BATS_TEST_TMPDIR/fake-doctor-check-fail"
+  cat >"$fake" <<'EOF'
+#!/bin/sh
+if [ "$1" = "doctor" ]; then
+  printf 'DOCTOR_CHECK_SENTINEL\n'
+  exit 1
+fi
+exit 0
+EOF
+  chmod +x "$fake"
+  run run_staged_doctor_check "$fake"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"DOCTOR_CHECK_SENTINEL"* ]]
+}
+
+@test "handle_doctor_gate_result flags unverified on timeout" {
+  printf 'partial-line\n' >"$BATS_TEST_TMPDIR/partial-doctor.log"
+  DOCTOR_GATE_TMP="$BATS_TEST_TMPDIR/partial-doctor.log"
+  DOCTOR_UNVERIFIED=""
+  handle_doctor_gate_result 124 >/dev/null 2>&1
+  [ "$DOCTOR_UNVERIFIED" = "timeout" ]
+  [ ! -e "$BATS_TEST_TMPDIR/partial-doctor.log" ]
+}
+
+@test "handle_doctor_gate_result clears flag when doctor passes" {
+  DOCTOR_UNVERIFIED="timeout"
+  handle_doctor_gate_result 0 >/dev/null 2>&1
+  [ -z "$DOCTOR_UNVERIFIED" ]
+}
+
+@test "handle_doctor_gate_result dies when doctor reports issues" {
+  run handle_doctor_gate_result 1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Doctor reported issues"* ]]
+}
+
+@test "write_install_metadata records and clears doctor_unverified" {
+  VERSION="1.0.3-beta.9"
+  mkdir -p "$SPINOSA_METADATA_DIR" "$SPINOSA_STAGING_DIR"
+  DOCTOR_UNVERIFIED="timeout"
+  write_install_metadata
+  grep -q '^doctor_unverified: "timeout"$' "$SPINOSA_METADATA_DIR/config.yaml"
+  DOCTOR_UNVERIFIED=""
+  write_install_metadata
+  ! grep -q '^doctor_unverified:' "$SPINOSA_METADATA_DIR/config.yaml"
+}
+
+@test "run_timed_step returns 124 on timeout" {
+  run run_timed_step "Timeout probe" 1 sleep 5
+  [ "$status" -eq 124 ]
+  [[ "$output" == *"timed out after 1s"* ]]
+}

@@ -30,6 +30,8 @@ export const INSTALL_METADATA_KEYS = {
   beta: "beta",
   legacySourceRuntime: "legacy_source_runtime",
   autoUpgrade: "auto_upgrade",
+  /** Set when the staged doctor gate timed out: installed, health unverified. */
+  doctorUnverified: "doctor_unverified",
 } as const
 
 export const HOME_LAYOUT = {

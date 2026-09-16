@@ -139,7 +139,7 @@ limactl start --name spinosa-alpine --arch aarch64 template://alpine
 
 ## Caveats
 
-- **Cross-arch Lima** (`--arch x86_64` on arm64 Mac): qemu, slower, more RAM; prefer native aarch64 for day-to-day Linux soak; still run x64 before stable. Installer staged-binary verify defaults to **180s** for canvas/native cold-boot cost on qemu.
+- **Cross-arch Lima** (`--arch x86_64` on arm64 Mac): qemu, slower, more RAM; prefer native aarch64 for day-to-day Linux soak; still run x64 before stable. Installer staged-binary verify defaults to **400s** (override with `SPINOSA_VERIFY_TIMEOUT_SECONDS`) for canvas/native cold-boot cost on qemu.
 - **Nested virt**: not required for this soak; only if you nest another hypervisor/container runtime inside Lima.
 - **Mount vs copy**: home mount is convenient for reading `dist/`, but virgin smoke should use a fresh `SPINOSA_HOME` under `/tmp` (helper does this).
 - **Host-only builds** (`build:binaries:host`) cannot soak Linux — rebuild without `--host-only`.

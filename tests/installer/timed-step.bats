@@ -64,3 +64,60 @@ bridge_leak_fn() {
   run_timed_step "Bridge isolation" 30 bridge_leak_fn >/dev/null 2>&1
   [ -z "$SPINOSA_TIMED_LEAK_CHECK" ]
 }
+
+@test "_spinosa_install_signal kills the step tree and exits 130 with cleanup" {
+  # Deterministic cancel-path test (no live signals): a real terminal CTRL+C
+  # reaches the whole foreground group, which cannot be simulated from inside
+  # the test runner without signaling the runner itself — so drive the
+  # handler directly with a live step tree behind it.
+  sleep 45 &
+  STEP_COMMAND_PID=$!
+  STEP_OUTPUT_FILE="$BATS_TEST_TMPDIR/step-out"
+  touch "$STEP_OUTPUT_FILE"
+  INSTALL_LOCKDIR="$BATS_TEST_TMPDIR/empty.lock"
+  mkdir -p "$INSTALL_LOCKDIR"
+  STEP_RENDER_PID=""
+  STEP_STARTED_AT="$(date +%s)"
+  STEP_LABEL="Hung"
+  PROBE_PID=""
+  run _spinosa_install_signal 130
+  [ "$status" -eq 130 ]
+  [[ "$output" == *"cancelled"* ]]
+  [ ! -e "$BATS_TEST_TMPDIR/empty.lock" ]
+  [ ! -e "$STEP_OUTPUT_FILE" ]
+  [ -z "$(pgrep -f 'sleep 45' || true)" ]
+}
+
+@test "wait_for_pid returns promptly on exit and timeout" {
+  sleep 2 &
+  local quick=$!
+  wait_for_pid "$quick" 10
+  sleep 30 &
+  local hung=$!
+  local status=0
+  wait_for_pid "$hung" 1 || status=$?
+  [ "$status" -eq 1 ]
+  kill -KILL "$hung" 2>/dev/null || true
+  wait "$hung" 2>/dev/null || true
+}
+
+@test "get_installed_version probes a live binary without metadata" {
+  mkdir -p "$SPINOSA_HOME/bin"
+  printf '#!/bin/sh\nprintf "{\\"version\\":\\"1.0.3-beta.9\\"}\\n"\n' > "$SPINOSA_HOME/bin/spinosa"
+  chmod +x "$SPINOSA_HOME/bin/spinosa"
+  # No metadata dir -> forces the live-probe path in get_installed_version.
+  run get_installed_version
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.0.3-beta.9" ]
+}
+
+@test "step_end reaps the wave renderer" {
+  sleep 30 &
+  local renderer=$!
+  STEP_RENDER_PID="$renderer"
+  STEP_STARTED_AT="$(date +%s)"
+  STEP_LABEL="Test renderer"
+  step_end 0 "done" >/dev/null 2>&1
+  [ -z "$STEP_RENDER_PID" ]
+  ! kill -0 "$renderer" 2>/dev/null
+}
