@@ -40,6 +40,7 @@ const CORE_RELEASE_TESTS = [
   "../../scripts/release/bump.test.ts",
   "../../scripts/release/lib.test.ts",
   "../../scripts/release/index.test.ts",
+  "../../scripts/release/promote.test.ts",
   "../../scripts/set-version.test.ts",
 ] as const
 

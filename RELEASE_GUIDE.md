@@ -7,11 +7,13 @@
 bun run release plan beta patch   # shows next version, e.g. v1.1.0-beta.17.18
 # 2. Push a greater version tag — the tag push IS the release approval
 git tag v1.1.0-beta.17.18 && git push origin v1.1.0-beta.17.18
-# 3. GitHub Actions validates the tag, builds all four targets natively
-#    in parallel (compile only), assembles dist/ (structural checks only),
-#    verifies with one end-to-end installer smoke per platform, and only then
-#    publishes the immutable release with build-provenance attestation and
-#    rolls the `beta` channel (publish is gated behind the verify matrix).
+# 3. GitHub Actions validates the tag, then (dry-run) builds all four
+#    targets natively in parallel (compile only), assembles dist/
+#    (structural checks only), and verifies with one end-to-end installer
+#    smoke per platform. Real releases rebuild nothing: publish promotes the
+#    exact dry-run bytes for the tag commit (fail closed with no green
+#    dry-run), then publishes the immutable release with build-provenance
+#    attestation and rolls the `beta` channel.
 ```
 
 Requirements: `v*` tag pushes restricted to maintainers (tag protection rules),
@@ -110,8 +112,12 @@ Three levels, in order — each catches a different failure class:
 2. **GitHub dry run** (`dry_run=true`): the real pipeline on real runners
    (validate → build ×4 → assemble → verify ×4) with publish skipped.
    Catches runner-specific issues (macOS/ARM, artifacts, permissions).
-3. **Real release** (tag push): the proven pipeline plus publish and the
-   rolling-channel move — publish only, no new verification.
+   Its `assembled-dist` artifact (90-day retention) is what a later real
+   release publishes — same commit, same bytes.
+3. **Real release** (tag push): no rebuild, no retesting. Publish locates
+   the green dry-run for the exact tag commit, re-verifies layout +
+   checksums, and ships those bytes (fail closed with no green dry-run),
+   then moves the rolling channel.
 
 ---
 

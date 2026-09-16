@@ -19,16 +19,18 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
 4. Push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
    The tag push IS the release approval — `v*` pushes are
    maintainer-restricted by tag protection rules.
-5. CI validates → builds all four targets natively in parallel
+5. CI validates → (dry-run only) builds all four targets natively in parallel
    (macos-26, macos-26-intel, ubuntu-24.04-arm, ubuntu-24.04; compile only,
    no runtime smoke) → assembles `dist/` (manifest, installers, checksums,
    structural validation only) → verifies on all four runners (checksum +
    ONE end-to-end installer smoke per platform: version, doctor,
-   native-imports, provider-catalog, pdf-runtime) → publishes the immutable
-   GitHub release with build-provenance attestation → rolls the `beta`
-   channel. One runtime verification phase, not stacked gates.
-   Publish is gated behind the verify matrix: a broken binary must never
-   become the rolling-channel default (v1.1.0-beta.19).
+   native-imports, provider-catalog, pdf-runtime). One runtime verification
+   phase, not stacked gates. Real releases build nothing: publish promotes
+   the EXACT dry-run bytes for the tag commit (layout + checksums
+   re-verified, fail closed with no green dry-run), then publishes the
+   immutable GitHub release with build-provenance attestation → rolls the
+   `beta` channel. A broken binary must never become the rolling-channel
+   default (v1.1.0-beta.19).
 6. Verify: `gh release view vX.Y.Z`, rolling `beta` release advertises
    the release, live installer serves the new `PINNED_VERSION`.
 

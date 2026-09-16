@@ -6,15 +6,22 @@
 #
 # Division of labor (one runtime verification phase, not stacked gates):
 #   validate  source is valid (typechecks, release-critical + installer
-#             tests, shellcheck, tag/version validation)
+#             tests, shellcheck, actionlint, tag/version validation).
+#             Functional quality runs on dry-runs; real releases skip it —
+#             same commit implies same bytes, already proven.
 #   build     each native target compiles (no runtime smoke here)
 #   assemble  the release is internally consistent (manifest, installers,
 #             checksums, structural validation only — no runtime smoke)
 #   verify    the exact artifact users receive installs and runs on every
 #             supported platform (checksum + ONE end-to-end installer smoke:
 #             version, doctor, native-imports, provider-catalog, pdf-runtime)
-#   publish   only artifacts that passed all of the above ship (needs:
-#             validate, assemble, verify)
+#   publish   promotes the EXACT dry-run bytes (no rebuild: downloads the
+#             assembled-dist from the green dry-run for the tag commit,
+#             re-verifies layout + checksums) and ships them.
+#
+# Build-once rule: a tag with no green dry-run for its exact commit fails
+# closed in publish. Rehearse first:
+#   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
 #
 # Test workflow changes first — dry-run proves everything but publish:
 #   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
@@ -85,12 +92,17 @@ jobs:
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck bats
+        if: steps.version.outputs.dry_run == 'true'
 
+      # Same commit implies same bytes: real releases skip the functional
+      # rerun — the promoted dry-run already proved this tree.
       - run: bun run quality
+        if: steps.version.outputs.dry_run == 'true'
 
   build:
     name: Build ${{ matrix.target }}
     needs: validate
+    if: needs.validate.outputs.dry_run == 'true'
     permissions:
       contents: read
     strategy:
@@ -130,7 +142,7 @@ jobs:
       # native target compile". The assembled artifact is smoked exactly once
       # per platform in verify (full end-to-end installer run).
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.target }}
           path: dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}
@@ -141,6 +153,7 @@ jobs:
   assemble:
     name: Assemble (no publish)
     needs: [validate, build]
+    if: needs.validate.outputs.dry_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -157,7 +170,7 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           pattern: release-*
           merge-multiple: true
@@ -175,19 +188,21 @@ jobs:
             bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
           fi
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           # Both dist/v<version>/ and dist/beta/ — ci-publish needs the channel installer.
           # Uploaded in dry runs too: verify downloads it to prove the full pipeline.
+          # 90-day retention: real releases promote these exact bytes (see publish).
           name: assembled-dist
           path: dist
           if-no-files-found: error
           overwrite: true
-          retention-days: 7
+          retention-days: 90
 
   verify:
     name: Verify ${{ matrix.target }}
     needs: [validate, assemble]
+    if: needs.validate.outputs.dry_run == 'true'
     permissions:
       contents: read
     strategy:
@@ -212,7 +227,7 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: assembled-dist
           # Artifact root holds dist/ contents, so download into dist/.
@@ -243,8 +258,8 @@ jobs:
           rm -rf "$SMOKE_HOME"
 
   publish:
-    name: Publish + roll beta channel
-    needs: [validate, assemble, verify]
+    name: Promote + publish + roll beta channel
+    needs: [validate]
     if: needs.validate.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -252,6 +267,8 @@ jobs:
       contents: write
       attestations: write
       id-token: write
+      # Cross-run artifact download (promote the dry-run's bytes).
+      actions: read
     steps:
       - uses: actions/checkout@v5
         with:
@@ -264,10 +281,10 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v5
-        with:
-          name: assembled-dist
-          path: dist
+      # Build-once: download the assembled-dist from the green dry-run for
+      # this exact commit and re-verify layout + checksums. No rebuild —
+      # a tag with no green dry-run fails closed here.
+      - run: bun scripts/release/promote.ts "${{ needs.validate.outputs.version }}"
 
       - run: bun run release ci-publish "v${{ needs.validate.outputs.version }}"
 
