@@ -10,6 +10,10 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Fixed
+
+- TUI worker no longer imports `@napi-rs/canvas`. That extra isolate loaded a pdf.js bunfs chunk that cannot resolve the native module. The installer then printed ImageData/Path2D polyfill warnings and `/provider` never returned. The worker stubs DOM globals and suppresses leftover boot noise. The smoke uses a fresh HOME and the embedded snapshot. Code: `packages/spinosa-kernel/src/cli/tui/worker.ts`, `packages/spinosa-kernel/src/cli/cmd/internal.ts`.
+
 ## [1.1.0-beta.32] — 2026-09-16
 
 ### Fixed

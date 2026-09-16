@@ -8,6 +8,37 @@
 
 export const COMPILED_TUI_WORKER_RELATIVE = "src/cli/tui/worker.js"
 
+/** Fail closed: a healthy snapshot `/provider` through a hermetic worker is fast. */
+export const TUI_WORKER_PROVIDER_FETCH_MS = 30_000
+
+const TUI_WORKER_SMOKE_ENV_KEYS = [
+  "HOME",
+  "SPINOSA_HOME",
+  "SPINOSA_DISABLE_MODELS_FETCH",
+  "SPINOSA_PURE",
+] as const
+
+export type TuiWorkerSmokeEnvSnapshot = Record<(typeof TUI_WORKER_SMOKE_ENV_KEYS)[number], string | undefined>
+
+/** Isolate the worker from the host HOME catalog and models.dev. */
+export function applyTuiWorkerSmokeEnv(env: NodeJS.ProcessEnv, homeDir: string): TuiWorkerSmokeEnvSnapshot {
+  const previous = {} as TuiWorkerSmokeEnvSnapshot
+  for (const key of TUI_WORKER_SMOKE_ENV_KEYS) previous[key] = env[key]
+  env.HOME = homeDir
+  env.SPINOSA_HOME = `${homeDir.replace(/\/+$/, "")}/.spinosa`
+  env.SPINOSA_DISABLE_MODELS_FETCH = "1"
+  env.SPINOSA_PURE = "1"
+  return previous
+}
+
+export function restoreTuiWorkerSmokeEnv(env: NodeJS.ProcessEnv, previous: TuiWorkerSmokeEnvSnapshot): void {
+  for (const key of TUI_WORKER_SMOKE_ENV_KEYS) {
+    const value = previous[key]
+    if (value === undefined) delete env[key]
+    else env[key] = value
+  }
+}
+
 export function compiledTuiWorkerPath(bunfsRoot: string): string {
   return `${bunfsRoot}${COMPILED_TUI_WORKER_RELATIVE}`
 }

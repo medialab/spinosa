@@ -3,38 +3,21 @@
  * (Bun --compile extracts natives without reliable optional-dep require on Linux).
  * No OCR engine ships; no companion-lib staging needed.
  */
+import { installSpinosaBootNoiseSuppression } from "./native/boot-noise"
 import { ensureCanvasNativeBinding } from "./native/canvas-native"
 import { installDomMatrixPolyfill } from "./native/dom-matrix-polyfill"
 
-// Linux binary noise suppression: optional-dep npm bug is benign;
-// doctor still reports Canvas: available. Suppress only these known strings.
-const _origWarn = console.warn.bind(console)
-const _origError = console.error.bind(console)
-function _suppressSpinosaBootNoise(msg: string): boolean {
-  return (
-    msg.includes('Cannot load "@napi-rs/canvas"') ||
-    // pdfjs-dist emits one warning per missing global (ImageData, Path2D,
-    // DOMMatrix) with varying quote styles — all benign at boot; the
-    // provider-catalog/pdf-runtime smokes and doctor report real status.
-    msg.includes("Cannot polyfill")
-  )
-}
-console.warn = (...args: unknown[]) => {
-  if (args.length > 0 && _suppressSpinosaBootNoise(String(args[0]))) return
-  _origWarn(...(args as never[]))
-}
-console.error = (...args: unknown[]) => {
-  if (args.length > 0 && _suppressSpinosaBootNoise(String(args[0]))) return
-  _origError(...(args as never[]))
-}
+installSpinosaBootNoiseSuppression()
 
 /**
  * Commands that never touch canvas: skip the native staging work (up to 3s
  * filesystem probes, doubled on cache miss, painful on restricted/noexec
  * Linux) for them. Everything else stages eagerly — doctor probes canvas
- * availability, native-imports/pdf-runtime/tui-worker smokes exercise it, and the TUI
- * renders through it. SPINOSA_SKIP_CANVAS_STAGE=1 forces the skip (restricted
- * hosts); the canvas consumer then reports missing instead of hanging.
+ * availability, native-imports/pdf-runtime smokes exercise it, and the TUI
+ * parent renders through it. The tui-worker smoke must not dlopen canvas:
+ * that extra isolate cannot require `@napi-rs/canvas` from bunfs chunks.
+ * SPINOSA_SKIP_CANVAS_STAGE=1 forces the skip (restricted hosts); the canvas
+ * consumer then reports missing instead of hanging.
  */
 function _commandNeedsCanvas(argv: string[]): boolean {
   if (process.env.SPINOSA_SKIP_CANVAS_STAGE === "1") return false
@@ -43,6 +26,7 @@ function _commandNeedsCanvas(argv: string[]): boolean {
   if (cmd === "version") return false
   if (cmd === "internal" && sub === "template") return false
   if (cmd === "internal" && sub === "smoke" && subsub === "provider-catalog") return false
+  if (cmd === "internal" && sub === "smoke" && subsub === "tui-worker") return false
   return true
 }
 

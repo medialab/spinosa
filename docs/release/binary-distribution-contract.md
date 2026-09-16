@@ -163,6 +163,8 @@ See `docs/release/stable-promotion-gates.md`.
   proves a page actually renders through the staged canvas native.
   `tui-worker` proves the compiled extra-entrypoint Worker starts and serves
   that catalog (beta.31 resolved `./src/cli/tui/worker.ts` after chdir, so
-  retry toasted "Worker has been terminated").
-- pdfjs may warn that `@napi-rs/canvas` cannot load from some BunFS chunks while doctor still reports Canvas/PDF available. Non-blocking for CLI smoke; PDF raster follow-up tracked in the beta.10 checklist.
+  retry toasted "Worker has been terminated"). That worker isolate must not
+  import `@napi-rs/canvas`: bunfs chunks cannot createRequire it, pdf.js then
+  warns `Cannot polyfill ImageData/Path2D`, and `/provider` never returns.
+  PDF raster stays on `pdf-runtime` in the parent isolate.
 

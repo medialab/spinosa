@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import {
+  applyTuiWorkerSmokeEnv,
   compiledTuiWorkerPath,
   describeWorkerCallError,
   evaluateTuiWorkerSmoke,
+  restoreTuiWorkerSmokeEnv,
+  TUI_WORKER_PROVIDER_FETCH_MS,
   waitForWorkerReady,
 } from "../../../src/cli/tui/worker-boot"
 
@@ -80,5 +83,48 @@ describe("describeWorkerCallError", () => {
     expect(describeWorkerCallError(new Error("Worker has been terminated")).message).toBe(
       "TUI background worker died. Restart Spinosa.",
     )
+  })
+})
+
+describe("tui-worker extra-entrypoint", () => {
+  test("does not import native canvas into the worker isolate", async () => {
+    const source = await Bun.file(new URL("../../../src/cli/tui/worker.ts", import.meta.url)).text()
+    expect(source).not.toMatch(/import\(["'][^"']*napi-canvas-force/)
+    expect(source).not.toContain("ensureCanvasNativeBinding")
+    expect(source).not.toMatch(/from ["']@napi-rs\/canvas["']/)
+    expect(source).toContain("installSpinosaBootNoiseSuppression")
+    expect(source).toContain("installDomMatrixPolyfill")
+  })
+
+  test("parent skip-list includes tui-worker smoke so it does not stage canvas", async () => {
+    const source = await Bun.file(new URL("../../../src/index.ts", import.meta.url)).text()
+    expect(source).toContain('subsub === "tui-worker"')
+  })
+})
+
+describe("tui-worker installer smoke isolation", () => {
+  test("fail-closed /provider budget stays 30s", () => {
+    expect(TUI_WORKER_PROVIDER_FETCH_MS).toBe(30_000)
+  })
+
+  test("smoke uses a fresh HOME and disables models.dev plus plugins", async () => {
+    const source = await Bun.file(new URL("../../../src/cli/cmd/internal.ts", import.meta.url)).text()
+    expect(source).toContain("applyTuiWorkerSmokeEnv")
+    expect(source).toContain("spinosa-tui-worker-home-")
+    expect(source).toContain("TUI_WORKER_PROVIDER_FETCH_MS")
+  })
+
+  test("applyTuiWorkerSmokeEnv isolates HOME and restores it", () => {
+    const env: NodeJS.ProcessEnv = { HOME: "/real-home", SPINOSA_HOME: "/real-home/.spinosa" }
+    const previous = applyTuiWorkerSmokeEnv(env, "/tmp/smoke-home")
+    expect(env.HOME).toBe("/tmp/smoke-home")
+    expect(env.SPINOSA_HOME).toBe("/tmp/smoke-home/.spinosa")
+    expect(env.SPINOSA_DISABLE_MODELS_FETCH).toBe("1")
+    expect(env.SPINOSA_PURE).toBe("1")
+    restoreTuiWorkerSmokeEnv(env, previous)
+    expect(env.HOME).toBe("/real-home")
+    expect(env.SPINOSA_HOME).toBe("/real-home/.spinosa")
+    expect(env.SPINOSA_DISABLE_MODELS_FETCH).toBeUndefined()
+    expect(env.SPINOSA_PURE).toBeUndefined()
   })
 })

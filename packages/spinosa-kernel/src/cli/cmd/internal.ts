@@ -10,7 +10,16 @@ import { getFormat, emitResult } from "../output"
 import { decodeWorkerPayload } from "@spinosa/core/import/worker-payload"
 import { Rpc } from "@/util/rpc"
 import { withTimeout } from "@/util/timeout"
-import { evaluateTuiWorkerSmoke, waitForWorkerReady } from "../tui/worker-boot"
+import {
+  applyTuiWorkerSmokeEnv,
+  evaluateTuiWorkerSmoke,
+  restoreTuiWorkerSmokeEnv,
+  TUI_WORKER_PROVIDER_FETCH_MS,
+  waitForWorkerReady,
+} from "../tui/worker-boot"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 
 function printJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
@@ -324,68 +333,80 @@ export const InternalCommand = {
                   typeof SPINOSA_WORKER_PATH !== "undefined"
                     ? SPINOSA_WORKER_PATH
                     : new URL("../tui/worker.ts", import.meta.url)
-                const worker = new Worker(file)
-                const client = Rpc.client<{
-                  ping: (input: void) => { ok: true }
-                  fetch: (input: {
-                    url: string
-                    method: string
-                    headers: Record<string, string>
-                    body?: string
-                  }) => Promise<{ status: number; headers: Record<string, string>; body: string }>
-                }>(worker)
+                // The GNU x64 miss was not a slow healthy fetch. The worker
+                // extra-entrypoint loaded a pdf.js bunfs chunk that cannot
+                // require `@napi-rs/canvas`, then `/provider` used the host
+                // HOME catalog and could wait on models.dev. Isolate HOME,
+                // skip plugins, and use the embedded snapshot.
+                const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "spinosa-tui-worker-home-"))
+                const previousEnv = applyTuiWorkerSmokeEnv(process.env, homeDir)
                 try {
-                  await waitForWorkerReady({
-                    ping: () => client.call("ping", undefined),
-                    attachError: (handler) => {
-                      const listener = (event: ErrorEvent) => handler(event.error ?? event.message)
-                      worker.addEventListener("error", listener)
-                      return () => worker.removeEventListener("error", listener)
-                    },
-                  })
-                  const directory = encodeURIComponent(process.cwd())
-                  const result = await withTimeout(
-                    client.call("fetch", {
-                      url: `http://spinosa.internal/provider?directory=${directory}`,
-                      method: "GET",
-                      headers: {},
-                    }),
-                    30_000,
-                    "TUI worker /provider fetch timed out",
-                  )
-                  let providerCount = 0
+                  const worker = new Worker(file)
+                  const client = Rpc.client<{
+                    ping: (input: void) => { ok: true }
+                    fetch: (input: {
+                      url: string
+                      method: string
+                      headers: Record<string, string>
+                      body?: string
+                    }) => Promise<{ status: number; headers: Record<string, string>; body: string }>
+                  }>(worker)
                   try {
-                    const body = JSON.parse(result.body) as { all?: unknown[] }
-                    providerCount = Array.isArray(body.all) ? body.all.length : 0
-                  } catch {
+                    await waitForWorkerReady({
+                      ping: () => client.call("ping", undefined),
+                      attachError: (handler) => {
+                        const listener = (event: ErrorEvent) => handler(event.error ?? event.message)
+                        worker.addEventListener("error", listener)
+                        return () => worker.removeEventListener("error", listener)
+                      },
+                    })
+                    const directory = encodeURIComponent(process.cwd())
+                    const result = await withTimeout(
+                      client.call("fetch", {
+                        url: `http://spinosa.internal/provider?directory=${directory}`,
+                        method: "GET",
+                        headers: {},
+                      }),
+                      TUI_WORKER_PROVIDER_FETCH_MS,
+                      "TUI worker /provider fetch timed out",
+                    )
+                    let providerCount = 0
+                    try {
+                      const body = JSON.parse(result.body) as { all?: unknown[] }
+                      providerCount = Array.isArray(body.all) ? body.all.length : 0
+                    } catch {
+                      const verdict = evaluateTuiWorkerSmoke({
+                        pingOk: true,
+                        fetchError: `provider body was not JSON (HTTP ${result.status})`,
+                      })
+                      fail(verdict.error ?? "provider body was not JSON")
+                      return
+                    }
                     const verdict = evaluateTuiWorkerSmoke({
                       pingOk: true,
-                      fetchError: `provider body was not JSON (HTTP ${result.status})`,
+                      status: result.status,
+                      providerCount,
                     })
-                    fail(verdict.error ?? "provider body was not JSON")
-                    return
-                  }
-                  const verdict = evaluateTuiWorkerSmoke({
-                    pingOk: true,
-                    status: result.status,
-                    providerCount,
-                  })
-                  if (!verdict.ok) {
-                    fail(verdict.error ?? "TUI worker smoke failed")
-                    return
-                  }
-                  if (args.json || getFormat(args) === "json") {
-                    printJson({ ok: true, providers: verdict.providers })
-                  } else {
-                    emitResult(
-                      "human",
-                      "tui-worker",
-                      { ok: true, providers: verdict.providers },
-                      `ok (${verdict.providers} providers via TUI worker)`,
-                    )
+                    if (!verdict.ok) {
+                      fail(verdict.error ?? "TUI worker smoke failed")
+                      return
+                    }
+                    if (args.json || getFormat(args) === "json") {
+                      printJson({ ok: true, providers: verdict.providers })
+                    } else {
+                      emitResult(
+                        "human",
+                        "tui-worker",
+                        { ok: true, providers: verdict.providers },
+                        `ok (${verdict.providers} providers via TUI worker)`,
+                      )
+                    }
+                  } finally {
+                    worker.terminate()
                   }
                 } finally {
-                  worker.terminate()
+                  restoreTuiWorkerSmokeEnv(process.env, previousEnv)
+                  await fs.rm(homeDir, { recursive: true, force: true })
                 }
               } catch (err) {
                 fail(err instanceof Error ? err.message : String(err))
