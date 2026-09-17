@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Build-once promotion for beta releases.
+ * Build-once promotion for CI releases (beta and stable).
  *
  * The real release never rebuilds: it downloads the `assembled-dist`
  * artifact from the newest green dry-run built from the exact tag commit,
@@ -9,7 +9,7 @@
  *
  * Commit binding uses artifact CONTENT, not run metadata: dispatch runs
  * report the default branch's SHA (where the workflow file lives), not the
- * checked-out beta-dev commit they actually built. So the assemble job
+ * checked-out source branch they actually built. So the assemble job
  * writes `dist/commit-sha.txt` (also uploaded alone as `release-sha`), and
  * promotion matches that embedded SHA against the tag commit.
  *
@@ -20,6 +20,7 @@
  *
  * Usage:
  *   bun scripts/release/promote.ts 1.1.0-beta.31
+ *   bun scripts/release/promote.ts 1.2.0
  *
  * Pure helpers are exported for unit tests (no network there).
  */
@@ -29,6 +30,14 @@ import { join } from "node:path"
 import { $ } from "bun"
 import { productBinaryAssetName, PRODUCT_BINARY_TARGETS } from "../../packages/spinosa-core/src/distribution/contract.ts"
 import { RELEASE_ROOT } from "./lib.ts"
+
+export const RELEASE_WORKFLOW = "release-beta.yml"
+
+export function dryRunHint(version: string): string {
+  const pre = version.includes("-beta")
+  const branch = pre ? "beta-dev" : "main"
+  return `gh workflow run ${RELEASE_WORKFLOW} -f version=${version} -f dry_run=true (checks out ${branch})`
+}
 
 export interface DryRunRecord {
   id: number
@@ -85,7 +94,7 @@ async function ghApi(path: string): Promise<unknown> {
 if (import.meta.main) {
   const version = (process.argv[2] ?? "").replace(/^v/, "")
   if (!version) {
-    console.error("Usage: bun scripts/release/promote.ts <version> (e.g. 1.1.0-beta.31)")
+    console.error("Usage: bun scripts/release/promote.ts <version> (e.g. 1.2.0 or 1.1.0-beta.31)")
     process.exit(1)
   }
   const fail = (message: string): never => {
@@ -97,7 +106,7 @@ if (import.meta.main) {
     ?? (await $`gh repo view --json nameWithOwner --jq .nameWithOwner`.cwd(RELEASE_ROOT).nothrow().quiet()).text().trim()
   if (!repo || !repo.includes("/")) fail("cannot determine owner/repo (need GITHUB_REPOSITORY or gh auth)")
   const data = (await ghApi(
-    `repos/${repo}/actions/workflows/release-beta.yml/runs?event=workflow_dispatch&status=success&per_page=10`,
+    `repos/${repo}/actions/workflows/${RELEASE_WORKFLOW}/runs?event=workflow_dispatch&status=success&per_page=10`,
   ).catch((e) => fail(String(e)))) as { workflow_runs?: Array<{ id: number; created_at: string }> }
   // Resolve each candidate's embedded build SHA via its tiny release-sha
   // artifact (dispatch head_sha is the default branch, not the built commit).
@@ -116,7 +125,7 @@ if (import.meta.main) {
   if (!pick) {
     fail(
       `no green dry-run built from commit ${head.slice(0, 8)} — dispatch one first: ` +
-        `gh workflow run release-beta.yml -f version=${version} -f dry_run=true`,
+        dryRunHint(version),
     )
   }
   console.log(`promoting dry-run ${pick.id} (built from ${head.slice(0, 8)})`)

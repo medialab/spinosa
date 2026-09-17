@@ -1,26 +1,35 @@
 # Spinosa Release Guide
 
-## Quick start (CI-built betas — primary path)
+## Quick start (CI-built releases — primary path)
 
 ```bash
-# 1. Prepare beta-dev: merge, CHANGELOG section, versions in sync
-bun run release plan beta patch   # shows next version, e.g. v1.1.0-beta.17.18
-# 2. Push a greater version tag — the tag push IS the release approval
-git tag v1.1.0-beta.17.18 && git push origin v1.1.0-beta.17.18
-# 3. GitHub Actions validates the tag, then (dry-run) builds all four
-#    targets natively in parallel (compile only), assembles dist/
-#    (structural checks only), and verifies with one end-to-end installer
-#    smoke per platform. Real releases rebuild nothing: publish promotes the
-#    exact dry-run bytes for the tag commit (fail closed with no green
-#    dry-run), then publishes the immutable release with build-provenance
-#    attestation and rolls the `beta` channel.
+# Beta (from beta-dev)
+bun run release plan beta patch
+bun scripts/release/validate-tag.ts v1.2.0-beta.5
+gh workflow run release-beta.yml -f version=1.2.0-beta.5 -f dry_run=true
+git tag v1.2.0-beta.5 && git push origin v1.2.0-beta.5
+
+# Stable (from main, after promoting soaked beta work)
+bun run release plan stable patch
+bun scripts/release/validate-tag.ts v1.2.1
+gh workflow run release-beta.yml -f version=1.2.1 -f dry_run=true
+git tag v1.2.1 && git push origin v1.2.1
 ```
 
-Requirements: `v*` tag pushes restricted to maintainers (tag protection rules),
-tag greater than the previous beta, `package.json` matching the tag,
-CHANGELOG section present (CI validates all four fail-closed).
+The tag push IS the release approval. GitHub Actions validates the tag, then
+(dry-run) builds all four targets natively in parallel (compile only),
+assembles dist/ (structural checks only), and verifies with one end-to-end
+installer smoke per platform. Real releases rebuild nothing: publish
+promotes the exact dry-run bytes for the tag commit (fail closed with no
+green dry-run), then publishes the immutable release with build-provenance
+attestation and rolls the `beta` or `stable` channel.
 
-Dry-run without publishing: `gh workflow run release-beta.yml -f version=1.1.0-beta.17.18 -f dry_run=true`.
+Requirements: `v*` tag pushes restricted to maintainers (tag protection rules),
+tag greater than the previous tag on the same line, `package.json` matching
+the tag, CHANGELOG section present (CI validates all four fail-closed).
+
+Dry-run without publishing: `gh workflow run release-beta.yml -f version=1.2.0-beta.5 -f dry_run=true`
+(beta checks out `beta-dev`) or `-f version=1.2.1` (stable checks out `main`).
 
 Workflow location rule: GitHub resolves and runs tag-triggered workflows
 from the default branch (`main`), checking out the pushed tag itself. Keep
@@ -54,10 +63,10 @@ Binary releases should be built where native verification is possible. Cross-com
 | ------- | ------- |
 | `bun run release:beta:patch` | Bump beta prerelease and publish (local fallback) |
 | `bun run release:beta:minor` | Bump beta minor series |
-| `bun run release:stable:patch` | Stable patch release |
+| `bun run release:stable:patch` | Stable patch bump + local fallback publish |
 | `bun run release:validate` | Preflight only (branch + quality) |
 | `bun run release plan beta patch` | Show version bump without publishing |
-| `bun scripts/release/validate-tag.ts vX.Y.Z` | Gate a tag before pushing (greater-than-previous, version + changelog match) |
+| `bun scripts/release/validate-tag.ts vX.Y.Z` | Gate a beta or stable tag before pushing (greater-than-previous, version + changelog match) |
 | `bun run release ci-assemble vX.Y.Z [--dry-run] [--finalize-only]` | Finalize dist/ + local gates; `--finalize-only` runs structural checks only (CI assemble job — runtime proof lives in the verify matrix); `--dry-run` keeps the full installer smoke for local prediction |
 | `bun run release ci-publish vX.Y.Z` | Publish immutable release + roll channel — CI only, after every native verify passes |
 | `bun run release:resume` | Resume the latest incomplete release |

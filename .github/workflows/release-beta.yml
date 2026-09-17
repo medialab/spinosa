@@ -1,4 +1,4 @@
-# Beta release — tag-triggered, fully built in CI.
+# Product release — tag-triggered, fully built in CI (beta and stable).
 #
 # The tag push IS the release approval (v* pushes are maintainer-restricted).
 # Pipeline: validate → build ×4 → assemble → verify ×4 → publish + channel.
@@ -22,21 +22,23 @@
 # Build-once rule: a tag with no green dry-run for its exact commit fails
 # closed in publish. Rehearse first:
 #   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
+# Beta dry-runs check out beta-dev. Stable dry-runs check out main.
 #
 # Test workflow changes first — dry-run proves everything but publish:
 #   gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
 
-name: Beta release
+name: Release
 
 on:
   push:
     tags:
       - "v1.1.0-beta.*"
       - "v1.2.0-beta.*"
+      - "v1.2.*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Version without leading v (e.g. 1.1.0-beta.22)"
+        description: "Version without leading v (e.g. 1.2.0 or 1.1.0-beta.22)"
         required: true
       dry_run:
         description: "Build + verify only, skip publish/channel"
@@ -65,22 +67,40 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       dry_run: ${{ steps.version.outputs.dry_run }}
+      channel: ${{ steps.version.outputs.channel }}
+      checkout_ref: ${{ steps.version.outputs.checkout_ref }}
     steps:
       - id: version
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
             echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+            if [[ "$VERSION" == *-beta* ]]; then
+              echo "channel=beta" >> "$GITHUB_OUTPUT"
+              echo "checkout_ref=beta-dev" >> "$GITHUB_OUTPUT"
+            else
+              echo "channel=stable" >> "$GITHUB_OUTPUT"
+              echo "checkout_ref=main" >> "$GITHUB_OUTPUT"
+            fi
           else
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
             echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            if [[ "$VERSION" == *-beta* ]]; then
+              echo "channel=beta" >> "$GITHUB_OUTPUT"
+            else
+              echo "channel=stable" >> "$GITHUB_OUTPUT"
+            fi
+            echo "checkout_ref=${GITHUB_REF}" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
+          ref: ${{ steps.version.outputs.checkout_ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -124,7 +144,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
+          ref: ${{ needs.validate.outputs.checkout_ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -136,7 +156,7 @@ jobs:
           bun scripts/build-release-binaries.ts
           --out-dir "dist/v${{ needs.validate.outputs.version }}"
           --version "${{ needs.validate.outputs.version }}"
-          --channel beta
+          --channel "${{ needs.validate.outputs.channel }}"
           --only "${{ matrix.target }}"
           --skip-install
       # No runtime smoke here by design: the build gate answers "does each
@@ -163,7 +183,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
+          ref: ${{ needs.validate.outputs.checkout_ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -181,7 +201,7 @@ jobs:
           bun scripts/build-release-binaries.ts \
             --out-dir "dist/v${{ needs.validate.outputs.version }}" \
             --version "${{ needs.validate.outputs.version }}" \
-            --channel beta \
+            --channel "${{ needs.validate.outputs.channel }}" \
             --manifest-only
           if [ "${{ needs.validate.outputs.dry_run }}" = "true" ]; then
             bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --dry-run
@@ -191,7 +211,7 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          # Both dist/v<version>/ and dist/beta/ — ci-publish needs the channel installer.
+          # Both dist/v<version>/ and dist/<channel>/ — ci-publish needs the channel installer.
           # Uploaded in dry runs too: verify downloads it to prove the full pipeline.
           # 90-day retention: real releases promote these exact bytes (see publish).
           name: assembled-dist
@@ -201,7 +221,7 @@ jobs:
           retention-days: 90
 
       # Build-commit binding for promotion: dispatch runs report the default
-      # branch SHA, not the built beta-dev commit — so the SHA travels inside
+      # branch SHA, not the built source commit — so the SHA travels inside
       # its own tiny artifact and promote.ts matches on content, not metadata.
       - run: git rev-parse HEAD > dist/commit-sha.txt
 
@@ -239,7 +259,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'beta-dev' || github.ref }}
+          ref: ${{ needs.validate.outputs.checkout_ref }}
 
       - uses: actions/download-artifact@v7
         with:
@@ -291,7 +311,7 @@ jobs:
           rm -rf "$SMOKE_HOME"
 
   publish:
-    name: Promote + publish + roll beta channel
+    name: Promote + publish + roll channel
     needs: [validate]
     if: needs.validate.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
@@ -306,7 +326,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ needs.validate.outputs.checkout_ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:

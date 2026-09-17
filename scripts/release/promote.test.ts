@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { productBinaryAssetName, PRODUCT_BINARY_TARGETS } from "../../packages/spinosa-core/src/distribution/contract.ts"
-import { selectPromotionRun, verifyPromotedDist, type ResolvedDryRun } from "./promote.ts"
+import { selectPromotionRun, verifyPromotedDist, dryRunHint, type ResolvedDryRun } from "./promote.ts"
 
 const run = (id: number, buildSha: string): ResolvedDryRun => ({ id, buildSha })
 
@@ -21,6 +21,13 @@ describe("selectPromotionRun", () => {
   test("returns undefined when no run was built from the commit", () => {
     expect(selectPromotionRun([run(1, "aaa")], "zzz")).toBeUndefined()
     expect(selectPromotionRun([], "aaa")).toBeUndefined()
+  })
+})
+
+describe("dryRunHint", () => {
+  test("points beta dry-runs at beta-dev and stable dry-runs at main", () => {
+    expect(dryRunHint("1.2.0-beta.4")).toContain("beta-dev")
+    expect(dryRunHint("1.2.0")).toContain("main")
   })
 })
 

@@ -34,6 +34,11 @@ Complete at least one beta soak after the first binary beta before cutting stabl
 - [ ] `bun run quality` and `bun run quality:binary` green on release host
 - [ ] Sign-off file completed (`docs/release-signoff-template.md`)
 
-Do not run `release:stable:*` until every item is checked.
+Do not run `release:stable:*` as the primary path. Cut stable through CI:
 
-Linux glibc virgin rows: practical Lima steps in [lima-linux-soak.md](lima-linux-soak.md) (`script/lima-linux-soak.sh`).
+```bash
+gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+Local `release:stable:*` is fallback only. Linux glibc virgin rows: practical Lima steps in [lima-linux-soak.md](lima-linux-soak.md) (`scripts/lima-linux-soak.sh`).

@@ -141,7 +141,9 @@ SPINOSA_TEMPLATE_PACK_VERSION
 
 ## Stable promotion
 
-Documented soak + native four-platform gates required. Do not promote stable in the hard-cut beta.
+Documented soak + native four-platform gates required before a stable tag.
+Stable then uses the same CI dry-run → promote → publish path as beta
+(`.github/workflows/release-beta.yml` checks out `main`).
 See `docs/release/stable-promotion-gates.md`.
 
 ## Known cut notes (native packaging)

@@ -4,19 +4,23 @@ Product: Spinosa framework + TUI + binary distribution. Beta channel: `beta-dev`
 
 ## How releases work (agents: follow this, do not improvise)
 
-**Betas are built and published by GitHub Actions, never locally.** The full
-pipeline is `.github/workflows/release-beta.yml`; the process contract is
+**Betas and stables are built and published by GitHub Actions, never locally.**
+The pipeline is `.github/workflows/release-beta.yml`; the process contract is
 `RELEASE_GUIDE.md`; asset invariants are
 `docs/release/binary-distribution-contract.md`.
 
 Maintainer (or agent, with maintainer approval) prepares; CI builds:
 
-1. Prepare `beta-dev`: merge feature work, add the CHANGELOG section, keep
-   versions in sync (`bun scripts/set-version.ts <version>`).
-2. Preview: `bun run release plan beta patch` → next version.
+1. Prepare the source branch: `beta-dev` for beta, `main` for stable (merge
+   soaked beta work first). Add the CHANGELOG section, keep versions in sync
+   (`bun scripts/set-version.ts <version>`).
+2. Preview: `bun run release plan beta patch` or `bun run release plan stable patch`.
 3. Gate the tag locally: `bun scripts/release/validate-tag.ts vX.Y.Z`
-   (greater than previous beta tag, `package.json` match, CHANGELOG match).
-4. Push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+   (greater than previous tag on the same line, `package.json` match, CHANGELOG match).
+4. Dispatch a CI dry-run on the release commit, then push the tag:
+   `gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true`
+   (beta checks out `beta-dev`; stable checks out `main`).
+   `git tag vX.Y.Z && git push origin vX.Y.Z`.
    The tag push IS the release approval — `v*` pushes are
    maintainer-restricted by tag protection rules.
 5. CI validates → (dry-run only) builds all four targets natively in parallel
@@ -29,10 +33,10 @@ Maintainer (or agent, with maintainer approval) prepares; CI builds:
    the EXACT dry-run bytes for the tag commit (layout + checksums
    re-verified, fail closed with no green dry-run), then publishes the
    immutable GitHub release with build-provenance attestation → rolls the
-   `beta` channel. A broken binary must never become the rolling-channel
+   `beta` or `stable` channel. A broken binary must never become the rolling-channel
    default (v1.1.0-beta.19).
-6. Verify: `gh release view vX.Y.Z`, rolling `beta` release advertises
-   the release, live installer serves the new `PINNED_VERSION`.
+6. Verify: `gh release view vX.Y.Z`, rolling `beta` or `stable` release
+   advertises the release, live installer serves the new `PINNED_VERSION`.
 
 Dry-run without publishing (after workflow changes):
 `gh workflow run release-beta.yml -f version=X.Y.Z -f dry_run=true`.
@@ -63,7 +67,8 @@ workflows from the default branch) and stay in sync with `beta-dev`.
 - Release pipeline entry: `bun scripts/release/index.ts`
   (`validate` · `plan` · `beta|stable` · `ci-assemble` · `ci-publish` · `publish` · `resume`).
   CI uses `ci-assemble --finalize-only` then `ci-publish` (after the verify
-  matrix); local fallback uses `beta patch` from `beta-dev`.
+  matrix); local fallback uses `beta patch` from `beta-dev` or `stable patch`
+  from `main`.
 
 ## Repo conventions agents must respect
 

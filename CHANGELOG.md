@@ -10,6 +10,10 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Changed
+
+- Stable tags use the same CI dry-run, promote, and publish path as beta. A stable dry-run checks out `main`. Code: `.github/workflows/release-beta.yml`, `scripts/release/validate-tag.ts`.
+
 ## [1.2.0] — 2026-09-17
 
 ### Changed
