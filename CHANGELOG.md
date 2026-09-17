@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.2] — 2026-09-17
+
+### Changed
+
+- Product version is 1.2.0-beta.2. Runtime behavior matches 1.2.0-beta.1.
+
 ## [1.2.0-beta.1] — 2026-09-17
 
 ### Changed
