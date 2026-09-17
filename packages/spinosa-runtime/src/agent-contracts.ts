@@ -100,13 +100,6 @@ export const AGENT_CONTRACTS: Record<string, AgentContract> = {
     outputs: ["evaluation"],
     defaultToolPolicy: READ_ONLY,
   },
-  "spinosa-router": {
-    id: "spinosa-router",
-    capability: "request.route",
-    acceptedInputs: ["prompt", "workspace_status", "references"],
-    outputs: [],
-    defaultToolPolicy: [{ tool: "*", resource: "*", effect: "deny" }],
-  },
 }
 
 export function contractForAgent(agent: string): AgentContract | undefined {

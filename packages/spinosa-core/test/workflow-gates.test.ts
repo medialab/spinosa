@@ -5,7 +5,6 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { evidenceGate, validateArtifact, verificationOutcome } from "../src/artifacts/validate"
 import { parseVerificationStatus } from "../src/artifacts/contracts"
-import { SYSTEM_OPERATIONS } from "../src/application/workflow-operations"
 import { buildWorkflowGoalBody } from "../src/artifacts/goal"
 import { parseGoalArtifact } from "../src/artifacts/parser"
 import type { WorkflowRun } from "@spinosa/runtime"
@@ -87,46 +86,5 @@ describe("goal V2 round-trip", () => {
     expect(summary.workflowID).toBe("research.targeted_evidence")
     expect(summary.operation).toBe("research")
     expect(Array.isArray(summary.phases)).toBe(true)
-  })
-})
-
-describe("system operations", () => {
-  test("partition batches raw files and records a manifest", async () => {
-    const root = await workspace()
-    for (let i = 0; i < 30; i++) {
-      await Bun.write(path.join(root, "raw", `doc-${i}.md`), "# doc\n")
-    }
-    const run = fakeRun(root)
-    const outcome = await SYSTEM_OPERATIONS["corpus.partition"]!({
-      workspacePath: root, run, nodeID: "partition", operation: "corpus.partition",
-    })
-    expect(outcome.status).toBe("succeeded")
-    const manifest = await Bun.file(path.join(root, ".spinosa", "runs", "r1", "partitions.json")).json() as { partitions: unknown[] }
-    expect(manifest.partitions.length).toBe(2) // 25 + 5
-  })
-
-  test("workspace validation blocks on missing structure", async () => {
-    const root = await workspace()
-    const run = fakeRun(root)
-    const ok = await SYSTEM_OPERATIONS["workspace.validate"]!({
-      workspacePath: root, run, nodeID: "validate", operation: "workspace.validate",
-    })
-    expect(ok.status).toBe("succeeded")
-    const bad = await SYSTEM_OPERATIONS["workspace.validate"]!({
-      workspacePath: path.join(tmpdir(), "spinosa-gates-missing-" + crypto.randomUUID()),
-      run, nodeID: "validate", operation: "workspace.validate",
-    })
-    expect(bad.status).toBe("blocked")
-  })
-
-  test("startup gate commits workspace_started", async () => {
-    const root = await workspace()
-    const run = fakeRun(root)
-    const outcome = await SYSTEM_OPERATIONS["workspace.commit_started"]!({
-      workspacePath: root, run, nodeID: "commit-started", operation: "workspace.commit_started",
-    })
-    expect(outcome.status).toBe("succeeded")
-    const config = await Bun.file(path.join(root, "system/configuration.md")).text()
-    expect(config).toContain("setup_status: workspace_started")
   })
 })

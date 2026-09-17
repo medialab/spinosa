@@ -96,7 +96,6 @@ import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
 import { registerTuiExitHook, runTuiExitHooks } from "./util/tui-exit-hooks"
 import { listBusySessionIDs, stopBusySessions } from "./util/stop-sessions"
-import { cancelAllSpinosaSubmits, cancelSpinosaSubmit } from "./spinosa/orchestrator"
 
 const Onboarding = lazy(async () => ({
   default: (await import("./routes/spinosa/onboarding")).Onboarding,
@@ -523,7 +522,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         sessionStatus: sync.data.session_status,
         extraIDs: extra,
       })
-      await cancelAllSpinosaSubmits(sdk.client)
       await stopBusySessions({
         sessionIDs,
         abort: (sessionID) => sdk.client.session.abort({ sessionID }),
@@ -808,7 +806,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           }
           const sessionID = current.sessionID
           await sdk.client.session.abort({ sessionID }).catch(() => {})
-          await cancelSpinosaSubmit({ client: sdk.client, sessionID }).catch(() => {})
         }
       }
       const restore = () => spinosa.restorePickerRoute()

@@ -13,7 +13,7 @@ module.exports = {
       name: "no-circular-product-packages",
       severity: "error",
       from: {
-        path: "^packages/(spinosa-core|spinosa-runtime|spinosa-harness|spinosa-cli)/src/",
+        path: "^packages/(spinosa-core|spinosa-runtime|spinosa-cli)/src/",
       },
       to: { circular: true },
     },

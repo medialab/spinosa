@@ -89,12 +89,9 @@ A Spinosa workspace is a bounded research corpus: approved sources live in [[raw
 Execution is owned by code, not by this file. The pipeline is:
 
 ```text
-Router chooses the class of work (general answer vs orchestrated intent).
-WorkflowRegistry selects a known WorkflowDefinition.
-WorkflowEngine controls execution and state transitions.
-Agents perform bounded cognitive work and write artifacts.
-SpinosaHarness connects that work to the kernel session runner.
-The TUI only presents and controls the run.
+The conversation agent answers by default (general prompt).
+Specialized agents perform bounded cognitive work and write artifacts when invoked.
+Kernel spinosa_* tools make those moves exact (route, frame, mint paths, gate, verify).
 ```
 
 - **Fast work** (one bounded operation) completes directly with no artifact chain.
@@ -149,7 +146,6 @@ The workflow maintains [[.spinosa/memory/orchestrator-notes.md]] as working memo
 | `spinosa-evolver`    | Applies tightly scoped control/doc updates when evaluator approves (never TypeScript workflow definitions)                     |
 | `spinosa-janitor`    | Audits hygiene and writes a cleanup artifact before any confirmed move                                                        |
 | `spinosa-overseer`   | Coverage/retrospective agent; in-workspace-first gap audit after `workspace_started`; never during startup                     |
-| `spinosa-router`     | Hidden intent router; returns a RouteDecision only; never dispatched for research work                                        |
 
 Canonical agent definitions: [[.agents/agents/]]. Agent vendor mirrors are pre-baked in this workspace: [[.opencode/agents/]], [[.claude/agents/]], [[.codex/agents/]]. Hermes mirror: [[.hermes/skills/]], [[.hermes/references/]], [[.hermes/workspace.config.yaml]] (pre-baked; no native sub-agent profiles). Shared references: [[.agents/references/]].
 

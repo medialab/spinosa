@@ -280,7 +280,7 @@
     },
     "packages/spinosa-cli": {
       "name": "@spinosa/cli",
-      "version": "1.2.0-beta.1",
+      "version": "1.2.0-beta.3",
       "dependencies": {
         "@spinosa/core": "workspace:*",
       },
@@ -293,7 +293,7 @@
     },
     "packages/spinosa-core": {
       "name": "@spinosa/core",
-      "version": "1.2.0-beta.1",
+      "version": "1.2.0-beta.3",
       "dependencies": {
         "@ai-sdk/openai": "^2.0.0",
         "@napi-rs/canvas": "1.0.2",
@@ -301,7 +301,6 @@
         "@napi-rs/canvas-darwin-x64": "1.0.2",
         "@napi-rs/canvas-linux-arm64-gnu": "1.0.2",
         "@napi-rs/canvas-linux-x64-gnu": "1.0.2",
-        "@spinosa/harness": "workspace:*",
         "@spinosa/kernel-core": "workspace:*",
         "@spinosa/markitdown": "workspace:*",
         "@spinosa/runtime": "workspace:*",
@@ -324,19 +323,6 @@
         "@typescript/native-preview": "catalog:",
         "fast-check": "4.9.0",
         "msw": "2.15.0",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/spinosa-harness": {
-      "name": "@spinosa/harness",
-      "version": "1.2.0-beta.1",
-      "dependencies": {
-        "@spinosa/sdk": "workspace:*",
-      },
-      "devDependencies": {
-        "@tsconfig/bun": "catalog:",
-        "@types/bun": "catalog:",
-        "@typescript/native-preview": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -486,7 +472,7 @@
     },
     "packages/spinosa-runtime": {
       "name": "@spinosa/runtime",
-      "version": "1.2.0-beta.1",
+      "version": "1.2.0-beta.3",
       "devDependencies": {
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
@@ -502,10 +488,8 @@
         "@opentui/keymap": "catalog:",
         "@opentui/solid": "catalog:",
         "@spinosa/core": "workspace:*",
-        "@spinosa/harness": "workspace:*",
         "@spinosa/kernel-core": "workspace:*",
         "@spinosa/plugin": "workspace:*",
-        "@spinosa/runtime": "workspace:*",
         "@spinosa/sdk": "workspace:*",
         "@spinosa/ui": "workspace:*",
         "clipboardy": "4.0.0",
@@ -1528,8 +1512,6 @@
     "@spinosa/effect-drizzle-sqlite": ["@spinosa/effect-drizzle-sqlite@workspace:packages/effect-drizzle-sqlite"],
 
     "@spinosa/effect-sqlite-node": ["@spinosa/effect-sqlite-node@workspace:packages/effect-sqlite-node"],
-
-    "@spinosa/harness": ["@spinosa/harness@workspace:packages/spinosa-harness"],
 
     "@spinosa/http-recorder": ["@spinosa/http-recorder@workspace:packages/http-recorder"],
 

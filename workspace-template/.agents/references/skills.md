@@ -13,4 +13,4 @@
 | Serendippo | `spinosa-serendippo` | `spinosa-serendippo` | Finds hidden cross-corpus connections and proposes map enrichment |
 | Overseer | `spinosa-overseer` | `spinosa-overseer` | Coverage/retrospective audit after `workspace_started`; never during startup |
 | Visualizer | `spinosa-writer` | `spinosa-writer` | Renders pure-Unicode charts in markdown when a run requests visualization |
-| Router | `spinosa-router` | `spinosa-router` | Hidden intent router; returns a RouteDecision only |
+

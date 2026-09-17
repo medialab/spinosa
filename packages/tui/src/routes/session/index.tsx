@@ -98,16 +98,13 @@ import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
 import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
 import {
-  cancelOutboundEvaluation,
   dispatchPositions,
-  evaluatingKeys,
   kickPump,
   mergeTranscriptRows,
   outboundForSession,
   steerOutbound,
   type OutboundEntry,
 } from "../../spinosa/outbound-queue"
-import { cancelSpinosaSubmit } from "../../spinosa/orchestrator"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1268,7 +1265,6 @@ const resolveExportPath = (filename: string): string => {
                   )
                   if (!leave) return
                   await sdk.client.session.abort({ sessionID: currentID }).catch(() => {})
-                  await cancelSpinosaSubmit({ client: sdk.client, sessionID: currentID }).catch(() => {})
                 }
                 navigate(dest)
               }}
@@ -1832,9 +1828,7 @@ function UserMessage(props: {
       .then(() => {
         // Steering to the front means now: stop the current run so the
         // drain restarts into this item.
-        void cancelSpinosaSubmit({ client: sdk.client, sessionID: props.message.sessionID }).then((handled) => {
-          if (!handled) return sdk.client.session.abort({ sessionID: props.message.sessionID }).then(() => undefined)
-        })
+        void sdk.client.session.abort({ sessionID: props.message.sessionID }).then(() => undefined)
       })
       .catch((error) => {
         setSteerPending(null)
@@ -1960,16 +1954,14 @@ function UserMessage(props: {
 }
 
 /**
- * Optimistic outbound row: a queued/evaluating prompt rendered instantly at
- * Enter, before any server round-trip. Same transcript chrome as a user
- * message; the badge slot shows each transient state, then disappears for a
- * general answer or flips to workflow state when the server echo takes over.
+ * Optimistic outbound row: a queued prompt rendered instantly at Enter,
+ * before any server round-trip. Same transcript chrome as a user message;
+ * the badge slot shows each transient state, then the server echo takes over.
  */
 function OptimisticUserRow(props: { entry: OutboundEntry; queuePosition?: number; showQueuePosition?: boolean }) {
   const { theme } = useTheme()
   const sdk = useSDK()
   const [steerHover, setSteerHover] = createSignal(false)
-  const [cancelHover, setCancelHover] = createSignal(false)
   const badge = (): RouteBadgeInfo => {
     if (props.entry.state === "sent") return { kind: "sent", stale: props.entry.stale }
     return { kind: props.entry.state }
@@ -1981,20 +1973,11 @@ function OptimisticUserRow(props: { entry: OutboundEntry; queuePosition?: number
     return theme.textMuted
   }
   // Steer: this queued prompt goes next — stop the current run first so
-  // the pump dispatches it immediately after the abort settles. Cancels
-  // the in-flight local evaluation by queue-entry id AND any active server
-  // run: an immediate (shell/slash) send can own the server drain while an
-  // evaluation is in flight, and steer must preempt both, as before.
-  // No microtask kick here: the replacement must not be admitted before
-  // the old generation's abort settles, or the abort lands on the new run.
+  // the pump dispatches it immediately after the abort settles.
   const steer = () => {
     const { sessionID, key } = props.entry
     if (!steerOutbound(sessionID, key)) return
-    const evaluating = evaluatingKeys(sessionID)[0]
-    if (evaluating) cancelOutboundEvaluation(sessionID, evaluating, { kick: false })
-    void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
-      if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
-    }).finally(() => kickPump(sessionID))
+    void sdk.client.session.abort({ sessionID }).finally(() => kickPump(sessionID))
   }
   return (
     <TranscriptRow id={props.entry.key}>
@@ -2022,21 +2005,6 @@ function OptimisticUserRow(props: { entry: OutboundEntry; queuePosition?: number
           >
             <box flexDirection="row" gap={1} alignItems="center">
               <RouteBadge info={badge()} />
-              <Show when={props.entry.state === "evaluating"}>
-                <box
-                  onMouseOver={() => setCancelHover(true)}
-                  onMouseOut={() => setCancelHover(false)}
-                  onMouseUp={(e: { stopPropagation?: () => void }) => {
-                    e.stopPropagation?.()
-                    cancelOutboundEvaluation(props.entry.sessionID, props.entry.key)
-                  }}
-                  backgroundColor={buttonBackground(theme, cancelHover())}
-                  paddingLeft={1}
-                  paddingRight={1}
-                >
-                  <text fg={buttonText(theme, cancelHover(), theme.error)}>Cancel evaluation</text>
-                </box>
-              </Show>
               <Show when={props.showQueuePosition && props.queuePosition !== undefined}>
                 <text fg={theme.textMuted}>#{props.queuePosition}</text>
               </Show>

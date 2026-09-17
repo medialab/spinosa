@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@spinosa/core",
-  "version": "1.2.0-beta.2",
+  "version": "1.2.0-beta.3",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -19,7 +19,6 @@
     "@napi-rs/canvas-darwin-x64": "1.0.2",
     "@napi-rs/canvas-linux-arm64-gnu": "1.0.2",
     "@napi-rs/canvas-linux-x64-gnu": "1.0.2",
-    "@spinosa/harness": "workspace:*",
     "@spinosa/kernel-core": "workspace:*",
     "@spinosa/markitdown": "workspace:*",
     "@spinosa/runtime": "workspace:*",

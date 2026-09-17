@@ -10,6 +10,17 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.3] — 2026-09-17
+
+### Removed
+
+- The TUI sends every workspace prompt as a general conversation turn. Code: `packages/tui/src/component/prompt/index.tsx`.
+- The TUI does not call a hidden router or a workflow engine.
+- The TUI does not show a Cancel evaluation action. Esc stops a running turn.
+- The `@spinosa/harness` package is not part of the product.
+- Kernel `spinosa_*` tools stay available to the conversation agent.
+- The workspace template does not ship the `spinosa-router` agent. The `spinosa_route` kernel tool remains.
+
 ## [1.2.0-beta.2] — 2026-09-17
 
 ### Changed

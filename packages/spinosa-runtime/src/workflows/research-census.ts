@@ -2,7 +2,7 @@
 // inventory → partition → parallel searchers → coverage gate → analyst →
 // [visualizer] → writer → verifier → evaluator.
 // For coverage exhaustive, searcher early-stop ("two sources enough") is
-// disabled via the coverage contract in the step prompt (see router-service).
+// disabled via the coverage contract in the step prompt.
 import type { OrchestratedDecision } from "../routing"
 import type { WorkflowDefinition, WorkflowPlan } from "../workflow"
 import { AGENT_CONTRACTS } from "../agent-contracts"

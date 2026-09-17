@@ -69,29 +69,16 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { pasteInputText as pasteInputTextWith, type PasteAttachment } from "./paste"
-import {
-  cancelSpinosaSubmit,
-  executeSpinosaSubmit,
-  hasActiveWorkflowRun,
-  prepareSpinosaSubmit,
-  shouldPrepareSpinosaSubmit,
-} from "../../spinosa/orchestrator"
-import { setRouteProgress, SPINOSA_ROUTE_METADATA } from "../../spinosa/route-badge"
+import { SPINOSA_ROUTE_METADATA } from "../../spinosa/route-badge"
 import {
   acquireOutboundPump,
-  abortOutbound,
   admittedUserIDFromResponse,
-  cancelOutboundEvaluation,
   ECHO_WAIT_TIMEOUT_MS,
   enqueueOutbound,
-  evaluatingKeys,
   findEchoByPromptID,
-  hasEvaluating,
   hasServerEcho,
   kickPump,
-  markOutboundEvaluating,
   markOutboundFailed,
-  markOutboundInterrupted,
   markOutboundSent,
   markOutboundStale,
   outboundEntryState,
@@ -100,7 +87,6 @@ import {
   registerPump,
   releaseOutboundPump,
   removeOutbound,
-  setOutboundController,
   ownsOutboundPump,
   outboundForSession,
   setOutboundAdmittedID,
@@ -110,7 +96,6 @@ import {
   type OutboundSnapshot,
   unregisterPump,
 } from "../../spinosa/outbound-queue"
-import { RouterAbortedError } from "@spinosa/core/application/router-service"
 import { readStartupPrompt } from "../../spinosa/service"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { fadeColor, getEditorRangeLabel, hasEditorRangeSelection, randomIndex } from "./helpers"
@@ -455,7 +440,7 @@ export function Prompt(props: PromptProps) {
         name: "session.interrupt",
         category: "Session",
         hidden: true,
-        enabled: status().type !== "idle" || hasEvaluating(props.sessionID ?? ""),
+        enabled: status().type !== "idle",
         run: () => {
           if (auto()?.visible) return
           if (store.mode === "shell") {
@@ -465,10 +450,7 @@ export function Prompt(props: PromptProps) {
           const sessionID = props.sessionID
           if (!sessionID) return
 
-          const evaluating = evaluatingKeys(sessionID)
-          const stopTarget = evaluating[0] ? `evaluation:${evaluating[0]}` : `session:${sessionID}`
-          // Evaluation and live conversation turns share the same double-Esc
-          // fence. The arm is target-bound, so it cannot leak across phases.
+          const stopTarget = `session:${sessionID}`
           if (!escConfirmStop(store.interrupt, interruptTarget, stopTarget)) {
             if (interruptTimer) clearTimeout(interruptTimer)
             interruptTarget = stopTarget
@@ -487,17 +469,7 @@ export function Prompt(props: PromptProps) {
           }
           setStore("interrupt", 0)
           interruptTarget = undefined
-          if (evaluating.length > 0) {
-            for (const key of evaluating) {
-              cancelOutboundEvaluation(sessionID, key)
-            }
-            dialog.clear()
-            return
-          }
-          void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
-            if (!handled) return sdk.client.session.abort({ sessionID }).then(() => undefined)
-          }).finally(() => {
-            // Aborting frees the session — queued prompts dispatch in turn.
+          void sdk.client.session.abort({ sessionID }).finally(() => {
             void pumpOutbound(sessionID)
           })
           dialog.clear()
@@ -1097,7 +1069,7 @@ export function Prompt(props: PromptProps) {
   })
 
   let submitting = false
-  // Armed-Esc fence for evaluations and live conversation turns.
+  // Armed-Esc fence for live conversation turns.
   let interruptTimer: ReturnType<typeof setTimeout> | undefined
   let interruptTarget: string | undefined
 
@@ -1107,7 +1079,6 @@ export function Prompt(props: PromptProps) {
   type DispatchFn = (
     targetSessionID: string,
     entry: { key?: string; snapshot: OutboundSnapshot; dispatch: DispatchContext },
-    opts?: { signal?: AbortSignal },
   ) => Promise<{ completion?: Promise<unknown>; admitted?: () => string | undefined }>
   const dispatchRef: { fn: DispatchFn | undefined } = { fn: undefined }
 
@@ -1116,84 +1087,28 @@ export function Prompt(props: PromptProps) {
       sync.data.session_status?.[sessionID],
       sessionID ? sync.session.status(sessionID) : undefined,
     )
-    // Server drain idle AND no workflow engine run: the same-session router
-    // turn is then the only thing that can run, so Esc-cancel and the
-    // timeout orphan-kill can never hit a real conversation turn.
-    return st.type === "idle" && !hasActiveWorkflowRun(sessionID)
+    return st.type === "idle"
   }
 
-  // Dispatch one prompt through the full send pipeline (shell / slash /
-  // workflow / direct). Queued entries arrive here FIFO via pumpOutbound;
-  // immediate submits call directly. `entry` carries the submit-time
-  // snapshot so a queued prompt sends exactly what the user submitted.
-  // Returns a completion handle the pump awaits to preserve FIFO across
-  // workflow runs (direct sends resolve at admission).
-  const dispatchEntry: DispatchFn = async (targetSessionID, entry, opts) => {
+  // Dispatch one prompt through the send pipeline (shell / slash / direct).
+  // Queued entries arrive here FIFO via pumpOutbound; immediate submits
+  // call directly. `entry` carries the submit-time snapshot so a queued
+  // prompt sends exactly what the user submitted.
+  const dispatchEntry: DispatchFn = async (targetSessionID, entry) => {
   const { snapshot, dispatch } = entry
   // Canonical prompt id: stamped into the admission so the server echo
   // carries it back for exact correlation. Queue dispatches pass the entry
   // key; immediate (rowless) sends omit it.
   const promptID = entry.key
   const promptIDStamp = promptID ? { [SPINOSA_PROMPT_METADATA]: promptID } : {}
-  const { sessionDirectory, variant } = dispatch
+  const { variant } = dispatch
   const agentName = dispatch.agentName
   const selectedModel = dispatch.model
-  let outboundText = snapshot.text
-  let preparedSpinosa: Awaited<ReturnType<typeof prepareSpinosaSubmit>> | undefined
-  // WP7: route normal prompts through the workflow router. Shell, slash
-  // commands and forceAgent bypass routing (same predicate as the dispatch
-  // branches below, evaluated on the raw input before preparation).
-  // Leading whitespace is ignored: a command still counts when the first
-  // non-whitespace token is "/<command>". A "/token" with real text before
-  // it stays literal message text — never executed.
-  const commandFirstLine = snapshot.text.replace(/^\s+/, "").split("\n")[0]
-  const isSlashCommand =
-    commandFirstLine.startsWith("/") &&
-    sync.data.command.some((x) => x.name === commandFirstLine.split(" ")[0].slice(1))
-  const shouldRoute =
-    dispatch.mode === "normal" &&
-    !isSlashCommand &&
-    !dispatch.forceAgent &&
-    Boolean(sessionDirectory)
-  if (shouldRoute && shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: dispatch.forceAgent })) {
-    try {
-      const fileParts = snapshot.nonTextParts.filter((x) => x.type === "file") as Array<{ type: "file"; name?: string; mime?: string; path?: string }>
-      const prepared = await prepareSpinosaSubmit(sessionDirectory!, snapshot.text, {
-        parentSessionID: targetSessionID,
-        client: sdk.client,
-        model: { providerID: selectedModel.providerID, modelID: selectedModel.modelID },
-        references: {
-          fileCount: fileParts.length,
-          fileNames: fileParts.map((p) => p.name ?? p.path ?? "attachment"),
-          mimeTypes: fileParts.map((p) => p.mime ?? "application/octet-stream"),
-          hasSelectedRange: snapshot.editorParts.length > 0,
-        },
-        explicitAgent: dispatch.forceAgent ?? undefined,
-        ...(opts?.signal ? { signal: opts.signal } : {}),
-      })
-      preparedSpinosa = prepared
-      outboundText = prepared.text
-    } catch (error) {
-      // Esc during evaluating aborts the router turn: propagate with no
-      // toast — the pump treats it as cancelled, never as a verdict.
-      if (error instanceof RouterAbortedError || opts?.signal?.aborted) throw error
-      logError("prompt.submit.prepare", error)
-      console.log("Spinosa submit preparation failed:", error instanceof Error ? error.message : String(error))
-      toast.show({
-        title: "Couldn’t prepare your request",
-        message: error instanceof Error ? error.message : "Couldn’t save the task context",
-        variant: "error",
-      })
-    }
-  }
+  const outboundText = snapshot.text
 
-  // Cancellation owns the boundary between local evaluation and external
-  // admission. Even if preparation ignored its signal and resolved late,
-  // the cancelled prompt must never reach a server-side send.
-  if (opts?.signal?.aborted) throw opts.signal.reason ?? new Error("Evaluation cancelled")
-
-  // Slash dispatch tolerates leading whitespace (same rule as isSlashCommand
-  // above); the command is parsed from the trimmed text.
+  // Slash dispatch tolerates leading whitespace; the command is parsed
+  // from the trimmed text. A "/token" with real text before it stays
+  // literal message text — never executed.
   const outboundCommandText = outboundText.replace(/^\s+/, "")
     if (dispatch.mode === "shell") {
       move.startSubmit()
@@ -1256,83 +1171,6 @@ export function Prompt(props: PromptProps) {
           },
         )
       return { completion }
-  } else if (preparedSpinosa?.framed) {
-    move.startSubmit()
-      // Route badge: stamp the workflow identity onto the (ignored) user
-      // message so the transcript manifests the orchestrated path + steps.
-      // A framed non-orchestrated verdict still manifests general — the
-      // header never renders empty. The prompt id rides along for echo correlation.
-      const routeMeta =
-        preparedSpinosa.kind === "workflow" && preparedSpinosa.decision.mode === "orchestrated"
-          ? {
-              [SPINOSA_ROUTE_METADATA]: {
-                kind: "workflow",
-                workflowID: preparedSpinosa.workflowID ?? "workflow",
-                operation: preparedSpinosa.decision.operation,
-                strategy: preparedSpinosa.decision.strategy,
-                runID: preparedSpinosa.sessionId ?? "",
-                ...(preparedSpinosa.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
-                confidence: preparedSpinosa.decision.confidence,
-              },
-              ...promptIDStamp,
-            }
-          : {
-              [SPINOSA_ROUTE_METADATA]: {
-                kind: "general",
-                ...(preparedSpinosa.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
-              },
-              ...promptIDStamp,
-            }
-      let admittedID: string | undefined
-      const completion = sdk.client.session
-        .prompt(
-          {
-            sessionID: targetSessionID,
-            ...selectedModel,
-            agent: agentName,
-            model: selectedModel,
-            variant,
-            noReply: true,
-            parts: [
-              ...snapshot.editorParts,
-              { type: "text", text: outboundText, ignored: true, metadata: routeMeta },
-              ...snapshot.nonTextParts,
-            ],
-          },
-          { throwOnError: true },
-        )
-        .then((res) => {
-          admittedID = admittedUserIDFromResponse(res)
-          return executeSpinosaSubmit({
-            client: sdk.client,
-            sessionID: targetSessionID,
-            prepared: preparedSpinosa,
-            model: {
-              providerID: selectedModel.providerID,
-              modelID: selectedModel.modelID,
-            },
-            publish: sdk.publishJobEvent,
-            localEmit: (event) => sdk.event.emit("event", event),
-            onProgress: (progress) => setRouteProgress(progress.runID, progress),
-          })
-        })
-        .catch((error) => {
-          toast.show({
-            // Admission already succeeded once the id is known: the failure
-            // belongs to the workflow, not the send. Rethrown so the pump
-            // keeps a failed receipt instead of echo-watching a dead run.
-            title: admittedID ? "Research failed" : "Couldn’t send prompt",
-            message: errorMessage(error),
-            variant: "error",
-          })
-          throw error
-        })
-    if (snapshot.editorParts.length > 0) editor.markSelectionSent()
-    // The workflow engine runs outside the server drain: the pump awaits
-    // this chain so queued prompts dispatch strictly FIFO behind it.
-    // dispatchEntry itself returns at kickoff (legacy timing unchanged).
-    // The admitted id lets the pump hold the sent row until the echo lands.
-    return { completion, admitted: () => admittedID }
   } else {
     move.startSubmit()
     const promptParts = [
@@ -1340,15 +1178,8 @@ export function Prompt(props: PromptProps) {
       {
         type: "text" as const,
         text: outboundText,
-          // Every admitted prompt manifests a badge so the header never
-          // renders empty. Routed general verdicts carry provenance;
-          // unrouted sends and failed preparations fall back to bare
-          // general — the agent decides. The prompt id rides along for echo correlation.
           metadata: {
-            [SPINOSA_ROUTE_METADATA]: {
-              kind: "general",
-              ...(preparedSpinosa?.routedBy ? { routedBy: preparedSpinosa.routedBy } : {}),
-            },
+            [SPINOSA_ROUTE_METADATA]: { kind: "general" },
             ...promptIDStamp,
           },
       },
@@ -1449,9 +1280,9 @@ export function Prompt(props: PromptProps) {
     }
   }
 
-  // FIFO dispatcher for the outbound queue: evaluate the next dispatchable
-  // entry when idle, send it, hold the sent row until the server echo takes
-  // over, then continue while idle. Single-flight per session.
+  // FIFO dispatcher for the outbound queue: send the next dispatchable
+  // entry when idle, hold the sent row until the server echo takes over,
+  // then continue while idle. Single-flight per session.
   async function pumpOutbound(sessionID: string): Promise<void> {
     settleUnsettledEchoes(sessionID)
     if (!peekOutbound(sessionID)) return
@@ -1465,27 +1296,16 @@ export function Prompt(props: PromptProps) {
         const head = peekDispatchable(sessionID)
         if (!head) return
         if (!isDispatchIdle(sessionID)) return
-        if (!markOutboundEvaluating(sessionID, head.key)) continue
-        const controller = new AbortController()
-        if (!setOutboundController(sessionID, head.key, controller)) continue
+        if (!markOutboundSent(sessionID, head.key)) continue
         try {
-          const result = await dispatchFn(
-            sessionID,
-            { key: head.key, snapshot: head.snapshot, dispatch: head.dispatch },
-            { signal: controller.signal },
-          )
+          const result = await dispatchFn(sessionID, {
+            key: head.key,
+            snapshot: head.snapshot,
+            dispatch: head.dispatch,
+          })
           if (!ownsOutboundPump(sessionID, lease)) return
-          // Admitted at kickoff: flip to sent so the row stays visible with
-          // no gap while the pump moves on immediately.
-          // Cancellation may win while dispatch is awaiting preparation.
-          // Once the evaluating -> sent transition fails, this continuation
-          // no longer owns the row and must not remove its receipt later.
-          if (!markOutboundSent(sessionID, head.key)) continue
           let admittedID = result.admitted?.()
           if (result.completion) {
-            // Workflow runs execute outside the server drain — await the
-            // engine so queued prompts behind it dispatch strictly FIFO.
-            // Direct sends resolve at admission.
             let failed = false
             let settled: unknown
             try {
@@ -1494,42 +1314,21 @@ export function Prompt(props: PromptProps) {
               failed = true
             }
             if (failed) {
-              // Admission failed after the flip (dispatch already toasted):
-              // keep a failed receipt in place with its text. The input box
-              // is never clobbered — the receipt IS the record.
               markOutboundFailed(sessionID, head.key)
               continue
             }
-            // Re-read the getter last: framed captures the id in an
-            // admission tap that runs after kickoff (settled there is the
-            // engine result, not the admission response).
             admittedID = result.admitted?.() ?? admittedUserIDFromResponse(settled)
             if (admittedID) setOutboundAdmittedID(sessionID, head.key, admittedID)
           }
-          // Echo-handoff runs detached: the next entry dispatches without
-          // waiting for sync. The stamped prompt id is the primary matcher;
-          // the admission-response id is only a secondary fast path.
           void watchEchoThenSettle(sessionID, head.key, admittedID)
         } catch (err) {
-          if (err instanceof RouterAbortedError || controller.signal.aborted) {
-            // Nothing entered the conversation. Keep the row as an explicit
-            // interrupted receipt and let the next queued prompt proceed.
-            markOutboundInterrupted(sessionID, head.key)
-          } else {
-            // Nothing was sent either, but the text must not vanish: keep a
-            // failed receipt in place instead of dropping the row. Toast only
-            // when no receipt survived — every dispatch path toasts its own
-            // failure, so a kept receipt never double-toasts.
-            if (!markOutboundFailed(sessionID, head.key)) {
-              toast.show({
-                title: "Couldn’t send prompt",
-                message: errorMessage(err),
-                variant: "error",
-              })
-            }
+          if (!markOutboundFailed(sessionID, head.key)) {
+            toast.show({
+              title: "Couldn’t send prompt",
+              message: errorMessage(err),
+              variant: "error",
+            })
           }
-        } finally {
-          abortOutbound(sessionID, head.key)
         }
       }
     } finally {
@@ -1753,7 +1552,7 @@ export function Prompt(props: PromptProps) {
     }
 
 
-    // New-session: create + navigate already happened — prepare/admit must not block submit return.
+    // New-session: create + navigate already happened — admit must not block submit return.
     // Snapshot the submit-time send context: queued entries must send
     // exactly what the user submitted.
     // forceAgent is consume-once: capture it for this submit, then clear so
@@ -1772,9 +1571,10 @@ export function Prompt(props: PromptProps) {
       preferSteer: options?.preferSteer,
     }
     const snapshot: OutboundSnapshot = { text: inputText, nonTextParts, editorParts }
-    // Same routing predicate as dispatchEntry (kept in sync): normal routed
-    // prompts go through the outbound queue — visible instantly, evaluated
-    // FIFO at dispatch. Shell / slash / forceAgent send immediately as today.
+    // Same send predicate as dispatchEntry: normal prompts go through the
+    // outbound queue — visible instantly, sent FIFO at dispatch. Shell /
+    // slash / forceAgent send immediately.
+
     const submitFirstLine = inputText.replace(/^\s+/, "").split("\n")[0]
     const submitIsSlash =
       submitFirstLine.startsWith("/") &&
@@ -1783,8 +1583,7 @@ export function Prompt(props: PromptProps) {
       currentMode === "normal" &&
       !submitIsSlash &&
       !submitForceAgent &&
-      Boolean(sessionDirectory) &&
-      shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: submitForceAgent })
+      Boolean(sessionDirectory)
     if (isNewSession) {
       if (!sessionID) return false
       if (finishMoveProgress) move.finishSubmit()
@@ -2144,7 +1943,7 @@ export function Prompt(props: PromptProps) {
         </box>
         <box width="100%" flexDirection="row" justifyContent="space-between">
           <Switch>
-            <Match when={status().type !== "idle" || hasEvaluating(props.sessionID ?? "")}>
+            <Match when={status().type !== "idle"}>
               <box
                 flexDirection="row"
                 gap={1}
@@ -2155,16 +1954,13 @@ export function Prompt(props: PromptProps) {
                   <box marginLeft={1}>
                     <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
                       <spinner
-                        color={hasEvaluating(props.sessionID ?? "") ? theme.textMuted : spinnerDef().color}
+                        color={spinnerDef().color}
                         frames={spinnerDef().frames}
                         interval={40}
                       />
                     </Show>
                   </box>
                   <box flexDirection="row" gap={1} flexShrink={0}>
-                    <Show when={hasEvaluating(props.sessionID ?? "")}>
-                      <text fg={theme.textMuted}>Evaluating</text>
-                    </Show>
                     {(() => {
                       const retry = createMemo(() => {
                         const s = status()

@@ -46,8 +46,6 @@ export const SPINOSA_REGISTRY = "workspaces.json"
 export const SPINOSA_CONFIG = "config.yaml"
 export const WORKSPACE_MARKER = ".spinosa/workspace"
 
-// WP5: spinosa-router is the hidden constrained router (zero tools).
-// It ships the same adapter mirrors so template-integrity stays green.
 export const SPINOSA_AGENT_FILES = [
   "spinosa-searcher.md",
   "spinosa-mapper.md",
@@ -59,7 +57,6 @@ export const SPINOSA_AGENT_FILES = [
   "spinosa-evolver.md",
   "spinosa-janitor.md",
   "spinosa-overseer.md",
-  "spinosa-router.md",
 ]
 
 const MAX_EXTENSION_FILENAME_LENGTH = 255

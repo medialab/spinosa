@@ -1,22 +1,17 @@
 import { describe, expect, test } from "bun:test"
 import {
   acquireOutboundPump,
-  abortOutbound,
   admittedUserIDFromResponse,
-  cancelOutboundEvaluation,
   clearOutbound,
   dispatchPositions,
   enqueueOutbound,
-  evaluatingKeys,
   failedOutboundForSession,
   findEchoByPromptID,
-  hasEvaluating,
   hasServerEcho,
   interruptedOutboundForSession,
   isOutboundPumping,
   kickPump,
   liveOutboundForSession,
-  markOutboundEvaluating,
   markOutboundFailed,
   markOutboundInterrupted,
   markOutboundSent,
@@ -29,13 +24,13 @@ import {
   registerPump,
   releaseOutboundPump,
   removeOutbound,
-  setOutboundController,
   ownsOutboundPump,
   shouldRestoreCancelledText,
   SPINOSA_PROMPT_METADATA,
   steerOutbound,
   unregisterPump,
   waitForEcho,
+  invalidateOutboundPump,
   type DispatchContext,
   type OutboundEntry,
   type OutboundSnapshot,
@@ -63,26 +58,23 @@ describe("outbound queue", () => {
     expect(peekOutbound(sid)).toBeUndefined()
   })
 
-  test("markEvaluating flips only the head", () => {
-    const sid = "ses-queue-eval"
+  test("markOutboundSent flips only a queued or steered head", () => {
+    const sid = "ses-queue-sent-head"
     const first = enqueueOutbound(sid, snapshot("one"), dispatch())
     const second = enqueueOutbound(sid, snapshot("two"), dispatch())
-    expect(markOutboundEvaluating(sid, second)).toBe(false)
-    expect(markOutboundEvaluating(sid, first)).toBe(true)
-    expect(hasEvaluating(sid)).toBe(true)
-    expect(evaluatingKeys(sid)).toEqual([first])
-    expect(peekOutbound(sid)?.state).toBe("evaluating")
+    expect(markOutboundSent(sid, second)).toBe(false)
+    expect(markOutboundSent(sid, first)).toBe(true)
+    expect(peekOutbound(sid)?.state).toBe("sent")
+    expect(peekDispatchable(sid)?.key).toBe(second)
     clearOutbound(sid)
   })
 
-  test("remove drops entries and controllers", () => {
+  test("remove drops entries", () => {
     const sid = "ses-queue-remove"
     const key = enqueueOutbound(sid, snapshot("one"), dispatch())
-    expect(markOutboundEvaluating(sid, key)).toBe(true)
-    expect(setOutboundController(sid, key, new AbortController())).toBe(true)
     removeOutbound(sid, key)
     expect(peekOutbound(sid)).toBeUndefined()
-    expect(hasEvaluating(sid)).toBe(false)
+    clearOutbound(sid)
   })
 
   test("pump flags are single-flight", () => {
@@ -96,25 +88,12 @@ describe("outbound queue", () => {
     expect(isOutboundPumping(sid)).toBe(false)
   })
 
-  test("cancellation releases a stuck pump without letting its stale owner clear the replacement", async () => {
+  test("invalidating a stuck pump lets a replacement owner take over", () => {
     const sid = "ses-queue-pump-cancel"
-    const key = enqueueOutbound(sid, snapshot("stuck"), dispatch())
-    enqueueOutbound(sid, snapshot("next"), dispatch())
-    expect(markOutboundEvaluating(sid, key)).toBe(true)
-    const controller = new AbortController()
-    expect(setOutboundController(sid, key, controller)).toBe(true)
     const staleLease = acquireOutboundPump(sid)
     expect(staleLease).toBeNumber()
-    let kicks = 0
-    registerPump(sid, () => {
-      kicks += 1
-    })
-
-    expect(cancelOutboundEvaluation(sid, key)).toBe(true)
-    await Promise.resolve()
-    expect(controller.signal.aborted).toBe(true)
+    expect(invalidateOutboundPump(sid)).toBe(true)
     expect(isOutboundPumping(sid)).toBe(false)
-    expect(kicks).toBe(1)
 
     const replacement = acquireOutboundPump(sid)
     expect(replacement).toBeNumber()
@@ -122,77 +101,6 @@ describe("outbound queue", () => {
     expect(releaseOutboundPump(sid, staleLease!)).toBe(false)
     expect(ownsOutboundPump(sid, replacement!)).toBe(true)
     expect(releaseOutboundPump(sid, replacement!)).toBe(true)
-    unregisterPump(sid)
-    clearOutbound(sid)
-  })
-
-  test("abortOutbound fires the entry controller", () => {
-    const sid = "ses-queue-abort"
-    const key = enqueueOutbound(sid, snapshot("one"), dispatch())
-    const controller = new AbortController()
-    expect(markOutboundEvaluating(sid, key)).toBe(true)
-    expect(setOutboundController(sid, key, controller)).toBe(true)
-    expect(abortOutbound(sid, key)).toBe(true)
-    expect(controller.signal.aborted).toBe(true)
-    clearOutbound(sid)
-  })
-
-  test("evaluation cancellation is session-scoped and survives a stale completion", () => {
-    const sid = "ses-queue-cancel-owner"
-    const key = enqueueOutbound(sid, snapshot("cancel me"), dispatch())
-    const next = enqueueOutbound(sid, snapshot("keep me"), dispatch())
-    expect(markOutboundEvaluating(sid, key)).toBe(true)
-    const controller = new AbortController()
-    expect(setOutboundController(sid, key, controller)).toBe(true)
-
-    // A stale row/controller id from another session must not cancel this run.
-    expect(cancelOutboundEvaluation("ses-queue-other", key)).toBe(false)
-    expect(controller.signal.aborted).toBe(false)
-    expect(outboundForSession(sid).find((entry) => entry.key === key)?.state).toBe("evaluating")
-
-    expect(cancelOutboundEvaluation(sid, key)).toBe(true)
-    expect(controller.signal.aborted).toBe(true)
-    expect(outboundForSession(sid).find((entry) => entry.key === key)?.state).toBe("interrupted")
-    // The dispatch continuation can resolve after cancellation, but it no
-    // longer owns the row and cannot advance it to sent.
-    expect(markOutboundSent(sid, key)).toBe(false)
-    expect(peekDispatchable(sid)?.key).toBe(next)
-    expect(cancelOutboundEvaluation(sid, key)).toBe(false)
-    clearOutbound(sid)
-  })
-
-  test("steer third then cancel its evaluation preserves all receipts and future prompts", () => {
-    const sid = "ses-queue-steer-cancel-regression"
-    const first = enqueueOutbound(sid, snapshot("first"), dispatch())
-    const second = enqueueOutbound(sid, snapshot("second"), dispatch())
-    const third = enqueueOutbound(sid, snapshot("third"), dispatch())
-    expect(markOutboundEvaluating(sid, first)).toBe(true)
-    const firstController = new AbortController()
-    expect(setOutboundController(sid, first, firstController)).toBe(true)
-    expect(steerOutbound(sid, third)).toBe(true)
-
-    // Steering the third prompt cancels the first evaluation, then the
-    // replacement pump selects the steered key by identity.
-    expect(cancelOutboundEvaluation(sid, first)).toBe(true)
-    expect(firstController.signal.aborted).toBe(true)
-    expect(peekDispatchable(sid)?.key).toBe(third)
-    expect(markOutboundEvaluating(sid, third)).toBe(true)
-    const thirdController = new AbortController()
-    expect(setOutboundController(sid, third, thirdController)).toBe(true)
-
-    // The confirmed Escape targets that exact evaluation. A later submit
-    // remains present and the untouched second prompt is still next.
-    expect(cancelOutboundEvaluation(sid, third)).toBe(true)
-    const fourth = enqueueOutbound(sid, snapshot("fourth"), dispatch())
-    expect(thirdController.signal.aborted).toBe(true)
-    expect(outboundForSession(sid).map((entry) => [entry.key, entry.state])).toEqual([
-      [first, "interrupted"],
-      [second, "queued"],
-      [third, "interrupted"],
-      [fourth, "queued"],
-    ])
-    expect(peekDispatchable(sid)?.key).toBe(second)
-    clearOutbound(sid)
   })
 
   test("sessions are isolated", () => {
@@ -237,11 +145,30 @@ describe("outbound queue", () => {
     clearOutbound(sid)
   })
 
+  test("steer third then interrupt keeps remaining prompts dispatchable", () => {
+    const sid = "ses-queue-steer-interrupt"
+    const first = enqueueOutbound(sid, snapshot("first"), dispatch())
+    const second = enqueueOutbound(sid, snapshot("second"), dispatch())
+    const third = enqueueOutbound(sid, snapshot("third"), dispatch())
+    expect(steerOutbound(sid, third)).toBe(true)
+    expect(markOutboundInterrupted(sid, first)).toBe(true)
+    expect(peekDispatchable(sid)?.key).toBe(third)
+    expect(markOutboundInterrupted(sid, third)).toBe(true)
+    const fourth = enqueueOutbound(sid, snapshot("fourth"), dispatch())
+    expect(outboundForSession(sid).map((entry) => [entry.key, entry.state])).toEqual([
+      [first, "interrupted"],
+      [second, "queued"],
+      [third, "interrupted"],
+      [fourth, "queued"],
+    ])
+    expect(peekDispatchable(sid)?.key).toBe(second)
+    clearOutbound(sid)
+  })
+
   test("eviction never drops live entries and caps interrupted receipts", () => {
     const sid = "ses-queue-evict"
     for (let i = 0; i < 25; i++) {
       const key = enqueueOutbound(sid, snapshot(`old-${i}`), dispatch())
-      expect(markOutboundEvaluating(sid, key)).toBe(true)
       expect(markOutboundInterrupted(sid, key)).toBe(true)
     }
     expect(interruptedOutboundForSession(sid)).toHaveLength(20)
@@ -264,23 +191,21 @@ describe("outbound queue", () => {
     const sid = "ses-queue-sent"
     const first = enqueueOutbound(sid, snapshot("one"), dispatch())
     const second = enqueueOutbound(sid, snapshot("two"), dispatch())
-    expect(markOutboundEvaluating(sid, first)).toBe(true)
-    expect(markOutboundSent(sid, first)).toBe(true)
     expect(markOutboundSent(sid, second)).toBe(false)
-    expect(peekDispatchable(sid)?.key).toBe(second)
+    expect(markOutboundSent(sid, first)).toBe(true)
+    expect(markOutboundSent(sid, second)).toBe(true)
+    expect(peekDispatchable(sid)).toBeUndefined()
     expect(dispatchPositions(sid).has(first)).toBe(false)
     expect(liveOutboundForSession(sid).map((e) => e.key)).toEqual([first, second])
     clearOutbound(sid)
   })
 
-  test("interrupted evaluations remain visible without blocking the next prompt", () => {
+  test("interrupted queued prompts remain visible without blocking the next prompt", () => {
     const sid = "ses-queue-interrupted"
     const first = enqueueOutbound(sid, snapshot("one"), dispatch())
     const second = enqueueOutbound(sid, snapshot("two"), dispatch())
-    expect(markOutboundEvaluating(sid, first)).toBe(true)
     expect(markOutboundInterrupted(sid, first)).toBe(true)
     expect(outboundForSession(sid).find((entry) => entry.key === first)?.state).toBe("interrupted")
-    expect(hasEvaluating(sid)).toBe(false)
     expect(peekOutbound(sid)?.key).toBe(second)
     clearOutbound(sid)
   })
@@ -302,7 +227,6 @@ describe("outbound queue", () => {
     const sid = "ses-queue-split"
     const first = enqueueOutbound(sid, snapshot("one"), dispatch())
     const second = enqueueOutbound(sid, snapshot("two"), dispatch())
-    expect(markOutboundEvaluating(sid, first)).toBe(true)
     expect(markOutboundInterrupted(sid, first)).toBe(true)
     expect(liveOutboundForSession(sid).map((e) => e.key)).toEqual([second])
     expect(interruptedOutboundForSession(sid).map((e) => e.key)).toEqual([first])
@@ -373,7 +297,6 @@ describe("failed and stale receipts", () => {
   test("failed rows rest in place with their text", () => {
     const sid = "ses-queue-failed"
     const key = enqueueOutbound(sid, snapshot("doomed"), dispatch())
-    expect(markOutboundEvaluating(sid, key)).toBe(true)
     expect(markOutboundFailed(sid, key)).toBe(true)
     expect(outboundEntryState(sid, key)).toBe("failed")
     expect(failedOutboundForSession(sid).map((e) => e.text)).toEqual(["doomed"])
@@ -388,7 +311,6 @@ describe("failed and stale receipts", () => {
   test("stale marks sent-but-blocked rows without deleting them", () => {
     const sid = "ses-queue-stale"
     const key = enqueueOutbound(sid, snapshot("blocked"), dispatch())
-    expect(markOutboundEvaluating(sid, key)).toBe(true)
     expect(markOutboundSent(sid, key)).toBe(true)
     expect(markOutboundStale(sid, key)).toBe(true)
     expect(outboundEntryState(sid, key)).toBe("sent")
@@ -402,7 +324,6 @@ describe("failed and stale receipts", () => {
     const sid = "ses-queue-failed-cap"
     for (let i = 0; i < 25; i++) {
       const key = enqueueOutbound(sid, snapshot(`f-${i}`), dispatch())
-      expect(markOutboundEvaluating(sid, key)).toBe(true)
       expect(markOutboundFailed(sid, key)).toBe(true)
     }
     expect(failedOutboundForSession(sid)).toHaveLength(20)

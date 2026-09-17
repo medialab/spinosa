@@ -1,7 +1,7 @@
 /**
- * Two-stage Esc for stopping an evaluation or live run: first press arms,
- * second press on the same target confirms. Binding the arm to the target
- * prevents an Esc pressed during routing from later killing the chat turn.
+ * Two-stage Esc for stopping a live run: first press arms, second press on
+ * the same target confirms. Binding the arm to the target prevents an Esc
+ * pressed in one session from later killing another.
  */
 export const ESC_ARM_WINDOW_MS = 10_000
 

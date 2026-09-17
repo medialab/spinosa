@@ -7,13 +7,13 @@ import type { PromptInfo } from "../prompt/history"
  * One prompt, one row, one id. Enter admits a message here FIRST (visible
  * instantly as an optimistic transcript row) under a canonical prompt id
  * (`key`), stamped into the admission so the server echo carries it back.
- * A per-session dispatcher evaluates + sends entries when the session is
+ * A per-session dispatcher sends entries when the session is
  * idle, strictly one active at a time. Render order is always chronological
  * — steer never moves a row, it only flips status (dispatch priority
  * follows first-steered-wins, visualized with a #N counter):
  *
  *   queued ──steer──→ steered
- *      └──────────────┴──→ evaluating → sent ──echo──→ gone (server row swaps in)
+ *      └──────────────┴──→ sent ──echo──→ gone (server row swaps in)
  *                       ↘ interrupted (receipt, rests in place)
  *                       ↘ failed (receipt, rests in place)
  *
@@ -23,14 +23,13 @@ import type { PromptInfo } from "../prompt/history"
  *
  * Nothing here touches the server protocol: the prompt id rides the same
  * part-metadata channel as the route badge. No durable state.
- * Server admission still happens exactly once per prompt, at dispatch time,
- * through the existing direct/workflow send paths.
+ * Server admission still happens exactly once per prompt, at dispatch time.
  */
 
 /** Part-metadata key carrying the canonical prompt id through admission to echo. */
 export const SPINOSA_PROMPT_METADATA = "spinosaPrompt"
 
-export type OutboundState = "queued" | "steered" | "evaluating" | "sent" | "interrupted" | "failed"
+export type OutboundState = "queued" | "steered" | "sent" | "interrupted" | "failed"
 
 /**
  * Everything the dispatcher needs to send the prompt exactly as submit
@@ -91,17 +90,14 @@ function nextKey(): string {
 }
 
 /**
- * Bounded history only: live entries (queued/steered/evaluating/sent) are
- * never evicted — dropping one loses a send the input already cleared for.
+ * Bounded history only: live entries (queued/steered/sent) are never
+ * evicted — dropping one loses a send the input already cleared for.
  * Only settled receipts (interrupted/failed) roll off, oldest first.
  */
 const MAX_INTERRUPTED_RECEIPTS = 20
 const MAX_FAILED_RECEIPTS = 20
 
 const [entriesBySession, setEntriesBySession] = createStore<Record<string, OutboundEntry[]>>({})
-
-/** AbortControllers for in-flight evaluations, scoped to their owning session. */
-const controllers = new Map<string, { sessionID: string; controller: AbortController }>()
 
 /** Single-flight dispatcher lease per session. Late owners cannot clear replacements. */
 const pumpLeases = new Map<string, number>()
@@ -191,11 +187,10 @@ export function outboundForSession(sessionID: string): OutboundEntry[] {
   return entriesBySession[sessionID] ?? []
 }
 
-/** Live entries that have not settled yet: queued, steered, evaluating, sent. */
+/** Live entries that have not settled yet: queued, steered, sent. */
 export function liveOutboundForSession(sessionID: string): OutboundEntry[] {
   return (entriesBySession[sessionID] ?? []).filter(
-    (entry) =>
-      entry.state === "queued" || entry.state === "steered" || entry.state === "evaluating" || entry.state === "sent",
+    (entry) => entry.state === "queued" || entry.state === "steered" || entry.state === "sent",
   )
 }
 
@@ -282,28 +277,15 @@ export function findEchoByPromptID(
   return undefined
 }
 
-/** Flip the next dispatchable entry to evaluating. False when it is gone or not next. */
-export function markOutboundEvaluating(sessionID: string, key: string): boolean {
-  const head = peekDispatchable(sessionID)
-  if (!head || head.key !== key || (head.state !== "queued" && head.state !== "steered")) return false
-  setEntriesBySession(
-    produce((draft) => {
-      const found = draft[sessionID]?.find((e) => e.key === key)
-      if (found) found.state = "evaluating"
-    }),
-  )
-  return true
-}
-
 /** Admission kicked off: the row stays visible as sent until the server echo takes over. */
 export function markOutboundSent(sessionID: string, key: string): boolean {
-  const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
-  if (!entry || entry.state !== "evaluating") return false
+  const head = peekDispatchable(sessionID)
+  if (!head || head.key !== key || (head.state !== "queued" && head.state !== "steered")) return false
   const sentAt = Date.now()
   setEntriesBySession(
     produce((draft) => {
       const found = draft[sessionID]?.find((candidate) => candidate.key === key)
-      if (found?.state === "evaluating") {
+      if (found && (found.state === "queued" || found.state === "steered")) {
         found.state = "sent"
         found.sentAt = sentAt
       }
@@ -319,12 +301,11 @@ export function markOutboundSent(sessionID: string, key: string): boolean {
  */
 export function markOutboundFailed(sessionID: string, key: string): boolean {
   const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
-  if (!entry || (entry.state !== "evaluating" && entry.state !== "sent")) return false
-  controllers.delete(key)
+  if (!entry || (entry.state !== "queued" && entry.state !== "steered" && entry.state !== "sent")) return false
   setEntriesBySession(
     produce((draft) => {
       const found = draft[sessionID]?.find((candidate) => candidate.key === key)
-      if (found && (found.state === "evaluating" || found.state === "sent")) {
+      if (found && (found.state === "queued" || found.state === "steered" || found.state === "sent")) {
         found.state = "failed"
       }
       const list = draft[sessionID]
@@ -348,8 +329,6 @@ export function markOutboundStale(sessionID: string, key: string): boolean {
 }
 
 export function removeOutbound(sessionID: string, key: string): void {
-  const active = controllers.get(key)
-  if (active?.sessionID === sessionID) controllers.delete(key)
   setEntriesBySession(
     produce((draft) => {
       const list = draft[sessionID]
@@ -363,21 +342,11 @@ export function removeOutbound(sessionID: string, key: string): void {
 
 export function clearOutbound(sessionID: string): void {
   invalidateOutboundPump(sessionID)
-  for (const entry of entriesBySession[sessionID] ?? []) {
-    const active = controllers.get(entry.key)
-    if (active?.sessionID !== sessionID) continue
-    controllers.delete(entry.key)
-    active.controller.abort()
-  }
   setEntriesBySession(
     produce((draft) => {
       delete draft[sessionID]
     }),
   )
-}
-
-export function hasEvaluating(sessionID: string): boolean {
-  return (entriesBySession[sessionID] ?? []).some((e) => e.state === "evaluating")
 }
 
 /** Current state of one prompt id, for echo-handoff guards. */
@@ -388,7 +357,7 @@ export function outboundEntryState(sessionID: string, key: string): OutboundStat
 /** Stash the admission-response id once known (secondary echo matcher). */
 export function setOutboundAdmittedID(sessionID: string, key: string, admittedID: string): boolean {
   const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
-  if (!entry || (entry.state !== "evaluating" && entry.state !== "sent")) return false
+  if (!entry || entry.state !== "sent") return false
   setEntriesBySession(
     produce((draft) => {
       const found = draft[sessionID]?.find((candidate) => candidate.key === key)
@@ -398,16 +367,14 @@ export function setOutboundAdmittedID(sessionID: string, key: string, admittedID
   return true
 }
 
-/** Preserve a cancelled evaluation in the transcript as an explicit receipt. */
+/** Preserve a cancelled queued/steered prompt as an explicit receipt. */
 export function markOutboundInterrupted(sessionID: string, key: string): boolean {
   const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
-  if (!entry || entry.state !== "evaluating") return false
-  const active = controllers.get(key)
-  if (active?.sessionID === sessionID) controllers.delete(key)
+  if (!entry || (entry.state !== "queued" && entry.state !== "steered")) return false
   setEntriesBySession(
     produce((draft) => {
       const found = draft[sessionID]?.find((candidate) => candidate.key === key)
-      if (found?.state === "evaluating") found.state = "interrupted"
+      if (found && (found.state === "queued" || found.state === "steered")) found.state = "interrupted"
       const list = draft[sessionID]
       if (list) trimSettledReceipts(list)
     }),
@@ -416,42 +383,9 @@ export function markOutboundInterrupted(sessionID: string, key: string): boolean
 }
 
 /**
- * Cancel exactly one evaluation owned by `sessionID`.
- *
- * The state transition happens before abort listeners run, so any stale
- * dispatch continuation loses ownership of the row before it can resume.
- * The interrupted row remains as a receipt and no other session can be
- * cancelled with a leaked/stale queue key.
- *
- * Pass `{ kick: false }` when the caller drives what happens next itself
- * (steer waits for the server abort to settle first): otherwise the
- * microtask kick could admit the replacement before the old generation's
- * abort lands and kills it.
- */
-export function cancelOutboundEvaluation(
-  sessionID: string,
-  key: string,
-  opts?: { kick?: boolean },
-): boolean {
-  const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
-  if (!entry || entry.state !== "evaluating") return false
-  const active = controllers.get(key)
-  if (active && active.sessionID !== sessionID) return false
-
-  if (!markOutboundInterrupted(sessionID, key)) return false
-  active?.controller.abort()
-  // Do not wait for a misbehaving preparation promise to observe abort.
-  // Invalidate its pump lease and let the next queued entry start. The old
-  // continuation is fenced by state + lease ownership if it ever resumes.
-  invalidateOutboundPump(sessionID)
-  if (opts?.kick !== false) queueMicrotask(() => kickPump(sessionID))
-  return true
-}
-
-/**
  * Steer: flag a queued entry to dispatch next. Render order never moves —
  * only status flips. First-steered wins when several are steered. False
- * when the entry is gone or has already been steered/evaluated.
+ * when the entry is gone or has already been steered or sent.
  */
 export function steerOutbound(sessionID: string, key: string): boolean {
   const list = entriesBySession[sessionID]
@@ -503,10 +437,6 @@ export function kickPump(sessionID: string): void {
   } catch {
     /* pump kicks never throw into views */
   }
-}
-
-export function evaluatingKeys(sessionID: string): string[] {
-  return (entriesBySession[sessionID] ?? []).filter((e) => e.state === "evaluating").map((e) => e.key)
 }
 
 /** Echo-handoff tuning: poll for the admitted server id, then give up and drop the row. */
@@ -562,21 +492,6 @@ export async function waitForEcho(
     if (Date.now() - startedAt >= timeoutMs) return false
     await new Promise((resolve) => setTimeout(resolve, pollMs))
   }
-}
-
-export function setOutboundController(sessionID: string, key: string, controller: AbortController): boolean {
-  const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
-  if (!entry || entry.state !== "evaluating") return false
-  controllers.set(key, { sessionID, controller })
-  return true
-}
-
-export function abortOutbound(sessionID: string, key: string): boolean {
-  const active = controllers.get(key)
-  if (!active || active.sessionID !== sessionID) return false
-  controllers.delete(key)
-  active.controller.abort()
-  return true
 }
 
 export function isOutboundPumping(sessionID: string): boolean {

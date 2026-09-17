@@ -67,7 +67,7 @@ The first time you run `spinosa`, you'll see the workspace picker. Click **+ New
 
 When the wizard finishes, a chat prompt appears. Type your first question.
 
-While a prompt is evaluating, click **Cancel evaluation** or press **Esc twice** to stop it. Its text remains in the conversation as interrupted. Other queued prompts continue; **Steer** makes a queued prompt go next.
+While a prompt is running, press **Esc twice** to stop it. Its text remains in the conversation as interrupted. Other queued prompts continue; **Steer** makes a queued prompt go next.
 
 ---
 

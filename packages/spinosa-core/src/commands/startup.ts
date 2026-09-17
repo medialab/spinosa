@@ -14,7 +14,7 @@ export const STARTUP_PROGRESS_INTERVAL_MS = 500
 // Stage 1 keeps the forceAgent=build + full-prompt TUI interaction; once the
 // workflow proves stable, native callers submit this trigger instead.
 // generateStartupPrompt()/generateAddPrompt() remain as portable fallback
-// protocols for external CLIs that cannot call WorkflowRunService.
+// protocols for external CLIs.
 export const STARTUP_WORKFLOW_TRIGGER = "Run Spinosa startup indexing for this workspace."
 
 export function formatStartupProgressMessage(elapsedMs: number): string {

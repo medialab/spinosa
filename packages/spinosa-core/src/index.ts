@@ -64,10 +64,7 @@ export * from "./commands/update"
 export * from "./commands/upgrade"
 export * from "./commands/preflight"
 
-// --- application (WP10: ResearchRunService removed; WorkflowRunService is the only control path)
-export * from "./application/router-service"
-export * from "./application/workflow-run-service"
-export * from "./application/workflow-operations"
+// --- application (kernel tools; no TUI workflow control plane)
 export * from "./application/agent-tools"
 export * from "./artifacts/contracts"
 export * from "./artifacts/validate"

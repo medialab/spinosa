@@ -2,11 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   routeBadgeFromParts,
   routeBadgeLabel,
-  routeProgress,
-  setRouteProgress,
-  shortStepLabel,
   SPINOSA_ROUTE_METADATA,
-  trackedRunCount,
 } from "../../src/spinosa/route-badge"
 
 describe("routeBadgeFromParts", () => {
@@ -81,9 +77,6 @@ describe("routeBadgeFromParts", () => {
     // Outbound lifecycle states are TUI-local and rendered from the
     // outbound queue — they must never arrive via persisted part metadata.
     expect(
-      routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "evaluating" } } }]),
-    ).toBeUndefined()
-    expect(
       routeBadgeFromParts([{ type: "text", text: "x", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "queued" } } }]),
     ).toBeUndefined()
     expect(
@@ -98,19 +91,10 @@ describe("routeBadgeFromParts", () => {
   })
 })
 
-describe("shortStepLabel", () => {
-  test("names agents and parallel fanouts plainly", () => {
-    expect(shortStepLabel("search")).toBe("search")
-    expect(shortStepLabel("extract-fanout")).toBe("extract × parallel")
-    expect(shortStepLabel("search-fanout:batch-001")).toBe("search × parallel")
-  })
-})
-
 describe("routeBadgeLabel", () => {
   test("makes every outbound fence explicit", () => {
     expect(routeBadgeLabel({ kind: "queued" })).toBe("○ queued")
     expect(routeBadgeLabel({ kind: "steered" })).toBe("→ steered")
-    expect(routeBadgeLabel({ kind: "evaluating" })).toBe("Evaluating")
     expect(routeBadgeLabel({ kind: "sent" })).toBe("✓ Sent")
     expect(routeBadgeLabel({ kind: "sent", stale: true })).toBe("✓ Sent")
     expect(routeBadgeLabel({ kind: "interrupted" })).toBe("⛔ Interrupted")
@@ -124,23 +108,5 @@ describe("routeBadgeLabel", () => {
     ])
     expect(info).toMatchObject({ kind: "general", routedBy: "rules" })
     expect(routeBadgeLabel(info!)).toBe("General prompt")
-  })
-})
-
-describe("route progress store", () => {
-  test("records and reads per-run step progress", () => {
-    expect(routeProgress("run-x")).toBeUndefined()
-    setRouteProgress("run-x", { done: 2, total: 6, stepID: "search", status: "processing" })
-    expect(routeProgress("run-x")).toMatchObject({ done: 2, total: 6, stepID: "search" })
-    setRouteProgress("run-x", { done: 6, total: 6, stepID: "evaluate", status: "done" })
-    expect(routeProgress("run-x")?.status).toBe("done")
-  })
-
-  test("evicts oldest entries past the cap", () => {
-    for (let i = 0; i < 120; i++) {
-      setRouteProgress(`evict-${i}`, { done: 1, total: 1, stepID: "goal", status: "done" })
-    }
-    expect(trackedRunCount()).toBeLessThanOrEqual(100)
-    expect(routeProgress("evict-119")).toBeDefined()
   })
 })

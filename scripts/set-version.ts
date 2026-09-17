@@ -15,7 +15,6 @@ import semver from "semver"
 export const PRODUCT_PACKAGE_DIRS = [
   "packages/spinosa-core",
   "packages/spinosa-cli",
-  "packages/spinosa-harness",
   "packages/spinosa-runtime",
 ] as const
 

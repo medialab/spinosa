@@ -22,7 +22,6 @@ import { readdir, readFile } from "node:fs/promises"
 import { dbg } from "../util/debug-log"
 import { sessionIsBusy, sessionMatchesWorkspaceScope } from "../util/session"
 import { sessionsToStopOnOpen, stopBusySessions } from "../util/stop-sessions"
-import { cancelSpinosaSubmit } from "../spinosa/orchestrator"
 
 type SessionListFilter = { scope?: "project"; directory?: string; path?: string; workspace?: string }
 
@@ -357,7 +356,6 @@ export function DialogSessionList() {
           void stopBusySessions({
             sessionIDs: ids,
             abort: (sessionID) => sdk.client.session.abort({ sessionID }),
-            cancelWorkflow: (sessionID) => cancelSpinosaSubmit({ client: sdk.client, sessionID }),
           })
           route.navigate({
             type: "workspace",
