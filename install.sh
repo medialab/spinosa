@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.2.0-beta.4"
+PINNED_VERSION="1.2.0"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 # Staged-verify budget for slow hosts (qemu linux-x64 needs 100s+ for template
