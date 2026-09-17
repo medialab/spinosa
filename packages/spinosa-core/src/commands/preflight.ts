@@ -13,9 +13,9 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
 import { spawnSync } from "node:child_process"
-import { homedir } from "node:os"
 import { confirmPrompt } from "../utils/confirm"
 import { spinosaLogInfo } from "../utils/log"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 import { updateWorkspace, type UpdateResult } from "./update"
 import {
   checkUpgradeAvailable,
@@ -98,7 +98,7 @@ export interface LaunchPreflightOptions {
 }
 
 function defaultFrameworkRootForVersion(version: string): string {
-  const home = process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  const home = productHomeDir()
   const envRoot = process.env.SPINOSA_TEMPLATE_ROOT
   if (envRoot) return envRoot
 
@@ -325,13 +325,10 @@ export async function offerStaleTemplatePackUpdates(
         failed++
         const detail = formatStalePaths(after)
         deps.out(`\x1b[31m●\x1b[0m ${entry.name} still stale after update${detail ? `: ${detail}` : ""}`)
-        spinosaLogInfo(
-          "preflight",
-          `template pack still stale after forced update: ${entry.path} (${detail || "version behind"})`,
-        )
+        spinosaLogInfo("preflight", "template pack still stale after forced update")
       } else {
         deps.out(`\x1b[32m●\x1b[0m Updated ${entry.name} — template pack current`)
-        spinosaLogInfo("preflight", `template pack refreshed: ${entry.path}`)
+        spinosaLogInfo("preflight", "template pack refreshed")
       }
     } catch (error) {
       failed++

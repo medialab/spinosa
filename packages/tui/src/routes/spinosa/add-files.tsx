@@ -33,7 +33,7 @@ import {
   resolveUserPath,
 } from "../../spinosa/onboarding-preview"
 import { runReinstall } from "../../spinosa/reinstall"
-import { toolActionLabel as resolveToolActionLabel, initialToolChecks, toolCheckResults, formatBytes, wavePulse, waveRow, waveString, validateSinglePath } from "./onboarding-helpers"
+import { toolActionLabel as resolveToolActionLabel, initialToolChecks, toolCheckResults, formatBytes, wavePulse, waveRow, waveString, validateSinglePath, nextScanTotals } from "./onboarding-helpers"
 import { useBackgroundImport, isBackgroundAvailable, detachImportToBackground } from "../../spinosa/import-background"
 import { openBackgroundImportMonitor } from "../../component/dialog-background-import"
 import { readBundledFrameworkVersion, isPrereleaseFrameworkVersion } from "../../spinosa/service"
@@ -533,6 +533,7 @@ export function AddFiles() {
     setScanDone(false)
     setScanningFile("")
     setScanCount(0)
+    setScanTotal(0)
     setStep("scan")
     await delay(100)
     spinOn()
@@ -542,7 +543,14 @@ export function AddFiles() {
       for (const src of resolved) {
         appendLogLine(`Scanning: ${src}`)
         const scanPreview = await buildImportScanPreview(src, {
-          onFile: (rel, isFile, discovered) => { setScanningFile(rel); setScanTotal((t) => t + discovered); if (isFile) setScanCount((c) => c + 1) },
+          onFile: (rel, isFile, discovered) => {
+            setScanningFile(rel)
+            setScanCount((count) => {
+              const next = nextScanTotals(discovered, isFile, count)
+              setScanTotal(next.scanTotal)
+              return next.scanCount
+            })
+          },
           shouldAbort,
         })
         for (const opt of scanPreview.importOptions) {

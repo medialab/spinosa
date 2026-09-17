@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import * as readline from "node:readline"
 import { spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { homedir, tmpdir as osTmpdir } from "node:os"
+import { tmpdir as osTmpdir } from "node:os"
 import path from "node:path"
 import {
   type ReleaseChannel,
@@ -17,6 +17,7 @@ import { ensureGlobalMetadata, discoverRegisteredWorkspaces } from "../workspace
 import { readWorkspaceMeta } from "../workspace/meta"
 import { writeTextAtomic } from "../utils/fs"
 import { spinosaLogInfo } from "../utils/log"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 const FETCH_TIMEOUT_MS = 15_000
 export interface UpgradeOptions {
@@ -79,7 +80,7 @@ const SPINOSA_RELEASE_REPO: string =
   process.env.SPINOSA_RELEASE_REPO ?? "medialab/spinosa"
 
 function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? `${homedir()}/.spinosa`
+  return productHomeDir()
 }
 
 function metadataDir(): string {

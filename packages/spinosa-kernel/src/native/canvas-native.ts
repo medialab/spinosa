@@ -10,10 +10,11 @@
  */
 import { createHash, randomBytes } from "node:crypto"
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync, renameSync } from "node:fs"
-import { homedir, tmpdir } from "node:os"
+import { tmpdir } from "node:os"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { isCompiledBinaryDistribution, spinosaHome } from "@spinosa/core/distribution/bootstrap"
+import { userCacheHome } from "@spinosa/kernel-core/util/user-dirs"
 import { CANVAS_NATIVE_BINDING } from "../generated/canvas-native.gen"
 
 export type CanvasNativeBindingFile = {
@@ -37,7 +38,7 @@ function xdgCacheHome(override?: string): string {
   if (override) return override
   const env = process.env.XDG_CACHE_HOME?.trim()
   if (env) return env
-  return path.join(homedir(), ".cache")
+  return userCacheHome()
 }
 
 /** Probe whether `dir` is writable and allows executing a file (not noexec). */
@@ -74,10 +75,10 @@ export type NativeStageDirOptions = {
 /**
  * Resolve where the staged canvas binding should be written.
  *
- * - Linux: prefer `$SPINOSA_HOME/cache/canvas-native`, then XDG
+ * - Linux: prefer `$SPINOSA_HOME/cache/canvas-native`, then the OS cache
  *   `…/spinosa/canvas-native`, then `os.tmpdir()`.
  * - Darwin: prefer `os.tmpdir()` first so `@rpath` stays adjacent to Bun's
- *   extracted `.node`, then home/XDG.
+ *   extracted `.node`, then home/OS cache.
  *
  * Always returns a path (last resort = tmpdir).
  */

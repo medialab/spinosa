@@ -5,7 +5,7 @@
  * optional `@napi-rs/canvas-*` platform packages from nested chunks on Linux.
  * We embed the platform `skia.<triple>.node` and stage it to a real filesystem
  * path before canvas loads (see `src/native/canvas-native.ts`, which sets
- * `NAPI_RS_NATIVE_LIBRARY_PATH` at process start).
+ * `NAPI_RS_NATIVE_LIBRARY_PATH` from the document-converter loader).
  */
 import fs from "node:fs"
 import path from "node:path"
@@ -165,15 +165,16 @@ export function materializeCanvasNativeEmbed(options: {
 }
 
 /**
- * Force-embed canvas into the Bun --compile graph.
- * Import the platform package first so optional-dep require paths stay in the
- * graph for hosts where resolution works (Darwin); Linux relies on the staged
+ * Force-embed canvas into the Bun --compile graph without dlopen at TUI boot.
+ * The parent imports this module from `loadNapiCanvas()` only when document
+ * converters are actually needed. Top-level imports stay so Bun --compile
+ * still packs the platform package; Linux relies on the staged
  * `NAPI_RS_NATIVE_LIBRARY_PATH` path instead.
  */
 export function napiCanvasForceModule(pkg: string): string {
   return `// @generated — force-embed canvas packages into Bun --compile graph
 import ${JSON.stringify(pkg)}
 import "@napi-rs/canvas"
-export {}
+export async function loadNapiCanvas() {}
 `
 }

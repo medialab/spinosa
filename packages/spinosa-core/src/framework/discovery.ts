@@ -1,7 +1,6 @@
 import { compareFrameworkVersions, parseInstallPinnedVersion } from "../utils/version"
 
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs"
-import { homedir } from "node:os"
 import path from "node:path"
 import {
   isCompiledBinaryDistribution,
@@ -10,6 +9,7 @@ import {
   readInstalledBinaryVersion,
   ensureEmbeddedTemplateCache,
 } from "../distribution/bootstrap"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 // New layout (post restructure): workspace-template/.spinosa/workspace-files.tsv
 const MARKER = path.join("workspace-template", ".spinosa", "workspace-files.tsv")
@@ -41,7 +41,7 @@ export function resolveTemplateRootFromFrameworkRoot(root: string): string | und
 
 /** Legacy source-tree discovery — migration utilities only. Not used in binary mode. */
 export function discoverInstalledFramework(): string | undefined {
-  const versionsDir = path.join(process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa"), "versions")
+  const versionsDir = path.join(productHomeDir(), "versions")
   if (!existsSync(versionsDir)) return undefined
   let bestDir = ""
   let bestVersion = ""

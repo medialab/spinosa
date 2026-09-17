@@ -1,6 +1,6 @@
 import { mkdirSync, appendFileSync, chmodSync, existsSync, renameSync, rmSync, statSync } from "node:fs"
-import { homedir } from "node:os"
 import path from "node:path"
+import { productLogDir, sanitizeLogValue } from "@spinosa/kernel-core/observability/sanitize-log"
 
 let activeWorkspacePath: string | undefined
 
@@ -18,20 +18,19 @@ export function tuiLog(message: string) {
 type LogLevel = "info" | "warn" | "error" | "debug"
 
 type LogEvent =
-  | "step"        // step transition
-  | "action"      // user action (click, continue, back)
-  | "phase"       // processing phase start/complete
-  | "tool"        // tool check result
-  | "error"       // error with stack
-  | "result"      // processing result (converted/skipped/failed)
-  | "gate"        // gate action triggered
-  | "tui"         // generic TUI log
+  | "step"
+  | "action"
+  | "phase"
+  | "tool"
+  | "error"
+  | "result"
+  | "gate"
+  | "tui"
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024
-const SENSITIVE_KEY = /(authorization|cookie|password|secret|token|api[_-]?key)/i
 
 function logPath(): string {
-  const logDir = path.join(process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa"), "logs")
+  const logDir = productLogDir()
   mkdirSync(logDir, { recursive: true, mode: 0o700 })
   chmodSync(logDir, 0o700)
   return path.join(logDir, "tui.ndjson")
@@ -44,29 +43,6 @@ function rotateLog(file: string): void {
   renameSync(file, previous)
 }
 
-function sanitizeLogText(value: string): string {
-  let sanitized = value.replaceAll(homedir(), "~")
-  if (activeWorkspacePath) sanitized = sanitized.replaceAll(activeWorkspacePath, "$WORKSPACE")
-  return sanitized
-    .replace(/\b(authorization|cookie|password|secret|token|api[_-]?key)=([^\s]+)/gi, "$1=[REDACTED]")
-    .replace(/\b(Basic|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
-    // Bare key material in prose (providers echo keys in errors; JSON blobs
-    // land here via stringified error objects).
-    .replace(/\b(sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9]{8,}|xox[bap]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9]+|AIza[A-Za-z0-9_-]{10,}|AKIA[A-Z0-9]{10,})\b/g, "[REDACTED]")
-    .replace(/((?:api[_-]?key|token)["']?\s*[:=]\s*["']?)[A-Za-z0-9._~+/-]{12,}/gi, "$1[REDACTED]")
-}
-
-function sanitizeLogValue(value: unknown, key: string): unknown {
-  if (SENSITIVE_KEY.test(key)) return "[REDACTED]"
-  if (Array.isArray(value)) return value.map((item) => sanitizeLogValue(item, key))
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([childKey, child]) => [childKey, sanitizeLogValue(child, childKey)]),
-    )
-  }
-  return typeof value === "string" ? sanitizeLogText(value) : value
-}
-
 function logEntry(level: LogLevel, event: LogEvent, data: Record<string, unknown>) {
   try {
     const entry: Record<string, unknown> = {
@@ -74,9 +50,9 @@ function logEntry(level: LogLevel, event: LogEvent, data: Record<string, unknown
       level,
       event,
     }
-    if (activeWorkspacePath) entry.ws = path.basename(activeWorkspacePath)
+    if (activeWorkspacePath) entry.ws = "$WORKSPACE"
     for (const [k, v] of Object.entries(data)) {
-      entry[k] = sanitizeLogValue(v, k)
+      entry[k] = sanitizeLogValue(v, k, activeWorkspacePath)
     }
     const file = logPath()
     rotateLog(file)

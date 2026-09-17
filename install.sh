@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.1.0-beta.36"
+PINNED_VERSION="1.2.0-beta.1"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 # Staged-verify budget for slow hosts (qemu linux-x64 needs 100s+ for template
@@ -61,6 +61,16 @@ spinosa_log_file() {
   printf '%s/logs/spinosa.log\n' "${SPINOSA_HOME:-$HOME/.spinosa}"
 }
 
+# Replace the user home with ~ so installer lines keep product paths only.
+redact_user_home() {
+  local msg="${1:-}"
+  local home="${2:-${HOME:-}}"
+  if [ -n "$home" ]; then
+    msg="${msg//"$home"/~}"
+  fi
+  printf '%s' "$msg"
+}
+
 spinosa_log_init() {
   [ "${SPINOSA_LOG_DISABLED:-0}" = "1" ] && return 0
   local component="${1:-install}"
@@ -72,7 +82,7 @@ spinosa_log_init() {
     printf '\n---\n'
     printf '%s component=%s pid=%s ppid=%s shell=%s cwd=%s' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      "$component" "$$" "$PPID" "${BASH_VERSION:-sh}" "$PWD"
+      "$component" "$$" "$PPID" "${BASH_VERSION:-sh}" "$(redact_user_home "$PWD")"
     if [ $# -gt 0 ]; then
       printf ' argv=%q' "$@"
     fi
@@ -87,7 +97,7 @@ spinosa_log() {
   local log_file
   log_file="$(spinosa_log_file)"
   mkdir -p "$(dirname "$log_file")" 2>/dev/null || return 0
-  printf '%s level=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$level" "$*" >> "$log_file" 2>/dev/null || true
+  printf '%s level=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$level" "$(redact_user_home "$*")" >> "$log_file" 2>/dev/null || true
 }
 
 _spinosa_install_err_trap() {
@@ -176,7 +186,8 @@ fi
 DEFAULT_SPINOSA_HOME="$HOME/.spinosa"
 SPINOSA_HOME="${SPINOSA_HOME:-$DEFAULT_SPINOSA_HOME}"
 SPINOSA_METADATA_DIR="${SPINOSA_HOME}/metadata"
-SPINOSA_BIN_DIR="${SPINOSA_BIN_DIR:-$HOME/.local/bin}"
+# Empty until resolve_spinosa_bin_dir: env and --bin-dir win; otherwise OS default.
+SPINOSA_BIN_DIR="${SPINOSA_BIN_DIR:-}"
 SPINOSA_STAGING_DIR="${SPINOSA_HOME}/.staging"
 NO_MODIFY_PATH=false
 REPO="medialab/spinosa"
@@ -659,7 +670,7 @@ while [ $# -gt 0 ]; do
       echo "Paths:"
       echo "  --no-modify-path  Don't modify shell config files (~/.zshrc, etc.)"
       echo "  --prefix PATH     Install root (default: ~/.spinosa)"
-      echo "  --bin-dir PATH    Shim directory (default: ~/.local/bin)"
+      echo "  --bin-dir PATH    Shim directory (default: ~/.local/bin; Homebrew bin on macOS when writable)"
       echo "  --no-bundled-tools  Deprecated no-op (kept for transition scripts)"
       exit 0
       ;;
@@ -795,6 +806,54 @@ is_owned_spinosa_shim() {
     fi
   fi
   return 1
+}
+
+# Pure default for the PATH shim directory (testable).
+# Args: os home xdg_bin_home brew_bin usr_local_bin keep_local(0|1)
+default_spinosa_bin_dir() {
+  local os="${1:-}"
+  local home="${2:-}"
+  local xdg_bin="${3:-}"
+  local brew="${4:-}"
+  local usr_local="${5:-}"
+  local keep_local="${6:-0}"
+  if [ "$keep_local" = "1" ]; then
+    printf '%s/.local/bin\n' "$home"
+    return 0
+  fi
+  case "$os" in
+    Darwin|darwin)
+      if [ -n "$brew" ]; then
+        printf '%s\n' "$brew"
+        return 0
+      fi
+      if [ -n "$usr_local" ]; then
+        printf '%s\n' "$usr_local"
+        return 0
+      fi
+      ;;
+  esac
+  if [ -n "$xdg_bin" ]; then
+    printf '%s\n' "$xdg_bin"
+    return 0
+  fi
+  printf '%s/.local/bin\n' "$home"
+}
+
+resolve_spinosa_bin_dir() {
+  [ -n "${SPINOSA_BIN_DIR:-}" ] && return 0
+  local os brew="" usr="" keep=0
+  os="$(uname -s 2>/dev/null || printf linux)"
+  if is_owned_spinosa_shim "${HOME}/.local/bin/spinosa"; then
+    keep=1
+  fi
+  if [ -d /opt/homebrew/bin ] && [ -w /opt/homebrew/bin ]; then
+    brew="/opt/homebrew/bin"
+  fi
+  if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
+    usr="/usr/local/bin"
+  fi
+  SPINOSA_BIN_DIR="$(default_spinosa_bin_dir "$os" "$HOME" "${XDG_BIN_HOME:-}" "$brew" "$usr" "$keep")"
 }
 
 preflight_tools() {
@@ -2595,6 +2654,7 @@ main() {
   local base checksums_url asset_url
   local checksums_file staged_binary
 
+  resolve_spinosa_bin_dir
   SPINOSA_LOG_DISABLED=1
   SPINOSA_METADATA_DIR="${SPINOSA_HOME}/metadata"
   SPINOSA_STAGING_DIR="${SPINOSA_HOME}/.staging"

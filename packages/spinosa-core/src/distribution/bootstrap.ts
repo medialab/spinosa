@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
 import path from "node:path"
 import {
   HOME_LAYOUT,
@@ -7,6 +6,7 @@ import {
   templateCacheRelativePath,
   type ProductDistribution,
 } from "../distribution/contract"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 import {
   extractTemplatePackAtomic,
   isTemplateCacheComplete,
@@ -21,7 +21,7 @@ declare const SPINOSA_TEMPLATE_PACK_ID: string
 declare const SPINOSA_TEMPLATE_PACK_VERSION: string
 
 export function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  return productHomeDir()
 }
 
 export function readCompiledDistribution(): ProductDistribution {

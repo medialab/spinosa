@@ -1,5 +1,5 @@
-import { homedir } from "node:os"
 import path from "node:path"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 /**
  * Legacy bundled-tools layout helpers.
@@ -14,7 +14,7 @@ export const TOOLS_MANIFEST_FILENAME = "TOOLS_MANIFEST.json"
 
 export function spinosaHomeDir(home = process.env.SPINOSA_HOME): string {
   if (home) return home
-  return path.join(homedir(), ".spinosa")
+  return productHomeDir()
 }
 
 /** Canonical platform tag, mirroring install.sh map_platform. */

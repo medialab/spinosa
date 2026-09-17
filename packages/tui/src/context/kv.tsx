@@ -5,6 +5,7 @@ import { Flock } from "@spinosa/kernel-core/util/flock"
 import { Global } from "@spinosa/kernel-core/global"
 import { readJson, writeJsonAtomic } from "../util/persistence"
 import { useTuiPaths } from "./runtime"
+import { bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 import path from "path"
 
 export const { use: useKV, provider: KVProvider } = createSimpleContext({
@@ -24,7 +25,7 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
         setStore(x)
       })
       .catch((error) => {
-        console.error("Failed to read KV state", { error })
+        bootLogError("tui.kv.read", error)
       })
       .finally(() => {
         setReady(true)
@@ -58,7 +59,7 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
         write = write
           .then(() => Flock.withLock(lock, () => writeJsonAtomic(file, snapshot)))
           .catch((error) => {
-            console.error("Failed to write KV state", { error })
+            bootLogError("tui.kv.write", error)
           })
       },
     }

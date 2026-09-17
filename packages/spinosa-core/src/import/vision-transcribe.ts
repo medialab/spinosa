@@ -8,7 +8,6 @@ import { ProgressEmitter } from "../progress/progress"
 import { markitdownOutputRelPath } from "../extension/classifier"
 import { VISION_TRANSCRIBE_PROMPT, mimeForImageExt, isVisionModelId } from "./vision-helpers"
 import { recordResult, manifestDest, type ManifestStatus } from "./manifest"
-import { optimizeVisionImage } from "./vision-image"
 import type { ClassifiedEntry, PhaseResult } from "./pipeline"
 
 export type VisionTranscribeRequest = {
@@ -95,6 +94,9 @@ async function prepareImagePayload(
   const extForMime = fileExt(srcLabel).toLowerCase()
   const originalMime = mimeForImageExt(extForMime)
   try {
+    const { ensureDocumentConverters } = await import("../tools/detection")
+    await ensureDocumentConverters()
+    const { optimizeVisionImage } = await import("./vision-image")
     const image = await optimizeVisionImage(buf, originalMime)
     const mime = image.mime
     const b64 = image.data.toString("base64")
@@ -131,6 +133,8 @@ async function renderPdfPagesToPayloads(
   onPage?: (page: number, total?: number) => void,
   totalPages?: number,
 ): Promise<Array<{ page: number; payload: PagePayload }>> {
+  const { ensureDocumentConverters } = await import("../tools/detection")
+  await ensureDocumentConverters()
   const { withPdfDocument } = await import("../extension/pdf-js")
   const { renderPage } = await import("../pdf/render")
   throwIfSpinosaCancelled(shouldAbort)

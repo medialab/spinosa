@@ -2,12 +2,13 @@ import { existsSync, readFileSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
 import { BINARY_UNINSTALL_RUNTIME_TARGETS } from "../distribution/contract"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 /** @deprecated Prefer BINARY_UNINSTALL_RUNTIME_TARGETS. Legacy source uninstall list. */
 export const FRAMEWORK_RUNTIME_TARGETS = ["versions", "bin", "lib", "logs", "env.sh"] as const
 
 export function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  return productHomeDir()
 }
 
 export function validateSpinosaHome(home: string): string | undefined {
@@ -60,11 +61,22 @@ export function frameworkRuntimeTargets(home: string, options?: { purgeLegacyVer
   return targets
 }
 
-/** Common user-level launcher shim written by install.sh. */
+/** User-level launcher shims written by install.sh (Linux XDG bin + macOS Homebrew). */
 export function launcherShimTargets(): UninstallTarget[] {
-  return [
-    { path: path.join(homedir(), ".local", "bin", "spinosa"), label: "Launcher shim" },
-  ]
+  const home = homedir()
+  const unique = new Set<string>()
+  const add = (dir: string) => {
+    if (!dir) return
+    unique.add(path.join(dir, "spinosa"))
+  }
+  add(process.env.SPINOSA_BIN_DIR ?? "")
+  add(process.env.XDG_BIN_HOME ?? "")
+  add(path.join(home, ".local", "bin"))
+  if (process.platform === "darwin") {
+    add("/opt/homebrew/bin")
+    add("/usr/local/bin")
+  }
+  return [...unique].map((file) => ({ path: file, label: "Launcher shim" }))
 }
 
 export function removeUninstallTargets(targets: UninstallTarget[]): UninstallTarget[] {

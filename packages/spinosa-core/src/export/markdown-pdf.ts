@@ -233,6 +233,8 @@ function cellLines(cell: Span[], colWidth: number, measurer: Measurer & { font: 
 }
 
 export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOptions): Promise<Buffer> {
+  const { ensureDocumentConverters } = await import("../tools/detection")
+  await ensureDocumentConverters()
   const { PDFDocument, createCanvas } = await import("@napi-rs/canvas")
   const { fields, body } = stripFrontmatter(markdown)
   const title = opts?.title ?? fields.title ?? fields.topic

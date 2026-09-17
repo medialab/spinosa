@@ -14,6 +14,7 @@ import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
 import { resolveDefaultPrimaryAgent } from "../util/agent"
+import { bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -189,7 +190,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (typeof value.variant === "object" && value.variant !== null)
             setModelStore("variant", value.variant as Record<string, string | undefined>)
         })
-        .catch((e) => { console.error("spinosa: failed to read model.json", e) })
+        .catch((e) => {
+          if (!e || typeof e !== "object" || !("code" in e) || (e as { code?: string }).code !== "ENOENT") {
+            bootLogError("tui.model.read", e)
+          }
+        })
         .finally(() => {
           setModelStore("ready", true)
           if (state.pending) save()
@@ -444,7 +449,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         })
         .catch((e) => {
           if (!e || typeof e !== "object" || !("code" in e) || (e as { code?: string }).code !== "ENOENT") {
-            console.error("spinosa: failed to read vision-model.json", e)
+            bootLogError("tui.vision-model.read", e)
           }
         })
         .finally(() => {
@@ -514,7 +519,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         })
         .catch((error) => {
           if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
-            console.error("spinosa: failed to read session.json", error)
+            bootLogError("tui.session-json.read", error)
           }
         })
         .finally(() => {

@@ -136,10 +136,12 @@ describe("tui-worker extra-entrypoint", () => {
     expect(source).toContain("installDomMatrixPolyfill")
   })
 
-  test("parent skip-list includes tui-worker and parser-worker smokes so they do not stage canvas", async () => {
+  test("parent does not stage canvas for TUI or worker smokes; doctor still does", async () => {
     const source = await Bun.file(new URL("../../../src/index.ts", import.meta.url)).text()
-    expect(source).toContain('subsub === "tui-worker"')
-    expect(source).toContain('subsub === "parser-worker"')
+    expect(source).toContain("registerDocumentConverterLoader")
+    expect(source).toContain("commandNeedsCanvas")
+    expect(source).not.toContain('subsub === "tui-worker"')
+    expect(source).not.toContain('subsub === "parser-worker"')
   })
 })
 

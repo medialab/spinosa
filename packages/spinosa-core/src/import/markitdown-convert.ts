@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { MarkItDown } from "@spinosa/markitdown"
+import type { MarkItDown } from "@spinosa/markitdown"
 import { ensureSheetJsFs } from "./sheetjs-fs"
 
 type MarkItDownResult = Awaited<ReturnType<MarkItDown["convert"]>>
@@ -16,6 +16,11 @@ export type MarkItDownVisionOpts = {
   /** Vercel AI SDK LanguageModel (e.g. openai("gpt-4o-mini") or openrouter via createOpenAI). */
   llmModel?: unknown
   llmPrompt?: string
+}
+
+export async function createMarkItDown(): Promise<MarkItDown> {
+  const { MarkItDown } = await import("@spinosa/markitdown")
+  return new MarkItDown()
 }
 
 export async function markitdownConvertFile(

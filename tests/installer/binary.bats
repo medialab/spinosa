@@ -678,3 +678,33 @@ EOF
   [[ "$output" == *"still needs PATH"* ]]
   [[ "$output" == *"new terminal window"* ]]
 }
+
+@test "default_spinosa_bin_dir uses ~/.local/bin on Linux" {
+  run default_spinosa_bin_dir Linux /home/name "" "" "" 0
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/name/.local/bin" ]
+}
+
+@test "default_spinosa_bin_dir honors XDG_BIN_HOME on Linux" {
+  run default_spinosa_bin_dir Linux /home/name /custom/bin "" "" 0
+  [ "$status" -eq 0 ]
+  [ "$output" = "/custom/bin" ]
+}
+
+@test "default_spinosa_bin_dir prefers Homebrew bin on macOS when writable" {
+  run default_spinosa_bin_dir Darwin /Users/name "" /opt/homebrew/bin /usr/local/bin 0
+  [ "$status" -eq 0 ]
+  [ "$output" = "/opt/homebrew/bin" ]
+}
+
+@test "default_spinosa_bin_dir keeps an existing ~/.local/bin shim" {
+  run default_spinosa_bin_dir Darwin /Users/name "" /opt/homebrew/bin /usr/local/bin 1
+  [ "$status" -eq 0 ]
+  [ "$output" = "/Users/name/.local/bin" ]
+}
+
+@test "redact_user_home replaces HOME with a tilde" {
+  run redact_user_home "install complete home=/Users/name/.spinosa" "/Users/name"
+  [ "$status" -eq 0 ]
+  [ "$output" = "install complete home=~/.spinosa" ]
+}

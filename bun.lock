@@ -280,7 +280,7 @@
     },
     "packages/spinosa-cli": {
       "name": "@spinosa/cli",
-      "version": "1.1.0-beta.34",
+      "version": "1.2.0-beta.1",
       "dependencies": {
         "@spinosa/core": "workspace:*",
       },
@@ -293,7 +293,7 @@
     },
     "packages/spinosa-core": {
       "name": "@spinosa/core",
-      "version": "1.1.0-beta.34",
+      "version": "1.2.0-beta.1",
       "dependencies": {
         "@ai-sdk/openai": "^2.0.0",
         "@napi-rs/canvas": "1.0.2",
@@ -302,6 +302,7 @@
         "@napi-rs/canvas-linux-arm64-gnu": "1.0.2",
         "@napi-rs/canvas-linux-x64-gnu": "1.0.2",
         "@spinosa/harness": "workspace:*",
+        "@spinosa/kernel-core": "workspace:*",
         "@spinosa/markitdown": "workspace:*",
         "@spinosa/runtime": "workspace:*",
         "ai": "^5.0.0",
@@ -328,7 +329,7 @@
     },
     "packages/spinosa-harness": {
       "name": "@spinosa/harness",
-      "version": "1.1.0-beta.34",
+      "version": "1.2.0-beta.1",
       "dependencies": {
         "@spinosa/sdk": "workspace:*",
       },
@@ -485,7 +486,7 @@
     },
     "packages/spinosa-runtime": {
       "name": "@spinosa/runtime",
-      "version": "1.1.0-beta.34",
+      "version": "1.2.0-beta.1",
       "devDependencies": {
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",

@@ -4,6 +4,7 @@ import { symlinkSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { tmpdir } from "../fixture/fixture"
 import { buildImportScanPreview, buildNewWorkspacePreview, suggestWorkspacePath } from "../../src/spinosa/onboarding-preview"
+import { nextScanTotals } from "../../src/routes/spinosa/onboarding-helpers"
 
 describe("onboarding preview", () => {
   test("suggests workspace path with collision suffixes", async () => {
@@ -84,5 +85,32 @@ describe("onboarding preview", () => {
     expect(preview.importOptions).toEqual([
       { ext: "md", count: 1, bytes: expect.any(Number), selected: true },
     ])
+  })
+
+  test("scan progress counts each file once, not the square of files seen", async () => {
+    await using tmp = await tmpdir()
+    const corpus = path.join(tmp.path, "counted")
+    await mkdir(path.join(corpus, "nested"), { recursive: true })
+    await Bun.write(path.join(corpus, "a.md"), "a")
+    await Bun.write(path.join(corpus, "b.md"), "b")
+    await Bun.write(path.join(corpus, "nested", "c.md"), "c")
+
+    const ticks: { isFile: boolean; discovered: number }[] = []
+    let scanTotal = 0
+    let scanCount = 0
+    await buildImportScanPreview(corpus, {
+      onFile: (_relativePath, isFile, discovered) => {
+        ticks.push({ isFile, discovered })
+        const next = nextScanTotals(discovered, isFile, scanCount)
+        scanTotal = next.scanTotal
+        scanCount = next.scanCount
+      },
+    })
+
+    expect(ticks.filter((tick) => tick.isFile).map((tick) => tick.discovered)).toEqual([1, 2, 3])
+    expect(scanCount).toBe(3)
+    expect(scanTotal).toBe(3)
+    const addedAsDelta = ticks.reduce((sum, tick) => sum + tick.discovered, 0)
+    expect(addedAsDelta).toBeGreaterThan(scanCount)
   })
 })

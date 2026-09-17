@@ -10,6 +10,43 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.1] — 2026-09-17
+
+### Changed
+
+- Global logs stay in `~/.spinosa/logs`. Crash and boot lines go to `boot.ndjson`. Kernel Effect lines go to `effect.log`. Heap snapshots and direct traces use the same folder. Code: `packages/core/src/observability/boot-log.ts`.
+- Log text drops user paths, file names, tokens, and emails. It keeps product paths, counts, and tool names. Code: `packages/core/src/observability/sanitize-log.ts`.
+- Parent and CLI process crashes write to `boot.ndjson`. TUI bootstrap, plugin, and KV failures do the same.
+- Kernel data, config, cache, and state follow the OS. Linux uses XDG. macOS uses Library. Existing macOS XDG folders stay in use. Code: `packages/core/src/util/user-dirs.ts`.
+- The installer shim uses `~/.local/bin` on Linux. On macOS it uses Homebrew `bin` when that folder is writable. An existing `~/.local/bin` shim stays.
+
+### Fixed
+
+- Log sanitizer drops workspace `.spinosa` folders and corpus `AGENTS.md` paths. It also redacts home paths with no leading slash. Code: `packages/core/src/observability/sanitize-log.ts`.
+- Installer log lines replace the user home with `~`. Code: `install.sh`.
+
+## [1.1.0-beta.39] — 2026-09-17
+
+### Fixed
+
+- Console free-tier checks the OpenCode User-Agent. Requests now send kernel 1.17.x. Code: `packages/spinosa-kernel/src/session/llm/request.ts`.
+- The scan counter shows files found. It does not add the running total. Code: `packages/tui/src/routes/spinosa/onboarding-helpers.ts`.
+- Workspace create uses the home folder when the source parent is not writable. Code: `packages/spinosa-core/src/commands/create.ts`.
+
+## [1.1.0-beta.38] — 2026-09-17
+
+### Fixed
+
+- The tools check shows MarkItDown, PDF.js, and Canvas. Each row is a real import. Code: `packages/tui/src/routes/spinosa/onboarding-helpers.ts`, `packages/spinosa-core/src/scan/scanner.ts`.
+
+## [1.1.0-beta.37] — 2026-09-17
+
+### Fixed
+
+- TUI boot does not load canvas or pdf.js. The tools check loads those libraries. Code: `packages/spinosa-kernel/src/index.ts`, `packages/spinosa-core/src/tools/detection.ts`.
+- The PDF.js green dot is a real import. It is not a name-only probe.
+- TUI boot does not load onboarding, add-files, or MarkItDown. Those load when the user opens that flow. Code: `packages/tui/src/app.tsx`, `packages/spinosa-core/src/import/markitdown-convert.ts`.
+
 ## [1.1.0-beta.36] — 2026-09-16
 
 ### Fixed

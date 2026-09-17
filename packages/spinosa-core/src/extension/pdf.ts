@@ -25,6 +25,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 async function pdfJs() {
+  const { ensureDocumentConverters } = await import("../tools/detection")
+  await ensureDocumentConverters()
   return import("./pdf-js")
 }
 

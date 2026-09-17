@@ -16,7 +16,7 @@ import { writeHeapSnapshot } from "v8"
 import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@spinosa/tui/terminal-win32"
-import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
+import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
 import { describeWorkerCallError, TUI_WORKER_FETCH_MS, waitForWorkerReady, formatWorkerFailureForParent, parentActionForWorkerFailure, shouldWriteWorkerFailureToStderr, isRecoverableWorkerFailure, type TuiWorkerPhase } from "../tui/worker-boot"
 import {
@@ -286,8 +286,9 @@ export const TuiThreadCommand = cmd({
       })
       try {
         process.chdir(next)
-      } catch {
-        UI.error("Failed to change directory to " + next)
+      } catch (error) {
+        bootLogError("tui.chdir", error)
+        UI.error("Failed to change directory")
         return
       }
       let cwd = Filesystem.resolve(process.cwd())
@@ -303,6 +304,7 @@ export const TuiThreadCommand = cmd({
             process.exit(0)
           }
         } catch (error) {
+          bootLogError("tui.preflight", error)
           process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
           process.exit(1)
         }

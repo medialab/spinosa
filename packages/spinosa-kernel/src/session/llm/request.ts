@@ -9,14 +9,14 @@ import type { MessageV2 } from "../message-v2"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
 import { SystemPrompt } from "../system"
-import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
+import { InstallationVersion, OpenCodeCompatVersion } from "@spinosa/kernel-core/installation/version"
 import { Effect, Record } from "effect"
 import { jsonSchema, tool as aiTool, type ModelMessage, type Tool } from "ai"
 import type { Plugin } from "@/plugin"
 import { mergeDeep } from "remeda"
 
-const SPINOSA_USER_AGENT = `spinosa/${InstallationVersion}`
-const OPENCODE_USER_AGENT = `opencode/${InstallationVersion}`
+export const SPINOSA_USER_AGENT = `spinosa/${InstallationVersion}`
+export const OPENCODE_USER_AGENT = `opencode/${OpenCodeCompatVersion}`
 
 type PrepareInput = {
   readonly user: SessionV1.User

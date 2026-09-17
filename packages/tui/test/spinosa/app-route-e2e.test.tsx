@@ -240,11 +240,19 @@ test("Spinosa app route E2E boots and navigates key workspace flows", async () =
   expect(frame).toContain("New workspace")
   expect(frame).toContain("Pick a workspace")
 
-  const onboardingFrame = await renderRouteFrame("onboarding")
+  const onboardingFrame = await renderRouteFrame("onboarding", {
+    act: async (setup) => {
+      await waitForText(setup, "Create Spinosa workspace")
+    },
+  })
   expect(onboardingFrame).toContain("Create Spinosa workspace")
   expect(onboardingFrame).toContain("Paste your documents folder path")
 
-  const addFilesFrame = await renderRouteFrame("add-files")
+  const addFilesFrame = await renderRouteFrame("add-files", {
+    act: async (setup) => {
+      await waitForText(setup, "Import files into workspace")
+    },
+  })
   expect(addFilesFrame).toContain("Import files into workspace")
   expect(addFilesFrame).toContain("Source folders")
   expect(addFilesFrame).toContain("Folder path 1")

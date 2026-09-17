@@ -29,8 +29,8 @@ export const UninstallCommand = {
     yargs
       .option("yes", { alias: "y", type: "boolean", describe: "skip confirmation prompts", default: false })
       .option("force", { alias: "f", type: "boolean", describe: "alias for --yes", default: false })
-      .option("keep-config", { alias: "c", type: "boolean", describe: "keep XDG configuration files", default: false })
-      .option("keep-data", { alias: "d", type: "boolean", describe: "keep XDG session data and state", default: false })
+      .option("keep-config", { alias: "c", type: "boolean", describe: "keep application configuration files", default: false })
+      .option("keep-data", { alias: "d", type: "boolean", describe: "keep session data and state", default: false })
       .option("dry-run", { type: "boolean", describe: "show what would be removed", default: false }),
   handler: async (args: UninstallArgs) => {
     UI.println(UI.logo(" "))

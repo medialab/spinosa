@@ -189,7 +189,7 @@ export async function runStartup(
   options: StartupOptions,
 ): Promise<{ prompt: string; launchCommand: string }> {
   const { workspacePath, frameworkRoot, preferredCli, projectName, sourceLocation } = options
-  spinosaLogInfo("startup", `workspacePath=${workspacePath} projectName=${projectName}`)
+  spinosaLogInfo("startup", "startup workspace ready")
   const cli = preferredCli ?? "spinosa"
   const title = projectName ?? path.basename(workspacePath)
 

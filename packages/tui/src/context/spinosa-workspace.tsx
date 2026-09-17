@@ -69,7 +69,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
       const presence = await inspectRegisteredWorkspacePresence(workspacePath).catch(() => undefined)
       if (presence && !isUsableWorkspacePresence(presence)) {
         if (presence.status === "identity_mismatch") {
-          tuiLog(`openWorkspace: identity_mismatch at ${workspacePath}, proceeding with marker ID`)
+          tuiLog("openWorkspace: identity_mismatch, proceeding with marker ID")
         } else {
           const reason = `Workspace ${humanizeWorkspacePresence(presence.status)}`
           reportOpenFailure(
@@ -100,7 +100,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
       }
 
       setActiveWorkspacePath(workspacePath)
-      tuiLog(`openWorkspace path=${workspacePath}`)
+      tuiLog("openWorkspace opened")
       kv.set(SPINOSA_ACTIVE_WORKSPACE_KV, workspacePath)
       kv.set(SPINOSA_GENERIC_MODE_KV, false)
       kv.set(KV.SESSION_DIRECTORY_FILTER, true)

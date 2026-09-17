@@ -1,20 +1,20 @@
 #!/usr/bin/env bun
 import { existsSync, statSync } from "node:fs"
 import path from "node:path"
-import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
+import { bootLog, installProcessFailureLogs } from "@spinosa/kernel-core/observability/boot-log"
 import {
-  addFiles,
   createWorkspace,
-  detectDocumentTools,
   getFrameworkHealth,
   isSpinosaWorkspace,
   readFrameworkVersionFromRoot,
   readWorkspaceMeta,
   resolveFrameworkRoot,
-  runOnboarding,
   updateWorkspace,
   writeWorkspaceStatus,
 } from "@spinosa/core"
+import { addFiles } from "@spinosa/core/commands/add"
+import { runOnboarding } from "@spinosa/core/commands/onboard"
+import { detectDocumentTools } from "@spinosa/core/scan/scanner"
 import { parseSpinosaCliArgs, type ParsedArgs } from "./spinosa-cli/parser"
 import type { UpdateResult } from "@spinosa/core/commands/update"
 import { createIo, emitResult, type SpinosaCliIo } from "./spinosa-cli/io"
@@ -27,6 +27,8 @@ import { runLaunchPreflight } from "./spinosa-cli/commands/preflight"
 export { parseSpinosaCliArgs }
 
 export type { SpinosaCliIo, ParsedArgs }
+
+installProcessFailureLogs()
 
 const leadingGlobalFlags = new Set(["--json", "--quiet", "--no-color"])
 

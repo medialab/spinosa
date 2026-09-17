@@ -203,7 +203,7 @@ function retireOrphanManagedFiles(options: {
 async function updateWorkspaceUnlocked(options: UpdateOptions): Promise<UpdateResult> {
   const { workspacePath, frameworkRoot, dryRun = false, force = false, onPhase } = options
   const phase = onPhase ?? ((_p: string, _d: string) => {})
-  spinosaLogInfo("update", `workspacePath=${workspacePath} dryRun=${dryRun}`)
+  spinosaLogInfo("update", `update dryRun=${dryRun}`)
 
   const sourceTemplateRoot = resolveTemplateRootFromFrameworkRoot(frameworkRoot)
   if (!sourceTemplateRoot) {
@@ -593,7 +593,7 @@ export async function updateWorkspace(options: UpdateOptions): Promise<UpdateRes
     : undefined
   if (presence && !isUsableWorkspacePresence(presence)) {
     if (registered || presence.status !== "invalid") {
-      spinosaLogWarn("update", `Skipping ${options.workspacePath}: workspace is ${presence.status}`)
+      spinosaLogWarn("update", `Skipping workspace: presence=${presence.status}`)
       if (presence.status === "non_existent") {
         return { success: true, added: 0, updated: 0, removed: 0, skipped: 1, changes: false, presence: presence.status }
       }

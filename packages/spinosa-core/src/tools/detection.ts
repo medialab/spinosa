@@ -15,11 +15,70 @@ export function moduleAvailable(name: string, bundledInBinary = false): boolean 
 }
 
 let _pdfjsAvailable: boolean | undefined
+let converterLoader: (() => Promise<void>) | undefined
+let convertersReady = false
+let convertersFlight: Promise<void> | undefined
+
+/** Kernel registers canvas staging here so TUI boot does not dlopen Skia. */
+export function registerDocumentConverterLoader(loader: () => Promise<void>): void {
+  converterLoader = loader
+}
+
+/** Stage canvas + load pdf.js natives. Safe to call from the tools green-dot check. */
+export async function ensureDocumentConverters(): Promise<void> {
+  if (convertersReady) return
+  if (!convertersFlight) {
+    convertersFlight = (async () => {
+      if (converterLoader) await converterLoader()
+      convertersReady = true
+    })().finally(() => {
+      convertersFlight = undefined
+    })
+  }
+  await convertersFlight
+}
 
 export function pdfjsAvailable(): boolean {
   if (_pdfjsAvailable !== undefined) return _pdfjsAvailable
   _pdfjsAvailable = moduleAvailable("pdfjs-dist/legacy/build/pdf.mjs", true)
   return _pdfjsAvailable
+}
+
+/** Real pdf.js + canvas load for the onboarding tools row (not require.resolve). */
+export async function probePdfjsRuntime(): Promise<boolean> {
+  try {
+    await ensureDocumentConverters()
+    await import("../extension/pdf-js")
+    _pdfjsAvailable = true
+    return true
+  } catch {
+    _pdfjsAvailable = false
+    return false
+  }
+}
+
+export async function probeCanvasRuntime(): Promise<boolean> {
+  try {
+    await ensureDocumentConverters()
+    const mod = await import("@napi-rs/canvas")
+    return Boolean(mod)
+  } catch {
+    return false
+  }
+}
+
+export async function probeMarkitdownRuntime(): Promise<boolean> {
+  try {
+    const mod = await import("@spinosa/markitdown")
+    return Boolean(mod)
+  } catch {
+    try {
+      const fallback = await import("markitdown-ts")
+      return Boolean(fallback)
+    } catch {
+      return false
+    }
+  }
 }
 
 export async function pypdfium2Available(): Promise<boolean> {
@@ -60,4 +119,7 @@ export function ocrAvailable(): boolean {
 export function _resetDetectionCacheForTests(): void {
   _ocrAvailable = undefined
   _pdfjsAvailable = undefined
+  convertersReady = false
+  convertersFlight = undefined
+  converterLoader = undefined
 }

@@ -1,4 +1,4 @@
-import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
+import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { Deferred, Effect } from "effect"
@@ -21,6 +21,8 @@ import {
   onCleanup,
   batch,
   Show,
+  Suspense,
+  lazy,
   on,
   type ParentProps,
 } from "solid-js"
@@ -95,9 +97,16 @@ import { cliErrorMessage, errorFormat } from "./util/error"
 import { registerTuiExitHook, runTuiExitHooks } from "./util/tui-exit-hooks"
 import { listBusySessionIDs, stopBusySessions } from "./util/stop-sessions"
 import { cancelAllSpinosaSubmits, cancelSpinosaSubmit } from "./spinosa/orchestrator"
-import { AddFiles } from "./routes/spinosa/add-files"
-import { Onboarding } from "./routes/spinosa/onboarding"
-import { Visualizer } from "./routes/spinosa/visualizer"
+
+const Onboarding = lazy(async () => ({
+  default: (await import("./routes/spinosa/onboarding")).Onboarding,
+}))
+const AddFiles = lazy(async () => ({
+  default: (await import("./routes/spinosa/add-files")).AddFiles,
+}))
+const Visualizer = lazy(async () => ({
+  default: (await import("./routes/spinosa/visualizer")).Visualizer,
+}))
 
 const appGlobalBindingCommands = [
   "session.list",
@@ -269,7 +278,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           try {
             await input.pluginHost.dispose()
           } catch (error) {
-            console.error("Failed to dispose TUI plugins", error)
+            bootLogError("tui.plugin.dispose", error)
+            console.error("Failed to dispose TUI plugins", error instanceof Error ? error.message : String(error))
           }
         }),
       )
@@ -550,7 +560,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       dispose: () => attention.dispose(),
     })
     .catch((error) => {
-      console.error("Failed to load TUI plugins", error)
+      bootLogError("tui.plugin.load", error)
+      console.error("Failed to load TUI plugins", error instanceof Error ? error.message : String(error))
     })
     .finally(() => {
       setReady(true)
@@ -1299,15 +1310,17 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           <Show when={route.data.type === "global"}>
             <Home />
           </Show>
-          <Show when={route.data.type === "onboarding"}>
-            <Onboarding />
-          </Show>
-          <Show when={route.data.type === "add-files"}>
-            <AddFiles />
-          </Show>
-          <Show when={route.data.type === "visualizer"}>
-            <Visualizer />
-          </Show>
+          <Suspense fallback={<box />}>
+            <Show when={route.data.type === "onboarding"}>
+              <Onboarding />
+            </Show>
+            <Show when={route.data.type === "add-files"}>
+              <AddFiles />
+            </Show>
+            <Show when={route.data.type === "visualizer"}>
+              <Visualizer />
+            </Show>
+          </Suspense>
           {plugin()}
         </box>
         <pluginRuntime.Slot name="app_bottom" />

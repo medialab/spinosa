@@ -39,6 +39,7 @@ import type { AssistantMessage, FilePart, UserMessage } from "@spinosa/sdk/v2"
 import { Locale } from "../../util/locale"
 import { agentDisplayName, ORCHESTRATOR_AGENT_ID, resolveSubmitAgent } from "../../util/agent"
 import { errorMessage } from "../../util/error"
+import { logError } from "../../spinosa/log"
 import { formatDuration } from "../../util/format"
 import { resolveSessionRuntimeStatus } from "../../util/session"
 import {
@@ -109,7 +110,7 @@ import {
   type OutboundSnapshot,
   unregisterPump,
 } from "../../spinosa/outbound-queue"
-import { RouterAbortedError } from "@spinosa/core"
+import { RouterAbortedError } from "@spinosa/core/application/router-service"
 import { readStartupPrompt } from "../../spinosa/service"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { fadeColor, getEditorRangeLabel, hasEditorRangeSelection, randomIndex } from "./helpers"
@@ -1176,7 +1177,8 @@ export function Prompt(props: PromptProps) {
       // Esc during evaluating aborts the router turn: propagate with no
       // toast — the pump treats it as cancelled, never as a verdict.
       if (error instanceof RouterAbortedError || opts?.signal?.aborted) throw error
-      console.log("Spinosa submit preparation failed:", error)
+      logError("prompt.submit.prepare", error)
+      console.log("Spinosa submit preparation failed:", error instanceof Error ? error.message : String(error))
       toast.show({
         title: "Couldn’t prepare your request",
         message: error instanceof Error ? error.message : "Couldn’t save the task context",
@@ -1717,7 +1719,8 @@ export function Prompt(props: PromptProps) {
       if (res.error) {
         if (finishMoveProgress) move.finishSubmit()
         route.finishConversationBoot()
-        console.log("Creating a session failed:", res.error)
+        logError("prompt.session.create", res.error)
+        console.log("Creating a session failed:", errorMessage(res.error))
 
         toast.show({
           title: "Couldn’t start a session",

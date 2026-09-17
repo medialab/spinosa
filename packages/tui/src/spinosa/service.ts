@@ -7,6 +7,7 @@ import {
   emptyWorkspaceIndex,
   parseWorkspaceIndex,
 } from "@spinosa/core/corpus/index"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 import {
   parseGoalArtifact,
   parseOrchestratorAdvisories,
@@ -76,7 +77,7 @@ export async function deleteWorkspace(workspacePath: string, options?: { home?: 
     home,
     path.sep,
     path.resolve(home, ".spinosa"),
-    path.resolve(process.env.SPINOSA_HOME ?? path.join(home, ".spinosa")),
+    path.resolve(productHomeDir()),
   ])
   if (protectedPaths.has(resolved)) {
     throw new Error(`Refusing to delete protected path: ${resolved}`)

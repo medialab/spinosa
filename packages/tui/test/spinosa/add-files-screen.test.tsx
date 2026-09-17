@@ -342,7 +342,7 @@ test("scans and imports files from the dedicated add-files screen", async () => 
     }),
   }))
   mock.module("../../src/spinosa/onboarding-preview", () => ({
-    detectDocumentTools: async () => ({ markitdown: true, ocr: true, pdfjs: true }),
+    detectDocumentTools: async () => ({ markitdown: true, ocr: true, pdfjs: true, canvas: true }),
     resolveUserPath: (value: string) => value.trim() || undefined,
     buildImportScanPreview: async (sourcePath: string) => ({
       projectName: path.basename(sourcePath),

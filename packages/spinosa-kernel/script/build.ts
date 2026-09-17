@@ -432,6 +432,7 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       define: {
         FFF_LIBC: JSON.stringify(item.abi === "musl" ? "musl" : "gnu"),
         SPINOSA_VERSION: `'${options.version}'`,
+        OPENCODE_VERSION: `'${pkg.version}'`,
         SPINOSA_MODELS_DEV: generated.modelsData,
         OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
         SPINOSA_WORKER_PATH: compiledTuiWorkerPath(bunfsRoot),

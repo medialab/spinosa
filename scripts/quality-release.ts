@@ -42,6 +42,9 @@ const CORE_RELEASE_TESTS = [
   "../../scripts/release/index.test.ts",
   "../../scripts/release/promote.test.ts",
   "../../scripts/set-version.test.ts",
+  "../../packages/core/test/sanitize-log.test.ts",
+  "../../packages/core/test/user-dirs.test.ts",
+  "../../packages/core/test/boot-log.test.ts",
 ] as const
 
 const TUI_RELEASE_TESTS = [
@@ -52,6 +55,7 @@ const TUI_RELEASE_TESTS = [
   "test/spinosa/boot.test.ts",
   "test/spinosa/preflight.test.ts",
   "test/spinosa/entry.test.ts",
+  "test/spinosa/logging.test.ts",
   "test/cli/cmd/tui/provider-options.test.ts",
 ] as const
 

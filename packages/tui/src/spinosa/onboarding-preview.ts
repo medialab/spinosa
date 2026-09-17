@@ -88,12 +88,12 @@ async function scanByExtension(
       if (shouldAbort?.()) break
       if (entry.startsWith(".") && entry !== "." && entry !== "..") continue
       const fullPath = path.join(dir, entry)
-      if (onFile) onFile(path.relative(sourcePath, fullPath) || entry, false, discovered)
       let st
       try { st = await withFsTimeout(lstat(fullPath), `lstat ${fullPath}`) } catch { continue }
       if (st.isSymbolicLink()) continue
       if (st.isDirectory()) {
         if (shouldSkipScanDir(entry)) continue
+        if (onFile) onFile(path.relative(sourcePath, fullPath) || entry, false, discovered)
         stack.push(fullPath)
         continue
       }
@@ -174,6 +174,7 @@ function buildPreflightRows(workspacePath: string, toolStatus: ToolStatus): Onbo
   // vision model or copy as-is; digital PDFs extract via pdf.js.
   rows.push({ label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", tone: toolStatus.markitdown ? "success" : "error" })
   rows.push({ label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", tone: toolStatus.pdfjs ? "success" : "error" })
+  rows.push({ label: "Canvas", status: toolStatus.canvas ? "available" : "missing", tone: toolStatus.canvas ? "success" : "error" })
   return rows
 }
 

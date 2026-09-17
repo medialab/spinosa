@@ -6,6 +6,7 @@ import { Context, Effect, Layer } from "effect"
 import { Flock } from "./util/flock"
 import { Flag } from "./flag/flag"
 import { makeGlobalNode } from "./effect/app-node"
+import { productLogDir, resolveUserDirs } from "./util/user-dirs"
 
 const legacyApp = ["open", "code"].join("")
 const app = "spinosa"
@@ -28,11 +29,14 @@ const legacyPaths: Paths = {
   tmp: path.join(os.tmpdir(), legacyApp),
 }
 
+const userHome = process.env.SPINOSA_TEST_HOME ?? os.homedir()
+const userDirs = resolveUserDirs({ home: userHome })
+
 const spinosaPaths: Paths = {
-  data: path.join(xdgData!, app),
-  cache: path.join(xdgCache!, app),
-  config: path.join(xdgConfig!, app),
-  state: path.join(xdgState!, app),
+  data: userDirs.data,
+  cache: userDirs.cache,
+  config: userDirs.config,
+  state: userDirs.state,
   tmp: path.join(os.tmpdir(), app),
 }
 
@@ -128,15 +132,15 @@ export async function migrateLegacyPaths(input: { legacy: Paths; spinosa: Paths 
 await migrateLegacyPaths({ legacy: legacyPaths, spinosa: spinosaPaths })
 
 const globalPath = {
-  home: process.env.SPINOSA_TEST_HOME ?? os.homedir(),
-  cache: path.join(process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache"), app),
-  data: path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share"), app),
-  config: path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"), app),
-  state: path.join(process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"), app),
+  home: userHome,
+  cache: userDirs.cache,
+  data: userDirs.data,
+  config: userDirs.config,
+  state: userDirs.state,
   tmp: path.join(os.tmpdir(), app),
-  bin: path.join(process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache"), app, "bin"),
-  log: path.join(process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"), app, "log"),
-  repos: path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share"), app, "repos"),
+  bin: userDirs.bin,
+  log: productLogDir({ home: userHome }),
+  repos: userDirs.repos,
 }
 
 Flock.setGlobal({ state: globalPath.state })

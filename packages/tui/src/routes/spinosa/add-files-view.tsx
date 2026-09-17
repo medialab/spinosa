@@ -21,6 +21,7 @@ import {
   shouldShowImportDetailLogHint,
   type ImportFileProgressItem,
 } from "../../spinosa/import-progress-ui"
+import { formatScanProgress } from "./onboarding-helpers"
 
 export type WizardStep = "path" | "tools" | "scan" | "direct" | "markitdown" | "pdf" | "ocr" | "done" | "error"
 export type ToolCheckResult = {
@@ -135,7 +136,6 @@ export function AddFilesView(props: AddFilesViewProps) {
     scanDone,
     scanningFile,
     scanCount,
-    scanTotal,
     importOptions,
     selectedImport,
     formatBytes,
@@ -326,7 +326,7 @@ export function AddFilesView(props: AddFilesViewProps) {
                 <Show when={!scanDone()}>
                   <text fg={theme.text}>{waveString(spinIdx())}</text>
                   <text fg={theme.textMuted}>{scanningFile() || "…"}</text>
-                  <text fg={theme.textMuted}>Scanning {scanCount()} / {scanTotal()}</text>
+                  <text fg={theme.textMuted}>{formatScanProgress(scanCount())}</text>
                   <Show when={logLines().length > 0}>
                     <box height={1} />
                     <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />

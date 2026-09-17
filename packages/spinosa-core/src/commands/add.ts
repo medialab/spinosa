@@ -22,9 +22,8 @@ import { injectColdFrontmatter, convertedOutputExists } from "../import/frontmat
 import { scanSource } from "../scan/scanner"
 import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
 import { spinosaLogInfo } from "../utils/log"
-import { MarkItDown } from "@spinosa/markitdown"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled } from "../import/cancellation"
-import { markitdownConvertFile } from "../import/markitdown-convert"
+import { markitdownConvertFile, createMarkItDown } from "../import/markitdown-convert"
 import { preserveFailedImportFiles, convertTextPdf, type ClassifiedEntry, type ImportProgressCallback } from "../import/pipeline"
 
 function backupConvertedOutput(outputPath: string): string[] {
@@ -99,7 +98,7 @@ export async function addFiles(options: AddFilesOptions): Promise<AddFilesResult
   const { workspacePath, sourcePath, sourceIsDir, subfolder, extensions, overwrite, onProgress, onFileProgress, shouldAbort, signal, onChild } = options
   throwIfSpinosaCancelled(shouldAbort)
   const rawDir = path.join(workspacePath, "raw")
-  spinosaLogInfo("add", `sourcePath=${sourcePath} workspacePath=${workspacePath} sourceIsDir=${sourceIsDir}`)
+  spinosaLogInfo("add", `add sourceIsDir=${sourceIsDir}`)
 
   if (!existsSync(rawDir)) {
     mkdirSync(rawDir, { recursive: true })
@@ -315,7 +314,7 @@ async function addSingleFile(
       let restored = true
 
       try {
-        const converter = new MarkItDown()
+        const converter = await createMarkItDown()
         const result = await markitdownConvertFile(converter, srcFile)
         throwIfSpinosaCancelled(shouldAbort)
         const text = result?.markdown ?? ""

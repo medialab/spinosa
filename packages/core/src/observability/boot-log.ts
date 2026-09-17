@@ -1,14 +1,12 @@
 import { appendFileSync, chmodSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs"
-import { homedir } from "node:os"
 import path from "node:path"
+import { productLogDir, sanitizeLogText, sanitizeLogValue } from "./sanitize-log"
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024
-let _logDir: string | undefined
+let processHandlersInstalled = false
 
 function logDir(): string {
-  if (_logDir) return _logDir
-  _logDir = path.join(process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa"), "logs")
-  return _logDir
+  return productLogDir()
 }
 
 function bootLogPath(): string {
@@ -22,7 +20,7 @@ function ensureDir(dir: string): void {
     }
     chmodSync(dir, 0o700)
   } catch {
-    // best-effort
+    // Logging must never crash the product.
   }
 }
 
@@ -34,7 +32,7 @@ function rotateLog(file: string): void {
     rmSync(previous, { force: true })
     renameSync(file, previous)
   } catch {
-    // best-effort
+    // Logging must never crash the product.
   }
 }
 
@@ -46,7 +44,7 @@ function write(entry: Record<string, unknown>): void {
     appendFileSync(file, JSON.stringify(entry) + "\n", { mode: 0o600 })
     chmodSync(file, 0o600)
   } catch {
-    // best-effort
+    // Logging must never crash the product.
   }
 }
 
@@ -55,40 +53,43 @@ function isVerbose(): boolean {
   return process.argv.some((a) => a === "--verbose")
 }
 
-export function bootLog(tag: string, message: string, extra?: Record<string, unknown>): void {
-  const pid = process.pid
+function safeEntry(tag: string, message: string, extra?: Record<string, unknown>): Record<string, unknown> {
   const entry: Record<string, unknown> = {
     ts: Date.now(),
-    pid,
+    pid: process.pid,
     tag,
-    msg: message,
+    msg: sanitizeLogText(message),
   }
   if (extra) {
-    for (const [k, v] of Object.entries(extra)) {
-      entry[k] = v
+    for (const [key, value] of Object.entries(extra)) {
+      entry[key] = sanitizeLogValue(value, key)
     }
   }
+  return entry
+}
+
+export function bootLog(tag: string, message: string, extra?: Record<string, unknown>): void {
+  const entry = safeEntry(tag, message, extra)
   write(entry)
   if (isVerbose()) {
-    const prefix = `[boot:${tag}]`
-    const suffix = extra ? ` ${JSON.stringify(extra)}` : ""
-    console.error(`${prefix} ${message}${suffix}`)
+    console.error(`[boot:${tag}] ${String(entry.msg)}`)
   }
 }
 
 export function bootLogError(tag: string, error: unknown): void {
   const msg = error instanceof Error ? error.message : String(error)
   const stack = error instanceof Error ? error.stack : undefined
-  const entry: Record<string, unknown> = {
-    ts: Date.now(),
-    pid: process.pid,
-    tag,
-    level: "error",
-    msg,
-  }
-  if (stack) entry.stack = stack
-  write(entry)
-  if (isVerbose()) {
-    console.error(`[boot:${tag}:ERROR] ${msg}`)
-  }
+  bootLog(tag, msg, { level: "error", ...(stack ? { stack } : {}) })
+}
+
+/** Parent-process crash trail. The TUI worker installs its own handlers. */
+export function installProcessFailureLogs(): void {
+  if (processHandlersInstalled) return
+  processHandlersInstalled = true
+  process.on("unhandledRejection", (reason) => {
+    bootLogError("process.unhandledRejection", reason)
+  })
+  process.on("uncaughtException", (error) => {
+    bootLogError("process.uncaughtException", error)
+  })
 }

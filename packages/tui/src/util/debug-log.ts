@@ -1,39 +1,16 @@
 import { appendFileSync, chmodSync, mkdirSync } from "node:fs"
-import { homedir } from "node:os"
 import path from "path"
-
-const SENSITIVE_KEY = /(authorization|cookie|password|secret|token|api[_-]?key)/i
-const PATH_KEY = /(^|_)(dir|directory|path|workspace)(s|id)?$/i
+import { productLogDir, sanitizeLogValue } from "@spinosa/kernel-core/observability/sanitize-log"
 
 function logPath() {
-  return path.join(process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa"), "logs", "debug.ndjson")
-}
-
-function sanitize(value: unknown, key = ""): unknown {
-  if (SENSITIVE_KEY.test(key)) return "[REDACTED]"
-  if (Array.isArray(value)) return value.map((item) => sanitize(item, key))
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, sanitize(child, childKey)]))
-  }
-  if (typeof value !== "string") return value
-  const text = value
-    .replaceAll(homedir(), "~")
-    .replace(/\b(Basic|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
-  return PATH_KEY.test(key) && path.isAbsolute(text) ? path.basename(text) : text
+  return path.join(productLogDir(), "debug.ndjson")
 }
 
 /**
  * Write a structured debug log entry to ~/.spinosa/logs/debug.ndjson.
- *
- * Format: NDJSON (one JSON object per line) — compatible with the
- * existing spinosa log system (`spinosa.log`, `tui.ndjson`).
- *
- * Each entry is a JSON line: { ts: <epoch ms>, tag: string, ...data }
- *
- * Also prints to stderr for terminal visibility.
  */
 export function dbg(tag: string, data: Record<string, unknown>): void {
-  const safeData = sanitize(data) as Record<string, unknown>
+  const safeData = sanitizeLogValue(data) as Record<string, unknown>
   const entry = { ts: Date.now(), tag, ...safeData }
   const line = JSON.stringify(entry) + "\n"
   try {

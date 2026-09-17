@@ -12,7 +12,7 @@ import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 import { capturedSpinosaBootNoise } from "../../native/boot-noise"
-import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
+import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 
 Heap.start()
 bootLog("worker.init", "TUI background worker started", { pid: process.pid })
@@ -28,7 +28,7 @@ let fatal = false
 
 function reportWorkerError(kind: "unhandledRejection" | "uncaughtException", error: unknown): string {
   const detail = error instanceof Error ? error.stack ?? error.message : String(error)
-  bootLog("worker.error", `TUI worker ${kind}`, { error: String(error) })
+  bootLogError(`worker.${kind}`, error)
   return detail
 }
 
@@ -83,7 +83,7 @@ export const rpc = {
       headers,
       body: input.body,
     })
-    bootLog("worker.fetch", "proxying fetch", { url: input.url, method: input.method })
+    bootLog("worker.fetch", "proxying fetch", { method: input.method })
     const response = await Server.Default().app.fetch(request)
     const body = await response.text()
     return {

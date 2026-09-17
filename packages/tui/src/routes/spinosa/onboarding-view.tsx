@@ -23,6 +23,7 @@ import {
 import { OnboardingLaunchView } from "./onboarding-launch-view"
 import type { OnboardingViewProps } from "./onboarding-view-types"
 import { OnboardingResultView } from "./onboarding-result-view"
+import { formatScanProgress } from "./onboarding-helpers"
 
 export function OnboardingView(props: OnboardingViewProps) {
   const {
@@ -65,7 +66,6 @@ export function OnboardingView(props: OnboardingViewProps) {
     scanDone,
     scanningFile,
     scanCount,
-    scanTotal,
     importOptions,
     selectedImport,
     formatBytes,
@@ -343,7 +343,7 @@ export function OnboardingView(props: OnboardingViewProps) {
                 <Show when={step() === "scan" && !scanDone()}>
                   <text fg={theme.text}>{waveString(spinIdx())}</text>
                   <text fg={theme.textMuted}>{scanningFile() || "…"}</text>
-                  <text fg={theme.textMuted}>Scanning {scanCount()} / {scanTotal()}</text>
+                  <text fg={theme.textMuted}>{formatScanProgress(scanCount())}</text>
                   <Show when={logLines().length > 0}>
                     <box height={1} />
                     <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />

@@ -1,6 +1,6 @@
 import { buildNewWorkspacePreview } from "../../spinosa/onboarding-preview";
 import { isCloudStoragePath } from "@spinosa/core/utils/path";
-import { mergeImportOptions } from "./onboarding-helpers";
+import { mergeImportOptions, nextScanTotals } from "./onboarding-helpers";
 import type { ImportOption } from "./wizard-ui";
 import type { NewWorkspacePreview } from "../../spinosa/onboarding-preview";
 import type { WizardStep } from "./onboarding-view-types";
@@ -44,6 +44,7 @@ export async function scanOnboardingSources(
   deps.setScanDone(false);
   deps.setScanningFile("");
   deps.setScanCount(0);
+  deps.setScanTotal(0);
   deps.setStep("scan");
   await deps.delay(100);
   deps.spinOn();
@@ -57,8 +58,11 @@ export async function scanOnboardingSources(
         deps.workspaceName() || deps.defaultWorkspaceName(),
         (relativePath, isFile, discovered) => {
           deps.setScanningFile(relativePath);
-          deps.setScanTotal((total) => total + discovered);
-          if (isFile) deps.setScanCount((count) => count + 1);
+          deps.setScanCount((count) => {
+            const next = nextScanTotals(discovered, isFile, count);
+            deps.setScanTotal(next.scanTotal);
+            return next.scanCount;
+          });
         },
         deps.shouldAbort,
       );

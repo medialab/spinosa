@@ -77,6 +77,11 @@ export function initialToolChecks(): ToolCheckResult[] {
       status: "checking",
       detail: "Text and pages from readable PDFs",
     },
+    {
+      label: "Canvas",
+      status: "checking",
+      detail: "Native Skia for PDF pages and images",
+    },
   ];
 }
 
@@ -85,6 +90,7 @@ export type DocumentToolStatus = {
   ocrUnsupportedReason?: string;
   markitdown: boolean;
   pdfjs: boolean;
+  canvas: boolean;
 };
 
 export function toolCheckResults(
@@ -102,6 +108,11 @@ export function toolCheckResults(
       label: "PDF.js",
       status: status.pdfjs ? "available" : "missing",
       detail: "Text and pages from readable PDFs",
+    },
+    {
+      label: "Canvas",
+      status: status.canvas ? "available" : "missing",
+      detail: "Native Skia for PDF pages and images",
     },
   ];
 }
@@ -180,3 +191,20 @@ export const OCR_ENGINE_HINTS = {
 
 export const OCR_ENGINE_HINT_LINE =
   `↑↓ move · space select · enter continue · ${OCR_ENGINE_HINTS.vision} · ${OCR_ENGINE_HINTS.none}`
+
+/** Walker `discovered` is files seen so far, not a per-tick delta. */
+export function nextScanTotals(
+  discovered: number,
+  isFile: boolean,
+  scanCount: number,
+): { scanTotal: number; scanCount: number } {
+  return {
+    scanTotal: Math.max(0, discovered),
+    scanCount: isFile ? scanCount + 1 : scanCount,
+  }
+}
+
+export function formatScanProgress(fileCount: number): string {
+  const count = Math.max(0, fileCount)
+  return `Scanning ${count} ${count === 1 ? "file" : "files"}`
+}

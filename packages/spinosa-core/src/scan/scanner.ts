@@ -1,10 +1,10 @@
-import { statSync, existsSync } from "node:fs"
-import * as path from "node:path"
+import { statSync } from "node:fs"
 import { findSourceFiles, classifySourceFile } from "../extension/classifier"
 import { fileExt } from "../constants"
 import { resolveUserPath } from "../utils/path"
+import { resolveWorkspacePath } from "../commands/create"
 import type { ImportBatchManager } from "../import/batch"
-import { moduleAvailable, pdfjsAvailable } from "../tools/detection"
+import { probePdfjsRuntime, probeCanvasRuntime, probeMarkitdownRuntime } from "../tools/detection"
 import { ocrUnsupportedReason } from "../tools/ocr-support"
 
 export interface ScanCounts {
@@ -35,6 +35,7 @@ export interface ToolStatus {
   markitdown: boolean
   ocr: boolean
   pdfjs: boolean
+  canvas: boolean
   /** Present when OCR is gated off for this platform (not a failed probe). */
   ocrUnsupportedReason?: string
 }
@@ -128,31 +129,22 @@ export async function detectDocumentTools(): Promise<ToolStatus> {
   // No local OCR engine ships: always report unavailable with the
   // removal reason. Vision/copy need nothing local; pdf.js handles digital PDFs.
   const unsupported = ocrUnsupportedReason()
-  // Fork is @spinosa/markitdown; keep markitdown-ts as fallback for availability
-  const hasMarkitdown = checkModuleAvailable("@spinosa/markitdown") || checkModuleAvailable("markitdown-ts")
+  const [markitdown, pdfjs, canvas] = await Promise.all([
+    probeMarkitdownRuntime(),
+    probePdfjsRuntime(),
+    probeCanvasRuntime(),
+  ])
   return {
-    markitdown: hasMarkitdown,
+    markitdown,
     ocr: false,
-    pdfjs: pdfjsAvailable(),
+    pdfjs,
+    canvas,
     ...(unsupported ? { ocrUnsupportedReason: unsupported } : {}),
   }
-}
-
-function checkModuleAvailable(name: string): boolean {
-  return moduleAvailable(name, name === "@spinosa/markitdown" || name === "markitdown-ts")
 }
 
 export function suggestWorkspacePath(sourcePath: string): string | undefined {
   const resolved = resolveUserPath(sourcePath)
   if (!resolved) return undefined
-  const corpusName = path.basename(resolved)
-  const parentDir = path.dirname(resolved)
-  const base = path.join(parentDir, `${corpusName}-spinosa`)
-  let candidate = base
-  let index = 2
-  while (existsSync(candidate)) {
-    candidate = `${base}-${index}`
-    index++
-  }
-  return candidate
+  return resolveWorkspacePath(resolved)
 }

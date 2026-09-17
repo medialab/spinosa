@@ -2,6 +2,7 @@ import path from "path"
 import { writeHeapSnapshot } from "node:v8"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
 import { Global } from "@spinosa/kernel-core/global"
+import { bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 const MINUTE = 60_000
 const LIMIT = 2 * 1024 * 1024 * 1024
 
@@ -31,7 +32,9 @@ export function start() {
     )
     await Promise.resolve()
       .then(() => writeHeapSnapshot(file))
-      .catch(() => {})
+      .catch((error) => {
+        bootLogError("heap.snapshot", error)
+      })
 
     lock = false
   }

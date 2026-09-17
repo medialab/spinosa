@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { cleanMacMetadata } from "../utils/fs"
 import { recordFrameworkChecksums } from "../framework/checksums"
@@ -54,10 +55,29 @@ function resumableWorkspace(candidate: string, corpusPath: string): boolean {
   return false
 }
 
+export function isWritableDirectory(dir: string): boolean {
+  try {
+    if (!dir || !existsSync(dir) || !statSync(dir).isDirectory()) return false
+    const probe = path.join(dir, `.spinosa-write-${process.pid}-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(probe)
+    rmdirSync(probe)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Prefer a sibling of the source. Fall back to home when the parent is not writable (Lima 9p, root mount). */
+export function workspaceParentDir(corpusPath: string, home = os.homedir()): string {
+  const parent = path.dirname(path.resolve(corpusPath))
+  if (parent !== path.resolve(home) && isWritableDirectory(parent)) return parent
+  return path.resolve(home)
+}
+
 export function resolveWorkspacePath(corpusPath: string, workspaceName?: string): string {
   const resolvedCorpus = path.resolve(corpusPath)
   const corpusName = path.basename(resolvedCorpus)
-  const parentDir = path.dirname(resolvedCorpus)
+  const parentDir = workspaceParentDir(resolvedCorpus)
   const baseName = workspaceName?.trim() || `${corpusName}-spinosa`
 
   let workspacePath = path.join(parentDir, baseName)
@@ -103,7 +123,7 @@ function reserveWorkspacePath(corpusPath: string, workspaceName?: string, resume
     return { path: candidate, resumed: true }
   }
   const corpusName = path.basename(resolvedCorpus)
-  const parentDir = path.dirname(resolvedCorpus)
+  const parentDir = workspaceParentDir(resolvedCorpus)
   if (workspaceName) assertSafeWorkspaceName(workspaceName)
   const baseName = workspaceName?.trim() || `${corpusName}-spinosa`
 
@@ -120,7 +140,8 @@ function reserveWorkspacePath(corpusPath: string, workspaceName?: string, resume
         n++
         continue
       }
-      throw error
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown"
+      throw new Error(`Cannot create workspace directory ${candidate} (${code})`)
     }
   }
 }
@@ -150,7 +171,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
   throwIfSpinosaCancelled(shouldAbort)
   const progress = onProgress ?? (() => {})
   const recover = onRecover ?? (() => {})
-  spinosaLogInfo("create", `corpusPath=${corpusPath} frameworkRoot=${frameworkRoot}`)
+  spinosaLogInfo("create", "create started")
 
   const resolvedCorpus = path.resolve(corpusPath)
   const corpusName = path.basename(resolvedCorpus)

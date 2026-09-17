@@ -38,6 +38,7 @@ import { KV } from "../constants/kv-keys"
 import { normalizeToolInputForDisplay, normalizeToolMetadataForDisplay } from "../util/tool-display"
 import { errorMessage } from "../util/error"
 import { sessionMatchesWorkspaceScope } from "../util/session"
+import { bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 
 const emptyConsoleState: ConsoleState = {
   consoleManagedProviders: [],
@@ -1802,11 +1803,8 @@ export const {
           })
         })
         .catch(async (e) => {
-          console.error("tui bootstrap failed", {
-            error: e instanceof Error ? e.message : String(e),
-            name: e instanceof Error ? e.name : undefined,
-            stack: e instanceof Error ? e.stack : undefined,
-          })
+          bootLogError("tui.bootstrap", e)
+          console.error("tui bootstrap failed", e instanceof Error ? e.message : String(e))
           // The commit batch above never ran: provider data (if any) was not
           // stored. A still-loading catalog here means /provider succeeded but
           // a sibling leg (e.g. config.providers) failed — surface a retry
@@ -1831,6 +1829,7 @@ export const {
     onMount(() => {
       // Non-fatal bootstrap: provider/config failures should degrade, not kill the TUI.
       void bootstrap({ fatal: false }).catch((e) => {
+        bootLogError("tui.bootstrap.degraded", e)
         console.error("tui bootstrap degraded", e instanceof Error ? e.message : String(e))
         setStore("status", "partial")
       })

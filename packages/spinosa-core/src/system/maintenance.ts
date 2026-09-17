@@ -1,8 +1,9 @@
 import { type Dirent } from "node:fs"
 import { readdir, rm, stat } from "node:fs/promises"
-import { homedir, tmpdir as osTmpdir } from "node:os"
+import { tmpdir as osTmpdir } from "node:os"
 import path from "node:path"
 import { resolveFrameworkRoot } from "../framework/discovery"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 const STALE_INSTALL_DIRECTORY = /^\.\d[\w.+-]*\.(?:staging|backup)\.(\d+)$/
 /** Temp entries Spinosa creates and may abandon on crash/kill. */
@@ -39,7 +40,7 @@ export type SpinosaCleanupResult = SpinosaMaintenanceStatus & {
 }
 
 function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  return productHomeDir()
 }
 
 async function exists(target: string): Promise<boolean> {

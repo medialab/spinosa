@@ -1,7 +1,7 @@
 // WP7: TUI facade over WorkflowRunService. The TUI knows only:
 // direct vs orchestrated, active run ID, status to show, how to cancel.
 // It never knows agent order, retry counts, or verifier gates.
-import { WorkflowRunService } from "@spinosa/core"
+import { WorkflowRunService } from "@spinosa/core/application/workflow-run-service"
 import { SpinosaKernelHarness } from "@spinosa/harness"
 import {
   cancelWorkflowRun,

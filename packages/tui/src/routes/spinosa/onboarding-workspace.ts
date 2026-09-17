@@ -40,18 +40,25 @@ export async function prepareOnboardingWorkspace(
     };
   }
 
-  const result = await createWorkspace({
-    corpusPath: deps.primarySource,
-    frameworkRoot,
-    workspaceName: deps.workspaceName,
-    resumeWorkspacePath: deps.resumeWorkspacePath,
-    onProgress: deps.onProgress,
-    onRecover: deps.onRecover,
-    shouldAbort: deps.shouldAbort,
-  });
+  let result;
+  try {
+    result = await createWorkspace({
+      corpusPath: deps.primarySource,
+      frameworkRoot,
+      workspaceName: deps.workspaceName,
+      resumeWorkspacePath: deps.resumeWorkspacePath,
+      onProgress: deps.onProgress,
+      onRecover: deps.onRecover,
+      shouldAbort: deps.shouldAbort,
+    });
+  } catch (error) {
+    return {
+      kind: "error",
+      message: error instanceof Error ? error.message : "Could not create workspace.",
+    };
+  }
   if (deps.shouldAbort()) return { kind: "aborted" };
-  if (!result.success)
-    return { kind: "error", message: "Could not create workspace." };
+  if (!result.success) return { kind: "error", message: "Could not create workspace." };
 
   const statusOk = await writeWorkspaceStatus(
     result.workspacePath,

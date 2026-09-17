@@ -135,7 +135,7 @@ export async function prepareOnboarding(
   options: OnboardingOptions,
 ): Promise<OnboardingContext | OnboardingResult> {
   const { workspacePath, frameworkRoot, sourcePath, projectTitle, flagExtensions, onPhase } = options
-  spinosaLogInfo("onboard", `prepareOnboarding workspacePath=${options.workspacePath} sourcePath=${options.sourcePath}`)
+  spinosaLogInfo("onboard", "prepareOnboarding")
   const phase = onPhase ?? (() => {})
 
   const batches = new ImportBatchManager()
@@ -318,10 +318,10 @@ export async function runOnboarding(
       onPhase?.("import", classifyMsg)
       spinosaLogInfo("onboard", classifyMsg)
       if (classified.markitdownFiles.length > 0) {
-        spinosaLogInfo("onboard", `markitdown files (${classified.markitdownFiles.length}): ${classified.markitdownFiles.map(f => f.rel).join(", ")}`)
+        spinosaLogInfo("onboard", `markitdown files=${classified.markitdownFiles.length}`)
       }
       if (classified.ocrFiles.length > 0) {
-        spinosaLogInfo("onboard", `ocr files (${classified.ocrFiles.length}): ${classified.ocrFiles.map(f => f.rel).join(", ")}`)
+        spinosaLogInfo("onboard", `ocr files=${classified.ocrFiles.length}`)
       }
     },
   })

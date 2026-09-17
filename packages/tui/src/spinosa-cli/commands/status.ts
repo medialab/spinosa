@@ -7,8 +7,8 @@ import {
   getFrameworkHealth,
   readFrameworkVersionFromRoot,
   resolveFrameworkRoot,
-  detectDocumentTools,
 } from "@spinosa/core"
+import { detectDocumentTools } from "@spinosa/core/scan/scanner"
 
 export async function runStatus(workspacePath: string | undefined, io: SpinosaCliIo): Promise<number> {
   const frameworkRoot = resolveFrameworkRoot()

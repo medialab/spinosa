@@ -2,10 +2,9 @@ import { existsSync, mkdirSync, appendFileSync, readFileSync, readdirSync, renam
 import * as path from "node:path"
 import { spawn, type ChildProcess } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import { MarkItDown } from "@spinosa/markitdown"
 
 import stripAnsi from "strip-ansi"
-import { markitdownConvertFile } from "./markitdown-convert"
+import { markitdownConvertFile, createMarkItDown } from "./markitdown-convert"
 import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
 import {
   shouldSkipSourceFile,
@@ -29,6 +28,17 @@ import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
 import { decodeWorkerPayload, disposeWorkerPayload, encodeWorkerPayload } from "./worker-payload"
 import { terminateChild } from "../progress/child-kill"
 import { recordResult, manifestDest, manifestPath, reconcileManifest, loadManifest, pruneManifest, type ManifestStatus, type ManifestRecord } from "./manifest"
+import { ensureDocumentConverters } from "../tools/detection"
+
+async function importPdfJs() {
+  await ensureDocumentConverters()
+  return import("../extension/pdf-js")
+}
+
+async function importPdfPages() {
+  await ensureDocumentConverters()
+  return import("./pdf-pages")
+}
 
 // ── Phase-result manifest recording ─────────────────────────────────────
 // Every terminal file state lands in <workspace>/.logs/import-manifest.ndjson
@@ -191,14 +201,12 @@ export function applyResumeFilter(
     }
   }
   const recovered = [...changed, ...missingOutput]
-  const capList = (rels: string[]): string =>
-    rels.length > 50 ? `${rels.slice(0, 50).join(", ")}, …+${rels.length - 50} more` : rels.join(", ")
   opts?.onLog?.(
     `Resume: ${trulyUnchanged.length} already imported (skipped) · ${recovered.length} changed (re-processing) · ${untrackedNew.length} new · ${reconciled.removed.length} removed (pruned) · ${retriedFailed.length} failed (retrying)`,
   )
   spinosaLogInfo(
     "resume",
-    `skipped=[${capList(trulyUnchanged)}] changed=[${capList(changed)}] missing-output=[${capList(missingOutput)}] removed=[${capList(reconciled.removed)}] retry=[${capList(retriedFailed)}] new=[${capList(untrackedNew)}]`,
+    `skipped=${trulyUnchanged.length} changed=${changed.length} missing-output=${missingOutput.length} removed=${reconciled.removed.length} retry=${retriedFailed.length} new=${untrackedNew.length}`,
   )
   return {
     skippedUnchanged: trulyUnchanged,
@@ -332,11 +340,7 @@ export async function scanAndClassifySource(
     for (let i = 0; i < entries.length; i++) entries[i]!.relPath = safeRels[i]!
   }
 
-  // Log each file's classification for diagnostics
-  for (const e of entries) {
-    spinosaLogInfo("classify", `file=${e.relPath} ext=${e.ext} class=${e.klass}`)
-  }
-  // Log classification summary
+  // Log classification summary only — never corpus file names.
   const markdown = entries.filter(e => e.klass === "markdown").length
   const native = entries.filter(e => e.klass === "native").length
   const md = entries.filter(e => e.klass === "markitdown").length
@@ -656,7 +660,7 @@ export async function processMarkitdownInProcess(
 
   const mdLog = path.join(logsDir, "markitdown-processed.ndjson")
   if (remainingMd.length > 0) {
-    const converter = new MarkItDown()
+    const converter = await createMarkItDown()
     // MarkItDown handles office/docs only — PDFs extract via pdf.js and
     // transcribe via vision/OCR in the owning phase. Images are externalized
     // to vision-transcribe.ts (SDK path).
@@ -890,7 +894,7 @@ export async function processOcr(
     let digitalDone = false
     try {
       {
-        const { classifyPdfPages, hasEmbeddedTextPdfPages, isDigitalPdfPages } = await import("./pdf-pages")
+        const { classifyPdfPages, hasEmbeddedTextPdfPages, isDigitalPdfPages } = await importPdfPages()
         const classes = await classifyPdfPages(file.src)
         throwIfSpinosaCancelled(shouldAbort)
         if (isDigitalPdfPages(classes)) {
@@ -1047,7 +1051,7 @@ export async function processPdf(
       : "ocr"
   const stepModel = typeof hooks?.ocrModelId === "string" ? hooks.ocrModelId : undefined
   {
-    const pdfJs = await import("../extension/pdf-js")
+    const pdfJs = await importPdfJs()
     onLog?.(
       `PDF step: pdf.js-only text extraction ` +
         `(mainThreadHandler=${pdfJs.isPdfJsMainThreadHandlerPublished() ? "ready" : "MISSING — every PDF will fail"}, ` +
@@ -1081,7 +1085,7 @@ export async function processPdf(
     let failedMarker: string
     let extractMs = 0
     try {
-      const pdfJs = await import("../extension/pdf-js")
+      const pdfJs = await importPdfJs()
       failedMarker = pdfJs.PDF_TEXT_EXTRACTION_FAILED_MARKER
       const t0 = Date.now()
       pageTexts = await pdfJs.pdfExtractPageTexts(f.src)
@@ -1593,7 +1597,7 @@ export async function convertTextPdf(
   onPage?: (page: number, total: number) => void | Promise<void>,
 ): Promise<string> {
   const title = path.basename(relPath, path.extname(relPath))
-  const { PDF_TEXT_EXTRACTION_FAILED_MARKER, pdfExtractPageTexts } = await import("../extension/pdf-js")
+  const { PDF_TEXT_EXTRACTION_FAILED_MARKER, pdfExtractPageTexts } = await importPdfJs()
   const pageTexts = await pdfExtractPageTexts(srcFile)
   throwIfSpinosaCancelled(shouldAbort)
   if (pageTexts.some(({ text }) => text.includes(PDF_TEXT_EXTRACTION_FAILED_MARKER))) {
@@ -1826,7 +1830,7 @@ export async function verifyAndRecoverImport(
         }
         try {
           mkdirSync(path.dirname(destFile), { recursive: true })
-          const converter = new MarkItDown()
+          const converter = await createMarkItDown()
           const result = await markitdownConvertFile(converter, srcFile)
           throwIfSpinosaCancelled(shouldAbort)
           const text = stripAnsi(result?.markdown ?? "")
@@ -1848,7 +1852,7 @@ export async function verifyAndRecoverImport(
         // source-copy onto the .md path (that poisons raw/ for agents).
         // The source is preserved to _failed_files below; re-running
         // import recovers it.
-        spinosaLogWarn("vision", `verify recover left missing ${relPath}: vision transcript absent, no auto-retry`)
+        spinosaLogWarn("vision", "verify recover left missing vision transcript, no auto-retry")
         onLog?.(`    Still missing (vision transcript absent — re-run import to retry, no auto-retry): ${relPath}`)
         break
       }
@@ -1861,7 +1865,7 @@ export async function verifyAndRecoverImport(
         try {
           {
             mkdirSync(path.dirname(destFile), { recursive: true })
-            const { classifyPdfPages, isDigitalPdfPages } = await import("./pdf-pages")
+            const { classifyPdfPages, isDigitalPdfPages } = await importPdfPages()
             const classes = await classifyPdfPages(srcFile)
             throwIfSpinosaCancelled(shouldAbort)
             if (isDigitalPdfPages(classes)) {
@@ -1886,7 +1890,7 @@ export async function verifyAndRecoverImport(
           ok = true
         } else {
           // Never copy PDF/PNG/JPEG onto a `.md` path — that poisons raw/ for agents.
-          spinosaLogWarn("ocr", `verify recover left missing ${relPath}: ${ocrError ?? "ocr failed"}`)
+          spinosaLogWarn("ocr", `verify recover left missing: ${ocrError ?? "ocr failed"}`)
           onLog?.(`    Still missing (OCR failed, no source-copy fallback): ${relPath}${ocrError ? ` — ${ocrError}` : ""}`)
         }
         break
