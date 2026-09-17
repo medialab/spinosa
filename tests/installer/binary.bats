@@ -707,4 +707,5 @@ EOF
   run redact_user_home "install complete home=/Users/name/.spinosa" "/Users/name"
   [ "$status" -eq 0 ]
   [ "$output" = "install complete home=~/.spinosa" ]
+  [[ "$output" != *"/Users/name/"* ]]
 }

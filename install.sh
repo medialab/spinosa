@@ -62,11 +62,13 @@ spinosa_log_file() {
 }
 
 # Replace the user home with ~ so installer lines keep product paths only.
+# Quote the tilde: bash 5 expands an unquoted ~ in ${var/pat/~} to $HOME.
 redact_user_home() {
   local msg="${1:-}"
   local home="${2:-${HOME:-}}"
+  local tilde="~"
   if [ -n "$home" ]; then
-    msg="${msg//"$home"/~}"
+    msg="${msg//"$home"/$tilde}"
   fi
   printf '%s' "$msg"
 }
