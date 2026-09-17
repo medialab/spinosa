@@ -14,7 +14,7 @@
 #             checksums, structural validation only — no runtime smoke)
 #   verify    the exact artifact users receive installs and runs on every
 #             supported platform (checksum + ONE end-to-end installer smoke:
-#             version, doctor, native-imports, provider-catalog, pdf-runtime)
+#             version, doctor, native-imports, provider-catalog, pdf-runtime, tui-worker)
 #   publish   promotes the EXACT dry-run bytes (no rebuild: downloads the
 #             assembled-dist from the green dry-run for the tag commit,
 #             re-verifies layout + checksums) and ships them.
@@ -32,6 +32,7 @@ on:
   push:
     tags:
       - "v1.1.0-beta.*"
+      - "v1.2.0-beta.*"
   workflow_dispatch:
     inputs:
       version:
@@ -257,10 +258,29 @@ jobs:
       # installer-shell regressions on the actual target OS/arch.
       - run: |
           DIST="dist/v${{ needs.validate.outputs.version }}"
-          python3 -m http.server 8931 --directory "$DIST" >/tmp/spinosa-dist-http.log 2>&1 &
+          # Bypass any runner proxy for loopback: curl honors http_proxy env,
+          # which blackholes 127.0.0.1 into 30s connect timeouts (seen on
+          # macOS runners while Linux stayed green).
+          export no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
+          export NO_PROXY="$no_proxy"
+          env | grep -i "_proxy=" || true
+          python3 -m http.server 8931 --bind 127.0.0.1 --directory "$DIST" >/tmp/spinosa-dist-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
-          sleep 1
+          # Readiness probe: fail fast with the server log instead of letting
+          # the installer burn its download budgets against a dead server.
+          for _wait in $(seq 1 30); do
+            if curl -fsS --noproxy '*' "http://127.0.0.1:8931/checksums.txt" -o /dev/null 2>/dev/null; then
+              break
+            fi
+            if [ "$_wait" -eq 30 ]; then
+              echo "loopback dist server never became ready; server log:" >&2
+              cat /tmp/spinosa-dist-http.log >&2 || true
+              (command -v lsof >/dev/null && lsof -i :8931 >&2) || (command -v netstat >/dev/null && netstat -an >&2 | grep 8931) || true
+              exit 1
+            fi
+            sleep 1
+          done
           SMOKE_HOME="$(mktemp -d)"
           HOME="$SMOKE_HOME" SPINOSA_HOME="$SMOKE_HOME/.spinosa" \
             SPINOSA_RELEASE_BASE_URL="http://127.0.0.1:8931" \
