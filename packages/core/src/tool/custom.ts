@@ -275,17 +275,10 @@ const layer = Layer.effectDiscard(
     const worktree = location.project.directory ?? location.directory
 
     const projectToolsDirs = [
-      path.join(locationDir, ".opencode", "tools"),
-      path.join(locationDir, ".opencode", "tool"),
       path.join(locationDir, ".spinosa", "tools"),
       path.join(locationDir, ".spinosa", "tool"),
     ]
-    const globalToolsDirs = [
-      path.join(global.config, "tools"),
-      path.join(global.config, "tool"),
-      path.join(path.dirname(global.config), "opencode", "tools"),
-      path.join(path.dirname(global.config), "opencode", "tool"),
-    ]
+    const globalToolsDirs = [path.join(global.config, "tools"), path.join(global.config, "tool")]
     const dirs = [...new Set([...projectToolsDirs, ...globalToolsDirs])]
 
     const matches: string[] = []

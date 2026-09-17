@@ -92,10 +92,10 @@ export function resolveInvocationDir(envPwd: string | undefined, fallbackCwd: st
 }
 
 function findJsonConfig(dir: string): { file: string; jsoncPresent: boolean } | undefined {
-  for (const name of ["spinosa.json", "opencode.json"]) {
+  for (const name of ["spinosa.json"]) {
     if (existsSync(path.join(dir, name))) return { file: path.join(dir, name), jsoncPresent: false }
   }
-  for (const name of ["spinosa.jsonc", "opencode.jsonc"]) {
+  for (const name of ["spinosa.jsonc"]) {
     if (existsSync(path.join(dir, name))) return { file: path.join(dir, name), jsoncPresent: true }
   }
   return undefined

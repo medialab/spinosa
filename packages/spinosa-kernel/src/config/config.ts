@@ -423,9 +423,9 @@ const layer = Layer.effect(
         const deps: Fiber.Fiber<void>[] = []
 
         for (const dir of directories) {
-          const configDirectory = [".spinosa", ".opencode", "spinosa", "opencode"].includes(path.basename(dir))
+          const configDirectory = [".spinosa", "spinosa"].includes(path.basename(dir))
           if (configDirectory || dir === Flag.SPINOSA_CONFIG_DIR) {
-            for (const file of ["opencode.json", "opencode.jsonc", "spinosa.json", "spinosa.jsonc"]) {
+            for (const file of ["spinosa.json", "spinosa.jsonc"]) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
               yield* merge(source, yield* loadFile(source, authEnv))

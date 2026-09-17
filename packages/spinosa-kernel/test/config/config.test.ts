@@ -744,11 +744,11 @@ it.instance("accepts the deprecated reference field", () =>
   }),
 )
 
-it.instance("loads config from .opencode directory", () =>
+it.instance("loads config from .spinosa directory", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "agent", "test.md"),
+      path.join(test.directory, ".spinosa", "agent", "test.md"),
       `---
 model: test/model
 ---
@@ -770,7 +770,7 @@ it.instance("agent markdown permission config preserves user key order", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "agent", "ordered.md"),
+      path.join(test.directory, ".spinosa", "agent", "ordered.md"),
       `---
 permission:
   bash: allow
@@ -785,11 +785,11 @@ Ordered permissions`,
   }),
 )
 
-it.instance("loads agents from .opencode/agents (plural)", () =>
+it.instance("loads agents from .spinosa/agents (plural)", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "agents", "helper.md"),
+      path.join(test.directory, ".spinosa", "agents", "helper.md"),
       `---
 model: test/model
 mode: subagent
@@ -798,7 +798,7 @@ Helper agent prompt`,
     )
 
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "agents", "nested", "child.md"),
+      path.join(test.directory, ".spinosa", "agents", "nested", "child.md"),
       `---
 model: test/model
 mode: subagent
@@ -824,12 +824,12 @@ Nested agent prompt`,
   }),
 )
 
-it.instance("keeps template agents available when .opencode and .spinosa coexist", () =>
+it.instance("loads workspace template agents from .spinosa/agents", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(path.join(test.directory, ".spinosa", "workspace"), "workspace_started\n")
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "agents", "spinosa-searcher.md"),
+      path.join(test.directory, ".spinosa", "agents", "spinosa-searcher.md"),
       `---
 mode: subagent
 ---
@@ -846,7 +846,7 @@ Search the workspace`,
   }),
 )
 
-it.instance("loads legacy config, commands, and plugins when .opencode and .spinosa coexist", () =>
+it.instance("ignores project .opencode config tree", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(
@@ -864,30 +864,24 @@ description: Legacy command
 ---
 Legacy command body`,
     )
-    const plugin = path.join(test.directory, ".opencode", "plugin", "legacy.ts")
-    yield* FSUtil.use.writeWithDirs(plugin, "export default async () => ({})")
 
     const config = yield* Config.use.get()
     const directories = yield* Config.use.directories()
 
-    expect(config.model).toBe("legacy/model")
+    expect(config.model).toBeUndefined()
     expect(config.small_model).toBe("spinosa/model")
-    expect(config.instructions).toEqual(["legacy.md", "spinosa.md"])
-    expect(config.command?.["legacy"]).toEqual({
-      description: "Legacy command",
-      template: "Legacy command body",
-    })
-    expect(config.plugin).toContain(pathToFileURL(plugin).href)
-    expect(directories).toContain(path.join(test.directory, ".opencode"))
+    expect(config.instructions).toEqual(["spinosa.md"])
+    expect(config.command?.["legacy"]).toBeUndefined()
+    expect(directories).not.toContain(path.join(test.directory, ".opencode"))
     expect(directories).toContain(path.join(test.directory, ".spinosa"))
   }),
 )
 
-it.instance("loads commands from .opencode/command (singular)", () =>
+it.instance("loads commands from .spinosa/command (singular)", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "command", "hello.md"),
+      path.join(test.directory, ".spinosa", "command", "hello.md"),
       `---
 description: Test command
 ---
@@ -895,7 +889,7 @@ Hello from singular command`,
     )
 
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "command", "nested", "child.md"),
+      path.join(test.directory, ".spinosa", "command", "nested", "child.md"),
       `---
 description: Nested command
 ---
@@ -916,11 +910,11 @@ Nested command template`,
   }),
 )
 
-it.instance("loads commands from .opencode/commands (plural)", () =>
+it.instance("loads commands from .spinosa/commands (plural)", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "commands", "hello.md"),
+      path.join(test.directory, ".spinosa", "commands", "hello.md"),
       `---
 description: Test command
 ---
@@ -928,7 +922,7 @@ Hello from plural commands`,
     )
 
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "commands", "nested", "child.md"),
+      path.join(test.directory, ".spinosa", "commands", "nested", "child.md"),
       `---
 description: Nested command
 ---
@@ -1075,7 +1069,7 @@ it.instance("does not error when only custom agent is a subagent", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* FSUtil.use.writeWithDirs(
-      path.join(test.directory, ".opencode", "agent", "helper.md"),
+      path.join(test.directory, ".spinosa", "agent", "helper.md"),
       `---
 model: test/model
 mode: subagent
@@ -1482,7 +1476,7 @@ it.instance("MCP config deep merges preserving base config properties", () =>
   }),
 )
 
-it.instance("local .opencode config can override MCP from project config", () =>
+it.instance("local .spinosa config can override MCP from project config", () =>
   Effect.gen(function* () {
     const test = yield* TestInstance
     yield* writeConfigEffect(test.directory, {
@@ -1495,21 +1489,16 @@ it.instance("local .opencode config can override MCP from project config", () =>
         },
       },
     })
-    yield* FSUtil.use.ensureDir(path.join(test.directory, ".opencode"))
-    yield* writeConfigEffect(
-      path.join(test.directory, ".opencode"),
-      {
-        $schema: "https://medialab.github.io/spinosa/config.json",
-        mcp: {
-          docs: {
-            type: "remote",
-            url: "https://docs.example.com/mcp",
-            enabled: true,
-          },
+    yield* writeConfigEffect(path.join(test.directory, ".spinosa"), {
+      $schema: "https://medialab.github.io/spinosa/config.json",
+      mcp: {
+        docs: {
+          type: "remote",
+          url: "https://docs.example.com/mcp",
+          enabled: true,
         },
       },
-      "opencode.json",
-    )
+    })
 
     const config = yield* Config.use.get()
     expect(config.mcp?.docs?.enabled).toBe(true)
@@ -1832,7 +1821,7 @@ describe("deduplicatePluginOrigins", () => {
       Effect.gen(function* () {
         const test = yield* TestInstance
         yield* FSUtil.use.writeWithDirs(
-          path.join(test.directory, ".opencode", "plugin", "my-plugin.js"),
+          path.join(test.directory, ".spinosa", "plugin", "my-plugin.js"),
           "export default {}",
         )
 
@@ -1860,14 +1849,14 @@ describe("SPINOSA_DISABLE_PROJECT_CONFIG", () => {
     { config: { model: "project/model", username: "project-user" } },
   )
 
-  it.instance("skips project .opencode/ directories when flag is set", () =>
+  it.instance("skips project .spinosa/ directories when flag is set", () =>
     withProcessEnv(
       "SPINOSA_DISABLE_PROJECT_CONFIG",
       "true",
       Effect.gen(function* () {
         const test = yield* TestInstance
         yield* FSUtil.use.writeWithDirs(
-          path.join(test.directory, ".opencode", "command", "test-cmd.md"),
+          path.join(test.directory, ".spinosa", "command", "test-cmd.md"),
           "# Test Command\nThis is a test command.",
         )
         const directories = yield* Config.use.directories()

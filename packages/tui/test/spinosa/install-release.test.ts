@@ -10,6 +10,7 @@ const repoRoot = path.resolve(import.meta.dir, "../../../..")
 describe("install and release flow", () => {
   test("installer dry-run uses immutable platform binary assets", async () => {
     await using tmp = await tmpdir()
+    const { SPINOSA_RELEASE_BASE_URL: _releaseBase, ...baseEnv } = process.env
     const result = Bun.spawnSync({
       cmd: [
         "bash",
@@ -23,7 +24,7 @@ describe("install and release flow", () => {
       ],
       cwd: repoRoot,
       env: {
-        ...process.env,
+        ...baseEnv,
         SPINOSA_HOME: path.join(tmp.path, "home"),
         SPINOSA_BIN_DIR: path.join(tmp.path, "bin"),
         NO_COLOR: "1",

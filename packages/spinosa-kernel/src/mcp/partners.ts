@@ -267,7 +267,7 @@ export function partnerById(id: string): PartnerEntry | undefined {
   return PARTNER_MCPS.find((entry) => entry.id === id)
 }
 
-/** Config fragment for `mcp.<id>` in spinosa.json/opencode.json. Always disabled until toggled. */
+/** Config fragment for `mcp.<id>` in spinosa.json. Always disabled until toggled. */
 export function partnerToMcpConfig(entry: PartnerEntry): McpConfigValue | undefined {
   if (entry.transport.kind === "remote") {
     return { type: "remote", url: entry.transport.url, enabled: false }

@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.4] — 2026-09-17
+
+### Changed
+
+- Spinosa reads only `~/.config/spinosa` and project `.spinosa/` / `spinosa.json`. It does not merge OpenCode config files or directories. One-time migration still renames legacy `.opencode` paths on disk when safe.
+
 ## [1.2.0-beta.3] — 2026-09-17
 
 ### Removed
