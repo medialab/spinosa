@@ -8,6 +8,13 @@ export interface ScrollViewProps extends ComponentProps<"div"> {
   orientation?: "vertical" | "horizontal" // currently only vertical is fully implemented for thumb
 }
 
+function invokeEventHandler<E extends Event>(handler: unknown, event: E): void {
+  if (typeof handler === "function") {
+    const callback = handler as (event: E) => unknown
+    callback(event)
+  }
+}
+
 export const scrollKey = (event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">) => {
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 
@@ -210,21 +217,21 @@ export function ScrollView(props: ScrollViewProps) {
         class="scroll-view__viewport"
         onScroll={(e) => {
           updateThumb()
-          if (typeof events.onScroll === "function") events.onScroll(e as any)
-        }}
-        onWheel={events.onWheel as any}
-        onTouchStart={events.onTouchStart as any}
-        onTouchMove={events.onTouchMove as any}
-        onTouchEnd={events.onTouchEnd as any}
-        onTouchCancel={events.onTouchCancel as any}
-        onPointerDown={events.onPointerDown as any}
-        onClick={events.onClick as any}
+        invokeEventHandler(events.onScroll, e)
+      }}
+      onWheel={(e) => invokeEventHandler(events.onWheel, e)}
+      onTouchStart={(e) => invokeEventHandler(events.onTouchStart, e)}
+      onTouchMove={(e) => invokeEventHandler(events.onTouchMove, e)}
+      onTouchEnd={(e) => invokeEventHandler(events.onTouchEnd, e)}
+      onTouchCancel={(e) => invokeEventHandler(events.onTouchCancel, e)}
+      onPointerDown={(e) => invokeEventHandler(events.onPointerDown, e)}
+      onClick={(e) => invokeEventHandler(events.onClick, e)}
         tabIndex={0}
         role="region"
         aria-label={i18n.t("ui.scrollView.ariaLabel")}
         onKeyDown={(e) => {
           onKeyDown(e)
-          if (typeof events.onKeyDown === "function") events.onKeyDown(e as any)
+        invokeEventHandler(events.onKeyDown, e)
         }}
       >
         {local.children}

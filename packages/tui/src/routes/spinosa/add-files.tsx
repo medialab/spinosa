@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
-import { spawn } from "node:child_process"
 import { TextareaRenderable, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
@@ -9,13 +8,20 @@ import { useTheme } from "../../context/theme"
 import { useRoute } from "../../context/route"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { useToast } from "../../ui/toast"
-import { scanAndClassifySource } from "@spinosa/core/import/pipeline"
+import { useSync } from "../../context/sync"
+import {
+  preserveFailedImportFiles,
+  scanAndClassifySource,
+  applyResumeFilter,
+  type ClassifiedEntry,
+} from "@spinosa/core/import/pipeline"
 import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation"
 import { ImportBatchManager } from "@spinosa/core/import/batch"
 import { useSDK } from "../../context/sdk"
-import { createImportJob, type ImportJobHandle } from "../../spinosa/job-events"
+import { useLocal } from "../../context/local"
 import { runImportWorkflow } from "@spinosa/core/import/import-workflow"
-import { tuiLog, logStep, logAction, logTool, logGate, logError, setToastError, persistImportWizardLogLines } from "../../spinosa/log"
+import { createVisionTranscriber } from "../../spinosa/vision-transcribe"
+import { logStep, logAction, logTool, logError, setToastError, persistImportWizardLogLines } from "../../spinosa/log"
 import { CenteredColumn } from "../../component/centered-column"
 import { SPINOSA_BASE_MODE, useOpencodeKeymap, useOpencodeModeStack } from "../../keymap"
 import { useExit } from "../../context/exit"
@@ -26,9 +32,11 @@ import {
   detectDocumentTools,
   resolveUserPath,
 } from "../../spinosa/onboarding-preview"
-import type { CliRunResult } from "../../spinosa/types"
+import { runReinstall } from "../../spinosa/reinstall"
+import { toolActionLabel as resolveToolActionLabel, initialToolChecks, toolCheckResults, formatBytes, wavePulse, waveRow, waveString, validateSinglePath, nextScanTotals } from "./onboarding-helpers"
+import { useBackgroundImport, isBackgroundAvailable, detachImportToBackground } from "../../spinosa/import-background"
+import { openBackgroundImportMonitor } from "../../component/dialog-background-import"
 import { readBundledFrameworkVersion, isPrereleaseFrameworkVersion } from "../../spinosa/service"
-import { resolveFrameworkRoot } from "@spinosa/core/framework/discovery"
 import { normalizePathInput, resolveExistingUserPaths, isCloudStoragePath } from "@spinosa/core/utils/path"
 import {
   blurIfFocused,
@@ -37,6 +45,7 @@ import {
   createWorkflowGuard,
   deferPress,
   delay,
+  formatImportProgressStatus,
   generateScanLines,
   ImportOptionsSelector,
   nextFocusedSourceIndexForAppend,
@@ -59,16 +68,16 @@ import {
   yieldToEventLoop,
 } from "./wizard-ui"
 import {
-  applyImportProgressStatus,
+  countImportProgress,
   formatImportDetailLogHint,
   importOutcomeAccentKey,
   importOutcomeHeading,
-  seedImportQueue,
   shouldShowImportDetailLogHint,
   type ImportFileProgressItem,
 } from "../../spinosa/import-progress-ui"
+import { AddFilesView } from "./add-files-view"
 
-type WizardStep = "path" | "tools" | "scan" | "direct" | "markitdown" | "ocr" | "done" | "error"
+type WizardStep = "path" | "tools" | "scan" | "direct" | "markitdown" | "pdf" | "ocr" | "done" | "error"
 
 type ToolCheckResult = {
   label: string
@@ -80,89 +89,9 @@ type SourcePathEntry = {
   id: number
 }
 
-const CANCELABLE_STEPS = ["direct", "markitdown", "ocr"] as const
+const CANCELABLE_STEPS = ["tools", "direct", "markitdown", "pdf", "ocr"] as const
 
 let nextSourceId = 1
-
-/**
- * Reinstall vendor tools via install.sh.
- * Duplicated from onboarding.tsx; kept as a local helper to avoid cross-module coupling.
- */
-async function runReinstall(input?: {
-  channel?: string
-  onStdout?: (chunk: string) => void
-  onStderr?: (chunk: string) => void
-}): Promise<CliRunResult> {
-  tuiLog("runReinstall (bash)")
-
-  const fwRoot = resolveFrameworkRoot()
-  if (!fwRoot) {
-    const msg = "Framework root not found — cannot reinstall vendor tools."
-    input?.onStderr?.(msg + "\n")
-    return { exitCode: 1, stdout: "", stderr: msg }
-  }
-
-  const localInstaller = path.join(fwRoot, "install.sh")
-  if (!existsSync(localInstaller)) {
-    const msg = "install.sh not found in framework root."
-    input?.onStderr?.(msg + "\n")
-    return { exitCode: 1, stdout: "", stderr: msg }
-  }
-
-  const version = await readBundledFrameworkVersion()
-  if (!version) {
-    const msg = "Could not read bundled framework version."
-    input?.onStderr?.(msg + "\n")
-    return { exitCode: 1, stdout: "", stderr: msg }
-  }
-
-  input?.onStdout?.(`Reinstalling vendor tools for v${version}...\n`)
-
-  return new Promise<CliRunResult>((resolve) => {
-    let timedOut = false
-    let stdout = ""
-    let stderr = ""
-
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill("SIGTERM")
-      resolve({ exitCode: 124, stdout, stderr: "Reinstall timed out after 120s." })
-    }, 120_000)
-
-    const child = spawn("bash", [localInstaller, "--reinstall", "--version", version, "--yes", "--no-launch", "--no-bundled-tools"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    })
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8")
-      stdout += text
-      const clean = text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").replace(/\r/g, "\n").replace(/\n{2,}/g, "\n").trim()
-      if (clean) input?.onStdout?.(clean + "\n")
-    })
-    child.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8")
-      stderr += text
-      const clean = text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").replace(/\r/g, "\n").replace(/\n{2,}/g, "\n").trim()
-      if (clean) input?.onStderr?.(clean + "\n")
-    })
-
-    const done = (code: number | null) => {
-      clearTimeout(timer)
-      if (timedOut) return
-      if (code === 0) {
-        input?.onStdout?.("Reinstall complete.\n")
-        resolve({ exitCode: 0, stdout, stderr })
-      } else {
-        resolve({ exitCode: code ?? 1, stdout, stderr })
-      }
-    }
-    child.on("close", (code) => done(code))
-    child.on("error", (err) => {
-      clearTimeout(timer)
-      resolve({ exitCode: 1, stdout, stderr: err.message })
-    })
-  })
-}
 
 export function AddFiles() {
   const { theme } = useTheme()
@@ -170,6 +99,8 @@ export function AddFiles() {
   const { navigate } = useRoute()
   const spinosa = useSpinosaWorkspace()
   const sdk = useSDK()
+  const local = useLocal()
+  const sync = useSync()
   const dimensions = useTerminalDimensions()
   const keymap = useOpencodeKeymap()
   const modeStack = useOpencodeModeStack()
@@ -201,6 +132,67 @@ export function AddFiles() {
   const [progressFiles, setProgressFiles] = createSignal<ImportFileProgressItem[]>([])
   const [failedCount, setFailedCount] = createSignal(0)
   const [importSummary, setImportSummary] = createSignal("")
+  // Foreground mirror of the service vision pause (add-files previously had
+  // no pause UI — auth failures silently failed files).
+  const [visionError, setVisionError] = createSignal<string | undefined>(undefined)
+  const [visionPaused, setVisionPaused] = createSignal(false)
+  // Background-capable import run owner (shared with onboarding + monitor).
+  const bg = useBackgroundImport()
+
+  // Mirror service run state into wizard display signals while a run owns
+  // them. Model changes (wizard or monitor) persist to the global vision
+  // store so future runs default to the picked model.
+  createEffect(() => {
+    if (!bg.active()) return
+    setProcessingStatus(bg.phaseLabel())
+    setProcessingFile(bg.currentFile())
+    setVisionError(bg.visionError())
+    setVisionPaused(bg.snapshot().visionPause !== undefined)
+    const files = bg.files()
+    setProgressFiles(files)
+    const counts = countImportProgress(files)
+    setProgTotal(files.length > 0 ? files.length : 1)
+    setProgCurrent(counts.succeeded + counts.failed)
+    setLogLines(bg.logLines())
+    const model = bg.modelId()
+    if (model.includes("/")) {
+      const [prov, ...rest] = model.split("/")
+      const modelName = rest.join("/")
+      const cur = local.vision.current()
+      if (prov && modelName && (!cur || cur.providerID !== prov || cur.modelID !== modelName)) {
+        try {
+          local.vision.set({ providerID: prov, modelID: modelName })
+        } catch {}
+      }
+    }
+    if (!bg.done() && !bg.background()) {
+      const gate = bg.pendingGate()
+      if (gate) {
+        setGateLabel(gate.label)
+        setGateAction(() => () => {
+          logAction("gate-click", gate.label)
+          bg.resolveGate(true)
+        })
+        setWaitingForGate(true)
+      } else {
+        setWaitingForGate(false)
+      }
+    }
+  })
+
+  // Slow phases only: detach and return to the workspace home. Same button
+  // slot as the phase actions. Finished queue → normal finish flow applies.
+  const detachToBackground = () => {
+    detachImportToBackground(bg, {
+      from: "add-files",
+      notify: (message) => toast.show({ variant: "info", message }),
+      navigateHome: () => goToWorkspace(),
+    })
+  }
+  const backgroundAvailable = () => isBackgroundAvailable(bg)
+  const openMonitor = () => {
+    openBackgroundImportMonitor(dialog)
+  }
   const [pathValidities, setPathValidities] = createStore<Record<number, "unchecked" | "valid" | "invalid">>({})
   const importOutcome = createMemo(() => ({ failedCount: failedCount(), stillMissing: 0 }))
   const importOutcomeFg = createMemo(() => {
@@ -209,11 +201,6 @@ export function AddFiles() {
     if (key === "warning") return theme.warning
     return theme.success
   })
-
-  const WAVE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
-  const waveString = (f: number) => { let r = ""; for (let i = 0; i < 6; i++) { const p = (i + f) % 14, l = p <= 6 ? p : 13 - p; r += WAVE[l] }; return r }
-  const wavePulse = (f: number) => { const p = f % 14; return WAVE[p <= 6 ? p : 13 - p] }
-  const waveRow = (f: number, width: number) => { let r = ""; for (let i = 0; i < width; i++) { const angle = (i * Math.PI) / 7 + f * Math.PI / 7; const l = Math.max(0, Math.min(7, Math.round(3.5 + 3.5 * Math.sin(angle)))); r += WAVE[l] }; return r }
   const [spinIdx, setSpinIdx] = createSignal(0)
   const [stopping, setStopping] = createSignal(false)
   const [stopHint, setStopHint] = createSignal(STOP_SCREEN_DEFAULT_HINT)
@@ -228,11 +215,10 @@ export function AddFiles() {
 
   const workflow = createWorkflowGuard()
   const activeWork = createActiveWorkTracker()
-  let activeJob: ImportJobHandle | undefined
   let sourceInput: TextareaRenderable | undefined
   const sourceInputs = new Map<number, TextareaRenderable>()
   const pathSnapshot = new Map<number, string>()
-  let gateResolve: (() => void) | undefined
+  // Pre-run cancellation flag for scan phase (the run itself is service-owned).
   let abortProcessing = false
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -242,36 +228,24 @@ export function AddFiles() {
       .map((item) => item.ext),
   )
 
-  const toolActionLabel = createMemo(() => {
-    const checks = toolChecks()
-    if (checks.length === 0) return ""
-    if (checks.some((t) => t.status === "checking")) return "Checking..."
-    if (checks.some((t) => t.status === "missing")) return "Reinstall missing tools"
-    return "Scan source folders"
-  })
+  const toolActionLabel = createMemo(() => resolveToolActionLabel(toolChecks()))
 
   const toolAllReady = createMemo(() => {
     const checks = toolChecks()
     return checks.length > 0 && checks.every((t) => t.status === "available" || t.status === "unsupported")
   })
 
-  function formatBytes(bytes: number): string {
-    if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
-    if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`
-    if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`
-    return `${bytes} B`
-  }
-
-  const totalSteps = 7
+  const totalSteps = 8
   const stepIndex = createMemo(() => {
     if (step() === "path") return 1
     if (step() === "tools") return 2
     if (step() === "scan") return 3
     if (step() === "direct") return 4
     if (step() === "markitdown") return 5
-    if (step() === "ocr") return 6
-    if (step() === "done") return 7
-    return 7
+    if (step() === "pdf") return 6
+    if (step() === "ocr") return 7
+    if (step() === "done") return 8
+    return 8
   })
 
   const hasValidPaths = createMemo(() => {
@@ -377,27 +351,15 @@ export function AddFiles() {
   const allPathsResolved = () =>
     resolveExistingUserPaths(sourcePaths().map((entry) => readPathText(entry.id)))
 
-  const validateSinglePath = (p: string): "valid" | "invalid" => {
-    try {
-      if (!existsSync(p)) return "invalid"
-      const st = statSync(p)
-      if (st.isFile()) return "valid"
-      if (st.isDirectory()) return readdirSync(p).length > 0 ? "valid" : "invalid"
-      return "invalid"
-    } catch {
-      return "invalid"
-    }
-  }
-
   // ── Navigation & lifecycle ────────────────────────────────────────────────
   const stopActiveWork = () => {
     setStopping(true)
     spinOn()
-    if (gateResolve) { gateResolve(); gateResolve = undefined }
+    // The background service owns gates/pauses now; Back aborts the run
+    // unless it was explicitly detached to the home monitor.
+    if (bg.active() && !bg.background()) bg.cancel()
     abortProcessing = true
     workflow.bump()
-    activeJob?.cancel()
-    activeJob = undefined
     setBusy(false)
     setWaitingForGate(false)
   }
@@ -408,7 +370,7 @@ export function AddFiles() {
     if (from === "done") { spinosa.refresh(); goToWorkspace(); return }
     if (from === "tools") { logAction("back", "tools to path"); setStep("path"); return }
     if (from === "scan") { logAction("back", "scan to tools"); setStep("tools"); return }
-    if (from === "direct" || from === "markitdown" || from === "ocr") { logAction("back", `${from} to scan`); setStep("scan"); return }
+    if (from === "direct" || from === "markitdown" || from === "pdf" || from === "ocr") { logAction("back", `${from} to scan`); setStep("scan"); return }
     if (from === "error") {
       setStep(importOptions().length > 0 ? "scan" : "path")
     }
@@ -475,40 +437,16 @@ export function AddFiles() {
     requestBack(false)
   }
 
-  // ── Gate helper ───────────────────────────────────────────────────────────
-  const gate = (label = "Continue") => new Promise<void>((resolve) => {
-    gateResolve = resolve
-    logGate(label)
-    setGateLabel(label)
-    setGateAction(() => () => { logAction("gate-click", label); setWaitingForGate(false); gateResolve = undefined; resolve() })
-    setWaitingForGate(true)
-  })
-
-  // ── Tools check ───────────────────────────────────────────────────────────
+  // ── Tools check (aligned with onboarding: shared rows + labels) ─────────
   const runToolCheck = async () => {
     logStep("tools", "Checking document processing tools")
-    const checks: ToolCheckResult[] = [
-      { label: "PPU PaddleOCR", status: "checking", detail: "scanned PDFs and images" },
-      { label: "MarkItDown", status: "checking", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: "checking", detail: "PDF text extraction and page rendering" },
-    ]
-    setToolChecks(checks)
+    setToolChecks(initialToolChecks())
     setStep("tools")
     spinOn()
 
     await delay(80)
     const toolStatus = await detectDocumentTools()
-    const ocrStatus = toolStatus.ocr
-      ? "available"
-      : toolStatus.ocrUnsupportedReason
-        ? "unsupported"
-        : "missing"
-    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs and images"
-    const results: ToolCheckResult[] = [
-      { label: "PPU PaddleOCR", status: ocrStatus, detail: ocrDetail },
-      { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
-    ]
+    const results = toolCheckResults(toolStatus)
     setToolChecks(results)
     for (const r of results) logTool(r.label, r.status, r.detail)
     spinOff()
@@ -521,12 +459,20 @@ export function AddFiles() {
     const toolsReady = checks.every((t) => t.status === "available" || t.status === "unsupported")
     if (needsRepair) {
       logAction("repair-tools", `${checks.filter(t => t.status === "missing").length} tools missing`)
-      void runToolRepair()
+      void activeWork.run(async () => {
+        setBusy(true)
+        try {
+          await runToolRepair()
+        } finally {
+          setBusy(false)
+        }
+      })
     } else if (toolsReady) {
+      // Vision/copy flows need nothing local; digital PDFs extract via pdf.js.
       logAction("start-scan", "All tools ready")
       startScan().catch((err) => {
         logError("startScan-top", err)
-        appendLogLine(`Fatal: ${err instanceof Error ? err.message : String(err)}`)
+        appendLogLine(`Failed: ${err instanceof Error ? err.message : String(err)}`)
         setStep("error")
       })
     } else {
@@ -538,41 +484,48 @@ export function AddFiles() {
     logAction("repair", "Tools missing — repairing")
     setToolChecks((prev) => prev.map((t) => t.status === "missing" ? { ...t, status: "checking" as const } : t))
     spinOn()
-    await delay(80)
-    const bv = await readBundledFrameworkVersion()
-    const channel = bv && isPrereleaseFrameworkVersion(bv) ? "beta" : "stable"
-    await runReinstall({
-      channel,
-      onStdout: (chunk) => {
-        const clean = stripAnsi(chunk)
-        if (clean) appendLogLine(clean)
-      },
-      onStderr: (chunk) => {
-        const clean = stripAnsi(chunk)
-        if (clean) appendLogLine(clean)
-      },
-    })
-    await delay(200)
-    const toolStatus = await detectDocumentTools()
-    const ocrStatus = toolStatus.ocr
-      ? "available"
-      : toolStatus.ocrUnsupportedReason
-        ? "unsupported"
-        : "missing"
-    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs and images"
-    const results: ToolCheckResult[] = [
-      { label: "PPU PaddleOCR", status: ocrStatus, detail: ocrDetail },
-      { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
-    ]
-    setToolChecks(results)
-    for (const r of results) logTool(r.label, r.status, r.detail)
-    appendLogLine("Tool repair complete.")
-    spinOff()
+    try {
+      await delay(80)
+      const bv = await readBundledFrameworkVersion()
+      const channel = bv && isPrereleaseFrameworkVersion(bv) ? "beta" : "stable"
+      const reinstallResult = await runReinstall({
+        channel,
+        onStdout: (chunk) => {
+          const clean = stripAnsi(chunk)
+          if (clean) appendLogLine(clean)
+        },
+        onStderr: (chunk) => {
+          const clean = stripAnsi(chunk)
+          if (clean) appendLogLine(clean)
+        },
+      })
+      if (reinstallResult.exitCode !== 0) {
+        const detail = reinstallResult.stderr?.trim() || `exit ${reinstallResult.exitCode}`
+        logError("runToolRepair", `Reinstall failed: ${detail}`)
+        appendLogLine(`Tool repair failed: ${detail}`)
+      }
+      await delay(200)
+      const toolStatus = await detectDocumentTools()
+      const results = toolCheckResults(toolStatus)
+      setToolChecks(results)
+      for (const r of results) logTool(r.label, r.status, r.detail)
+      if (reinstallResult.exitCode === 0) {
+        appendLogLine("Tool repair complete.")
+      } else {
+        appendLogLine(`Tool repair complete with errors (exit ${reinstallResult.exitCode}). Retry or check the logs.`)
+      }
+    } catch (err) {
+      logError("runToolRepair", err)
+      appendLogLine(`Tool repair failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      spinOff()
+    }
   }
   // ── Scan ──────────────────────────────────────────────────────────────────
   let pendingPaths: string[] | undefined
   const startScan = async () => {
+    abortProcessing = false
+    workflow.bump()
     const resolved = pendingPaths
     if (!resolved || resolved.length === 0) { logError("startScan", "No pending paths"); setStep("error"); return }
     setSourceIsCloud(resolved.some((p) => isCloudStoragePath(p)))
@@ -580,6 +533,7 @@ export function AddFiles() {
     setScanDone(false)
     setScanningFile("")
     setScanCount(0)
+    setScanTotal(0)
     setStep("scan")
     await delay(100)
     spinOn()
@@ -589,7 +543,14 @@ export function AddFiles() {
       for (const src of resolved) {
         appendLogLine(`Scanning: ${src}`)
         const scanPreview = await buildImportScanPreview(src, {
-          onFile: (rel, isFile, discovered) => { setScanningFile(rel); setScanTotal((t) => t + discovered); if (isFile) setScanCount((c) => c + 1) },
+          onFile: (rel, isFile, discovered) => {
+            setScanningFile(rel)
+            setScanCount((count) => {
+              const next = nextScanTotals(discovered, isFile, count)
+              setScanTotal(next.scanTotal)
+              return next.scanCount
+            })
+          },
           shouldAbort,
         })
         for (const opt of scanPreview.importOptions) {
@@ -630,14 +591,44 @@ export function AddFiles() {
     setBusy(true)
     clearLog()
     setFailedCount(0)
+    setImportSummary("")
     setProcessingDone(false)
     setProgCurrent(0)
     setProgTotal(1)
     setProcessingStatus("Starting...")
     setProcessingFile("")
-    abortProcessing = false
-    const generation = workflow.bump()
-    gateResolve = undefined
+    setProgressFiles([])
+    const storedVision = local.vision.current()
+    const initialVision =
+      storedVision && local.vision.isValid()
+        ? `${storedVision.providerID}/${storedVision.modelID}`
+        : "none"
+    const started = bg.start({
+      kind: "add-files",
+      title: "Add files import",
+      directory: workspacePath,
+      workspacePath,
+      modelId: initialVision,
+      publish: sdk.publishJobEvent,
+      localEmit: (event) => sdk.event.emit("event", event),
+    })
+    if (!started) {
+      appendLogLine("An import is already running — finish or cancel it first.")
+      setBusy(false)
+      return
+    }
+    const { job, shouldAbort } = started
+    const sharedProg = job.prog
+    sharedProg.on((e) => bg.reportProgress(e))
+    const onPhaseLog = job.wrapLog((msg: string) => {
+      if (msg.startsWith("  ")) {
+        bg.reportPhaseLog(msg, formatImportProgressStatus)
+        return
+      }
+      bg.appendLog(msg)
+    })
+    bg.setPhase("setup")
+    bg.reportStatus("Starting...")
     spinOn()
     await delay(200)
 
@@ -647,121 +638,172 @@ export function AddFiles() {
     const batchManager = new ImportBatchManager()
     batchManager.parseExtensionsFromFlag(selectedExtensions().join(","))
 
-    let totalFailed = 0
     let totalRenamed = 0
     let totalDirect = 0
     let totalMd = 0
+    let totalPdf = 0
+    let totalVision = 0
     let totalOcr = 0
     let dirConverted = 0
     let mdConverted = 0
+    let pdfConverted = 0
+    let visionConverted = 0
     let ocrConverted = 0
-
-    const job = createImportJob({
-      kind: "import",
-      title: "Add files import",
-      directory: workspacePath,
-      publish: sdk.publishJobEvent,
-      localEmit: (event) => sdk.event.emit("event", event),
-    })
-    activeJob = job
-    const shouldAbort = () => abortProcessing || !workflow.active(generation) || job.shouldAbort()
-    job.start()
-    const sharedProg = job.prog
-    sharedProg.on((e) => {
-      if (e.total > 0) setProgTotal(e.total)
-      if (e.current >= 0) setProgCurrent(e.current)
-      if (e.relPath) setProcessingFile(e.relPath)
-      if (e.status && e.relPath) {
-        setProgressFiles((prev) => applyImportProgressStatus(prev, e.relPath, e.status!))
-      }
-    })
-    const onPhaseLog = job.wrapLog((msg: string) => {
-      if (msg.startsWith("  ")) {
-        setProcessingStatus(msg.trim())
-        return
-      }
-      appendLogLine(msg)
-    })
+    const attemptedEntries: ClassifiedEntry[] = []
+    const transcribeVision = createVisionTranscriber(sdk)
 
     try {
-      for (const src of resolved) {
+      for (let sourceIndex = 0; sourceIndex < resolved.length; sourceIndex++) {
+        const src = resolved[sourceIndex]!
+        const sourceFolder = sourceIndex === 0 ? undefined : `source-${sourceIndex + 1}`
         if (shouldAbort()) break
-        appendLogLine(`Processing: ${src}`)
+        bg.appendLog(`Processing: ${src}${sourceFolder ? ` → ${sourceFolder}/` : ""}`)
 
-        const classified = await scanAndClassifySource(src, rawDir, batchManager, undefined, shouldAbort)
+        const classified = await scanAndClassifySource(src, rawDir, batchManager, sourceFolder, shouldAbort, bg.getModel())
         if (!classified) {
-          appendLogLine(`No importable files in: ${src}`)
+          bg.appendLog(`No importable files in: ${src}`)
           continue
         }
+        // Resume: skip already-imported files; re-process new, changed,
+        // re-routed, or previously failed ones. Done rows render done at once.
+        const resume = applyResumeFilter(classified, classified.logsDir, {
+          modelId: bg.getModel(),
+          onLog: (m) => bg.appendLog(m),
+        });
+        for (const rel of resume.skippedUnchanged) bg.reportProgress({ relPath: rel, status: "done" });
+        attemptedEntries.push(
+          ...classified.directFiles,
+          ...((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []),
+          ...classified.markitdownFiles,
+          ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
+          ...classified.ocrFiles,
+        )
+        bg.seedQueue([
+          ...classified.directFiles,
+          ...((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []),
+          ...classified.markitdownFiles,
+          ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
+          ...classified.ocrFiles,
+        ].map((file) => file.rel))
 
-        // ── Shared import workflow (direct → MarkItDown → OCR) ────────────
+        // ── Shared import workflow (direct → MarkItDown → Vision → OCR) ────────────
         const phases = await runImportWorkflow(classified, {
           prog: sharedProg,
           onLog: onPhaseLog,
           shouldAbort,
           signal: job.registered.signal,
           onChild: job.registerChild,
+          ocrModelId: () => bg.getModel(),
+          transcribeVision,
+          // Service pause policy (new in add-files): empty results skip,
+          // auth/other errors pause until inline buttons or monitor resolve.
+          onVisionFailure: (rel, modelId, error) => bg.onVisionFailure(rel, modelId, error),
+          onRetry: (attempt, reason) => {
+            bg.reportStatus(`Retrying file (attempt ${attempt}): ${reason}`)
+          },
           onRename: (original, renamed) => {
-            totalRenamed++
-            appendLogLine(`  renamed (name too long): ${original} → ${renamed}`)
+            bg.appendLog(`  renamed (name too long): ${original} → ${renamed}`)
           },
           beforePhase: async (id, count) => {
             if (id === "direct") {
               setStep("direct")
-              setProgTotal(count > 0 ? count : 1)
-              setProgCurrent(0)
-              setProgressFiles(seedImportQueue(classified.directFiles.map((f) => f.rel)))
-              setProcessingStatus(`Direct copy — ${count} files`)
+              bg.setPhase("direct")
+              bg.reportStatus(`Copying text-based files to raw — ${count} files`)
+              totalDirect += count
+              await delay(500)
+              return true
+            }
+            if (id === "copy") {
+              setStep("direct")
+              bg.setPhase("copy")
+              bg.reportStatus(`Copying ${count} files as-is (no OCR engine selected)`)
               totalDirect += count
               await delay(500)
               return true
             }
             if (id === "markitdown") {
               setBusy(false)
-              await gate("Process text files")
+              if (!await bg.requestGate(id, count, "Converting office docs")) return false
               setBusy(true)
               if (shouldAbort()) return false
               setStep("markitdown")
-              setProgTotal(count || 1)
-              setProgCurrent(0)
-              setProgressFiles(seedImportQueue(classified.markitdownFiles.map((f) => f.rel)))
-              setProcessingStatus("MarkItDown conversion...")
+              bg.setPhase("markitdown")
+              bg.setVisionError(undefined)
+              bg.reportStatus(`Converting office docs via MarkItDown — ${count} files`)
               totalMd += count
               await delay(500)
               return true
             }
+            if (id === "vision") {
+              setBusy(false)
+              if (!await bg.requestGate(id, count, `Transcribe images via Vision model`)) return false
+              setBusy(true)
+              if (shouldAbort()) return false
+              setStep("markitdown")
+              bg.setPhase("vision")
+              bg.setVisionError(undefined)
+              bg.reportStatus(`Transcribing images via Vision model — ${count} files`)
+              totalVision += count
+              await delay(500)
+              return true
+            }
+            if (id === "pdf") {
+              setBusy(false)
+              if (!await bg.requestGate(id, count, "Process PDFs (text pages direct, image pages via engine)")) return false
+              setBusy(true)
+              if (shouldAbort()) return false
+              setStep("pdf")
+              bg.setPhase("pdf")
+              bg.setVisionError(undefined)
+              bg.reportStatus(`Processing PDFs — ${count} files`)
+              totalPdf += count
+              await delay(500)
+              return true
+            }
             setBusy(false)
-            await gate("Process images and PDFs")
+            if (!await bg.requestGate(id, count, "Copy scanned leftovers as-is (no local OCR)")) return false
             setBusy(true)
             if (shouldAbort()) return false
             setStep("ocr")
-            setProgTotal(count || 1)
-            setProgCurrent(0)
-            setProgressFiles(seedImportQueue(classified.ocrFiles.map((f) => f.rel)))
-            setProcessingStatus("OCR...")
+            bg.setPhase("ocr")
+              bg.reportStatus(`Copying scanned leftovers as-is — ${count} files`)
             totalOcr += count
             await delay(500)
             return true
           },
           afterPhase: async (id, result) => {
-            if (result.failed > 0) totalFailed += result.failed
             if (result.renamed > 0) totalRenamed += result.renamed
             if (id === "direct") {
               dirConverted += result.converted
-              setProcessingStatus(`Direct copy complete — ${result.converted} files`)
+              bg.reportStatus(`Text-based files copied — ${result.converted} files`)
+              await delay(500)
+            }
+            if (id === "copy") {
+              dirConverted += result.converted
+              bg.reportStatus(`Files copied as-is — ${result.converted} files`)
               await delay(500)
             }
             if (id === "markitdown") {
               mdConverted += result.converted
-              setProcessingStatus(`MarkItDown complete — ${result.converted} files`)
+              bg.reportStatus(`Office docs converted — ${result.converted} files`)
+              await delay(500)
+            }
+            if (id === "vision") {
+              visionConverted += result.converted
+              bg.reportStatus(`Images via Vision model — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`)
+              await delay(500)
+            }
+            if (id === "pdf") {
+              pdfConverted += result.converted
+              bg.reportStatus(`PDFs processed — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`)
               await delay(500)
             }
             if (id === "ocr") {
               ocrConverted += result.converted
-              setProcessingStatus(
+              bg.reportStatus(
                 result.failed > 0
-                  ? `OCR complete — ${result.converted} ok, ${result.failed} failed`
-                  : `OCR complete — ${result.converted} files`,
+                  ? `Scanned leftovers copied — ${result.converted} ok, ${result.failed} failed`
+                  : `Scanned leftovers copied as-is — ${result.converted} files`,
               )
               // Dwell so failure-first 100% results are readable before done.
               await delay(1500)
@@ -769,45 +811,105 @@ export function AddFiles() {
           },
         })
         if (classified.markitdownFiles.length === 0) {
-          appendLogLine("No files require MarkItDown conversion.")
+          bg.appendLog("MarkItDown: 0 files to convert — skipping")
+        }
+        const visionLen = ((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []).length
+        if (visionLen === 0 && bg.getModel().includes("/")) {
+          bg.appendLog("Vision: 0 images to transcribe — skipping")
         }
         if (classified.ocrFiles.length === 0) {
-          appendLogLine("No files require OCR.")
+          bg.appendLog("OCR: 0 files to convert — skipping")
+        }
+        const copyLen = ((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []).length
+        if (copyLen === 0) {
+          bg.appendLog("Copy: 0 files to keep as-is — skipping")
         }
         void phases
         if (shouldAbort()) { spinOff(); setBusy(false); return }
       }
 
-      setFailedCount(totalFailed)
+      if (attemptedEntries.length === 0) {
+        bg.appendLog("No selected files to import.")
+        bg.finish({
+          converted: 0,
+          skipped: 0,
+          failed: 0,
+          renamed: 0,
+          recovered: 0,
+          stillMissing: 0,
+          text: "No selected files to import.",
+          success: false,
+        })
+        if (bg.background()) {
+          setBusy(false)
+          spinOff()
+          return
+        }
+        setImportSummary("No selected files to import.")
+        setProcessingDone(true)
+        setStep("error")
+        return
+      }
+
+      const preserved = await preserveFailedImportFiles(attemptedEntries, rawDir, (m) => bg.appendLog(m))
+      for (const rel of preserved.failedFilePaths) {
+        // Close any protocol gap (for example a worker crash) in the same
+        // list used by the renderer; never leave a missing file queued.
+        bg.reportProgress({ relPath: rel, status: "failed" })
+      }
+      const counts = countImportProgress(bg.snapshot().files)
+      setFailedCount(counts.failed)
       const summary =
-        `${dirConverted}/${totalDirect} copied · ${mdConverted}/${totalMd} markitdown · ${ocrConverted}/${totalOcr} ocr` +
+        `${dirConverted}/${totalDirect} copied · ${mdConverted}/${totalMd} markitdown · ${pdfConverted}/${totalPdf} pdf · ${visionConverted}/${totalVision} vision · ${ocrConverted}/${totalOcr} ocr` +
         (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
-        (totalFailed > 0 ? ` · ${totalFailed} failed` : "")
+        (counts.failed > 0 ? ` · ${counts.failed} failed` : "")
+      const ok = counts.failed === 0 && preserved.failedFilePaths.length === 0
+      bg.finish({
+        converted: dirConverted + mdConverted + pdfConverted + visionConverted + ocrConverted,
+        skipped: 0,
+        failed: counts.failed,
+        renamed: totalRenamed,
+        recovered: 0,
+        stillMissing: preserved.failedFilePaths.length,
+        text: summary,
+        success: ok,
+      })
+      if (bg.background()) {
+        // Headless finish: monitor dialog + home chip carry the result.
+        setBusy(false)
+        spinOff()
+        return
+      }
       setImportSummary(summary)
       setProcessingDone(true)
       // Keep progressFiles + last phase bar counters so the results panel
       // remains visible on the done step.
       setStep("done")
-      if (totalFailed > 0) {
-        persistImportWizardLogLines(logLines(), "add-files-import")
-        job.finish("error", summary)
-      } else {
-        job.finish("completed", summary)
+      if (!ok) {
+        persistImportWizardLogLines(bg.snapshot().logs, "add-files-import")
       }
     } catch (err) {
       if (isSpinosaCancellationError(err) || shouldAbort()) {
-        appendLogLine("Spinosa import cancelled.")
-        setProcessingStatus("Cancelled.")
-        job.cancel()
+        bg.appendLog("Spinosa import cancelled.")
+        bg.reportStatus("Import cancelled.")
+        bg.cancel()
         return
       }
       logError("startProcessing", err)
-      appendLogLine(`Error: ${err instanceof Error ? err.message : String(err)}`)
-      job.finish("error", err instanceof Error ? err.message : String(err))
-      setStep("error")
+      bg.appendLog(`Error: ${err instanceof Error ? err.message : String(err)}`)
+      bg.finish({
+        converted: 0,
+        skipped: 0,
+        failed: 0,
+        renamed: 0,
+        recovered: 0,
+        stillMissing: 0,
+        text: err instanceof Error ? err.message : String(err),
+        success: false,
+      })
+      if (!bg.background()) setStep("error")
     } finally {
-      if (shouldAbort() && !processingDone()) job.cancel()
-      if (activeJob === job) activeJob = undefined
+      if (shouldAbort() && !processingDone() && !bg.background()) bg.cancel()
       spinOff()
       setBusy(false)
     }
@@ -920,9 +1022,32 @@ export function AddFiles() {
         consume(); return
       }
 
+      // Vision pause resolution + slow-phase shortcuts (run phases keep
+      // busy() true, so these precede the busy guard; never while typing).
+      if (!sourceInputFocused()) {
+        if (bg.snapshot().visionPause !== undefined) {
+          if (event.name === "r") {
+            bg.resolvePause("retry")
+            consume(); return
+          }
+          if (event.name === "s") {
+            bg.resolvePause("skip")
+            consume(); return
+          }
+          if (event.name === "m") {
+            openMonitor()
+            consume(); return
+          }
+        }
+        if (event.name === "b" && backgroundAvailable()) {
+          detachToBackground()
+          consume(); return
+        }
+      }
+
       if (busy()) return
 
-      if (waitingForGate() && (step() === "direct" || step() === "markitdown" || step() === "ocr") && event.name === "return") {
+      if (waitingForGate() && (step() === "direct" || step() === "markitdown" || step() === "pdf" || step() === "ocr") && event.name === "return") {
         gateAction()()
         consume(); return
       }
@@ -1036,319 +1161,29 @@ export function AddFiles() {
     ),
   )
   // ── Render ────────────────────────────────────────────────────────────────
-  return (
-    <Show when={!stopping()} fallback={
-      <box width="100%" height="100%" alignItems="center" justifyContent="center">
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.textMuted}>{waveString(spinIdx())}</text>
-          <text fg={theme.textMuted}>{stopHint()}</text>
-        </box>
-      </box>
-    }>
-      <CenteredColumn>
-      <box flexGrow={1} alignItems="center" paddingLeft={2} paddingRight={2}>
-        <box flexGrow={1} minHeight={0} />
-        <box width="100%" maxWidth={72} flexDirection="column" gap={1}>
-          <box flexDirection="row" alignItems="center" gap={1}>
-            <box
-              paddingLeft={2}
-              paddingRight={2}
-              paddingTop={1}
-              paddingBottom={1}
-              backgroundColor={buttonBackground(theme, hoveredButton() === "back")}
-              onMouseOver={() => {
-                blurSourceInputs()
-                setHoveredButton("back")
-              }}
-              onMouseOut={() => setHoveredButton(null)}
-              onMouseDown={() => deferPress(handleBackPress)}
-            >
-              <text fg={buttonText(theme, hoveredButton() === "back", theme.text)}>←</text>
-            </box>
-            <text fg={theme.text}>
-              <span style={{ bold: true }}>{busy() ? `${waveString(spinIdx())} ` : ""}Import files into workspace</span>
-            </text>
-          </box>
-          <text fg={theme.textMuted}>
-            Step {stepIndex()} of {totalSteps}
-            {step() === "path" ? " — choosing source folders" : ""}
-            {step() === "tools" ? " — checking your document tools" : ""}
-            {step() === "scan" ? " — scanning your source" : ""}
-            {step() === "direct" ? " — copying files into raw/" : step() === "markitdown" ? " — converting documents with MarkItDown" : step() === "ocr" ? " — running OCR on images and PDFs" : ""}
-            {step() === "done" ? " — import complete" : ""}
-            {step() === "error" ? " — fixing the issue and retrying" : ""}
-          </text>
-          <Show when={sourceIsCloud() && (step() === "scan" || step() === "direct" || step() === "markitdown" || step() === "ocr")}>
-            <text fg={theme.error}>  ⚠ cloud folder — scans & copies can be slow due to sync latency</text>
-          </Show>
 
-          <Show when={step() === "path"}>
-            <WizardPanel theme={theme} accent>
-              <text fg={theme.textMuted}>Source folders</text>
-              <text fg={theme.textMuted}>
-                Add one or more source folders. Spinosa scans them, then imports the file types you choose into this workspace.
-              </text>
-              <text fg={theme.textMuted}>Click a path to edit · ↑↓ move between paths</text>
-              <box flexDirection="column" gap={1} paddingTop={1}>
-                <For each={sourcePaths()}>
-                  {(entry, index) => (
-                    <box
-                      flexDirection="row"
-                      gap={0}
-                      alignItems="center"
-                      backgroundColor={focusedSource() === index() ? theme.backgroundElement : undefined}
-                      border={focusedSource() === index() ? ["left"] : []}
-                      borderColor={theme.borderActive}
-                    >
-                      <box
-                        flexGrow={1}
-                        onMouseDown={() => {
-                          setFocusedSource(index())
-                          focusSourceEntry(entry.id)
-                        }}
-                      >
-                        <textarea
-                          ref={(value: TextareaRenderable) => {
-                            sourceInputs.set(entry.id, value)
-                            if (index() === 0) sourceInput = value
-                            value.traits = { status: "PATH" }
-                          }}
-                          initialValue={pathSnapshot.get(entry.id) ?? ""}
-                          placeholder={`Folder path ${index() + 1}`}
-                          placeholderColor={theme.textMuted}
-                          textColor={theme.text}
-                          focusedTextColor={theme.text}
-                          cursorColor={theme.primary}
-                          minHeight={1}
-                          maxHeight={1}
-                          flexGrow={1}
-                          onSubmit={() => {}}
-                        />
-                      </box>
-                      <box
-                        paddingLeft={1}
-                        paddingRight={1}
-                        paddingTop={0}
-                        paddingBottom={0}
-                      >
-                        <text fg={
-                          pathValidities[entry.id] === "valid"
-                            ? theme.success
-                            : pathValidities[entry.id] === "invalid"
-                              ? theme.error
-                              : theme.textMuted
-                        }>
-                          {pathValidities[entry.id] === "valid" ? "●" : pathValidities[entry.id] === "invalid" ? "●" : "○"}
-                        </text>
-                      </box>
-                      <box
-                        paddingLeft={1}
-                        paddingRight={1}
-                        paddingTop={0}
-                        paddingBottom={0}
-                        backgroundColor={theme.backgroundPanel}
-                        onMouseOver={() => blurSourceInputs()}
-                        onMouseDown={() => deferPress(() => removeSourcePath(entry.id))}
-                      >
-                        <text fg={theme.textMuted}>✕</text>
-                      </box>
-                    </box>
-                  )}
-                </For>
-              </box>
-            </WizardPanel>
-            <WizardActionRow>
-              <WizardActionButton
-                theme={theme}
-                label="Back"
-                primary={focusedSource() === sourcePaths().length}
-                onHover={() => {
-                  blurSourceInputs()
-                  setFocusedSource(sourcePaths().length)
-                }}
-                onPress={leavePathStep}
-              />
-              <box flexGrow={1} />
-              <Show when={hasValidPaths()}>
-                <WizardActionButton
-                  theme={theme}
-                  label="Continue"
-                  primary={focusedSource() === sourcePaths().length + 1}
-                  onHover={() => {
-                    blurSourceInputs()
-                    setFocusedSource(sourcePaths().length + 1)
-                  }}
-                  onPress={() => void continueFromPath()}
-                />
-              </Show>
-            </WizardActionRow>
-          </Show>
+  const registerSourceInput = (id: number, value: TextareaRenderable, first: boolean) => {
+    sourceInputs.set(id, value)
+    if (first) sourceInput = value
+    value.traits = { status: "PATH" }
+  }
 
-          <Show when={step() === "tools" || step() === "scan" || step() === "direct" || step() === "markitdown" || step() === "ocr"}>
-            <WizardPanel theme={theme}>
-              <Show when={step() === "tools"}>
-                <text fg={theme.textMuted}>Document processing tools</text>
-                <box flexDirection="column" gap={1} paddingTop={1}>
-                  <For each={toolChecks()}>
-                    {(check) => {
-                      const icon =
-                        check.status === "available" || check.status === "unsupported"
-                          ? "●"
-                          : check.status === "missing"
-                            ? "●"
-                            : wavePulse(spinIdx())
-                      const color =
-                        check.status === "available"
-                          ? theme.success
-                          : check.status === "missing"
-                            ? theme.error
-                            : theme.textMuted
-                      return (
-                        <box flexDirection="row" gap={1} alignItems="center" paddingLeft={1} paddingRight={1}>
-                          <text fg={color} attributes={check.status === "checking" ? undefined : TextAttributes.BOLD}>{icon}</text>
-                          <text fg={check.status === "checking" ? theme.textMuted : theme.text}> {check.label}</text>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{check.detail ?? ""}</text>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </box>
-                <Show when={logLines().length > 0}>
-                  <box height={1} />
-                  <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
-                </Show>
-              </Show>
-              <Show when={step() === "scan"}>
-                <Show when={!scanDone()}>
-                  <text fg={theme.text}>{waveString(spinIdx())}</text>
-                  <text fg={theme.textMuted}>{scanningFile() || "…"}</text>
-                  <text fg={theme.textMuted}>Scanning {scanCount()} / {scanTotal()}</text>
-                  <Show when={logLines().length > 0}>
-                    <box height={1} />
-                    <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
-                  </Show>
-                </Show>
-                <Show when={scanDone()}>
-                  <text fg={theme.textMuted}>Select file types to import</text>
-                  <ImportOptionsSelector
-                    theme={theme}
-                    options={importOptions()}
-                    selectedIndex={selectedImport()}
-                    viewportHeight={dimensions().height}
-                    formatDetail={(item) => formatBytes(item.bytes)}
-                    onSelectIndex={setSelectedImport}
-                    onToggleAll={toggleAllImports}
-                    onToggleItem={toggleImport}
-                  />
-                  <text fg={theme.textMuted}>↑↓ move · space toggle · a toggle all · enter continue</text>
-                </Show>
-              </Show>
-              <Show when={step() === "direct" || step() === "markitdown" || step() === "ocr"}>
-                <Show when={!processingDone()}>
-                  <ProgressBar
-                    theme={theme}
-                    current={progCurrent()}
-                    total={progTotal()}
-                    status={processingStatus()}
-                    fileName={processingFile()}
-                    files={progressFiles()}
-                    barWidth={20}
-                    viewportHeight={dimensions().height}
-                  />
-                </Show>
-              </Show>
-            </WizardPanel>
-            <WizardActionRow>
-              <WizardActionButton theme={theme} label="Back" onPress={handleBackPress} />
-              <box flexGrow={1} />
-              <Show when={step() === "tools" && toolActionLabel() !== "" && !toolChecks().some((t) => t.status === "checking")}>
-                <WizardActionButton
-                  theme={theme}
-                  label={toolActionLabel()}
-                  primary={toolAllReady()}
-                  onPress={handleToolAction}
-                />
-              </Show>
-              <Show when={step() === "scan" && scanDone()}>
-                <WizardActionButton
-                  theme={theme}
-                  label="Continue"
-                  primary
-                  onPress={() => void continueFromScan()}
-                />
-              </Show>
-              <Show when={step() === "direct" || step() === "markitdown" || step() === "ocr"}>
-                <Show when={waitingForGate()}>
-                  <WizardGateButton theme={theme} label={gateLabel()} action={() => gateAction()()} />
-                </Show>
-              </Show>
-            </WizardActionRow>
-          </Show>
+  const viewProps = {
+    theme, dimensions, stopping, waveString, wavePulse, spinIdx, stopHint, hoveredButton, setHoveredButton,
+    busy, step, stepIndex, totalSteps, sourceIsCloud, sourcePaths, focusedSource, setFocusedSource, registerSourceInput,
+    pathSnapshot, pathValidities, blurSourceInputs, focusSourceEntry, removeSourcePath, hasValidPaths, leavePathStep,
+    continueFromPath, toolChecks, logLines, scanDone, scanningFile, scanCount, scanTotal, importOptions, selectedImport,
+    formatBytes, setSelectedImport, toggleAllImports, toggleImport, processingDone, progCurrent, progTotal, processingStatus,
+    processingFile, progressFiles, toolActionLabel, toolAllReady, handleBackPress, handleToolAction, continueFromScan,
+    waitingForGate, gateLabel, gateAction, importOutcomeFg, importOutcome, importOutcomeHeading, importSummary, failedCount,
+    shouldShowImportDetailLogHint, formatImportDetailLogHint, finish,
+    visionError, visionPaused,
+    onVisionRetry: () => bg.resolvePause("retry"),
+    onVisionSkip: () => bg.resolvePause("skip"),
+    onOpenMonitor: openMonitor,
+    backgroundAvailable, onBackground: detachToBackground,
+  }
 
-          <Show when={step() === "done" || step() === "error"}>
-            <WizardPanel theme={theme}>
-              <Show when={step() === "done"}>
-                <box gap={1}>
-                  <text fg={importOutcomeFg()}>{importOutcomeHeading(importOutcome())}</text>
-                  <text fg={theme.textMuted}>Import finished. Review the summary and file list below.</text>
-                  <Show when={progressFiles().length > 0}>
-                    <ProgressBar
-                      theme={theme}
-                      current={progCurrent()}
-                      total={progTotal()}
-                      status={processingStatus()}
-                      fileName={processingFile()}
-                      files={progressFiles()}
-                      barWidth={20}
-                      viewportHeight={dimensions().height}
-                    />
-                  </Show>
-                  <Show when={importSummary() !== ""}>
-                    <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.textMuted}>{importSummary()}</text>
-                    </box>
-                  </Show>
-                  <Show when={failedCount() > 0}>
-                    <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — saved to raw/_failed_files/ for review</text>
-                    </box>
-                  </Show>
-                  <Show when={shouldShowImportDetailLogHint(importOutcome())}>
-                    <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.textMuted}>{formatImportDetailLogHint()}</text>
-                    </box>
-                  </Show>
-                </box>
-              </Show>
-              <Show when={step() === "error"}>
-                <text fg={theme.error}>
-                  <span style={{ bold: true }}>Spinosa could not complete this step.</span>
-                </text>
-                <Show when={logLines().length > 0}>
-                  <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
-                </Show>
-              </Show>
-            </WizardPanel>
-            <WizardActionRow>
-              <Show when={step() === "done"}>
-                <WizardActionButton
-                  theme={theme}
-                  label="Back to workspace"
-                  primary
-                  onPress={finish}
-                />
-              </Show>
-              <Show when={step() === "error"}>
-                <WizardActionButton theme={theme} label="Back" onPress={handleBackPress} />
-                <box flexGrow={1} />
-                <WizardActionButton theme={theme} label="Retry" primary onPress={() => void continueFromPath()} />
-              </Show>
-            </WizardActionRow>
-          </Show>
-        </box>
-        <box flexGrow={1} minHeight={0} />
-      </box>
-    </CenteredColumn>
-    </Show>
-  )
+  return <AddFilesView {...viewProps} />
+
 }

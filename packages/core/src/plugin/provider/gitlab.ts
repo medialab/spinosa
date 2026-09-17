@@ -1,8 +1,21 @@
 import os from "os"
 import { InstallationVersion } from "../../installation/version"
 import { Effect } from "effect"
-import { define } from "../internal"
+import { define } from "../define"
 import { ProviderV2 } from "../../provider"
+import type { GitLabProvider } from "gitlab-ai-provider"
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null) return {}
+  const entries = Object.entries(value)
+  return entries.every(([, item]) => typeof item === "string") ? Object.fromEntries(entries) : {}
+}
+
+function booleanRecord(value: unknown): Record<string, boolean> {
+  if (typeof value !== "object" || value === null) return {}
+  const entries = Object.entries(value)
+  return entries.every(([, item]) => typeof item === "boolean") ? Object.fromEntries(entries) : {}
+}
 
 export const GitLabPlugin = define({
   id: "gitlab",
@@ -11,6 +24,7 @@ export const GitLabPlugin = define({
       Effect.fn(function* (evt) {
         if (evt.package !== "gitlab-ai-provider") return
         const mod = yield* Effect.promise(() => import("gitlab-ai-provider"))
+        const options = evt.options as Record<string, unknown>
         evt.sdk = mod.createGitLab({
           ...evt.options,
           instanceUrl:
@@ -21,12 +35,12 @@ export const GitLabPlugin = define({
           aiGatewayHeaders: {
             "User-Agent": `spinosa/${InstallationVersion} gitlab-ai-provider/${mod.VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
             "anthropic-beta": "context-1m-2025-08-07",
-            ...(evt.options as any).aiGatewayHeaders,
+            ...stringRecord(options.aiGatewayHeaders),
           },
           featureFlags: {
             duo_agent_platform_agentic_chat: true,
             duo_agent_platform: true,
-            ...(evt.options as any).featureFlags,
+            ...booleanRecord(options.featureFlags),
           },
         })
       }),
@@ -34,9 +48,10 @@ export const GitLabPlugin = define({
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== ProviderV2.ID.gitlab) return
-        const sdk = evt.sdk as any
+        const sdk = evt.sdk as GitLabProvider
+        const options = evt.options as Record<string, unknown>
         const featureFlags =
-          typeof evt.options.featureFlags === "object" && evt.options.featureFlags ? evt.options.featureFlags : {}
+          booleanRecord(options.featureFlags)
         if (evt.model.api.id.startsWith("duo-workflow-")) {
           const gitlab = yield* Effect.promise(() => import("gitlab-ai-provider")).pipe(Effect.orDie)
           const workflowRef =
@@ -57,7 +72,7 @@ export const GitLabPlugin = define({
           return
         }
         evt.language = sdk.agenticChat(evt.model.api.id, {
-          aiGatewayHeaders: evt.options.aiGatewayHeaders,
+          aiGatewayHeaders: stringRecord(options.aiGatewayHeaders),
           featureFlags,
         })
       }),

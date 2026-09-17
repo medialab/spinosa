@@ -16,6 +16,7 @@ export function truthy(key: string, source: NodeJS.ProcessEnv = process.env) {
 
 const copy = value("SPINOSA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT")
 const fff = value("SPINOSA_DISABLE_FFF")
+let modelsFetchDisabledOverride: boolean | undefined
 
 function enabledByExperimental(key: string) {
   return value(key) === undefined ? truthy("SPINOSA_EXPERIMENTAL") : truthy(key)
@@ -37,7 +38,13 @@ export const Flag = {
   SPINOSA_DISABLE_TERMINAL_TITLE: truthy("SPINOSA_DISABLE_TERMINAL_TITLE"),
   SPINOSA_SHOW_TTFD: truthy("SPINOSA_SHOW_TTFD"),
   SPINOSA_DISABLE_AUTOCOMPACT: truthy("SPINOSA_DISABLE_AUTOCOMPACT"),
-  SPINOSA_DISABLE_MODELS_FETCH: truthy("SPINOSA_DISABLE_MODELS_FETCH"),
+  // Access-time: smoke/workers set the env after this module loads; tests assign the flag.
+  get SPINOSA_DISABLE_MODELS_FETCH() {
+    return modelsFetchDisabledOverride ?? truthy("SPINOSA_DISABLE_MODELS_FETCH")
+  },
+  set SPINOSA_DISABLE_MODELS_FETCH(value: boolean | undefined) {
+    modelsFetchDisabledOverride = value
+  },
   SPINOSA_DISABLE_MOUSE: truthy("SPINOSA_DISABLE_MOUSE"),
   SPINOSA_FAKE_VCS: value("SPINOSA_FAKE_VCS"),
   SPINOSA_SERVER_PASSWORD: value("SPINOSA_SERVER_PASSWORD"),

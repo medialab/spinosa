@@ -33,7 +33,7 @@ Route model: `global | workspace | onboarding | add-files | visualizer | plugin`
 
 **Framework source:** `scripts/link-framework.sh` symlinks `../spinosa-main` → `framework/`. CLI bridge resolves `.bin/spinosa` from that tree.
 
-**Layout:** Main content capped at **80 columns** (~800px), centered. Session sidebar (42 cols) sits outside the cap.
+**Layout:** Session transcript follows `transcriptBudget()` (`src/util/layout.ts`): main text first (≥80 center cells), annotation rails only at ≥124 terminal columns; classic single-column below that. Session sidebar (42 cols) sits outside the cap.
 
 CLI flags `--session`, `--continue`, `--prompt` skip the picker.
 

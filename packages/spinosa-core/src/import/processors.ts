@@ -2,13 +2,16 @@ import type { ChildProcess } from "node:child_process"
 import type { ProgressEmitter } from "../progress/progress"
 import {
   processDirectCopy,
+  processImageCopy,
   processMarkitdown,
   processOcr,
+  processPdf,
   type PhaseResult,
   type ClassifiedEntry,
 } from "./pipeline"
+import { processVisionInProcess } from "./vision-transcribe"
 
-export type ImportProcessorId = "direct" | "markitdown" | "ocr"
+export type ImportProcessorId = "direct" | "copy" | "markitdown" | "pdf" | "vision" | "ocr"
 
 export type ImportProcessorContext = {
   files: ClassifiedEntry[]
@@ -23,6 +26,9 @@ export type ImportProcessorContext = {
   onRetry?: (attempt: number, reason: string) => void
   onRename?: (original: string, renamed: string) => void
   overwrite?: boolean
+  ocrModelId?: string | (() => string)
+  onVisionFailure?: (rel: string, modelId: string, error: string) => Promise<"retry" | "skip" | "abort">
+  transcribeVision?: import("./vision-transcribe").VisionTranscribe
 }
 
 export type ImportProcessor = {
@@ -51,6 +57,7 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
         ctx.shouldAbort,
         ctx.onRetry,
         ctx.onRename,
+        ctx.logsDir,
       ),
   },
   markitdown: {
@@ -61,6 +68,44 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
       processMarkitdown(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
         onChild: ctx.onChild,
         signal: ctx.signal,
+        ocrModelId: ctx.ocrModelId,
+      }),
+  },
+  copy: {
+    id: "copy",
+    label: "Copy as-is",
+    phase: "copy",
+    run: async (ctx) =>
+      processImageCopy(
+        ctx.files,
+        ctx.prog,
+        ctx.onLog,
+        ctx.overwrite,
+        ctx.shouldAbort,
+        ctx.logsDir,
+      ),
+  },
+  vision: {
+    id: "vision",
+    label: "Vision",
+    phase: "Vision",
+    run: async (ctx) =>
+      processVisionInProcess(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
+        visionModelId: ctx.ocrModelId,
+        transcribeVision: ctx.transcribeVision,
+        signal: ctx.signal,
+        onVisionFailure: ctx.onVisionFailure,
+        onChild: ctx.onChild,
+      }),
+  },
+  pdf: {
+    id: "pdf",
+    label: "PDF",
+    phase: "PDF",
+    run: async (ctx) =>
+      processPdf(ctx.files, ctx.logsDir, ctx.prog, ctx.onLog, ctx.shouldAbort, {
+        signal: ctx.signal,
+        ocrModelId: ctx.ocrModelId,
       }),
   },
   ocr: {
@@ -76,7 +121,7 @@ export const importProcessors: Record<ImportProcessorId, ImportProcessor> = {
 }
 
 export function listImportProcessors(): ImportProcessor[] {
-  return [importProcessors.direct, importProcessors.markitdown, importProcessors.ocr]
+  return [importProcessors.direct, importProcessors.copy, importProcessors.markitdown, importProcessors.pdf, importProcessors.vision, importProcessors.ocr]
 }
 
 export async function runImportProcessor(

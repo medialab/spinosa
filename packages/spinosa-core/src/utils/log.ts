@@ -1,12 +1,11 @@
 import { appendFileSync, chmodSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs"
-import { homedir } from "node:os"
+import { productLogDir, sanitizeLogText } from "@spinosa/kernel-core/observability/sanitize-log"
 import path from "node:path"
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024
 
 function logFile(): string {
-  const home = process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
-  const file = path.join(home, "logs", "spinosa.log")
+  const file = path.join(productLogDir(), "spinosa.log")
   mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   chmodSync(path.dirname(file), 0o700)
   return file
@@ -20,22 +19,14 @@ function rotateLog(file: string): void {
 }
 
 function isoNow(): string {
-  return new Date().toISOString().replace("Z", "Z")
-}
-
-function sanitizeLogMessage(message: string): string {
-  return message
-    .replaceAll(homedir(), "~")
-    .replace(/\b(workspacePath|sourcePath|corpusPath|frameworkRoot)=([^\s]+)/g, (_match, key: string, value: string) => `${key}=${path.basename(value)}`)
-    .replace(/\b(authorization|cookie|password|secret|token|api[_-]?key)=([^\s]+)/gi, "$1=[REDACTED]")
-    .replace(/\b(Basic|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
+  return new Date().toISOString()
 }
 
 export function spinosaLog(level: "INFO" | "WARN" | "ERROR", component: string, message: string): void {
   try {
     const file = logFile()
     rotateLog(file)
-    const safeMessage = sanitizeLogMessage(message)
+    const safeMessage = sanitizeLogText(message)
     const line = `${isoNow()} level=${level} component=${component} ${safeMessage}\n`
     appendFileSync(file, line, { mode: 0o600 })
     chmodSync(file, 0o600)

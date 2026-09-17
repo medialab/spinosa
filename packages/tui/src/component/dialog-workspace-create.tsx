@@ -168,8 +168,9 @@ export async function confirmWorkspaceFileChanges(input: {
   sourceWorkspaceID?: string
 }) {
   const status = await input.sdk.client.vcs.status({ workspace: input.sourceWorkspaceID }).catch(() => undefined)
-  const fileChangeChoice = status?.data?.length
-    ? await DialogWorkspaceFileChanges.show(input.dialog, status.data)
+  const files = status?.data?._tag === "available" ? status.data.files : []
+  const fileChangeChoice = files.length
+    ? await DialogWorkspaceFileChanges.show(input.dialog, files)
     : "no"
   if (!fileChangeChoice) return
   return fileChangeChoice === "yes"

@@ -5,18 +5,22 @@ import { createStore } from "solid-js/store"
 import { onMount, Show } from "solid-js"
 import { useBindings } from "../keymap"
 
+export type ExportFormat = "md" | "txt" | "json"
+
 export type DialogExportOptionsProps = {
   defaultFilename: string
   defaultThinking: boolean
   defaultToolDetails: boolean
   defaultAssistantMetadata: boolean
   defaultOpenWithoutSaving: boolean
+  defaultFormat?: ExportFormat
   onConfirm?: (options: {
     filename: string
     thinking: boolean
     toolDetails: boolean
     assistantMetadata: boolean
     openWithoutSaving: boolean
+    format: ExportFormat
   }) => void
   onCancel?: () => void
 }
@@ -30,7 +34,8 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
     toolDetails: props.defaultToolDetails,
     assistantMetadata: props.defaultAssistantMetadata,
     openWithoutSaving: props.defaultOpenWithoutSaving,
-    active: "filename" as "filename" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving",
+    format: (props.defaultFormat ?? "md") as ExportFormat,
+    active: "filename" as "filename" | "format" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving",
   })
 
   useBindings(() => ({
@@ -40,8 +45,9 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
         desc: "Next export option",
         group: "Dialog",
         cmd: () => {
-          const order: Array<"filename" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving"> = [
+          const order: Array<"filename" | "format" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving"> = [
             "filename",
+            "format",
             "thinking",
             "toolDetails",
             "assistantMetadata",
@@ -55,18 +61,45 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
     ],
   }))
 
+  const cycleFormat = () => {
+    const order: ExportFormat[] = ["md", "txt", "json"]
+    const idx = order.indexOf(store.format)
+    setStore("format", order[(idx + 1) % order.length]!)
+  }
+
   useBindings(() => ({
     enabled: store.active !== "filename",
     bindings: [
       {
         key: "space",
-        desc: "Toggle export option",
+        desc: "Toggle / cycle export option",
         group: "Dialog",
         cmd: () => {
+          if (store.active === "format") cycleFormat()
           if (store.active === "thinking") setStore("thinking", !store.thinking)
           if (store.active === "toolDetails") setStore("toolDetails", !store.toolDetails)
           if (store.active === "assistantMetadata") setStore("assistantMetadata", !store.assistantMetadata)
           if (store.active === "openWithoutSaving") setStore("openWithoutSaving", !store.openWithoutSaving)
+        },
+      },
+      {
+        key: "left",
+        desc: "Previous format",
+        group: "Dialog",
+        cmd: () => {
+          if (store.active !== "format") return false
+          const order: ExportFormat[] = ["md", "txt", "json"]
+          const idx = order.indexOf(store.format)
+          setStore("format", order[(idx - 1 + order.length) % order.length]!)
+        },
+      },
+      {
+        key: "right",
+        desc: "Next format",
+        group: "Dialog",
+        cmd: () => {
+          if (store.active !== "format") return false
+          cycleFormat()
         },
       },
     ],
@@ -103,6 +136,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
               toolDetails: store.toolDetails,
               assistantMetadata: store.assistantMetadata,
               openWithoutSaving: store.openWithoutSaving,
+              format: store.format,
             })
           }}
           height={3}
@@ -119,6 +153,25 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
         />
       </box>
       <box flexDirection="column">
+        <box
+          flexDirection="row"
+          gap={2}
+          paddingLeft={1}
+          backgroundColor={store.active === "format" ? theme.backgroundElement : undefined}
+          onMouseUp={() => setStore("active", "format")}
+        >
+          <text fg={store.active === "format" ? theme.primary : theme.textMuted}>Format:</text>
+          <text fg={store.format === "md" ? theme.primary : theme.textMuted} onMouseUp={cycleFormat}>
+            {store.format === "md" ? "● md" : "○ md"}
+          </text>
+          <text fg={store.format === "txt" ? theme.primary : theme.textMuted} onMouseUp={() => setStore("format", "txt")}>
+            {store.format === "txt" ? "● txt" : "○ txt"}
+          </text>
+          <text fg={store.format === "json" ? theme.primary : theme.textMuted} onMouseUp={() => setStore("format", "json")}>
+            {store.format === "json" ? "● json" : "○ json"}
+          </text>
+          <text fg={theme.textMuted}> (space/←→)</text>
+        </box>
         <box
           flexDirection="row"
           gap={2}
@@ -191,6 +244,7 @@ DialogExportOptions.show = (
   defaultToolDetails: boolean,
   defaultAssistantMetadata: boolean,
   defaultOpenWithoutSaving: boolean,
+  defaultFormat: ExportFormat = "md",
 ) => {
   return new Promise<{
     filename: string
@@ -198,6 +252,7 @@ DialogExportOptions.show = (
     toolDetails: boolean
     assistantMetadata: boolean
     openWithoutSaving: boolean
+    format: ExportFormat
   } | null>((resolve) => {
     dialog.replace(
       () => (
@@ -207,6 +262,7 @@ DialogExportOptions.show = (
           defaultToolDetails={defaultToolDetails}
           defaultAssistantMetadata={defaultAssistantMetadata}
           defaultOpenWithoutSaving={defaultOpenWithoutSaving}
+          defaultFormat={defaultFormat}
           onConfirm={(options) => resolve(options)}
           onCancel={() => resolve(null)}
         />

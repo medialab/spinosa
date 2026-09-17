@@ -123,12 +123,12 @@ function probeSkiaPaths(): Record<string, unknown> {
 
 function errDetail(e: unknown): Record<string, unknown> {
   if (!(e instanceof Error)) return { error: String(e) }
-  const any = e as Error & { cause?: unknown; code?: string }
+  const details = e as Error & { cause?: unknown; code?: string }
   return {
     error: e.message,
     name: e.name,
-    code: any.code,
-    cause: any.cause instanceof Error ? any.cause.message : any.cause ? String(any.cause) : undefined,
+    code: details.code,
+    cause: details.cause instanceof Error ? details.cause.message : details.cause ? String(details.cause) : undefined,
     stack: e.stack?.split("\n").slice(0, 6),
   }
 }

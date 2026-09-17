@@ -1,11 +1,10 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import * as readline from "node:readline"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { homedir, tmpdir as osTmpdir } from "node:os"
+import { tmpdir as osTmpdir } from "node:os"
 import path from "node:path"
 import {
-  readAutoUpgrade,
   type ReleaseChannel,
   installUrlForChannel,
   resolveReleaseVersionForChannel,
@@ -18,6 +17,7 @@ import { ensureGlobalMetadata, discoverRegisteredWorkspaces } from "../workspace
 import { readWorkspaceMeta } from "../workspace/meta"
 import { writeTextAtomic } from "../utils/fs"
 import { spinosaLogInfo } from "../utils/log"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 const FETCH_TIMEOUT_MS = 15_000
 export interface UpgradeOptions {
@@ -29,6 +29,7 @@ export interface UpgradeOptions {
   check?: boolean
   onPhase?: (phase: string, detail: string) => void
   suppressInstallOutput?: boolean
+  confirm?: (question: string) => Promise<boolean>
 }
 
 export interface UpgradeResult {
@@ -52,13 +53,24 @@ interface VersionCache {
   version: string
 }
 
-const VERSION_CACHE_TTL_SEC = 3600
+const VERSION_CACHE_TTL_SEC: Record<string, number> = {
+  beta: 300,
+  stable: 3600,
+}
+
+function versionCacheTtlSec(channel: string): number {
+  return VERSION_CACHE_TTL_SEC[channel] ?? 600
+}
 
 export function verifyInstallerChecksum(installerScript: string, checksums: string): boolean {
   const expected = checksums
     .split(/\r?\n/)
     .map((line) => line.trim().split(/\s+/, 2))
-    .find((parts) => parts.length === 2 && path.basename(parts[1]!) === "install.sh")?.[0]
+    .find((parts) => {
+      if (parts.length !== 2) return false
+      const raw = parts[1]!.trim().replace(/^\*+/, "")
+      return path.basename(raw) === "install.sh"
+    })?.[0]
   if (!expected || !/^[a-f0-9]{64}$/i.test(expected)) return false
   const actual = createHash("sha256").update(installerScript).digest("hex")
   return actual.toLowerCase() === expected.toLowerCase()
@@ -68,7 +80,7 @@ const SPINOSA_RELEASE_REPO: string =
   process.env.SPINOSA_RELEASE_REPO ?? "medialab/spinosa"
 
 function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? `${homedir()}/.spinosa`
+  return productHomeDir()
 }
 
 function metadataDir(): string {
@@ -93,8 +105,12 @@ export function installedUpgradeVersion(version: string, home = spinosaHome()): 
     })()
     if (fromMeta === version) return fromMeta
 
-    const probe = spawnSync(binaryPath, ["version", "--json"], { encoding: "utf-8" })
-    if (probe.status === 0) {
+    const probe = spawnSync(binaryPath, ["version", "--json"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    })
+    if (probe.status === 0 && !probe.error) {
       try {
         const parsed = JSON.parse(probe.stdout) as { version?: string; data?: { version?: string } }
         const reported = parsed.version ?? parsed.data?.version ?? ""
@@ -124,8 +140,12 @@ export function readEffectiveInstalledVersion(): string {
     })()
     if (fromMeta) return fromMeta
 
-    const probe = spawnSync(binaryPath, ["version", "--json"], { encoding: "utf-8" })
-    if (probe.status === 0) {
+    const probe = spawnSync(binaryPath, ["version", "--json"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    })
+    if (probe.status === 0 && !probe.error) {
       try {
         const parsed = JSON.parse(probe.stdout) as { version?: string; data?: { version?: string } }
         const reported = parsed.version ?? parsed.data?.version ?? ""
@@ -281,19 +301,38 @@ export async function upgradeFramework(
     options.onPhase?.("release_notes", "Fetching release notes")
     const releaseData = await fetchReleaseNotes(resolvedVersion)
     if (releaseData) {
-      options.onPhase?.("release_notes", `Release: ${releaseData}`)
+      const [tag, published, body] = releaseData.split("|")
+      const date = (published ?? "").split(" ")[0] ?? published
+      options.onPhase?.("release_notes", `Release: ${tag || `v${resolvedVersion}`} — ${date || "—"}`)
+      if (body) {
+        const compare = body.match(/https:\/\/github\.com\/medialab\/spinosa\/compare\/[^\s)]+/)?.[0]
+        if (compare) options.onPhase?.("release_notes", compare)
+        else {
+          const firstLine = body
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.length > 0 && !l.startsWith("|"))
+          if (firstLine) options.onPhase?.("release_notes", firstLine.slice(0, 120))
+        }
+      }
     } else {
       options.onPhase?.("release_notes", "Could not fetch release notes")
     }
     options.onPhase?.("confirm", "Awaiting confirmation")
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    const answer = await new Promise<string>((resolve) => {
-      rl.question(`Upgrade to v${resolvedVersion}? [Y/n] `, (answer) => {
-        rl.close()
-        resolve(answer.trim().toLowerCase())
+    let confirmed: boolean
+    if (options.confirm) {
+      confirmed = await options.confirm(`Upgrade to v${resolvedVersion}?`)
+    } else {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`Upgrade to v${resolvedVersion}? [Y/n] `, (answer) => {
+          rl.close()
+          resolve(answer.trim().toLowerCase())
+        })
       })
-    })
-    if (answer === "n" || answer === "no") {
+      confirmed = !(answer === "n" || answer === "no")
+    }
+    if (!confirmed) {
       options.onPhase?.("confirm", "Upgrade cancelled")
       return {
         success: false,
@@ -321,24 +360,30 @@ export async function upgradeFramework(
   }
   const installerPath = path.join(tmpdir, "install-spinosa.sh")
 
-  let response: Response
+  let installerResponse: Response | undefined
+  let checksumResponse: Response | undefined
   try {
     const checksumUrl = new URL("checksums.txt", installerUrl).toString()
-    const [installerResponse, checksumResponse] = await Promise.all([
+    const results = await Promise.all([
       fetch(installerUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }),
       fetch(checksumUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }),
     ])
-    response = installerResponse
-    if (!response.ok || !checksumResponse.ok) {
+    installerResponse = results[0]
+    checksumResponse = results[1]
+    if (!installerResponse.ok || !checksumResponse.ok) {
       rmSync(tmpdir, { recursive: true, force: true })
+      const instStatus = installerResponse ? String(installerResponse.status) : "no response"
+      const sumStatus = checksumResponse ? String(checksumResponse.status) : "no response"
+      const instUrl = installerUrl
+      const sumUrl = checksumUrl
       return {
         success: false,
         previousVersion: effectiveInstalled || undefined,
         workspaceUpgradesNeeded: [],
-        error: `Failed to download installer or checksums (HTTP ${response.status}/${checksumResponse.status}) from ${installerUrl}`,
+        error: `Failed to download installer or checksums (HTTP ${instStatus}/${sumStatus}) from ${instUrl} (checksums ${sumUrl})`,
       }
     }
-    const installerScript = await response.text()
+    const installerScript = await installerResponse.text()
     const checksums = await checksumResponse.text()
     if (!verifyInstallerChecksum(installerScript, checksums)) {
       rmSync(tmpdir, { recursive: true, force: true })
@@ -362,27 +407,21 @@ export async function upgradeFramework(
 
   options.onPhase?.("install", "Running installer...")
 
-  const upgradeArgs = ["--upgrade", "--version", resolvedVersion, "--no-launch"]
+  const upgradeArgs = ["--upgrade", "--version", resolvedVersion, "--no-launch", "--from-upgrade"]
   if (options.yes) upgradeArgs.push("--yes")
   if (options.reinstall) upgradeArgs.push("--reinstall")
 
-  const result = spawnSync("bash", [installerPath, ...upgradeArgs], {
-    stdio: options.suppressInstallOutput ? ["ignore", "pipe", "pipe"] : "inherit",
-  })
-  if (result.status !== 0) {
+  const installerResult = await runInstallerWithTimeout(
+    installerPath,
+    upgradeArgs,
+    options,
+  )
+  if (installerResult.status !== 0) {
     rmSync(tmpdir, { recursive: true, force: true })
-    // With stdio "inherit", stderr is null; with "pipe" it is Buffer. Avoid
-    // typeof narrowing that collapses to `never` under the union spawn options.
-    const rawStderr = result.stderr as Buffer | string | null | undefined
-    const stderr =
-      rawStderr == null
-        ? ""
-        : Buffer.isBuffer(rawStderr)
-          ? rawStderr.toString("utf8").trim()
-          : String(rawStderr).trim()
-    const detail = stderr
-      || (result.error ? result.error.message : "")
-      || `installer exited with status ${result.status ?? "unknown"}`
+    const detail =
+      installerResult.stderr.trim() ||
+      installerResult.error?.message ||
+      `installer exited with status ${installerResult.status ?? "unknown"}${installerResult.timedOut ? " (timed out)" : ""}`
     return {
       success: false,
       previousVersion: effectiveInstalled || undefined,
@@ -441,14 +480,88 @@ export async function upgradeFramework(
     workspaceUpgradesNeeded: needsUpdate,
   }
 }
+
+const INSTALLER_TIMEOUT_MS = 900_000
+
+async function runInstallerWithTimeout(
+  installerPath: string,
+  upgradeArgs: string[],
+  options: UpgradeOptions,
+): Promise<{ status: number | null; stderr: string; error?: Error; timedOut?: boolean }> {
+  return new Promise((resolve) => {
+    const suppress = !!options.suppressInstallOutput
+    let stderr = ""
+    let timedOut = false
+    const child = spawn("bash", [installerPath, ...upgradeArgs], {
+      stdio: suppress ? ["ignore", "pipe", "pipe"] : "inherit",
+      detached: true,
+      env: { ...process.env, SPINOSA_UPGRADE: "1" },
+    })
+
+    let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+      timedOut = true
+      try {
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, "SIGTERM")
+          } catch {
+            child.kill("SIGTERM")
+          }
+        } else {
+          child.kill("SIGTERM")
+        }
+      } catch {}
+      const killTimer = setTimeout(() => {
+        try {
+          if (child.pid) {
+            try {
+              process.kill(-child.pid, "SIGKILL")
+            } catch {
+              child.kill("SIGKILL")
+            }
+          } else {
+            child.kill("SIGKILL")
+          }
+        } catch {}
+      }, 3000)
+      // Ensure killTimer doesn't keep process alive
+      if (killTimer && typeof (killTimer as unknown as { unref?: () => void }).unref === "function") {
+        ;(killTimer as unknown as { unref: () => void }).unref!()
+      }
+    }, INSTALLER_TIMEOUT_MS)
+    if (timer && typeof (timer as unknown as { unref?: () => void }).unref === "function") {
+      ;(timer as unknown as { unref: () => void }).unref!()
+    }
+
+    if (suppress && child.stderr) {
+      child.stderr.on("data", (chunk: Buffer) => {
+        const text = chunk.toString("utf-8")
+        stderr += text
+        options.onPhase?.("install_output", text)
+      })
+    }
+    if (suppress && child.stdout) {
+      child.stdout.on("data", (chunk: Buffer) => {
+        options.onPhase?.("install_output", chunk.toString("utf-8"))
+      })
+    }
+
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer)
+      resolve({ status: 1, stderr, error: err, timedOut })
+    })
+    child.on("close", (code) => {
+      if (timer) clearTimeout(timer)
+      if (timedOut && stderr.trim().length === 0) {
+        stderr = `Installer timed out after ${INSTALLER_TIMEOUT_MS / 1000}s`
+      }
+      resolve({ status: code, stderr, timedOut })
+    })
+  })
+}
 export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   spinosaLogInfo("upgrade", "checkUpgradeAvailable start")
   if (process.env.SPINOSA_NO_UPGRADE_CHECK === "1") {
-    return { available: false }
-  }
-
-  const autoUpgrade = await readAutoUpgrade()
-  if (!autoUpgrade) {
     return { available: false }
   }
 
@@ -472,7 +585,7 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   const now = Math.floor(Date.now() / 1000)
 
   const cache = readVersionCache(channel)
-  if (cache?.version && now - cache.timestamp < VERSION_CACHE_TTL_SEC) {
+  if (cache?.version && now - cache.timestamp < versionCacheTtlSec(channel)) {
     const latestCmp = compareFrameworkVersions(cache.version, installedVersion)
     const available = latestCmp !== undefined && latestCmp > 0
     return {

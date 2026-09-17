@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -161,11 +161,14 @@ describe("service fixture workspace", () => {
     }
   })
 
-  test("deleteWorkspace removes the folder and registry entry", async () => {
+  test("deleteWorkspace moves the folder to trash and removes the registry entry", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "spinosa-tui-delete-"))
     const workspace = path.join(root, "workspace")
     const originalHome = process.env.SPINOSA_HOME
     process.env.SPINOSA_HOME = path.join(root, "home")
+    // Trash home override: Bun's homedir() ignores runtime $HOME changes,
+    // so the override travels as an explicit option instead.
+    const trashHome = path.join(root, "userhome")
     mkdirSync(path.join(workspace, ".spinosa"), { recursive: true })
 
     try {
@@ -189,8 +192,10 @@ describe("service fixture workspace", () => {
         }, null, 2)}\n`,
       )
 
-      await deleteWorkspace(workspace)
+      await deleteWorkspace(workspace, { home: trashHome })
       expect(existsSync(workspace)).toBe(false)
+      const trashed = readdirSync(path.join(trashHome, ".Trash"))
+      expect(trashed.some((name) => name.startsWith("workspace-"))).toBe(true)
       expect((await listRegisteredWorkspaces()).some((entry) => entry.path === workspace)).toBe(false)
       await expect(deleteWorkspace(homedir())).rejects.toThrow(/protected path|Not a Spinosa workspace/)
     } finally {

@@ -59,7 +59,7 @@ const make = (options: Config) =>
         // @ts-ignore bun-types missing safeIntegers method, fixed in https://github.com/oven-sh/bun/pull/26627
         statement.safeIntegers(Context.get(fiber.context, Client.SafeIntegers))
         try {
-          return Effect.succeed((statement.all(...(params as any)) ?? []) as Array<Record<string, unknown>>)
+          return Effect.succeed((statement.all(...(params as Parameters<typeof statement.all>)) ?? []) as Array<Record<string, unknown>>)
         } catch (cause) {
           return Effect.fail(
             new SqlError({
@@ -75,7 +75,7 @@ const make = (options: Config) =>
         // @ts-ignore bun-types missing safeIntegers method, fixed in https://github.com/oven-sh/bun/pull/26627
         statement.safeIntegers(Context.get(fiber.context, Client.SafeIntegers))
         try {
-          return Effect.succeed((statement.values(...(params as any)) ?? []) as Array<unknown[]>)
+          return Effect.succeed((statement.values(...(params as Parameters<typeof statement.values>)) ?? []) as Array<unknown[]>)
         } catch (cause) {
           return Effect.fail(
             new SqlError({

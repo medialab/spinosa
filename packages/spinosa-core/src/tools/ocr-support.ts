@@ -1,9 +1,10 @@
 /**
- * Product OCR (ppu-paddle-ocr / onnxruntime) platform gate.
+ * Product OCR platform gate — no local OCR engine ships.
  *
- * `spinosa-linux-x64` Bun `--compile` hits `ERR_DLOPEN_FAILED` on
- * `libonnxruntime.so.1` when OCR natives load. OCR is explicitly unsupported
- * there — not a soft probe failure. Darwin and linux-arm64 keep OCR.
+ * Text extraction is pdf.js (digital PDFs) + vision-model transcription
+ * (scanned PDFs/images, user-selected provider) + copy-as-is. There is no
+ * bundled OCR binary, so the platform gate reports unsupported with an
+ * honest reason instead of failing closed on missing assets.
  */
 
 export type OcrPlatformHints = {
@@ -11,18 +12,12 @@ export type OcrPlatformHints = {
   arch?: string
 }
 
-/** True when this OS/arch is allowed to load OCR/onnx natives. */
+/** Local OCR is removed — always false so doctor/TUI never wait on it. */
 export function isOcrPlatformSupported(hints: OcrPlatformHints = {}): boolean {
-  const platform = hints.platform ?? process.platform
-  const arch = hints.arch ?? process.arch
-  if (platform === "linux" && arch === "x64") return false
-  return true
+  return false
 }
 
-/** Human reason when OCR must not load; undefined when supported. */
+/** Human reason when OCR must not load; always defined post-removal. */
 export function ocrUnsupportedReason(hints: OcrPlatformHints = {}): string | undefined {
-  if (isOcrPlatformSupported(hints)) return undefined
-  const platform = hints.platform ?? process.platform
-  const arch = hints.arch ?? process.arch
-  return `OCR is unsupported on ${platform}-${arch} in this build (onnxruntime native load is not available)`
+  return "Local OCR removed — pick a vision model to transcribe scans, or copy files as-is (digital PDFs still extract via pdf.js)"
 }

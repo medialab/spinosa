@@ -2,7 +2,7 @@ import { describe, expect } from "bun:test"
 import { SessionV1 } from "@spinosa/kernel-core/v1/session"
 import { EventV2 } from "@spinosa/kernel-core/event"
 import { SessionProjector } from "@spinosa/kernel-core/session/projector"
-import { Deferred, Effect, Exit, Layer } from "effect"
+import { Deferred, Effect, Exit, Layer, Option } from "effect"
 import { Session as SessionNs } from "@/session/session"
 import { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, type SessionID } from "../../src/session/schema"
@@ -16,10 +16,12 @@ import { AppNodeBuilder } from "@spinosa/kernel-core/effect/app-node-builder"
 import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
 import { InstanceStore } from "@/project/instance-store"
 import { InstanceBootstrap } from "@/project/bootstrap"
+import { Database } from "@spinosa/kernel-core/database/database"
 
 const it = testEffect(
   AppNodeBuilder.build(
     LayerNode.group([
+      Database.node,
       SessionNs.node,
       EventV2Bridge.node,
       SessionProjector.node,
@@ -43,6 +45,36 @@ const awaitDeferred = <T>(deferred: Deferred.Deferred<T>, message: string) =>
   )
 
 const remove = (id: SessionID) => SessionNs.use.remove(id)
+
+describe("session.remove failure propagation", () => {
+  it.instance("fails when persistence deletion is rejected", () =>
+    Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      const session = yield* SessionNs.Service
+      const created = yield* session.create({})
+      yield* db.run("CREATE TRIGGER test_session_remove_failure BEFORE DELETE ON session BEGIN SELECT RAISE(ABORT, 'injected delete failure'); END")
+      yield* Effect.gen(function* () {
+        const result = yield* session.remove(created.id).pipe(Effect.exit)
+        expect(Exit.isFailure(result)).toBe(true)
+        if (Exit.isSuccess(result)) return
+        expect(String(result.cause)).toContain("injected delete failure")
+      }).pipe(Effect.ensuring(db.run("DROP TRIGGER test_session_remove_failure").pipe(Effect.orDie)))
+    })
+  )
+})
+
+describe("session.diff", () => {
+  it.instance("reports the unavailable legacy diff explicitly", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const info = yield* session.create({})
+
+      expect(Option.isNone(yield* session.diff(info.id))).toBe(true)
+
+      yield* session.remove(info.id)
+    }),
+  )
+})
 
 describe("session.created event", () => {
   it.instance("should emit session.created event when session is created", () =>

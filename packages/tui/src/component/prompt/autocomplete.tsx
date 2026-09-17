@@ -22,7 +22,7 @@ import { Locale } from "../../util/locale"
 import type { PromptInfo } from "../../prompt/history"
 import { useFrecency } from "../../prompt/frecency"
 import { useBindings, useCommandSlashes, useOpencodeModeStack } from "../../keymap"
-import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
+import { displayCharAt, displaySlice, mentionTriggerIndex, promptOffsetWidth } from "../../prompt/display"
 import type { FileSystemEntry } from "@spinosa/sdk/v2"
 import { errorMessage } from "../../util/error"
 
@@ -485,11 +485,16 @@ export function Autocomplete(props: {
         display: "/" + serverCommand.name + label,
         description: serverCommand.description,
         onSelect: () => {
+          // Replace from the trigger (input start or after whitespace) to
+          // the cursor, preserving any text before the trigger.
           const newText = "/" + serverCommand.name + " "
-          const cursor = props.input().logicalCursor
-          props.input().deleteRange(0, 0, cursor.row, cursor.col)
-          props.input().insertText(newText)
-          props.input().cursorOffset = Bun.stringWidth(newText)
+          const input = props.input()
+          const endCursor = input.logicalCursor
+          input.cursorOffset = store.index
+          const startCursor = input.logicalCursor
+          input.deleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
+          input.insertText(newText)
+          input.cursorOffset = store.index + Bun.stringWidth(newText)
         },
       })
     }
@@ -678,6 +683,28 @@ export function Autocomplete(props: {
     })
   }
 
+  // "/" opens slash commands when it starts the input (leading whitespace
+  // allowed) or follows whitespace — mirroring @-mentions. A "/token" with
+  // real text before it stays literal message text at submit time; the popup
+  // only completes the name in place.
+  function slashTriggerIndex(value: string, offset: number): number | undefined {
+    const text = displaySlice(value, 0, offset)
+    const index = text.lastIndexOf("/")
+    if (index === -1) return
+    const before = index === 0 ? undefined : text[index - 1]
+    const query = text.slice(index)
+    if ((before === undefined || /\s/.test(before)) && !/\s/.test(query)) {
+      return promptOffsetWidth(text.slice(0, index))
+    }
+  }
+
+  // The token after the trigger grew into "command + args": no longer
+  // completing a command name.
+  function slashTokenClosed(value: string, index: number): boolean {
+    const line = value.slice(index).split("\n")[0] ?? ""
+    return /^\/\S+\s+\S/.test(line)
+  }
+
   function hide() {
     const text = props.input().plainText
     if (store.visible === "/" && !text.endsWith(" ") && text.startsWith("/")) {
@@ -711,8 +738,8 @@ export function Autocomplete(props: {
             props.input().cursorOffset <= store.index ||
             // There is a space between the trigger and the cursor
             props.input().getTextRange(store.index, props.input().cursorOffset).match(/\s/) ||
-            // "/<command>" is not the sole content
-            (store.visible === "/" && value.match(/^\S+\s+\S+\s*$/))
+            // The trigger token grew past a bare "/command" (args started)
+            (store.visible === "/" && slashTokenClosed(value, store.index))
           ) {
             hide()
           }
@@ -723,10 +750,12 @@ export function Autocomplete(props: {
         const offset = props.input().cursorOffset
         if (offset === 0) return
 
-        // Check for "/" at position 0 - reopen slash commands
-        if (value.startsWith("/") && !value.slice(0, offset).match(/\s/)) {
+        // "/" completes a command name from input start (leading whitespace
+        // allowed) or right after whitespace — never mid-token.
+        const slashIdx = slashTriggerIndex(value, offset)
+        if (slashIdx !== undefined) {
           show("/")
-          setStore("index", 0)
+          setStore("index", slashIdx)
           return
         }
 
@@ -740,11 +769,14 @@ export function Autocomplete(props: {
     })
   })
 
+  // Fixed height per anchor position — never derived from the live option
+  // count. The popup is absolutely positioned above the anchor
+  // (top = anchor - height), so count-derived heights made it jump on every
+  // keystroke while filtering. Short lists scroll in stable space instead.
   const height = createMemo(() => {
-    const count = options().length || 1
-    if (!store.visible) return Math.min(10, count)
+    if (!store.visible) return 1
     positionTick()
-    return Math.min(10, count, Math.max(1, props.anchor().y))
+    return Math.min(10, Math.max(1, props.anchor().y))
   })
 
   let scroll: ScrollBoxRenderable
@@ -757,7 +789,10 @@ export function Autocomplete(props: {
       top={position().y - height()}
       left={position().x}
       width={position().width}
-      zIndex={100}
+      // Above all session chrome (prompt wrapper, message list, back/export
+      // buttons) so the dropdown never paints underneath the conversation.
+      // Dialogs (3000+), which-key (3500) and toasts (4000) still win.
+      zIndex={2000}
       {...SplitBorder}
       borderColor={theme.border}
     >

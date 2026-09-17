@@ -18,6 +18,7 @@ import {
 
 import { NamedError } from "@spinosa/kernel-core/util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
+import { isJSONObject, type JSONObject } from "@ai-sdk/provider"
 import { Database } from "@spinosa/kernel-core/database/database"
 import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
 import { NotFoundError } from "@/storage/storage"
@@ -122,10 +123,11 @@ function hydrate(db: Database.Interface["db"], rows: (typeof MessageTable.$infer
   })
 }
 
-function providerMeta(metadata: Record<string, any> | undefined) {
+function providerMeta(metadata: Record<string, unknown> | undefined): Record<string, JSONObject> | undefined {
   if (!metadata) return undefined
   const { providerExecuted: _, ...rest } = metadata
-  return Object.keys(rest).length > 0 ? rest : undefined
+  const entries = Object.entries(rest).filter((entry): entry is [string, JSONObject] => isJSONObject(entry[1]))
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
 
 export const toModelMessagesEffect = Effect.fnUntraced(function* (

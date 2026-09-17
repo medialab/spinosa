@@ -11,6 +11,7 @@ import { InstallationChannel, InstallationVersion } from "./installation/version
 import { EventV2 } from "./event"
 import { makeGlobalNode } from "./effect/app-node"
 import { httpClient } from "./effect/app-node-platform"
+import { bootLog } from "./observability/boot-log"
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
@@ -51,7 +52,7 @@ export const Model = Schema.Struct({
   release_date: Schema.String,
   attachment: Schema.Boolean,
   reasoning: Schema.Boolean,
-  temperature: Schema.Boolean,
+  temperature: Schema.optional(Schema.Boolean),
   tool_call: Schema.Boolean,
   interleaved: Schema.optional(
     Schema.Union([
@@ -113,6 +114,73 @@ export const Event = ModelsDev.Event
 
 declare const SPINOSA_MODELS_DEV: Record<string, Provider> | undefined
 
+/**
+ * Source precedence for the catalog: validated disk cache first, then the
+ * validated embedded snapshot. Returns undefined when neither yields a usable
+ * catalog and the caller must fetch or stay empty.
+ */
+export function selectCatalogFallback(input: {
+  disk: Record<string, Provider> | undefined
+  snapshotUsable: Record<string, Provider> | undefined
+}): Record<string, Provider> | undefined {
+  if (input.disk && Object.keys(input.disk).length > 0) return input.disk
+  return input.snapshotUsable
+}
+/** One-line fetch failure. Never stringify Effect Cause graphs into the TUI. */
+export function formatModelsDevFetchFailure(cause: unknown): string {
+  if (typeof cause === "object" && cause !== null && "_id" in cause && cause._id === "Cause") {
+    return "models.dev fetch failed"
+  }
+  if (cause instanceof Error && cause.message) return `models.dev fetch failed: ${cause.message}`
+  if (typeof cause === "string" && cause) return `models.dev fetch failed: ${cause}`
+  return "models.dev fetch failed"
+}
+
+/**
+ * Keep a provider when at least one model decodes. One malformed model must
+ * not drop OpenCode Zen or OpenCode Go from the connect list.
+ */
+export function salvageProvider(entry: unknown): Provider | undefined {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return undefined
+  const models = (entry as { models?: unknown }).models
+  if (typeof models !== "object" || models === null || Array.isArray(models)) return undefined
+  const kept: Record<string, unknown> = {}
+  for (const [modelID, model] of Object.entries(models)) {
+    try {
+      Schema.decodeUnknownSync(Model)(model)
+      kept[modelID] = model
+    } catch {
+      /* skip unusable models */
+    }
+  }
+  if (Object.keys(kept).length === 0) return undefined
+  try {
+    return Schema.decodeUnknownSync(Provider)({ ...(entry as object), models: kept })
+  } catch {
+    return undefined
+  }
+}
+
+export function decodeUsableCatalog(input: unknown): {
+  usable: Record<string, Provider>
+  dropped: number
+} | undefined {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined
+  const usable: Record<string, Provider> = {}
+  let dropped = 0
+  for (const [id, entry] of Object.entries(input)) {
+    try {
+      usable[id] = Schema.decodeUnknownSync(Provider)(entry)
+    } catch {
+      const salvaged = salvageProvider(entry)
+      if (salvaged) usable[id] = salvaged
+      else dropped += 1
+    }
+  }
+  if (Object.keys(usable).length === 0) return undefined
+  return { usable, dropped }
+}
+
 export interface Interface {
   readonly get: () => Effect.Effect<Record<string, Provider>>
   readonly refresh: (force?: boolean) => Effect.Effect<void>
@@ -159,19 +227,46 @@ const layer = Layer.effect(
       )
     })
 
-    const loadFromDisk = fs.readJson(Flag.SPINOSA_MODELS_PATH ?? filepath).pipe(
-      Effect.catch((error) => {
-        if (
-          Flag.SPINOSA_MODELS_PATH === undefined &&
-          error._tag === "FileSystemError" &&
-          error.method === "readJson"
-        ) {
-          return fs.remove(filepath, { force: true }).pipe(Effect.ignore, Effect.as(undefined))
+    // An explicit SPINOSA_MODELS_PATH override keeps strict user-controlled
+    // semantics: a missing file falls through like before, but a present file
+    // with no usable providers fails loudly instead of silently emptying the
+    // catalog. Default cache poisoning is removed and falls through instead.
+    const loadFromDisk = Effect.gen(function* () {
+      const isOverride = Flag.SPINOSA_MODELS_PATH !== undefined
+      const raw: unknown = yield* fs
+        .readJson(Flag.SPINOSA_MODELS_PATH ?? filepath)
+        .pipe(
+          Effect.catch((error) => {
+            if (
+              !isOverride &&
+              error._tag === "FileSystemError" &&
+              error.method === "readJson"
+            ) {
+              return fs.remove(filepath, { force: true }).pipe(Effect.ignore, Effect.as(undefined))
+            }
+            return Effect.succeed(undefined)
+          }),
+        )
+      if (raw === undefined) return undefined
+      const decoded = decodeUsableCatalog(raw)
+      if (decoded) {
+        if (decoded.dropped > 0) {
+          yield* Effect.logWarning(
+            `ModelsDev disk catalog dropped ${decoded.dropped} unusable entries, kept ${Object.keys(decoded.usable).length}`,
+          )
         }
-        return Effect.succeed(undefined)
-      }),
-      Effect.map((v) => v as Record<string, Provider> | undefined),
-    )
+        return decoded.usable
+      }
+      if (isOverride) {
+        return yield* Effect.die(
+          new Error(
+            `SPINOSA_MODELS_PATH points at a catalog with no usable providers: ${Flag.SPINOSA_MODELS_PATH}`,
+          ),
+        )
+      }
+      yield* fs.remove(filepath, { force: true }).pipe(Effect.ignore)
+      return undefined
+    })
 
     const loadSnapshot = Effect.sync(() =>
       typeof SPINOSA_MODELS_DEV === "undefined" ? undefined : SPINOSA_MODELS_DEV,
@@ -179,6 +274,22 @@ const layer = Layer.effect(
 
     const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
       const text = yield* fetchApi()
+      // Validate before caching: a corrupt or incompatible fetch must never
+      // poison the disk cache (or crash JSON.parse in populate below).
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        return yield* Effect.fail(
+          new Error("models.dev fetch returned invalid JSON — refusing to cache"),
+        )
+      }
+      const decoded = decodeUsableCatalog(parsed)
+      if (!decoded) {
+        return yield* Effect.fail(
+          new Error("models.dev fetch contained no usable providers — refusing to cache"),
+        )
+      }
       const tempfile = `${filepath}.${process.pid}.${Date.now()}.tmp`
       yield* fs.writeWithDirs(tempfile, text).pipe(
         Effect.andThen(fs.rename(tempfile, filepath)),
@@ -189,23 +300,25 @@ const layer = Layer.effect(
           }),
         ),
       )
-      return text
+      return decoded.usable
     })
 
     const populate = Effect.gen(function* () {
       const fromDisk = yield* loadFromDisk
-      if (fromDisk) return fromDisk
       const snapshot = yield* loadSnapshot
-      if (snapshot) return snapshot
+      const validSnapshot = snapshot ? decodeUsableCatalog(snapshot)?.usable : undefined
+      const fallback = selectCatalogFallback({ disk: fromDisk, snapshotUsable: validSnapshot })
+      if (fallback) return fallback
       if (Flag.SPINOSA_DISABLE_MODELS_FETCH) return {}
       // Flock is cross-process: concurrent opencode CLIs can race on this cache file.
-      const text = yield* Effect.scoped(
+      // An invalid fetch falls back to an empty catalog rather than crashing.
+      const fetched: Record<string, Provider> | undefined = yield* Effect.scoped(
         Effect.gen(function* () {
           yield* Flock.effect(lockKey)
           return yield* fetchAndWrite()
         }),
-      )
-      return JSON.parse(text) as Record<string, Provider>
+      ).pipe(Effect.orElseSucceed(() => undefined))
+      return fetched ?? {}
     }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
@@ -225,7 +338,9 @@ const layer = Layer.effect(
           yield* events.publish(Event.Refreshed, {})
         }),
       ).pipe(
-        Effect.tapCause((cause) => Effect.logError("Failed to fetch models.dev", { cause: cause })),
+        Effect.tapCause((cause) =>
+          Effect.sync(() => bootLog("models.dev.fetch", formatModelsDevFetchFailure(cause))),
+        ),
         Effect.ignore,
       )
     })
@@ -240,5 +355,16 @@ const layer = Layer.effect(
 )
 
 export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node, EventV2.node, httpClient] })
+
+/**
+ * Embedded models.dev snapshot baked in at release-build time
+ * (SPINOSA_MODELS_DEV define). Undefined in dev/source runs.
+ * Lets `internal smoke provider-catalog` prove the shipped binary
+ * carries a non-empty catalog without touching the network.
+ */
+export function embeddedModelsSnapshot(): Record<string, Provider> | undefined {
+  if (typeof SPINOSA_MODELS_DEV === "undefined") return undefined
+  return SPINOSA_MODELS_DEV
+}
 
 export * as ModelsDev from "./models-dev"

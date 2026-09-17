@@ -40,8 +40,7 @@ function normalize(text: string): string {
 
 // Top-level commands. Order matches what `opencode --help` prints today;
 // keep it in that order so the snapshot file reads as a table of contents.
-// `completion` is intentionally excluded — it's a yargs built-in that emits
-// top-level help on `--help` and exits 1; not a real opencode command.
+// `completion` and `stats` are intentionally excluded — yargs built-in / eradicated.
 const TOP_LEVEL = [
   "mcp",
   "attach",
@@ -52,9 +51,7 @@ const TOP_LEVEL = [
   "upgrade",
   "uninstall",
   "serve",
-  "web",
   "models",
-  "stats",
   "export",
   "import",
   "pr",

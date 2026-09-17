@@ -207,6 +207,82 @@ describe("LLMClient tools", () => {
     }),
   )
 
+  it.effect("reports schema-only calls with a precise tool error", () =>
+    Effect.gen(function* () {
+      const dispatched = yield* ToolRuntime.dispatch(
+        { schema_only_weather },
+        LLMEvent.toolCall({ id: "call_schema_only", name: "schema_only_weather", input: { city: "Paris" } }),
+      )
+
+      expect(dispatched.result).toEqual({
+        type: "error",
+        value: "Tool has no execute handler: schema_only_weather",
+      })
+      expect(dispatched.output).toBeUndefined()
+      expect(dispatched.events.map((event) => event.type)).toEqual(["tool-error", "tool-result"])
+      expect(dispatched.events[0]).toMatchObject({
+        type: "tool-error",
+        id: "call_schema_only",
+        name: "schema_only_weather",
+        message: "Tool has no execute handler: schema_only_weather",
+      })
+    }),
+  )
+
+  it.effect("reports success-schema encoding failures", () =>
+    Effect.gen(function* () {
+      const invalid = Tool.make({
+        description: "Return a constrained value.",
+        parameters: Schema.Struct({}),
+        success: Schema.Literal("ok"),
+        execute: () => Effect.succeed("not-ok" as never),
+      })
+
+      const dispatched = yield* ToolRuntime.dispatch(
+        { invalid },
+        LLMEvent.toolCall({ id: "call_invalid_output", name: "invalid", input: {} }),
+      )
+
+      expect(dispatched.result).toMatchObject({
+        type: "error",
+        value: expect.stringContaining("Tool returned an invalid value for its success schema"),
+      })
+      expect(dispatched.events.map((event) => event.type)).toEqual(["tool-error", "tool-result"])
+      expect(dispatched.events[0]).toMatchObject({
+        type: "tool-error",
+        id: "call_invalid_output",
+        name: "invalid",
+        message: expect.stringContaining("Tool returned an invalid value for its success schema"),
+      })
+    }),
+  )
+
+  it.effect("projects dynamic legacy results instead of treating arbitrary values as settlements", () =>
+    Effect.gen(function* () {
+      const legacy = Tool.make({
+        description: "Return a legacy JSON value.",
+        jsonSchema: { type: "object", properties: {} },
+        execute: () => Effect.succeed({ ok: true }),
+      })
+
+      const dispatched = yield* ToolRuntime.dispatch(
+        { legacy },
+        LLMEvent.toolCall({ id: "call_legacy", name: "legacy", input: {} }),
+      )
+
+      expect(dispatched.result).toEqual({ type: "json", value: { ok: true } })
+      expect(dispatched.output).toEqual({ structured: { ok: true }, content: [] })
+      expect(dispatched.events).toEqual([
+        LLMEvent.toolResult({
+          id: "call_legacy",
+          name: "legacy",
+          result: { type: "json", value: { ok: true } },
+          output: { structured: { ok: true }, content: [] },
+        }),
+      ])
+    }),
+  )
+
   it.effect("can retain model media while redacting duplicated structured payloads", () =>
     Effect.gen(function* () {
       const image = Tool.make({

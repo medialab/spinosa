@@ -6,7 +6,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "test": "bun test --timeout 30000 --only-failures",
+    "test": "bun test --timeout 30000",
     "test:spinosa": "bun test --isolate test/spinosa/",
     "tui:agent": "bun x tui-agent-use",
     "typecheck": "tsc --noEmit",
@@ -55,8 +55,6 @@
     "@spinosa/plugin": "workspace:*",
     "@spinosa/sdk": "workspace:*",
     "@spinosa/ui": "workspace:*",
-    "@spinosa/harness": "workspace:*",
-    "@spinosa/runtime": "workspace:*",
     "@opentui/core": "catalog:",
     "@opentui/keymap": "catalog:",
     "@opentui/solid": "catalog:",

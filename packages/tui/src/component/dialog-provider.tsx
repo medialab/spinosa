@@ -18,6 +18,8 @@ import { useClipboard } from "../context/clipboard"
 import { useLocal } from "../context/local"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { copyProviderAuthorizationCode } from "../util/provider-authorization-code"
+import { showLocalProviderWizard } from "./dialog-local-provider"
+import { apiKeyInputError, normalizeApiKeyInput } from "../util/api-key"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -46,6 +48,32 @@ type ProviderOption =
   | (ProviderOptionBase & {
       type: "custom"
     })
+
+type FreeSpinosaModel = {
+  id: string
+  cost?: { input?: number }
+  status?: string
+}
+
+type FreeSpinosaProvider = {
+  id: string
+  models?: Record<string, FreeSpinosaModel>
+}
+
+/** Free OpenCode Zen model the connect dialog can use without a key. */
+export function findFreeSpinosaDefault(input: {
+  connected?: readonly FreeSpinosaProvider[]
+  catalog?: readonly FreeSpinosaProvider[]
+}): { providerID: string; modelID: string } | undefined {
+  for (const provider of [...(input.connected ?? []), ...(input.catalog ?? [])]) {
+    if (provider.id !== "opencode") continue
+    const model = Object.values(provider.models ?? {}).find(
+      (item) => (item.cost?.input ?? 0) === 0 && item.status !== "deprecated",
+    )
+    if (model) return { providerID: provider.id, modelID: model.id }
+  }
+  return undefined
+}
 
 export function providerOptions(list: { id: string; name: string }[]): ProviderOption[] {
   return [
@@ -86,6 +114,79 @@ export function normalizeCustomProviderID(value: string) {
   return providerID
 }
 
+export const LOADING_PROVIDERS_VALUE = "__spinosa_loading_providers__"
+export const RETRY_PROVIDERS_VALUE = "__spinosa_retry_providers__"
+
+export type ProviderCatalogState = "idle" | "loading" | "ready" | "error"
+
+/**
+ * Map the dedicated provider-catalog fetch state to dialog status rows.
+ * Pure (no Solid) so the bootstrap matrix is unit-pinned:
+ * - `config.providers` fails + `/provider` succeeds (commit never runs) →
+ *   catalog stays non-ready → retry row, never a bare empty list.
+ * - `ready` with zero providers is a genuine empty catalog (release smoke
+ *   gate fails closed on it) — no status row.
+ * - Non-empty catalogs never show status rows, even mid-load.
+ */
+export function providerCatalogStatus(input: {
+  catalog: ProviderCatalogState
+  catalogEmpty: boolean
+  providerError: string | undefined
+}): { loading: boolean; failed: boolean } {
+  return {
+    loading: (input.catalog === "loading" || input.catalog === "idle") && input.catalogEmpty,
+    failed:
+      (input.catalog === "error" || input.providerError !== undefined) && input.catalogEmpty,
+  }
+}
+
+export type ProviderStatusRow = {
+  title: string
+  value: string
+  description: string
+  category: string
+  disabled?: boolean
+  onSelect?: () => void
+}
+
+/**
+ * Status rows for the connect dialog while the provider catalog is
+ * unavailable. Loading takes precedence over failure: a failed fetch
+ * that is still covered by an in-flight bootstrap shows the spinner,
+ * not the retry row.
+ */
+export function providerStatusRows(input: {
+  loading: boolean
+  failed: boolean
+  retrying: boolean
+  onRetry: () => void
+}): ProviderStatusRow[] {
+  if (input.loading) {
+    return [
+      {
+        title: "Loading providers…",
+        value: LOADING_PROVIDERS_VALUE,
+        description: "Fetching the provider list",
+        category: "Providers",
+        disabled: true,
+      },
+    ]
+  }
+  if (input.failed) {
+    return [
+      {
+        title: input.retrying ? "Retrying…" : "Retry loading providers",
+        value: RETRY_PROVIDERS_VALUE,
+        description: "Couldn't load the provider list",
+        category: "Providers",
+        disabled: input.retrying,
+        onSelect: () => input.onRetry(),
+      },
+    ]
+  }
+  return []
+}
+
 export function createDialogProviderOptions() {
   const sync = useSync()
   const dialog = useDialog()
@@ -117,11 +218,45 @@ export function createDialogProviderOptions() {
     return promptCustomProviderID()
   }
 
+  const [retrying, setRetrying] = createSignal(false)
+
+  async function retryProviders() {
+    if (retrying()) return
+    setRetrying(true)
+    try {
+      await sync.refreshProviders()
+    } catch (error) {
+      toast.show({
+        variant: "error",
+        message: `Couldn't reload providers: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+      })
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   const options = createMemo(() => {
+    const catalogEmpty = sync.data.provider_next.all.length === 0
+    // Dedicated catalog state (not the global bootstrap status): `ready` is
+    // only set after provider data commits, so an empty catalog with a
+    // failed/stalled fetch always offers a retry instead of a bare list.
+    const { loading, failed } = providerCatalogStatus({
+      catalog: sync.data.provider_catalog,
+      catalogEmpty,
+      providerError: sync.data.provider_error,
+    })
+    const statusRows = providerStatusRows({
+      loading,
+      failed,
+      retrying: retrying(),
+      onRetry: () => void retryProviders(),
+    })
     const spinosaDefault = (() => {
-      const provider = sync.data.provider.find((item) => item.id === "opencode")
-      const model = Object.values(provider?.models ?? {}).find((item) => item.cost?.input === 0 && item.status !== "deprecated")
-      if (!provider || !model) return []
+      const picked = findFreeSpinosaDefault({
+        connected: sync.data.provider,
+        catalog: sync.data.provider_next.all,
+      })
+      if (!picked) return []
       return [{
         title: "Spinosa default",
         value: "__spinosa_default__",
@@ -134,13 +269,33 @@ export function createDialogProviderOptions() {
             "Your prompts and source-derived content will transit through Spinosa's servers. Spinosa does not control that processing.",
           )
           if (!confirmed) return
-          local.model.set({ providerID: provider.id, modelID: model.id }, { recent: true })
+          local.model.set({ providerID: picked.providerID, modelID: picked.modelID }, { recent: true })
           dialog.clear()
         },
       }]
     })()
+    const hasLocal = (() => {
+      const cfgProviders = Object.keys((sync.data.config as any)?.provider ?? {})
+      if (cfgProviders.some((k) => ["local", "ollama", "vllm", "omlx", "lmstudio"].includes(k) || k.startsWith("local"))) return true
+      return sync.data.provider.some((p) => ["local", "ollama", "vllm", "lmstudio", "omlx"].includes(p.id) || p.id.startsWith("local"))
+    })()
+    const localSynthetic = !hasLocal
+      ? [
+          {
+            title: "Local model",
+            value: "__local__",
+            description: "Ollama, vLLM, oMLX — configure endpoint",
+            category: "Local",
+            async onSelect() {
+              await showLocalProviderWizard({ dialog, sdk, sync, theme, toast })
+            },
+          },
+        ]
+      : []
     return [
       ...spinosaDefault,
+      ...localSynthetic,
+      ...statusRows,
       ...pipe(
       providerOptions(sync.data.provider_next.all),
       map((provider) => {
@@ -432,11 +587,16 @@ function ApiMethod(props: ApiMethodProps) {
       }
       onConfirm={async (value) => {
         if (!value) return
+        const problem = apiKeyInputError(value)
+        if (problem) {
+          toast.show({ variant: "error", message: `That doesn't look like an API key (${problem}).` })
+          return
+        }
         await sdk.client.auth.set({
           providerID: props.providerID,
           auth: {
             type: "api",
-            key: value,
+            key: normalizeApiKeyInput(value),
             ...(props.metadata ? { metadata: props.metadata } : {}),
           },
         })

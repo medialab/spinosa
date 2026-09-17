@@ -4,7 +4,7 @@ import path from "node:path"
 import { tmpdir } from "../fixture/fixture"
 import { parseSpinosaCliArgs, runSpinosaCli, splitSpinosaCliCommand } from "../../src/spinosa-cli"
 import { readFileSync } from "node:fs"
-import { mkdir, utimes } from "node:fs/promises"
+import { chmod, mkdir, utimes } from "node:fs/promises"
 import { runUninstall } from "../../src/spinosa-cli/commands/uninstall"
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
@@ -23,6 +23,15 @@ function capture() {
       confirm: async () => false,
     },
   }
+}
+
+async function installSourceKernel(home: string): Promise<void> {
+  const target = path.join(home, "bin", "spinosa")
+  const kernelEntry = path.join(repoRoot, "packages/spinosa-kernel/src/index.ts")
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+  await mkdir(path.dirname(target), { recursive: true })
+  await Bun.write(target, `#!/bin/sh\nexec ${quote(process.execPath)} run ${quote(kernelEntry)} "$@"\n`)
+  await chmod(target, 0o755)
 }
 
 describe("Spinosa CLI", () => {
@@ -67,10 +76,12 @@ describe("Spinosa CLI", () => {
 
   test("launcher dispatches upgrade help through the kernel CLI", async () => {
     await using tmp = await tmpdir()
+    const home = path.join(tmp.path, "home")
+    await installSourceKernel(home)
     const spawned = Bun.spawnSync({
       cmd: ["bash", path.join(repoRoot, "workspace-template", ".bin", "spinosa"), "upgrade", "--help"],
       cwd: repoRoot,
-      env: { ...process.env, SPINOSA_HOME: path.join(tmp.path, "home") },
+      env: { ...process.env, SPINOSA_HOME: home },
       stdout: "pipe",
       stderr: "pipe",
     })
@@ -80,10 +91,12 @@ describe("Spinosa CLI", () => {
 
   test("launcher dispatches version instead of treating it as a project path", async () => {
     await using tmp = await tmpdir()
+    const home = path.join(tmp.path, "home")
+    await installSourceKernel(home)
     const spawned = Bun.spawnSync({
       cmd: ["bash", path.join(repoRoot, "workspace-template", ".bin", "spinosa"), "version"],
       cwd: repoRoot,
-      env: { ...process.env, SPINOSA_HOME: path.join(tmp.path, "home") },
+      env: { ...process.env, SPINOSA_HOME: home },
       stdout: "pipe",
       stderr: "pipe",
     })
@@ -96,6 +109,7 @@ describe("Spinosa CLI", () => {
     await using tmp = await tmpdir()
     const sentinel = path.join(tmp.path, "keep.txt")
     await Bun.write(sentinel, "keep\n")
+    await installSourceKernel(tmp.path)
     const spawned = Bun.spawnSync({
       cmd: ["bash", path.join(repoRoot, "workspace-template", ".bin", "spinosa"), "uninstall", "--help"],
       cwd: repoRoot,
@@ -123,7 +137,7 @@ describe("Spinosa CLI", () => {
     }
   })
 
-  test("interactive uninstall accepts input and preserves central metadata", async () => {
+  test("interactive uninstall accepts input and preserves central metadata and legacy versions", async () => {
     await using tmp = await tmpdir()
     const originalHome = process.env.SPINOSA_HOME
     const metadata = path.join(tmp.path, "metadata")
@@ -136,8 +150,8 @@ describe("Spinosa CLI", () => {
     try {
       const result = capture()
       expect(await runUninstall(result.io, false, async () => true)).toBe(0)
-      expect(existsSync(path.join(tmp.path, "versions"))).toBe(false)
-      expect(existsSync(path.join(tmp.path, "bin"))).toBe(false)
+      expect(existsSync(path.join(tmp.path, "versions", "broken"))).toBe(true)
+      expect(existsSync(path.join(tmp.path, "bin", "spinosa"))).toBe(false)
       expect(await Bun.file(path.join(metadata, "workspaces.json")).text()).toBe('{"schemaVersion":1,"workspaces":[]}\n')
     } finally {
       if (originalHome === undefined) delete process.env.SPINOSA_HOME
@@ -167,7 +181,11 @@ describe("Spinosa CLI", () => {
 
   test("status reports framework info", async () => {
     const originalRoot = process.env.SPINOSA_TEMPLATE_ROOT
+    const originalDevTools = process.env.SPINOSA_DEV_HOST_TOOLS
     process.env.SPINOSA_TEMPLATE_ROOT = repoRoot
+    // Dev checkout: opt into host OCR tools explicitly. Production resolution
+    // is bundled-or-unavailable (never silent host PATH sniffing).
+    process.env.SPINOSA_DEV_HOST_TOOLS = "1"
     const result = capture()
     try {
       const code = await runSpinosaCli(["status"], result.io)
@@ -176,6 +194,8 @@ describe("Spinosa CLI", () => {
     } finally {
       if (originalRoot === undefined) delete process.env.SPINOSA_TEMPLATE_ROOT
       else process.env.SPINOSA_TEMPLATE_ROOT = originalRoot
+      if (originalDevTools === undefined) delete process.env.SPINOSA_DEV_HOST_TOOLS
+      else process.env.SPINOSA_DEV_HOST_TOOLS = originalDevTools
     }
   })
 
@@ -272,8 +292,15 @@ describe("Spinosa CLI", () => {
   })
 
   test("version-only mode via env", async () => {
+    const originalRoot = process.env.SPINOSA_TEMPLATE_ROOT
+    process.env.SPINOSA_TEMPLATE_ROOT = repoRoot
     const result = capture()
-    expect(await runSpinosaCli(["--version"], result.io)).toBe(0)
-    expect(result.output[0]).toMatch(/^spinosa /)
+    try {
+      expect(await runSpinosaCli(["--version"], result.io)).toBe(0)
+      expect(result.output[0]).toMatch(/^spinosa /)
+    } finally {
+      if (originalRoot === undefined) delete process.env.SPINOSA_TEMPLATE_ROOT
+      else process.env.SPINOSA_TEMPLATE_ROOT = originalRoot
+    }
   })
 })

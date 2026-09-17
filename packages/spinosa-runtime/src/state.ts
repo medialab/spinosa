@@ -1,3 +1,6 @@
+// WP10: frozen legacy transitions (phaseIndex execution). No production
+// caller remains — the engine (engine.ts) owns all new-run transitions.
+// Kept for the legacy run decoder + historical tests.
 import type { ExecutionRequest, ResearchRun, ResearchRunEvent, ResearchRunStatus } from "./model"
 import { agentsForRoute, type RouteClass } from "./routes"
 

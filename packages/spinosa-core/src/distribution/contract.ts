@@ -19,6 +19,17 @@ export type ProductBinaryTarget = (typeof PRODUCT_BINARY_TARGETS)[number]
 export const PRODUCT_DISTRIBUTION = "binary" as const
 export type ProductDistribution = typeof PRODUCT_DISTRIBUTION | "source" | "dev"
 
+/**
+ * Minimum supported glibc for Linux product binaries. They are compiled on
+ * Ubuntu 24.04 runners, so older distributions (e.g. Ubuntu 22.04 with
+ * glibc 2.35, Debian 12 with glibc 2.36) cannot load them — the loader fails
+ * before `version` ever runs, which used to masquerade as staged-verification
+ * timeouts on "some Linux x64 GNU machines".
+ */
+export const LINUX_MIN_GLIBC = "2.39" as const
+/** Human hint shown alongside glibc-floor errors. */
+export const LINUX_MIN_GLIBC_HINT = "Ubuntu 24.04+, Debian 13+ (or any glibc ≥ 2.39 distribution)" as const
+
 export const TEMPLATE_PACK_MANIFEST_NAME = "template-pack.json"
 export const TEMPLATE_PACK_COMPLETE_MARKER = ".pack-complete"
 
@@ -30,9 +41,9 @@ export const INSTALL_METADATA_KEYS = {
   beta: "beta",
   legacySourceRuntime: "legacy_source_runtime",
   autoUpgrade: "auto_upgrade",
+  /** Set when the staged doctor gate timed out: installed, health unverified. */
+  doctorUnverified: "doctor_unverified",
 } as const
-
-export const DEPRECATED_INSTALLER_FLAGS = ["--no-bundled-tools"] as const
 
 export const HOME_LAYOUT = {
   binDir: "bin",
@@ -53,6 +64,7 @@ export const HOME_LAYOUT = {
 export const BINARY_UNINSTALL_RUNTIME_TARGETS = [
   "bin/spinosa",
   "templates",
+  "tools",
   ".staging",
   "logs",
 ] as const
@@ -63,22 +75,29 @@ export const PRESERVED_AFTER_UNINSTALL = [
   "versions",
 ] as const
 
+export type BuildManifestAsset = {
+  binary: string
+}
+
 export type BuildManifest = {
   product: "spinosa"
   version: string
   channel: "stable" | "beta"
   templatePackId: string
-  assets: Record<ProductBinaryTarget, string>
+  assets: Record<ProductBinaryTarget, BuildManifestAsset>
 }
 
 export function productBinaryAssetName(target: ProductBinaryTarget): string {
   return `spinosa-${target}`
 }
 
-export function buildManifestAssets(): Record<ProductBinaryTarget, string> {
+export function buildManifestAssets(): Record<ProductBinaryTarget, BuildManifestAsset> {
   return Object.fromEntries(
-    PRODUCT_BINARY_TARGETS.map((target) => [target, productBinaryAssetName(target)]),
-  ) as Record<ProductBinaryTarget, string>
+    PRODUCT_BINARY_TARGETS.map((target) => [
+      target,
+      { binary: productBinaryAssetName(target) },
+    ]),
+  ) as Record<ProductBinaryTarget, BuildManifestAsset>
 }
 
 export function expectedImmutableReleaseAssets(version: string): readonly string[] {
@@ -167,12 +186,12 @@ export function resolveProductBinaryTarget(input: {
   let os: "darwin" | "linux"
   if (osRaw === "darwin" || osRaw === "macos" || osRaw === "osx") os = "darwin"
   else if (osRaw === "linux") os = "linux"
-  else throw new Error(`Unsupported OS for binary distribution: ${input.os}`)
+  else throw new Error(`Your OS "${input.os}" is not supported. Spinosa currently supports macOS (Apple Silicon & Intel) and Linux (glibc) on arm64 and x64 — Unsupported OS for binary distribution: ${input.os}`)
 
   let arch: "arm64" | "x64"
   if (archRaw === "arm64" || archRaw === "aarch64") arch = "arm64"
   else if (archRaw === "x64" || archRaw === "x86_64" || archRaw === "amd64") arch = "x64"
-  else throw new Error(`Unsupported architecture for binary distribution: ${input.arch}`)
+  else throw new Error(`Your CPU architecture "${input.arch}" is not supported. Spinosa currently supports arm64 and x64 on macOS and Linux (glibc) — Unsupported architecture for binary distribution: ${input.arch}`)
 
   if (os === "linux") {
     const libc = input.libc?.trim().toLowerCase()
@@ -187,7 +206,7 @@ export function resolveProductBinaryTarget(input: {
 
   const target = `${os}-${arch}` as ProductBinaryTarget
   if (!isProductBinaryTarget(target)) {
-    throw new Error(`Unsupported product binary target: ${target}`)
+    throw new Error(`Your platform "${target}" is not supported. Spinosa supports darwin-arm64, darwin-x64, linux-arm64, linux-x64 (glibc) — Unsupported product binary target: ${target}`)
   }
   return target
 }

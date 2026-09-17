@@ -14,6 +14,7 @@ import { TextAttributes } from "@opentui/core"
 import { useTuiConfig } from "../config"
 import { HomeSessionDestinationProvider } from "./home/session-destination"
 import { SpinosaPromptChips } from "./workspace/spinosa-prompt-chips"
+import { BackgroundImportChip } from "../component/background-import-chip"
 import { MAIN_CONTENT_MAX_WIDTH } from "../util/layout"
 import { safeResourceValue } from "../util/resource"
 import { CenteredColumn } from "../component/centered-column"
@@ -22,6 +23,7 @@ import { useTheme } from "../context/theme"
 import type { Theme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { DialogSpinosaStartupChoice } from "../component/dialog-spinosa-startup-choice"
+import { DialogSpinosaIncompleteImport } from "../component/dialog-spinosa-incomplete-import"
 import { DialogSpinosaMissingWorkspace } from "../component/dialog-spinosa-missing-workspace"
 import { getWorkspaceLaunchDecision } from "../spinosa/workspace-launch"
 import { setupStatusLabel, setupStatusThemeKey } from "../spinosa/status-labels"
@@ -43,7 +45,6 @@ import { DialogProvider } from "../component/dialog-provider"
 import { inspectWorkspacePresence, isUsableWorkspaceStatus, workspacePresenceLabel } from "@spinosa/core/workspace/presence"
 import type { SpinosaWorkspacePresence } from "@spinosa/core/types"
 import type { SpinosaWorkspaceID } from "@spinosa/core/workspace/identity"
-import { SPINOSA_BASE_MODE, useBindings } from "../keymap"
 import { truncatePathTail } from "../spinosa/truncate-path"
 import {
   RECENT_WORKSPACE_COUNT,
@@ -326,11 +327,6 @@ export function Home() {
       const hintKey = JSON.stringify({ input: prompt.input, parts: prompt.parts })
       if (lastStartupHintKey !== hintKey) {
         lastStartupHintKey = hintKey
-        toast.show({
-          variant: "info",
-          message: "Your setup brief is ready. Press Enter to run it, or edit it first.",
-          duration: 4000,
-        })
       }
     }
   })
@@ -385,6 +381,25 @@ export function Home() {
           workspaceName={launch.workspaceName}
           prompt={launch.prompt}
           onBack={() => dialog.clear()}
+        />
+      ))
+      return
+    }
+    if (launch.type === "incomplete-import") {
+      dialog.replace(() => (
+        <DialogSpinosaIncompleteImport
+          workspacePath={launch.workspacePath}
+          workspaceName={launch.workspaceName}
+          onBack={() => dialog.clear()}
+          onContinued={async () => {
+            dialog.clear()
+            // openWorkspace routes `importing` workspaces to onboarding.
+            await spinosa.openWorkspace(launch.workspacePath)
+          }}
+          onRemoved={async () => {
+            dialog.clear()
+            await loadRecentWorkspaces()
+          }}
         />
       ))
       return
@@ -454,33 +469,9 @@ export function Home() {
     if (selectedRecent() > max) setSelectedRecent(max)
   })
 
-  useBindings(() => ({
-    mode: SPINOSA_BASE_MODE,
-    enabled: () => recentListVisible() && !promptRef.current?.focused && dialog.stack.length === 0,
-    bindings: [
-      {
-        key: "Up",
-        desc: "Previous recent workspace",
-        group: "Home",
-        cmd: () => setSelectedRecent((value) => Math.max(0, value - 1)),
-      },
-      {
-        key: "Down",
-        desc: "Next recent workspace",
-        group: "Home",
-        cmd: () => setSelectedRecent((value) => Math.min(recentVisibleCount() - 1, value + 1)),
-      },
-      {
-        key: "Enter",
-        desc: "Open selected recent workspace",
-        group: "Home",
-        cmd: () => {
-          const workspace = recentWorkspaces().slice(0, recentVisibleCount())[selectedRecent()]
-          if (workspace) void pickRecentWorkspace(workspace)
-        },
-      },
-    ],
-  }))
+  // Workspace home is mouse-only: no keyboard shortcuts here (the prompt
+  // writing box owns the keyboard). The recent list opens workspaces
+  // through mouse hover + click.
 
   return (
     <HomeSessionDestinationProvider>
@@ -647,7 +638,8 @@ export function Home() {
           </Show>
 
           <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0}>
-            <SpinosaPromptChips suppressEnter={recentListVisible()} />
+            <BackgroundImportChip />
+            <SpinosaPromptChips onWorkspaceDeleted={loadRecentWorkspaces} />
             <Show when={providerConnected() && workspaceReady()}>
               <box>
                 <pluginRuntime.Slot name="home_prompt" mode="replace" ref={bind}>

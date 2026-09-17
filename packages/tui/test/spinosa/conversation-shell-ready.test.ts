@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   isConversationShellReady,
+  resolveBackNavigation,
   shouldBounceMissingSession,
   shouldConfirmLeaveBusySession,
 } from "../../src/routes/session/conversation-shell-ready"
@@ -49,5 +50,20 @@ describe("shouldConfirmLeaveBusySession", () => {
   test("requires confirm only while the agent is busy", () => {
     expect(shouldConfirmLeaveBusySession(true)).toBe(true)
     expect(shouldConfirmLeaveBusySession(false)).toBe(false)
+  })
+})
+
+describe("resolveBackNavigation", () => {
+  test("sub-agent views return straight to the parent (like Parent)", () => {
+    expect(resolveBackNavigation({ parentID: "ses_parent" })).toEqual({
+      type: "workspace",
+      sessionID: "ses_parent",
+    })
+  })
+
+  test("root sessions leave to Home regardless of busy state", () => {
+    expect(resolveBackNavigation({ parentID: null })).toEqual({ type: "global" })
+    expect(resolveBackNavigation({})).toEqual({ type: "global" })
+    expect(resolveBackNavigation(undefined)).toEqual({ type: "global" })
   })
 })

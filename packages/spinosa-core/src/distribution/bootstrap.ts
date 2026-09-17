@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs"
-import { homedir } from "node:os"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import {
   HOME_LAYOUT,
@@ -7,6 +6,7 @@ import {
   templateCacheRelativePath,
   type ProductDistribution,
 } from "../distribution/contract"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 import {
   extractTemplatePackAtomic,
   isTemplateCacheComplete,
@@ -21,7 +21,7 @@ declare const SPINOSA_TEMPLATE_PACK_ID: string
 declare const SPINOSA_TEMPLATE_PACK_VERSION: string
 
 export function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  return productHomeDir()
 }
 
 export function readCompiledDistribution(): ProductDistribution {
@@ -207,6 +207,44 @@ export function readInstalledBinaryVersion(home = spinosaHome()): string {
     return match?.[1]?.trim() ?? ""
   } catch {
     return ""
+  }
+}
+
+/**
+ * Reason the install was flagged health-unverified (e.g. "timeout" when the
+ * staged doctor gate never returned a verdict). Empty when verified.
+ */
+export function readDoctorUnverifiedReason(home = spinosaHome()): string {
+  const configPath = path.join(home, HOME_LAYOUT.metadataDir, HOME_LAYOUT.configFile)
+  if (!existsSync(configPath)) return ""
+  try {
+    const text = readFileSync(configPath, "utf-8")
+    const match = text.match(/^doctor_unverified:\s*["']?([^\s"']+)/m)
+    return match?.[1]?.trim() ?? ""
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * Clear a stale `doctor_unverified` flag after a subsequent full doctor
+ * passes healthy. Returns true when a flag was present and removed.
+ * No-op (false) when the metadata file or flag is absent — never throws.
+ */
+export function clearDoctorUnverifiedReason(home = spinosaHome()): boolean {
+  const configPath = path.join(home, HOME_LAYOUT.metadataDir, HOME_LAYOUT.configFile)
+  if (!existsSync(configPath)) return false
+  try {
+    const text = readFileSync(configPath, "utf-8")
+    if (!/^doctor_unverified:/m.test(text)) return false
+    const next = text
+      .split("\n")
+      .filter((line) => !/^doctor_unverified:\s*/.test(line))
+      .join("\n")
+    writeFileSync(configPath, next)
+    return true
+  } catch {
+    return false
   }
 }
 

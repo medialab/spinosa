@@ -1,34 +1,92 @@
-import { isOcrPlatformSupported } from "./ocr-support"
+import { createRequire } from "node:module"
+import { isCompiledBinaryDistribution } from "../distribution/bootstrap"
+
+const require = createRequire(import.meta.url)
+
+/** Resolve optional modules without embedding the build machine's paths. */
+export function moduleAvailable(name: string, bundledInBinary = false): boolean {
+  if (bundledInBinary && isCompiledBinaryDistribution()) return true
+  try {
+    require.resolve(name)
+    return true
+  } catch {
+    return false
+  }
+}
 
 let _pdfjsAvailable: boolean | undefined
+let converterLoader: (() => Promise<void>) | undefined
+let convertersReady = false
+let convertersFlight: Promise<void> | undefined
+
+/** Kernel registers canvas staging here so TUI boot does not dlopen Skia. */
+export function registerDocumentConverterLoader(loader: () => Promise<void>): void {
+  converterLoader = loader
+}
+
+/** Stage canvas + load pdf.js natives. Safe to call from the tools green-dot check. */
+export async function ensureDocumentConverters(): Promise<void> {
+  if (convertersReady) return
+  if (!convertersFlight) {
+    convertersFlight = (async () => {
+      if (converterLoader) await converterLoader()
+      convertersReady = true
+    })().finally(() => {
+      convertersFlight = undefined
+    })
+  }
+  await convertersFlight
+}
 
 export function pdfjsAvailable(): boolean {
   if (_pdfjsAvailable !== undefined) return _pdfjsAvailable
-  try {
-    require.resolve("pdfjs-dist/legacy/build/pdf.mjs")
-    _pdfjsAvailable = true
-  } catch {
-    _pdfjsAvailable = false
-  }
+  _pdfjsAvailable = moduleAvailable("pdfjs-dist/legacy/build/pdf.mjs", true)
   return _pdfjsAvailable
 }
 
-export async function pypdfium2Available(): Promise<boolean> {
+/** Real pdf.js + canvas load for the onboarding tools row (not require.resolve). */
+export async function probePdfjsRuntime(): Promise<boolean> {
   try {
-    require.resolve("pypdfium2")
+    await ensureDocumentConverters()
+    await import("../extension/pdf-js")
+    _pdfjsAvailable = true
     return true
+  } catch {
+    _pdfjsAvailable = false
+    return false
+  }
+}
+
+export async function probeCanvasRuntime(): Promise<boolean> {
+  try {
+    await ensureDocumentConverters()
+    const mod = await import("@napi-rs/canvas")
+    return Boolean(mod)
   } catch {
     return false
   }
 }
 
-export async function pypdfAvailable(): Promise<boolean> {
+export async function probeMarkitdownRuntime(): Promise<boolean> {
   try {
-    require.resolve("pypdf")
-    return true
+    const mod = await import("@spinosa/markitdown")
+    return Boolean(mod)
   } catch {
-    return false
+    try {
+      const fallback = await import("markitdown-ts")
+      return Boolean(fallback)
+    } catch {
+      return false
+    }
   }
+}
+
+export async function pypdfium2Available(): Promise<boolean> {
+  return moduleAvailable("pypdfium2")
+}
+
+export async function pypdfAvailable(): Promise<boolean> {
+  return moduleAvailable("pypdf")
 }
 
 const LLM_COMMANDS = [
@@ -48,17 +106,20 @@ export function detectLlmTools(): string[] {
 
 let _ocrAvailable: boolean | undefined
 
+/**
+ * Local OCR engine availability — always false (no local engine ships).
+ * Vision transcription availability is decided by provider/auth state,
+ * not here.
+ */
 export function ocrAvailable(): boolean {
-  if (_ocrAvailable !== undefined) return _ocrAvailable
-  if (!isOcrPlatformSupported()) {
-    _ocrAvailable = false
-    return _ocrAvailable
-  }
-  try {
-    require.resolve("ppu-paddle-ocr")
-    _ocrAvailable = true
-  } catch {
-    _ocrAvailable = false
-  }
+  _ocrAvailable = false
   return _ocrAvailable
+}
+
+export function _resetDetectionCacheForTests(): void {
+  _ocrAvailable = undefined
+  _pdfjsAvailable = undefined
+  convertersReady = false
+  convertersFlight = undefined
+  converterLoader = undefined
 }

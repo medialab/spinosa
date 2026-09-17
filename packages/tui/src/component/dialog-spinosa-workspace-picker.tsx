@@ -20,6 +20,7 @@ import { getWorkspaceLaunchDecision } from "../spinosa/workspace-launch"
 import { resolveWorkspaceDisplayName } from "../spinosa/workspace-name"
 import { isStaleWorkspacePresence, stalePresenceDisplay } from "../spinosa/manage-stale"
 import { DialogSpinosaStartupChoice } from "./dialog-spinosa-startup-choice"
+import { DialogSpinosaIncompleteImport } from "./dialog-spinosa-incomplete-import"
 import { DialogSpinosaMissingWorkspace } from "./dialog-spinosa-missing-workspace"
 import { DialogSpinosaManageStale } from "./dialog-spinosa-manage-stale"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
@@ -199,6 +200,25 @@ export function DialogSpinosaWorkspacePicker(props: { onClose?: () => void } = {
       ), undefined, returnToPicker)
       return
     }
+    if (launch.type === "incomplete-import") {
+      const returnToPicker = () => reopenPicker()
+      dialog.replace(() => (
+        <DialogSpinosaIncompleteImport
+          workspacePath={launch.workspacePath}
+          workspaceName={launch.workspaceName}
+          onBack={returnToPicker}
+          onContinued={async () => {
+            dialog.dismiss()
+            // openWorkspace routes `importing` workspaces to onboarding.
+            await spinosa.openWorkspace(launch.workspacePath)
+          }}
+          onRemoved={async () => {
+            reopenPicker()
+          }}
+        />
+      ), undefined, returnToPicker)
+      return
+    }
     dialog.dismiss()
     await spinosa.openWorkspace(path)
   }
@@ -374,10 +394,11 @@ export function DialogSpinosaWorkspacePicker(props: { onClose?: () => void } = {
           </box>
 
           {/* data rows */}
+          {/* Fixed height: content-derived heights made the dialog jump while sorting/filtering. */}
           <scrollbox
             stickyScroll={false}
             stickyStart="top"
-            height={Math.min(16, Math.max(4, sorted().length))}
+            height={16}
           >
             <For each={sorted()}>
               {(row, i) => {

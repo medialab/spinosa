@@ -27,8 +27,8 @@ Status glyphs (✓ ✗ ◉ ○) must use semantic color, not decoration alone.
 
 ## Layout
 
-- Content rail: `CenteredColumn` + `MAIN_CONTENT_MAX_WIDTH` (80)
-- Chat/session: full width minus sidebar (42 cols)
+- Content rail: `CenteredColumn` + `MAIN_CONTENT_MAX_WIDTH` (100)
+- Chat/session: transcript budget from `transcriptBudget()` (`util/layout.ts`) — main text first (≥80 center cells), annotation rails only at ≥124 terminal columns (≥18 cells each); classic single-column below that. Session sidebar (42 cols) sits outside the cap.
 - Nav chrome: full terminal width; `backgroundPanel` + `SplitBorder`
 - Density: compact; collapsed summaries by default; expand for operator detail
 

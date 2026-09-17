@@ -1,6 +1,5 @@
 import {
   BoxRenderable,
-  RGBA,
   TextareaRenderable,
   MouseEvent,
   PasteEvent,
@@ -12,7 +11,6 @@ import type { CommandContext } from "@opentui/keymap"
 import { createEffect, createMemo, onMount, createSignal, onCleanup, on, Show, Switch, Match } from "solid-js"
 import "opentui-spinner/solid"
 import path from "path"
-import { fileURLToPath } from "url"
 import { useLocal } from "../../context/local"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
 import { tint, useTheme } from "../../context/theme"
@@ -41,6 +39,7 @@ import type { AssistantMessage, FilePart, UserMessage } from "@spinosa/sdk/v2"
 import { Locale } from "../../util/locale"
 import { agentDisplayName, ORCHESTRATOR_AGENT_ID, resolveSubmitAgent } from "../../util/agent"
 import { errorMessage } from "../../util/error"
+import { logError } from "../../spinosa/log"
 import { formatDuration } from "../../util/format"
 import { resolveSessionRuntimeStatus } from "../../util/session"
 import {
@@ -59,20 +58,48 @@ import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
+import { DialogSpinosaSettings } from "../dialog-spinosa-settings"
+import { DialogAgent } from "../dialog-agent"
+import { DialogSessionList } from "../dialog-session-list"
+import { DialogProvider } from "../dialog-provider"
+import { DialogModel } from "../dialog-model"
 import { useArgs } from "../../context/args"
 import { SPINOSA_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
-import { readLocalAttachment } from "./local-attachment"
+import { pasteInputText as pasteInputTextWith, type PasteAttachment } from "./paste"
+import { SPINOSA_ROUTE_METADATA } from "../../spinosa/route-badge"
 import {
-  cancelSpinosaSubmit,
-  executeSpinosaSubmit,
-  prepareSpinosaSubmit,
-  shouldPrepareSpinosaSubmit,
-} from "../../spinosa/orchestrator"
+  acquireOutboundPump,
+  admittedUserIDFromResponse,
+  ECHO_WAIT_TIMEOUT_MS,
+  enqueueOutbound,
+  findEchoByPromptID,
+  hasServerEcho,
+  kickPump,
+  markOutboundFailed,
+  markOutboundSent,
+  markOutboundStale,
+  outboundEntryState,
+  peekDispatchable,
+  peekOutbound,
+  registerPump,
+  releaseOutboundPump,
+  removeOutbound,
+  ownsOutboundPump,
+  outboundForSession,
+  setOutboundAdmittedID,
+  SPINOSA_PROMPT_METADATA,
+  waitForEcho,
+  type DispatchContext,
+  type OutboundSnapshot,
+  unregisterPump,
+} from "../../spinosa/outbound-queue"
 import { readStartupPrompt } from "../../spinosa/service"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
+import { fadeColor, getEditorRangeLabel, hasEditorRangeSelection, randomIndex } from "./helpers"
+import { ESC_ARM_WINDOW_MS, escConfirmStop } from "./interrupt"
 
 export type PromptProps = {
   sessionID?: string
@@ -87,17 +114,6 @@ export type PromptProps = {
     normal?: string[]
     shell?: string[]
   }
-}
-
-function pastedFilepath(value: string, platform: string) {
-  const raw = value.replace(/^['"]+|['"]+$/g, "")
-  if (raw.startsWith("file://")) {
-    try {
-      return fileURLToPath(raw)
-    } catch {}
-  }
-  if (platform === "win32") return raw
-  return raw.replace(/\\(.)/g, "$1")
 }
 
 export type PromptRef = {
@@ -118,28 +134,6 @@ const money = new Intl.NumberFormat("en-US", {
 const DRAFT_RETENTION_MIN_CHARS = 20
 const STARTUP_PROMPT_FALLBACK =
   "Run Spinosa startup indexing for this workspace. Follow startup-prompt.md: survey corpus, batch mapper extraction, write maps, validate, and set setup_status to workspace_started."
-
-function randomIndex(count: number) {
-  if (count <= 0) return 0
-  return Math.floor(Math.random() * count)
-}
-
-function fadeColor(color: RGBA, alpha: number) {
-  return RGBA.fromValues(color.r, color.g, color.b, color.a * alpha)
-}
-
-function hasEditorRangeSelection(selection: EditorSelection["ranges"][number]) {
-  return (
-    selection.selection.start.line !== selection.selection.end.line ||
-    selection.selection.start.character !== selection.selection.end.character
-  )
-}
-
-function getEditorRangeLabel(selection: EditorSelection["ranges"][number]) {
-  if (!hasEditorRangeSelection(selection)) return
-  if (selection.selection.start.line === selection.selection.end.line) return `#${selection.selection.start.line}`
-  return `#${selection.selection.start.line}-${selection.selection.end.line}`
-}
 
 function formatEditorContext(selection: EditorSelection) {
   const selected = selection.ranges.filter(hasEditorRangeSelection)
@@ -193,7 +187,7 @@ export function Prompt(props: PromptProps) {
   const dimensions = useTerminalDimensions()
   const { theme, syntax } = useTheme()
   const kv = useKV()
-  const animationsEnabled = createMemo(() => kv.get("animations_enabled", true))
+  const animationsEnabled = createMemo(() => kv.get("animations_enabled", true) ?? true)
   const list = createMemo(() => props.placeholders?.normal ?? [])
   const shell = createMemo(() => props.placeholders?.shell ?? [])
   const fileContextEnabled = createMemo(() => kv.get("file_context_enabled", true))
@@ -456,19 +450,28 @@ export function Prompt(props: PromptProps) {
           const sessionID = props.sessionID
           if (!sessionID) return
 
-          setStore("interrupt", store.interrupt + 1)
-
-          setTimeout(() => {
-            setStore("interrupt", 0)
-          }, 5000)
-
-          if (store.interrupt >= 2) {
-            void cancelSpinosaSubmit({ client: sdk.client, sessionID }).then((handled) => {
-              if (handled) return
-              return sdk.client.session.abort({ sessionID }).then(() => undefined)
-            })
-            setStore("interrupt", 0)
+          const stopTarget = `session:${sessionID}`
+          if (!escConfirmStop(store.interrupt, interruptTarget, stopTarget)) {
+            if (interruptTimer) clearTimeout(interruptTimer)
+            interruptTarget = stopTarget
+            setStore("interrupt", Date.now())
+            interruptTimer = setTimeout(() => {
+              setStore("interrupt", 0)
+              interruptTarget = undefined
+              interruptTimer = undefined
+            }, ESC_ARM_WINDOW_MS)
+            dialog.clear()
+            return
           }
+          if (interruptTimer) {
+            clearTimeout(interruptTimer)
+            interruptTimer = undefined
+          }
+          setStore("interrupt", 0)
+          interruptTarget = undefined
+          void sdk.client.session.abort({ sessionID }).finally(() => {
+            void pumpOutbound(sessionID)
+          })
           dialog.clear()
         },
       },
@@ -632,6 +635,61 @@ export function Prompt(props: PromptProps) {
           replacePrompt(nextInput)
           setStore("prompt", "forceAgent", ORCHESTRATOR_AGENT_ID)
           await submit()
+        },
+      },
+      {
+        title: "Settings",
+        desc: "Open workspace and app settings",
+        name: "spinosa.settings",
+        category: "Workspace",
+        slashName: "settings",
+        run: () => {
+          dialog.clear()
+          dialog.replace(() => <DialogSpinosaSettings />)
+        },
+      },
+      {
+        title: "Agents",
+        desc: "Switch or configure agents",
+        name: "spinosa.agents",
+        category: "Workspace",
+        slashName: "agents",
+        run: () => {
+          dialog.clear()
+          dialog.replace(() => <DialogAgent />)
+        },
+      },
+      {
+        title: "Sessions",
+        desc: "Browse and switch sessions",
+        name: "spinosa.sessions",
+        category: "Workspace",
+        slashName: "sessions",
+        run: () => {
+          dialog.clear()
+          dialog.replace(() => <DialogSessionList />)
+        },
+      },
+      {
+        title: "Provider",
+        desc: "Configure AI provider and credentials",
+        name: "spinosa.provider",
+        category: "Workspace",
+        slashName: "provider",
+        run: () => {
+          dialog.clear()
+          dialog.replace(() => <DialogProvider />)
+        },
+      },
+      {
+        title: "Models",
+        desc: "Select model and variant",
+        name: "spinosa.models",
+        category: "Workspace",
+        slashName: "models",
+        run: () => {
+          dialog.clear()
+          dialog.replace(() => <DialogModel />)
         },
       },
     ].map((entry) => ({
@@ -1011,6 +1069,308 @@ export function Prompt(props: PromptProps) {
   })
 
   let submitting = false
+  // Armed-Esc fence for live conversation turns.
+  let interruptTimer: ReturnType<typeof setTimeout> | undefined
+  let interruptTarget: string | undefined
+
+  // Dispatch bridge: dispatchEntry lives at component scope so the pump
+  // works from mount on (stale queues after session-switch dispatch
+  // without needing a fresh submit). The pump reaches it through this ref.
+  type DispatchFn = (
+    targetSessionID: string,
+    entry: { key?: string; snapshot: OutboundSnapshot; dispatch: DispatchContext },
+  ) => Promise<{ completion?: Promise<unknown>; admitted?: () => string | undefined }>
+  const dispatchRef: { fn: DispatchFn | undefined } = { fn: undefined }
+
+  function isDispatchIdle(sessionID: string): boolean {
+    const st = resolveSessionRuntimeStatus(
+      sync.data.session_status?.[sessionID],
+      sessionID ? sync.session.status(sessionID) : undefined,
+    )
+    return st.type === "idle"
+  }
+
+  // Dispatch one prompt through the send pipeline (shell / slash / direct).
+  // Queued entries arrive here FIFO via pumpOutbound; immediate submits
+  // call directly. `entry` carries the submit-time snapshot so a queued
+  // prompt sends exactly what the user submitted.
+  const dispatchEntry: DispatchFn = async (targetSessionID, entry) => {
+  const { snapshot, dispatch } = entry
+  // Canonical prompt id: stamped into the admission so the server echo
+  // carries it back for exact correlation. Queue dispatches pass the entry
+  // key; immediate (rowless) sends omit it.
+  const promptID = entry.key
+  const promptIDStamp = promptID ? { [SPINOSA_PROMPT_METADATA]: promptID } : {}
+  const { variant } = dispatch
+  const agentName = dispatch.agentName
+  const selectedModel = dispatch.model
+  const outboundText = snapshot.text
+
+  // Slash dispatch tolerates leading whitespace; the command is parsed
+  // from the trimmed text. A "/token" with real text before it stays
+  // literal message text — never executed.
+  const outboundCommandText = outboundText.replace(/^\s+/, "")
+    if (dispatch.mode === "shell") {
+      move.startSubmit()
+      // Toast here: the pump only toasts when no receipt was kept, and these
+      // rowless sends keep none. Rethrown so pump-side handling stays uniform.
+      const completion = sdk.client.session
+        .shell({
+          sessionID: targetSessionID,
+          agent: agentName,
+          model: {
+            providerID: selectedModel.providerID,
+            modelID: selectedModel.modelID,
+          },
+          command: outboundText,
+        })
+        .then(
+          (res) => res,
+          (error: unknown) => {
+            toast.show({
+              title: "Couldn’t send prompt",
+              message: errorMessage(error),
+              variant: "error",
+            })
+            throw error
+          },
+        )
+      setStore("mode", "normal")
+      return { completion }
+    } else if (
+    outboundCommandText.startsWith("/") &&
+    sync.data.command.some((x) => x.name === outboundCommandText.split("\n")[0].split(" ")[0].slice(1))
+  ) {
+    move.startSubmit()
+    // Parse command from first line, preserve multi-line content in arguments
+    const firstLineEnd = outboundCommandText.indexOf("\n")
+    const firstLine = firstLineEnd === -1 ? outboundCommandText : outboundCommandText.slice(0, firstLineEnd)
+    const [command, ...firstLineArgs] = firstLine.split(" ")
+    const restOfInput = firstLineEnd === -1 ? "" : outboundCommandText.slice(firstLineEnd + 1)
+    const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
+
+      const completion = sdk.client.session
+        .command({
+          sessionID: targetSessionID,
+          command: command.slice(1),
+          arguments: args,
+          agent: agentName,
+          model: `${selectedModel.providerID}/${selectedModel.modelID}`,
+          variant,
+          parts: snapshot.nonTextParts.filter((x) => x.type === "file"),
+        })
+        .then(
+          (res) => res,
+          (error: unknown) => {
+            toast.show({
+              title: "Couldn’t send prompt",
+              message: errorMessage(error),
+              variant: "error",
+            })
+            throw error
+          },
+        )
+      return { completion }
+  } else {
+    move.startSubmit()
+    const promptParts = [
+      ...snapshot.editorParts,
+      {
+        type: "text" as const,
+        text: outboundText,
+          metadata: {
+            [SPINOSA_ROUTE_METADATA]: { kind: "general" },
+            ...promptIDStamp,
+          },
+      },
+      ...snapshot.nonTextParts,
+    ]
+    const busy = status().type !== "idle"
+    const delivery = resolvePromptDelivery({
+      busy,
+      preferQueue: entry.dispatch.preferQueue === true,
+      preferSteer: entry.dispatch.preferSteer === true,
+    })
+    const submit = useV2SessionPrompt()
+      ? (async () => {
+          // Prefer V2 durable admission + steer/queue delivery as the live path.
+          // Model/agent switches are idle-only: mid-run structural ops reject
+          // busy, and awaiting them adds latency before steer/queue admission.
+          if (!busy) {
+            await sdk.client.v2.session
+              .switchModel({
+                sessionID: targetSessionID,
+                model: {
+                  providerID: selectedModel.providerID,
+                  id: selectedModel.modelID,
+                  ...(variant ? { variant } : {}),
+                },
+              })
+              .catch(() => undefined)
+            await sdk.client.v2.session.switchAgent({ sessionID: targetSessionID, agent: agentName }).catch(() => undefined)
+            }
+            // Return the admission response: the pump extracts the admitted
+            // id and holds the sent row until the server echo lands.
+            return sdk.client.v2.session.prompt(
+              {
+                sessionID: targetSessionID,
+                prompt: partsToV2Prompt(promptParts),
+                delivery,
+              },
+              { throwOnError: true },
+            )
+          })()
+      : sdk.client.session.prompt(
+          {
+            sessionID: targetSessionID,
+            ...selectedModel,
+            agent: agentName,
+            model: selectedModel,
+            variant,
+            parts: promptParts,
+          },
+          { throwOnError: true },
+        )
+    void submit.catch((error) => {
+      toast.show({
+        title: "Couldn’t send prompt",
+        message: errorMessage(error),
+        variant: "error",
+      })
+    })
+    if (snapshot.editorParts.length > 0) editor.markSelectionSent()
+    // Direct sends resolve at admission: the pump awaits this so queued
+    // prompts behind it dispatch in order. Toast stays on the shared
+    // handler above (legacy timing unchanged).
+    return { completion: submit }
+  }
+  }
+
+  // Detached echo-handoff: remove the sent row once its server echo is
+  // visible, matched by canonical prompt id stamped at admission. Slow echo
+  // degrades to a stale mark — the sent-but-blocked row simply rests in the
+  // conversation as normal, never deleted. Removal happens only while the
+  // row is still awaiting its echo, so a meanwhile-cancelled receipt survives.
+  async function watchEchoThenSettle(sessionID: string, key: string, admittedID?: string): Promise<void> {
+    const echoed = await waitForEcho(() => {
+      const messages = sync.data.message[sessionID] ?? []
+      if (findEchoByPromptID(messages, sync.data.part, key)) return true
+      return admittedID ? hasServerEcho(messages, admittedID) : false
+    }, ECHO_WAIT_TIMEOUT_MS)
+    if (!echoed) {
+      markOutboundStale(sessionID, key)
+      return
+    }
+    if (outboundEntryState(sessionID, key) === "sent") removeOutbound(sessionID, key)
+  }
+
+  // Confirmation resume: re-check sent rows against fresh sync data.
+  // Runs on every pump kick (submit, idle flip, steer, interrupt) and on
+  // reconnect, so a late echo settles the row even after the 10s watcher
+  // gave up and marked it stale. Removal still requires the sent state,
+  // so meanwhile-cancelled receipts survive.
+  function settleUnsettledEchoes(sessionID: string) {
+    const messages = sync.data.message[sessionID] ?? []
+    for (const entry of outboundForSession(sessionID)) {
+      if (entry.state !== "sent") continue
+      const seen =
+        findEchoByPromptID(messages, sync.data.part, entry.key) ||
+        (entry.admittedID ? hasServerEcho(messages, entry.admittedID) : false)
+      if (seen) removeOutbound(sessionID, entry.key)
+    }
+  }
+
+  // FIFO dispatcher for the outbound queue: send the next dispatchable
+  // entry when idle, hold the sent row until the server echo takes over,
+  // then continue while idle. Single-flight per session.
+  async function pumpOutbound(sessionID: string): Promise<void> {
+    settleUnsettledEchoes(sessionID)
+    if (!peekOutbound(sessionID)) return
+    const dispatchFn = dispatchRef.fn
+    if (!dispatchFn) return
+    const lease = acquireOutboundPump(sessionID)
+    if (lease === undefined) return
+    try {
+      for (;;) {
+        if (!ownsOutboundPump(sessionID, lease)) return
+        const head = peekDispatchable(sessionID)
+        if (!head) return
+        if (!isDispatchIdle(sessionID)) return
+        if (!markOutboundSent(sessionID, head.key)) continue
+        try {
+          const result = await dispatchFn(sessionID, {
+            key: head.key,
+            snapshot: head.snapshot,
+            dispatch: head.dispatch,
+          })
+          if (!ownsOutboundPump(sessionID, lease)) return
+          let admittedID = result.admitted?.()
+          if (result.completion) {
+            let failed = false
+            let settled: unknown
+            try {
+              settled = await result.completion
+            } catch {
+              failed = true
+            }
+            if (failed) {
+              markOutboundFailed(sessionID, head.key)
+              continue
+            }
+            admittedID = result.admitted?.() ?? admittedUserIDFromResponse(settled)
+            if (admittedID) setOutboundAdmittedID(sessionID, head.key, admittedID)
+          }
+          void watchEchoThenSettle(sessionID, head.key, admittedID)
+        } catch (err) {
+          if (!markOutboundFailed(sessionID, head.key)) {
+            toast.show({
+              title: "Couldn’t send prompt",
+              message: errorMessage(err),
+              variant: "error",
+            })
+          }
+        }
+      }
+    } finally {
+      releaseOutboundPump(sessionID, lease)
+    }
+  }
+
+  // Run completions surface as status flips (busy → idle): queued prompts
+  // dispatch in turn with no further interaction.
+  createEffect(() => {
+    const s = status()
+    const sid = props.sessionID
+    if (s.type === "idle" && sid && peekOutbound(sid)) void pumpOutbound(sid)
+  })
+
+  // Other views (steer buttons) kick the pump through the registry.
+  // The dispatcher is assigned here so stale queues dispatch from mount on,
+  // without needing a fresh submit first.
+  createEffect(() => {
+    const sid = props.sessionID
+    if (!sid) return
+    dispatchRef.fn = dispatchEntry
+    const generation = registerPump(sid, () => void pumpOutbound(sid))
+    onCleanup(() => {
+      unregisterPump(sid, generation)
+      if (dispatchRef.fn === dispatchEntry) dispatchRef.fn = undefined
+    })
+  })
+
+  // Transport recovery settles what the resync delivered: sent rows whose
+  // echo arrived while offline (or after the watcher gave up) swap out.
+  // Delayed past the resync so the fresh projection is in place first.
+  createEffect(() => {
+    const sid = props.sessionID
+    if (!sid) return
+    const unsub = event.subscribe((payload) => {
+      if ((payload as { type?: string }).type !== "connection.reconnected") return
+      setTimeout(() => settleUnsettledEchoes(sid), 2000)
+    })
+    onCleanup(unsub)
+  })
+
   async function submit(options?: { preferQueue?: boolean; preferSteer?: boolean }) {
     // Prevent overlapping invocations (e.g. a double-pressed Enter, or the
     // input's native onSubmit racing another dispatch). Without this guard,
@@ -1158,7 +1518,8 @@ export function Prompt(props: PromptProps) {
       if (res.error) {
         if (finishMoveProgress) move.finishSubmit()
         route.finishConversationBoot()
-        console.log("Creating a session failed:", res.error)
+        logError("prompt.session.create", res.error)
+        console.log("Creating a session failed:", errorMessage(res.error))
 
         toast.show({
           title: "Couldn’t start a session",
@@ -1190,171 +1551,59 @@ export function Prompt(props: PromptProps) {
       })
     }
 
-    const admitAfterPrepare = async (targetSessionID: string) => {
-    let outboundText = inputText
-    let preparedSpinosa: Awaited<ReturnType<typeof prepareSpinosaSubmit>> | undefined
-    if (shouldPrepareSpinosaSubmit({ sessionDirectory, forceAgent: store.prompt.forceAgent })) {
-      try {
-        const prepared = await prepareSpinosaSubmit(sessionDirectory!, inputText)
-        preparedSpinosa = prepared
-        outboundText = prepared.text
-      } catch (error) {
-        console.log("Spinosa submit preparation failed:", error)
-        toast.show({
-          title: "Couldn’t prepare your request",
-          message: error instanceof Error ? error.message : "Couldn’t save the task context",
-          variant: "error",
-        })
-      }
-    }
 
-    if (currentMode === "shell") {
-      move.startSubmit()
-      void sdk.client.session.shell({
-        sessionID: targetSessionID,
-        agent: agent.name,
-        model: {
-          providerID: selectedModel.providerID,
-          modelID: selectedModel.modelID,
-        },
-        command: outboundText,
-      })
-      setStore("mode", "normal")
-    } else if (
-      outboundText.startsWith("/") &&
-      sync.data.command.some((x) => x.name === outboundText.split("\n")[0].split(" ")[0].slice(1))
-    ) {
-      move.startSubmit()
-      // Parse command from first line, preserve multi-line content in arguments
-      const firstLineEnd = outboundText.indexOf("\n")
-      const firstLine = firstLineEnd === -1 ? outboundText : outboundText.slice(0, firstLineEnd)
-      const [command, ...firstLineArgs] = firstLine.split(" ")
-      const restOfInput = firstLineEnd === -1 ? "" : outboundText.slice(firstLineEnd + 1)
-      const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
-
-      void sdk.client.session.command({
-        sessionID: targetSessionID,
-        command: command.slice(1),
-        arguments: args,
-        agent: agent.name,
-        model: `${selectedModel.providerID}/${selectedModel.modelID}`,
-        variant,
-        parts: nonTextParts.filter((x) => x.type === "file"),
-      })
-    } else if (preparedSpinosa?.framed) {
-      move.startSubmit()
-      void sdk.client.session
-        .prompt(
-          {
-            sessionID: targetSessionID,
-            ...selectedModel,
-            agent: agent.name,
-            model: selectedModel,
-            variant,
-            noReply: true,
-            parts: [
-              ...editorParts,
-              { type: "text", text: outboundText, ignored: true },
-              ...nonTextParts,
-            ],
-          },
-          { throwOnError: true },
-        )
-        .then(() =>
-          executeSpinosaSubmit({
-            client: sdk.client,
-            sessionID: targetSessionID,
-            prepared: preparedSpinosa,
-            model: {
-              providerID: selectedModel.providerID,
-              modelID: selectedModel.modelID,
-            },
-            publish: sdk.publishJobEvent,
-            localEmit: (event) => sdk.event.emit("event", event),
-          }),
-        )
-        .catch((error) => {
-          toast.show({
-            title: "Couldn’t send prompt",
-            message: errorMessage(error),
-            variant: "error",
-          })
-        })
-      if (editorParts.length > 0) editor.markSelectionSent()
-    } else {
-      move.startSubmit()
-      const promptParts = [
-        ...editorParts,
-        {
-          type: "text" as const,
-          text: outboundText,
-        },
-        ...nonTextParts,
-      ]
-      const busy = status().type !== "idle"
-      const delivery = resolvePromptDelivery({
-        busy,
-        preferQueue: options?.preferQueue === true,
-        preferSteer: options?.preferSteer === true,
-      })
-      const submit = useV2SessionPrompt()
-        ? (async () => {
-            // Prefer V2 durable admission + steer/queue delivery as the live path.
-            // Model/agent switches are idle-only: mid-run structural ops reject
-            // busy, and awaiting them adds latency before steer/queue admission.
-            if (!busy) {
-              await sdk.client.v2.session
-                .switchModel({
-                  sessionID: targetSessionID,
-                  model: {
-                    providerID: selectedModel.providerID,
-                    id: selectedModel.modelID,
-                    ...(variant ? { variant } : {}),
-                  },
-                })
-                .catch(() => undefined)
-              await sdk.client.v2.session.switchAgent({ sessionID: targetSessionID, agent: agent.name }).catch(() => undefined)
-            }
-            await sdk.client.v2.session.prompt(
-              {
-                sessionID: targetSessionID,
-                prompt: partsToV2Prompt(promptParts),
-                delivery,
-              },
-              { throwOnError: true },
-            )
-          })()
-        : sdk.client.session.prompt(
-            {
-              sessionID: targetSessionID,
-              ...selectedModel,
-              agent: agent.name,
-              model: selectedModel,
-              variant,
-              parts: promptParts,
-            },
-            { throwOnError: true },
-          )
-      void submit.catch((error) => {
-        toast.show({
-          title: "Couldn’t send prompt",
-          message: errorMessage(error),
-          variant: "error",
-        })
-      })
-      if (editorParts.length > 0) editor.markSelectionSent()
+    // New-session: create + navigate already happened — admit must not block submit return.
+    // Snapshot the submit-time send context: queued entries must send
+    // exactly what the user submitted.
+    // forceAgent is consume-once: capture it for this submit, then clear so
+    // later prompts route normally (/startup must not pin every follow-up
+    // to the orchestrator unrouted).
+    const submitForceAgent = store.prompt.forceAgent
+    if (submitForceAgent) setStore("prompt", "forceAgent", undefined)
+    const dispatchBase: DispatchContext = {
+      agentName: agent.name,
+      model: { providerID: selectedModel.providerID, modelID: selectedModel.modelID },
+      variant,
+      sessionDirectory,
+      forceAgent: submitForceAgent,
+      mode: currentMode,
+      preferQueue: options?.preferQueue,
+      preferSteer: options?.preferSteer,
     }
-    }
+    const snapshot: OutboundSnapshot = { text: inputText, nonTextParts, editorParts }
+    // Same send predicate as dispatchEntry: normal prompts go through the
+    // outbound queue — visible instantly, sent FIFO at dispatch. Shell /
+    // slash / forceAgent send immediately.
 
-    // New-session: create + navigate already happened — prepare/admit must not block submit return.
+    const submitFirstLine = inputText.replace(/^\s+/, "").split("\n")[0]
+    const submitIsSlash =
+      submitFirstLine.startsWith("/") &&
+      sync.data.command.some((x) => x.name === submitFirstLine.split(" ")[0].slice(1))
+    const routeNeed =
+      currentMode === "normal" &&
+      !submitIsSlash &&
+      !submitForceAgent &&
+      Boolean(sessionDirectory)
     if (isNewSession) {
       if (!sessionID) return false
       if (finishMoveProgress) move.finishSubmit()
-      void admitAfterPrepare(sessionID)
+      if (routeNeed) {
+        enqueueOutbound(sessionID, snapshot, dispatchBase)
+        void pumpOutbound(sessionID)
+        return true
+      }
+      void dispatchEntry(sessionID, { snapshot, dispatch: dispatchBase })
       return true
     }
 
-    await admitAfterPrepare(sessionID!)
+    if (routeNeed && sessionID) {
+      enqueueOutbound(sessionID, snapshot, dispatchBase)
+      clearPromptUi()
+      if (finishMoveProgress) move.finishSubmit()
+      void pumpOutbound(sessionID)
+      return true
+    }
+    await dispatchEntry(sessionID!, { snapshot, dispatch: dispatchBase })
     clearPromptUi()
     if (finishMoveProgress) move.finishSubmit()
     return true
@@ -1395,47 +1644,18 @@ export function Prompt(props: PromptProps) {
   }
 
   async function pasteInputText(text: string) {
-    const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-    const pastedContent = normalizedText.trim()
-    const filepath = pastedFilepath(pastedContent, terminalEnvironment.platform)
-    const isUrl = /^(https?):\/\//.test(filepath)
-    if (!isUrl) {
-      const attachment = await readLocalAttachment(filepath)
-      const filename = path.basename(filepath)
-      if (attachment?.type === "text") {
-        pasteText(attachment.content, `[SVG: ${filename ?? "image"}]`)
-        return
-      }
-      if (attachment?.type === "binary") {
-        await pasteAttachment({
-          filename,
-          filepath,
-          mime: attachment.mime,
-          content: Buffer.from(attachment.content).toString("base64"),
+    return pasteInputTextWith(text, {
+      input,
+      platform: terminalEnvironment.platform,
+      summaryEnabled: () =>
+        kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary) ?? false,
+      pasteText,
+      pasteAttachment,
+      requestRender: () => renderer.requestRender(),
         })
-        return
-      }
-    }
-
-    const lineCount = (pastedContent.match(/\n/g)?.length ?? 0) + 1
-    if (
-      (lineCount >= 3 || pastedContent.length > 150) &&
-      kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary)
-    ) {
-      pasteText(pastedContent, `[Pasted ~${lineCount} lines]`)
-      return
-    }
-
-    input.insertText(normalizedText)
-
-    setTimeout(() => {
-      if (!input || input.isDestroyed) return
-      input.getLayoutNode().markDirty()
-      renderer.requestRender()
-    }, 0)
   }
 
-  async function pasteAttachment(file: { filename?: string; filepath?: string; content: string; mime: string }) {
+  async function pasteAttachment(file: PasteAttachment) {
     const currentOffset = input.cursorOffset
     const extmarkStart = currentOffset
     const pdf = file.mime === "application/pdf"
@@ -1733,7 +1953,11 @@ export function Prompt(props: PromptProps) {
                 <box flexShrink={0} flexDirection="row" gap={1}>
                   <box marginLeft={1}>
                     <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
-                      <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
+                      <spinner
+                        color={spinnerDef().color}
+                        frames={spinnerDef().frames}
+                        interval={40}
+                      />
                     </Show>
                   </box>
                   <box flexDirection="row" gap={1} flexShrink={0}>
@@ -1795,12 +2019,14 @@ export function Prompt(props: PromptProps) {
                     })()}
                   </box>
                 </box>
-                <text fg={store.interrupt > 0 ? theme.primary : theme.text} wrapMode="none">
-                  esc{" "}
-                  <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>
-                    {store.interrupt > 0 ? "again to interrupt" : "interrupt"}
-                  </span>
-                </text>
+                <box paddingRight={2}>
+                  <text fg={store.interrupt > 0 ? theme.warning : theme.text} wrapMode="none">
+                    esc{" "}
+                    <span style={{ fg: store.interrupt > 0 ? theme.warning : theme.textMuted }}>
+                      {store.interrupt > 0 ? "again to stop" : "interrupt"}
+                    </span>
+                  </text>
+                </box>
               </box>
             </Match>
             <Match when={workspace.notice()}>

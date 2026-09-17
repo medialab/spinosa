@@ -2,7 +2,7 @@
 
 export * as SkillPlugin from "./skill"
 
-import { define } from "./internal"
+import { define } from "./define"
 import { Effect } from "effect"
 import { AbsolutePath } from "../schema"
 import { SkillV2 } from "../skill"

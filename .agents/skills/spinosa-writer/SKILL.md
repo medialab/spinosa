@@ -319,3 +319,14 @@ Process files are intermediate artifacts created during search and synthesis:
 | `analysis_{session_id}.md` | Analyst | Contextual analysis | Archived/moved by evaluator (step 8) |
 | `extraction_{batch_id}.md` | Mapper | Extraction packets per batch (`extraction_*.md`) | Moved to `.trash/` by **startup Phase 7** after indexing (not by evaluator) |
 | `NN_*.md` | Writer/Serendippo | Numbered final reports | Keep in `agent_reports/` |
+
+## Workflow Step Contract
+
+You are executing one bounded Spinosa workflow step.
+
+Do not call the Task tool.
+Do not dispatch another agent.
+Do not choose the next workflow phase.
+Use only the supplied scope and artifact paths.
+Write the exact requested artifact.
+Stop after returning its path and completion signals.

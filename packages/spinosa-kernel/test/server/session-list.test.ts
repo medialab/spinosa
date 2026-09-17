@@ -264,8 +264,28 @@ describe("session.list", () => {
         const sessions = yield* SessionNs.use.list({ search: "unique-search" })
         const titles = sessions.map((session) => session.title)
 
-        expect(titles).toContain("unique-search-term-abc")
-        expect(titles).not.toContain("other-session-xyz")
+      expect(titles).toContain("unique-search-term-abc")
+      expect(titles).not.toContain("other-session-xyz")
+    }),
+    { git: true },
+  )
+
+  it.instance(
+    "treats LIKE wildcards as literal search text",
+    () =>
+      Effect.gen(function* () {
+        yield* withSession({ title: "100% complete" })
+        yield* withSession({ title: "100X complete" })
+        yield* withSession({ title: "foo_bar" })
+        yield* withSession({ title: "fooXbar" })
+
+        const percentTitles = (yield* SessionNs.use.list({ search: "100%" })).map((session) => session.title)
+        const underscoreTitles = (yield* SessionNs.use.list({ search: "foo_bar" })).map((session) => session.title)
+
+        expect(percentTitles).toContain("100% complete")
+        expect(percentTitles).not.toContain("100X complete")
+        expect(underscoreTitles).toContain("foo_bar")
+        expect(underscoreTitles).not.toContain("fooXbar")
       }),
     { git: true },
   )

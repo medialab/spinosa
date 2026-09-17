@@ -21,6 +21,7 @@ import { useEvent } from "../context/event"
 import { readdir, readFile } from "node:fs/promises"
 import { dbg } from "../util/debug-log"
 import { sessionIsBusy, sessionMatchesWorkspaceScope } from "../util/session"
+import { sessionsToStopOnOpen, stopBusySessions } from "../util/stop-sessions"
 
 type SessionListFilter = { scope?: "project"; directory?: string; path?: string; workspace?: string }
 
@@ -345,16 +346,20 @@ export function DialogSessionList() {
         setToDelete(undefined)
       }}
       onSelect={(option) => {
-          // Only abandon the currently-running session when the user actually
-          // commits to a different one — browsing the list must not kill it.
           const cur = currentSessionID()
-          if (cur && cur !== option.value) {
-            const st = sync.data.session_status?.[cur]
-            if (st?.type !== "idle") void sdk.client.session.abort({ sessionID: cur }).catch(() => {})
-          }
+          const target = option.value
+          const ids = sessionsToStopOnOpen({
+            currentID: cur,
+            targetID: target,
+            sessionStatus: sync.data.session_status,
+          })
+          void stopBusySessions({
+            sessionIDs: ids,
+            abort: (sessionID) => sdk.client.session.abort({ sessionID }),
+          })
           route.navigate({
             type: "workspace",
-            sessionID: option.value,
+            sessionID: target,
           })
           dialog.clear()
         }}

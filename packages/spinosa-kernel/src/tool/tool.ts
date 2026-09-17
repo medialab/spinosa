@@ -9,10 +9,10 @@ import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
 
 interface Metadata {
-  [key: string]: any
+  readonly [key: string]: unknown
 }
 
-// TODO: remove this hack
+// Descriptions resolve against the active agent, so this stays lazy.
 export type DynamicDescription = (agent: Agent.Info) => Effect.Effect<string>
 
 /**
@@ -81,18 +81,22 @@ type Init<Parameters extends Schema.Decoder<unknown>, M extends Metadata> =
   | (() => Effect.Effect<DefWithoutID<Parameters, M>>)
 
 export type InferParameters<T> =
-  T extends Info<infer P, any>
+  T extends Info<infer P extends Schema.Decoder<unknown>, infer M extends Metadata>
     ? Schema.Schema.Type<P>
-    : T extends Effect.Effect<Info<infer P, any>, any, any>
+    : T extends Effect.Effect<Info<infer P extends Schema.Decoder<unknown>, infer M extends Metadata>, infer E, infer R>
       ? Schema.Schema.Type<P>
       : never
 export type InferMetadata<T> =
-  T extends Info<any, infer M> ? M : T extends Effect.Effect<Info<any, infer M>, any, any> ? M : never
+  T extends Info<infer P extends Schema.Decoder<unknown>, infer M extends Metadata>
+    ? M
+    : T extends Effect.Effect<Info<infer P extends Schema.Decoder<unknown>, infer M extends Metadata>, infer E, infer R>
+      ? M
+      : never
 
 export type InferDef<T> =
-  T extends Info<infer P, infer M>
+  T extends Info<infer P extends Schema.Decoder<unknown>, infer M extends Metadata>
     ? Def<P, M>
-    : T extends Effect.Effect<Info<infer P, infer M>, any, any>
+    : T extends Effect.Effect<Info<infer P extends Schema.Decoder<unknown>, infer M extends Metadata>, infer E, infer R>
       ? Def<P, M>
       : never
 

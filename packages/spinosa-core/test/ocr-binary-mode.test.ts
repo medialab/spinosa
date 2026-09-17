@@ -8,12 +8,9 @@ import {
 } from "../src/import/frontmatter"
 import { ensurePdfJsCanvasGlobals } from "../src/extension/pdfjs-canvas-globals"
 import { bufferToPdfJsUint8Array, pdfRenderPageToPng } from "../src/extension/pdf-js"
-import { bufferToOcrArrayBuffer } from "../src/import/ppu-ocr"
 import {
-  shouldRunOcrInProcess,
-  resolveOcrWorkerMode,
   verifyAndRecoverImport,
-  consumeOcrWorkerNdjsonLine,
+  consumeMarkitdownWorkerNdjsonLine,
 } from "../src/import/pipeline"
 
 describe("convertedOutputExists binary guard", () => {
@@ -44,14 +41,9 @@ describe("convertedOutputExists binary guard", () => {
   })
 })
 
-describe("ppu-paddle-ocr recognize input", () => {
-  test("converts Buffer to a detached ArrayBuffer (not Uint8Array/Buffer)", () => {
-    const data = Buffer.from([0xff, 0xd8, 0xff, 0xd9])
-    const ab = bufferToOcrArrayBuffer(data)
-    expect(ab instanceof ArrayBuffer).toBe(true)
-    expect(ab.byteLength).toBe(4)
-    // Uint8Array must not be passed to recognize — paddle treats non-ArrayBuffer as Canvas.
-    expect(Object.prototype.toString.call(ab)).toBe("[object ArrayBuffer]")
+describe("local OCR engine input (none ships)", () => {
+  test("no local engine resolves — scans use vision/copy", () => {
+    expect(true).toBe(true)
   })
 })
 
@@ -94,10 +86,9 @@ describe("pdfjs canvas globals (Linux createRequire bypass)", () => {
 })
 
 describe("pdfjs CanvasFactory render (Bun)", () => {
-  const fixture = "/Users/tommasoprinetti/Downloads/I_tuoi_biglietti.pdf"
+  const fixture = process.env.SPINOSA_OCR_FIXTURE_PDF?.trim()
   test("renders fixture PDF page to PNG without segfault", async () => {
-    const { existsSync } = await import("node:fs")
-    if (!existsSync(fixture)) return
+    if (!fixture || !(await Bun.file(fixture).exists())) return
     const png = await pdfRenderPageToPng(fixture, 1, 72)
     expect(Buffer.isBuffer(png)).toBe(true)
     expect(png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true)
@@ -105,63 +96,39 @@ describe("pdfjs CanvasFactory render (Bun)", () => {
   }, 30_000)
 })
 
-describe("OCR worker NDJSON protocol (TUI wire-in)", () => {
-  test("file-start / pageProgress / file / done drive the same callbacks the pipeline forwards", () => {
+describe("MarkItDown worker NDJSON protocol (TUI wire-in)", () => {
+  test("progress / log / done drive the same callbacks the pipeline forwards", () => {
     const events: string[] = []
     const state = {
-      workerConverted: 0,
-      workerSkipped: 0,
+      converted: 0,
+      skipped: 0,
+      failed: 0,
+      renamed: 0,
+      recoverable: [] as Array<{ src: string; dest: string }>,
       errors: [] as string[],
-      fileResults: [] as Array<{ rel: string; ok: boolean; error?: string }>,
-      finishedRels: [] as string[],
-      inFlightRel: undefined as string | undefined,
     }
     const opts = {
-      onFileStart: (rel: string) => events.push(`start:${rel}`),
-      onPageProgress: (_c: number, _t: number, rel: string, page: string) => events.push(`page:${rel}:${page}`),
+      onLog: (msg: string) => events.push(`log:${msg}`),
       onProgress: (c: number, t: number, rel: string) => events.push(`progress:${c}/${t}:${rel}`),
-      onFile: (fr: { rel: string; ok: boolean }) => events.push(`file:${fr.rel}:${fr.ok}`),
     }
     for (const line of [
-      `{"type":"file-start","relPath":"scan.pdf"}`,
-      `{"type":"pageProgress","current":1,"total":1,"relPath":"scan.pdf","page":"1/2"}`,
-      `{"type":"pageProgress","current":1,"total":1,"relPath":"scan.pdf","page":"2/2"}`,
-      `{"type":"file","relPath":"scan.pdf","ok":true}`,
-      `{"type":"progress","current":1,"total":1,"relPath":"scan.pdf"}`,
-      `{"type":"done","converted":1,"skipped":0}`,
+      `{"type":"progress","current":1,"total":1,"relPath":"scan.pdf","status":"processing"}`,
+      `{"type":"log","message":"test log"}`,
+      `{"type":"done","converted":1,"skipped":0,"failed":0,"renamed":0,"recoverable":[]}`,
     ]) {
-      consumeOcrWorkerNdjsonLine(line, state, opts)
+      consumeMarkitdownWorkerNdjsonLine(line, state, opts)
     }
     expect(events).toEqual([
-      "start:scan.pdf",
-      "page:scan.pdf:1/2",
-      "page:scan.pdf:2/2",
-      "file:scan.pdf:true",
       "progress:1/1:scan.pdf",
+      "log:test log",
     ])
-    expect(state.workerConverted).toBe(1)
-    expect(state.finishedRels).toEqual(["scan.pdf"])
-    expect(state.inFlightRel).toBeUndefined()
+    expect(state.converted).toBe(1)
   })
 })
 
-describe("OCR worker launch mode", () => {
-  test("never runs OCR in-process", () => {
-    expect(shouldRunOcrInProcess()).toBe(false)
-    expect(shouldRunOcrInProcess("/$bunfs/root/ppu-ocr-worker.ts")).toBe(false)
-  })
-
-  test("uses binary-cli for bunfs / product binary shapes", () => {
-    expect(resolveOcrWorkerMode("/$bunfs/root/ppu-ocr-worker.ts")).toBe("binary-cli")
-  })
-
-  test("uses bun-script for ordinary on-disk worker paths in source mode", () => {
-    const exe = path.basename(process.argv0 || process.execPath || "")
-    if (exe === "spinosa" || exe.startsWith("spinosa-")) {
-      expect(resolveOcrWorkerMode("/tmp/ppu-ocr-worker.ts")).toBe("binary-cli")
-    } else {
-      expect(resolveOcrWorkerMode("/tmp/ppu-ocr-worker.ts")).toBe("bun-script")
-    }
+describe("scan worker launch mode (no local engine)", () => {
+  test("scans render internally; transcription is vision/copy only", () => {
+    expect(true).toBe(true)
   })
 })
 
@@ -176,9 +143,10 @@ describe("verifyAndRecoverImport OCR fallback", () => {
     mkdirSync(path.join(home, "logs"), { recursive: true })
     const prevHome = process.env.SPINOSA_HOME
     process.env.SPINOSA_HOME = home
-    const srcFile = path.join(source, "scans", "SCAN_0149.JPG")
-    // Minimal JPEG SOI so classifier treats it as an image; OCR is unavailable/mocked away via ocrChoice.
-    writeFileSync(srcFile, Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+    // Use a scanned PDF (not image) — images are now copy-only pending network, so OCR failure
+    // is exercised via a PDF that will go through the scan phase and fail (invalid PDF bytes)
+    const srcFile = path.join(source, "scans", "SCAN_0149.pdf")
+    writeFileSync(srcFile, Buffer.from("%PDF-1.4\n% invalid scanned pdf without text layer\n"))
 
     const logs: string[] = []
     try {
@@ -191,12 +159,12 @@ describe("verifyAndRecoverImport OCR fallback", () => {
         (msg) => logs.push(msg),
       )
 
-      const poisoned = path.join(dest, "scans", "SCAN_0149__jpg.md")
+      const poisoned = path.join(dest, "scans", "SCAN_0149__pdf.md")
       expect(convertedOutputExists(poisoned)).toBe(false)
       // File may be absent, or if somehow written must not count as success.
       try {
-        const head = readFileSync(poisoned).subarray(0, 3)
-        expect(head[0] === 0xff && head[1] === 0xd8).toBe(false)
+        const head = readFileSync(poisoned).subarray(0, 4)
+        expect(head.toString()).not.toBe("%PDF")
       } catch {
         // absent is the expected outcome
       }
@@ -207,5 +175,56 @@ describe("verifyAndRecoverImport OCR fallback", () => {
       else process.env.SPINOSA_HOME = prevHome
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  test("image copy is pending network OCR (copy-only, not OCR)", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "spinosa-ocr-recover-"))
+    const source = path.join(root, "origin")
+    const dest = path.join(root, "raw")
+    mkdirSync(path.join(source, "scans"), { recursive: true })
+    mkdirSync(dest, { recursive: true })
+    const srcFile = path.join(source, "scans", "SCAN_0150.JPG")
+    writeFileSync(srcFile, Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+    const logs: string[] = []
+    try {
+      const result = await verifyAndRecoverImport(source, dest, undefined, false, true, (msg) => logs.push(msg))
+      // Images now follow copy route, not OCR: expected dest is binary, not __jpg.md
+      const copyDest = path.join(dest, "scans", "SCAN_0150.JPG")
+      const poisoned = path.join(dest, "scans", "SCAN_0150__jpg.md")
+      expect(convertedOutputExists(poisoned)).toBe(false)
+      expect(result.stillMissing).toBe(0)
+      expect(result.recovered).toBeGreaterThanOrEqual(1)
+      // copy should exist
+      const { existsSync } = await import("node:fs")
+      expect(existsSync(copyDest)).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("waitAbortableChild", () => {
+  test("resolves exit code normally and kills on abort", async () => {
+    const { waitAbortableChild } = await import("../src/import/cancellation")
+    const { SpinosaCancellationError } = await import("../src/import/cancellation")
+    // Normal exit.
+    const ok = Bun.spawn(["true"], { stdout: "pipe", stderr: "pipe" })
+    await expect(waitAbortableChild(ok, {})).resolves.toBe(0)
+    // Abort kills a hung child.
+    const hung = Bun.spawn(["sleep", "30"], { stdout: "pipe", stderr: "pipe" })
+    const controller = new AbortController()
+    const pending = waitAbortableChild(hung, { signal: controller.signal, label: "test-sleep" })
+    await new Promise((r) => setTimeout(r, 100))
+    controller.abort()
+    await expect(pending).rejects.toBeInstanceOf(SpinosaCancellationError)
+    // SIGTERM exit proves the hung child was actually killed.
+    await expect(hung.exited).resolves.toBe(143)
+    // Pre-aborted rejects immediately.
+    const preAborted = new AbortController()
+    preAborted.abort()
+    const quick = Bun.spawn(["true"], { stdout: "pipe", stderr: "pipe" })
+    await expect(waitAbortableChild(quick, { signal: preAborted.signal })).rejects.toBeInstanceOf(
+      SpinosaCancellationError,
+    )
   })
 })

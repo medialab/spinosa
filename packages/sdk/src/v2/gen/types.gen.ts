@@ -2315,6 +2315,18 @@ export type VcsFileStatus = {
   status: "added" | "deleted" | "modified"
 }
 
+export type VcsStatusAvailable = {
+  _tag: "available"
+  files: Array<VcsFileStatus>
+}
+
+export type VcsStatusUnavailable = {
+  _tag: "unavailable"
+  reason: "non-git"
+}
+
+export type VcsStatus = VcsStatusAvailable | VcsStatusUnavailable
+
 export type VcsFileDiff = {
   file: string
   patch?: string
@@ -2323,11 +2335,30 @@ export type VcsFileDiff = {
   status?: "added" | "deleted" | "modified"
 }
 
+export type VcsDiffAvailable = {
+  _tag: "available"
+  files: Array<VcsFileDiff>
+}
+
+export type VcsDiffUnavailable = {
+  _tag: "unavailable"
+  reason: "non-git" | "default-branch-unavailable" | "merge-base-unavailable"
+}
+
+export type VcsDiff = VcsDiffAvailable | VcsDiffUnavailable
+
 export type VcsApplyError = {
   name: "VcsApplyError"
   data: {
     message: string
     reason: "non-git" | "not-clean"
+  }
+}
+
+export type VcsDiffUnavailableError = {
+  name: "VcsDiffUnavailableError"
+  data: {
+    reason: "non-git"
   }
 }
 
@@ -8183,7 +8214,7 @@ export type VcsStatusResponses = {
   /**
    * VCS status
    */
-  200: Array<VcsFileStatus>
+  200: VcsStatus
 }
 
 export type VcsStatusResponse = VcsStatusResponses[keyof VcsStatusResponses]
@@ -8213,7 +8244,7 @@ export type VcsDiffResponses = {
   /**
    * VCS diff
    */
-  200: Array<VcsFileDiff>
+  200: VcsDiff
 }
 
 export type VcsDiffResponse = VcsDiffResponses[keyof VcsDiffResponses]
@@ -8232,7 +8263,7 @@ export type VcsDiffRawErrors = {
   /**
    * Bad request
    */
-  400: BadRequestError
+  400: BadRequestError | VcsDiffUnavailableError
 }
 
 export type VcsDiffRawError = VcsDiffRawErrors[keyof VcsDiffRawErrors]

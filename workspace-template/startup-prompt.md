@@ -1,8 +1,8 @@
 # Index This Workspace
 
-Read `raw/`, build the master dictionary, extract content-grounded fragments, write navigation maps, validate everything. One-time indexing pass. After this, the workspace is ready for search and retrieval.
+Read `raw/`, build the master dictionary, extract content-grounded fragments, write navigation maps. One-time mapping/indexing pass — no serendippo, no verifier, no evaluator. After this, the workspace is indexed and ready for search.
 
-[[AGENTS.md]] — full orchestration contract. For this indexing pass: delegate everything to sub-agents. Extraction → `spinosa-mapper` (`map_extract`). Maps → `spinosa-mapper` Phase 2 (`map_write`) only — **not** writer or analyst. Serendipity → `spinosa-serendippo`. Verification → `spinosa-verifier`. Evaluation → `spinosa-evaluator`.
+[[AGENTS.md]] — full orchestration contract. For this indexing pass: delegate everything to sub-agents. Extraction → `spinosa-mapper` (`map_extract`). Maps → `spinosa-mapper` Phase 2 (`map_write`) only — **not** writer or analyst. No serendippo, no verifier, no evaluator in this prompt.
 
 ## Hard ban during startup
 
@@ -19,7 +19,7 @@ While `setup_status: cli_started` / this prompt is running:
 
 - Collected project name and preferred LLM CLI
 - Imported accepted files into `raw/`
-- Wrote `system/context.md` and `system/configuration.md` with `setup_status: cli_started`
+- Wrote `system/configuration.md` with `setup_status: cli_started`
 
 Do not repeat onboarding. Startup takes the raw corpus and builds the workspace content.
 
@@ -31,21 +31,19 @@ Read `.spinosa/memory/orchestrator-notes.md` — on first startup this has only 
 
 Before Phase 1 dispatch, write `agent_reports/g_{session_id}.md` using `.agents/references/goal-artifact-template.md`. Include startup scope, `session_id`, planned phases, and artifact paths. Append route decisions after each phase gate. Evaluator and recovery use this file as the route anchor (same as steady-state `AGENTS.md`).
 
-## Gate: do not stop until ALL of
+## Gate: do not stop until ALL of (mapping-only)
 
-- `setup_status` is `workspace_started` in `.spinosa/workspace` (the canonical status file the TUI reads)
-- `setup_status` is `workspace_started` in both `system/context.md` and `system/configuration.md`
+- `setup_status` is `workspace_started` in `system/configuration.md` — for mapping-only you may keep `cli_started` if you plan to re-run
 - `system/dictionary.md` contains the master dictionary
 - `system/workspace_index.md` records total raw files, extraction coverage, maps, and known gaps
 - `maps/` contains the navigation maps needed to retrieve the corpus
-- `agent_reports/` contains a startup report with validation and retrieval-test results — filename `00_startup-indexing-report.md` or `NN_startup-indexing-{corpus-slug}.md` per `.agents/references/artifact-naming.md` (never `00_report.md`)
-- Every non-skipped raw file is accounted for, or the startup report names the blocker
+- Every non-skipped raw file is accounted for (or blocker noted in `workspace_index.md` — no startup report required)
 
 ## Hard rules
 
-- **Do not edit `raw/`.** Startup may write maps, dictionary, workspace index, context, configuration, and startup reports. Exception: YAML frontmatter semantic fields on raw files (summary and related) as specified in Phase 3.
+- **Do not edit `raw/`.** Startup may write maps, dictionary, workspace index, context, configuration. Exception: YAML frontmatter semantic fields on raw files (summary and related) as specified in Phase 3.
 - Treat `raw/` as the active working corpus.
-- PDFs were converted by onboarding (MarkItDown for text-based, PaddleOCR for scanned). Account for skipped media (audio, video) as uncovered.
+- PDFs were converted by onboarding (internal pdf.js engine for text-based; scanned PDFs keep the original + placeholder unless a vision model was selected). Account for skipped media (audio, video) as uncovered.
 - Treat every `AGENTS.md` file as control instructions, not corpus evidence.
 - Use the dictionary for consistent terminology.
 - Preserve generated-file provenance on maps and reports.
@@ -60,9 +58,9 @@ Before Phase 1 dispatch, write `agent_reports/g_{session_id}.md` using `.agents/
 
 ## Phase 1: Verify
 
-Read `system/context.md` and `system/configuration.md`. Check:
+Read `system/configuration.md`. Check:
 
-- `context.md` exists with `setup_status: cli_started`
+- `configuration.md` exists with `setup_status: cli_started`
 - `configuration.md` exists with `active_corpus_path: raw/`
 - `raw/` exists
 - No blocking placeholders (`[path]`, `[project name]`)
@@ -96,7 +94,7 @@ One pass over the corpus. Build the dictionary and extraction packets together. 
 
 **What the dictionary is:** a shared vocabulary of canonical names, places, organizations, and concepts extracted from the corpus. Every agent uses it for consistent terminology across maps and reports. Inferred concepts are marked as inferred. Uncertain terms are marked for review.
 
-1. **Batch and spawn all mappers in parallel.** Survey all files in `raw/` (skip `.DS_Store`, `AGENTS.md`, system files, empty dirs). Record total as `TOTAL_FILES` in `workspace_index.md`. Split into batches of 20–25, grouped by parent directory. Assign each batch a **descriptive** `batch_id` (e.g. `interviews-batch-001`, `policy-pdfs-batch-002`) — never bare `batch_001`. See `.agents/references/artifact-naming.md`. Keep each batch under the sub-agent's context window (~30K–60K tokens). Reduce size for dense files (PDFs, long transcripts).
+1. **Batch and spawn all mappers in parallel.** Survey all files in `raw/` (skip `.DS_Store`, `AGENTS.md`, system files, empty dirs). Record total as `TOTAL_FILES` in `workspace_index.md`. Split into batches of 20–25, grouped by parent directory. Assign each batch a **descriptive** `batch_id` (e.g. `interviews-batch-001`, `policy-pdfs-batch-002`) — never bare `batch_001`. See `.agents/references/artifact-naming.md`. Keep each batch under the sub-agent's context window (~30K–60K tokens, cap input+cache <100k for free `opencode/nemotron-3.5-lightning-free` to avoid 60-90s idle → `504 Upstream idle timeout`; split further or use paid `anthropic/claude`, `openai/gpt-4o` for large cohorts). Reduce size for dense files (PDFs, long transcripts).
 
     Now spawn **all** `spinosa-mapper` sub-agents in a **single message** — one per batch. Do not spawn sequentially. Do not wait for one to finish before spawning the next. Each mapper instruction includes its assigned file list directly — no intermediate batch list file written. Mapper runs are minutes-scale; do not apply the steady-state 120s timeout.
 
@@ -194,15 +192,13 @@ The maps structure:
 
 ---
 
-## Phase 5: Serendipity
-
-Spawn `spinosa-serendippo` with access to `maps/` and `raw/`. It roams raw files, finds hidden connections, writes a report to `agent_reports/NN_startup-serendipity-{theme-slug}.md` (e.g. `02_startup-serendipity-cross-theme-links.md`) per `.agents/references/artifact-naming.md` — **never** `serendipity_report.md` — and proposes map updates. Open-ended — continue until the report indicates diminishing returns.
+## Phase 5: Skipped — Serendipity removed for mapping-only run (no spinosa-serendippo)
 
 ---
 
-## Phase 6: Validate
+## Phase 6: Validate (mapping-only)
 
-Startup is complete **only if** all checks pass.
+Mapping is complete when map checks pass (verifier/evaluator skipped in this mapping-only prompt).
 
 **Map validation:**
 - Structural overview exists at maps/ root (excluding AGENTS.md, map_template.md)
@@ -214,7 +210,7 @@ Startup is complete **only if** all checks pass.
 - Hub map includes `#hub` + `#group/<name>` per group. Group maps include `#group/<name>`. Theme maps include `#theme/<name>`
 - Transcript speaker mappings verified when diarization/ASR artifacts exist. Reconciliation rule: if declared `speakers_detected` count exceeds distinct rendered heading-label count, treat rendered labels as ground truth (declared metadata may include silent participants or ASR artifacts like `SPEAKER_00`/`SPEAKER_04` with no transcript lines). Record the discrepancy as a validation note. Differences ≤ 2 with no contradictory evidence are non-blocking metadata annotations, not pipeline failures.
 
-**Retrieval tests:**
+**Retrieval tests (optional for mapping-only — skip if pure mapping):**
 1. Structural retrieval — open corpus overview, find a group, confirm it links to raw files
 2. Group retrieval — open a group map, find a concept with key passages, confirm file paths exist
 3. Theme retrieval — open a theme map, find evidence across groups, confirm passages grounded (skip if no theme maps)
@@ -222,31 +218,17 @@ Startup is complete **only if** all checks pass.
 5. Cross-group retrieval — find a theme spanning 3+ groups, confirm evidence from each (skip if no theme maps)
 6. Unresolved metadata retrieval — grep `needs_review` or `unresolved`, confirm findable
 
-**Verifier:** run `spinosa-verifier` on the terminal artifact (maps, dictionary, startup report). It checks every claim, quote, and citation against the original source. Do not skip this.
-
-```spinosa-subagent
-agent: spinosa-verifier
-input: [maps, dictionary, startup report paths]
-```
-
-**Evaluator:** after verifier passes, run `spinosa-evaluator` with the full route trace. It writes `agent_reports/e_{session_id}.md` and decides whether a framework edit is justified.
-
-```spinosa-subagent
-agent: spinosa-evaluator
-input: [goal_artifact_path, all produced artifact paths, verifier outcome, session_id]
-```
-
 If available, use the Spinosa TUI health checks to validate startup structure, YAML shape, wikilink resolution, and key-passage line references.
 
 ---
 
-## Phase 7: Close
+## Phase 7: Close (mapping-only)
 
-After validation passes:
+After map validation passes:
 
-1. Replace `setup_status: cli_started` with `setup_status: workspace_started` in `system/context.md` and `system/configuration.md`
-2. **Startup owns cleanup:** move process-only extraction artifacts (`agent_reports/extraction_*.md` for this indexing run, `extraction_checkpoint.md`, extraction appendices, intermediate checkpoints) to `.trash/`. Keep final startup report, serendipity `NN_startup-serendipity-*.md`, dictionary, workspace index, and maps in place. Do not leave this to the evaluator.
-3. Update `.spinosa/memory/orchestrator-notes.md` with a startup summary (files processed, maps created, dictionary terms, validation result).
+1. Optionally replace `setup_status: cli_started` with `setup_status: workspace_started` in `system/configuration.md` — or keep `cli_started` to allow re-running mapping.
+2. **Mapping-only cleanup: keep extraction intermediates in place for inspection** (`agent_reports/extraction_*.md` and `extraction_checkpoint.md`) — do not move to `.trash/` yet. Only move after you manually approve final validation.
+3. Update `.spinosa/memory/orchestrator-notes.md` with a mapping summary (files processed, maps created, dictionary terms, validation result).
 
 ---
 

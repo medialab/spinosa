@@ -2,6 +2,7 @@ import { createServer } from "node:http"
 import type { IntegrationOAuthMethodRegistration } from "@spinosa/plugin/v2/effect/integration"
 import { define } from "@spinosa/plugin/v2/effect/plugin"
 import { Deferred, Effect } from "effect"
+import type { LanguageModelV3 } from "@ai-sdk/provider"
 import type { Scope } from "effect"
 import { Credential } from "../../credential"
 import { InstallationVersion } from "../../installation/version"
@@ -182,7 +183,7 @@ export const OpenAIPlugin = define({
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== ProviderV2.ID.openai) return
-        evt.language = (evt.sdk as any).responses(evt.model.api.id)
+      evt.language = (evt.sdk as { responses: (modelID: string) => LanguageModelV3 }).responses(evt.model.api.id)
       }),
     )
   }),

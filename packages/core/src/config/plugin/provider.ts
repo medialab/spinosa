@@ -1,6 +1,6 @@
 export * as ConfigProviderPlugin from "./provider"
 
-import { define } from "../../plugin/internal"
+import { define } from "../../plugin/define"
 import { Effect } from "effect"
 import { Config } from "../../config"
 import { ModelV2 } from "../../model"

@@ -87,7 +87,7 @@ function init() {
         setStore("currentToast", null)
       }, toastOptions.duration).unref()
     },
-    error: (err: any) => {
+  error: (err: unknown) => {
       if (err instanceof Error)
         return toast.show({
           variant: "error",

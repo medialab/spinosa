@@ -46,26 +46,28 @@ export * from "./tools/detection"
 // --- scan
 export * from "./scan/scanner"
 
-// --- import
+// --- import (pipeline/onboard/add stay off the conversation barrel)
 export * from "./import/batch"
 export * from "./import/frontmatter"
-export * from "./import/pipeline"
 
 // --- handoff
 export * from "./handoff/builder"
 export * from "./handoff/runner"
 
+// --- export
+export * from "./export/markdown-pdf"
+
 // --- commands
 export * from "./commands/create"
-export * from "./commands/add"
 export * from "./commands/startup"
-export * from "./commands/onboard"
 export * from "./commands/update"
 export * from "./commands/upgrade"
 export * from "./commands/preflight"
 
-// --- application
-export * from "./application/research-run-service"
+// --- application (kernel tools; no TUI workflow control plane)
+export * from "./application/agent-tools"
+export * from "./artifacts/contracts"
+export * from "./artifacts/validate"
 
 // --- system
 export * from "./system/channels"

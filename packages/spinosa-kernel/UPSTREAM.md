@@ -15,14 +15,10 @@ source-compatibility obligation.
 ```text
 Spinosa UI / CLI
   -> Spinosa core and runtime
-  -> Spinosa harness contract
-  -> Spinosa kernel harness adapter
   -> inherited kernel packages
 ```
 
 - `@spinosa/kernel-core` and `@spinosa/runtime` must not import `@spinosa/*`.
-- `@spinosa/harness` is the only Spinosa package allowed to adapt Spinosa kernel SDK
-  concepts.
 - Kernel changes are permitted when they serve Spinosa, while retaining source
   attribution and licence notices.
 - Do not reintroduce subtree-pull instructions or an upstream compatibility

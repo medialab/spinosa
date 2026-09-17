@@ -15,6 +15,10 @@ Typed source of truth: `packages/spinosa-core/src/distribution/contract.ts`.
 | `checksums.txt` | SHA-256 for every immutable asset |
 | `build-manifest.json` | Version, channel, template pack ID, asset map |
 
+Local OCR was removed (no engine ships): no `spinosa-tools-<os>-<arch>.tar.gz`
+assets are published anymore. Legacy `$SPINOSA_HOME/tools/` dirs may still exist
+from older installs (removal manifest only); uninstall still removes them.
+
 No `spinosa-v*.tar.gz` product archive. Rolling channel (`beta` / `stable`) publishes only `install.sh` + `checksums.txt`.
 
 ## Platform mapping
@@ -29,6 +33,12 @@ Canonical keys use `x64` (never `amd64` in asset names):
 | Linux | `x86_64`, `amd64`, `x64` | `linux-x64` |
 
 Unsupported: Windows, musl/Alpine (glibc Linux only), baseline non-AVX variants (first cut).
+
+Linux binaries are built on Ubuntu 24.04 runners: **glibc ≥ 2.39 required**
+(Ubuntu 24.04+, Debian 13+, or any distribution shipping glibc 2.39+).
+Older glibc (Ubuntu 22.04 / Debian 12) fails at load time, before `version`
+ever runs — on those hosts use a newer distribution. Typed source of truth:
+`LINUX_MIN_GLIBC` in `packages/spinosa-core/src/distribution/contract.ts`.
 
 Installer (`install.sh`) and `resolveProductBinaryTarget` refuse musl when detectable
 (`/etc/alpine-release`, `/lib/ld-musl-*`, or `ldd --version` mentioning musl) before download.
@@ -63,6 +73,7 @@ $SPINOSA_HOME/env.sh
 | `distribution: binary` | Install mode after hard cut |
 | `template_pack_id` | Embedded pack SHA-256 |
 | `beta: true\|false` | Release channel toggle |
+| `doctor_unverified` | Staged verification never returned a verdict (e.g. smoke timeout); install proceeded flagged, health unconfirmed |
 | `legacy_source_runtime: true` | Optional: dormant `versions/` still present |
 
 Legacy keys remain readable.
@@ -86,7 +97,12 @@ Modified launchers are preserved and reported. Migration never fails global inst
 ## Activation / rollback
 
 1. Stage binary outside active path.
-2. Verify checksum, `version --json`, template ensure/verify, doctor.
+2. Verify checksum, `version --json`, template ensure/verify, then the
+   deterministic binary smokes (`internal smoke provider-catalog`,
+   `native-imports`, `pdf-runtime`, `tui-worker`, `parser-worker`). Full `spinosa doctor` stays the deeper
+   application diagnostic and is intentionally not an integrity gate (it boots
+   the whole instance plus providers). A smoke timeout (no verdict) warns and
+   records `doctor_unverified` instead of blocking; a failed smoke blocks.
 3. Backup active binary → atomic rename staged → active.
 4. Verify active binary; commit metadata only after success.
 5. On post-activation failure: restore backup; leave metadata at previous version.
@@ -130,9 +146,29 @@ See `docs/release/stable-promotion-gates.md`.
 
 ## Known cut notes (native packaging)
 
-- ONNX companion libs (`libonnxruntime.1.dylib` / `libonnxruntime.so.1`) are written under `src/generated/onnx-libs/<os>-<arch>/` and imported from on-disk `onnx-native.gen.ts` (same Bun `--compile` pattern as template-blobs). At process start they are staged under `$SPINOSA_HOME/cache/onnx-runtime` on Linux (tmpdir-first on Darwin for `@rpath` adjacency) and also mirrored into `os.tmpdir()` when that differs. **Linux binary boots re-exec once** with `LD_LIBRARY_PATH` pointing at the stage dir (`SPINOSA_NATIVE_LIBS_READY=1` prevents loops) because glibc ignores in-process `LD_LIBRARY_PATH` mutations — virgin installs must not require a manual export. Darwin does not re-exec (SIP may strip `DYLD_LIBRARY_PATH`; tmpdir `$ORIGIN` adjacency is the load path). **Exception:** `spinosa-linux-x64` does **not** embed or stage ONNX / OCR (`ppu-paddle-ocr`); doctor reports OCR as unsupported and activation must not fail closed solely for that.
-- Canvas skia natives (`skia.<triple>.node`) are written under `src/generated/canvas-libs/<os>-<arch>/` via `canvas-native.gen.ts` and staged at start into `$SPINOSA_HOME/cache/canvas-native` (with onnx-style fallbacks). `NAPI_RS_NATIVE_LIBRARY_PATH` is set before any canvas/OCR import so nested OCR/`ppu-ocv` loads work on Linux Bun `--compile` (optional `@napi-rs/canvas-*` `require()` fails there even when doctor’s direct canvas import succeeds). The Linux re-exec inherits this env.
-- Host `darwin-arm64` strict smoke (`version` / `doctor`) clears any leftover staged lib first, then requires re-stage from the embed.
-- Upstream `onnxruntime-node` (≥1.24) omits `darwin/x64` binaries ([onnxruntime#27961](https://github.com/microsoft/onnxruntime/issues/27961)). The binary build vendors `onnxruntime-node@1.23.2` darwin/x64 fail-closed and pins Bun resolution to the workspace paddle-linked install (ignores polluted home `node_modules`).
-- pdfjs may warn that `@napi-rs/canvas` cannot load from some BunFS chunks while doctor still reports Canvas/PDF available. Non-blocking for CLI smoke; PDF raster follow-up tracked in the beta.10 checklist.
+- No local OCR engine ships: scans transcribe via a selected
+  vision model or copy-as-is; digital PDFs extract via pdf.js with no model needed.
+  No OCR tools are bundled, staged, or verified at install/smoke time. Doctor
+  reports OCR unavailable as the contract (fail closed on any local-engine probe).
+- Canvas skia natives (`skia.<triple>.node`) are written under `src/generated/canvas-libs/<os>-<arch>/` via `canvas-native.gen.ts` and staged at start into `$SPINOSA_HOME/cache/canvas-native` (home → XDG → tmpdir fallback order). `NAPI_RS_NATIVE_LIBRARY_PATH` is set before any canvas import so nested loads work on Linux Bun `--compile` (optional `@napi-rs/canvas-*` `require()` fails there even when doctor's direct canvas import succeeds).
+- Host verification is one end-to-end installer smoke per platform (`install.sh`
+  from local HTTP into an isolated HOME, then version / doctor / `internal
+  smoke native-imports` / `provider-catalog` / `pdf-runtime` / `tui-worker` /
+  `parser-worker` on the installed
+  binary). It is fail-closed: any smoke failure fails the release.
+  `version`/`doctor` never dlopen the TUI natives; `native-imports` loads
+  OpenTUI, FFF, watcher, node-pty, and canvas without starting an interactive
+  UI. `provider-catalog` proves the embedded models.dev snapshot converts to
+  a `/provider` list with selectable defaults (the empty connect-dialog
+  outage shipped green because no gate touched the catalog); `pdf-runtime`
+  proves a page actually renders through the staged canvas native.
+  `tui-worker` proves the compiled extra-entrypoint Worker starts and serves
+  that catalog (beta.31 resolved `./src/cli/tui/worker.ts` after chdir, so
+  retry toasted "Worker has been terminated"). That worker isolate must not
+  import `@napi-rs/canvas`: bunfs chunks cannot createRequire it, pdf.js then
+  warns `Cannot polyfill ImageData/Path2D`, and `/provider` never returns.
+  PDF raster stays on `pdf-runtime` in the parent isolate.
+  `parser-worker` proves the compiled OpenTUI `parser.worker.js` extra
+  entrypoint starts (`GET_PERFORMANCE`). Compiled `doctor` must import
+  pdf.js and canvas; a bundled-name probe is not enough.
 

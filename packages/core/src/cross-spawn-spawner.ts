@@ -457,9 +457,10 @@ export const make = Effect.gen(function* () {
           const flat = flatten(command)
           const [head, ...tail] = flat.commands
           let handle = spawnCommand(head)
-          for (let i = 0; i < tail.length; i++) {
-            const next = tail[i]
-            const opts = flat.opts[i] ?? {}
+  for (let i = 0; i < tail.length; i++) {
+    const next = tail[i]
+    if (!next) break
+    const opts = flat.opts[i] ?? {}
             const sin = stdin(next.options)
             const stream = Stream.unwrap(Effect.map(handle, (x) => source(x, opts.from)))
             const to = opts.to ?? "stdin"

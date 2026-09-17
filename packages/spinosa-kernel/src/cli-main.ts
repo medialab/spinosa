@@ -8,7 +8,6 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
-import { ConsoleCommand } from "./cli/cmd/account"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
@@ -18,27 +17,19 @@ import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { FormatError } from "./cli/error"
-import { ServeCommand } from "./cli/cmd/serve"
 import { DebugCommand } from "./cli/cmd/debug"
-import { StatsCommand } from "./cli/cmd/stats"
-import { McpCommand } from "./cli/cmd/mcp"
-import { ExportCommand } from "./cli/cmd/export"
-import { ImportCommand } from "./cli/cmd/import"
 import { AttachCommand } from "./cli/cmd/attach"
 import { TuiThreadCommand } from "./cli/cmd/tui"
 import { EOL } from "os"
-import { WebCommand } from "./cli/cmd/web"
-import { PrCommand } from "./cli/cmd/pr"
-import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
-import { errorMessage } from "./util/error"
-import { PluginCommand } from "./cli/cmd/plug"
+import { dumpErrorChain, errorMessage } from "./util/error"
 import { WorkspaceNewCommand } from "./cli/cmd/workspace-new"
 import { WorkspaceAddCommand } from "./cli/cmd/workspace-add"
 import { WorkspaceUpdateCommand } from "./cli/cmd/workspace-update"
 import { WorkspaceStatusCommand } from "./cli/cmd/workspace-status"
 import { WorkspaceListCommand } from "./cli/cmd/workspace-list"
 import { DoctorCommand } from "./cli/cmd/doctor"
+import { McpCommand } from "./cli/cmd/mcp"
 import { StartupAutocleanCommand } from "./cli/cmd/startup-autoclean"
 import { VersionCommand } from "./cli/cmd/version"
 import { InternalCommand } from "./cli/cmd/internal"
@@ -53,6 +44,15 @@ import {
 const args = hideBin(process.argv)
 const { pid, ppid } = process
 
+// Fast path for --help/--version: skip template bootstrap and Heap init (~400ms preload still paid, but bootstrap+Heap skipped)
+const isFastPath =
+  args.includes("-h") ||
+  args.includes("--help") ||
+  args.includes("-v") ||
+  args.includes("--version") ||
+  args[0] === "version" ||
+  args[0] === "help"
+
 bootLog("kernel.init", "kernel entry parsing args", {
   argv: args.join(" "),
   cwd: process.cwd(),
@@ -66,8 +66,7 @@ bootLog("kernel.init", "kernel entry parsing args", {
   BUN_VERSION: process.env.BUN_VERSION ?? undefined,
 })
 
-if (isCompiledBinaryDistribution()) {
-  try {
+if (!isFastPath && isCompiledBinaryDistribution()) {  try {
     const packMod = await import("./generated/template-pack.gen.ts")
     registerEmbeddedTemplatePack(() => packMod.templatePack as never)
   } catch (error) {
@@ -124,6 +123,13 @@ const cli = yargs(args)
       process.env.SPINOSA_PURE = "1"
     }
 
+    if (isFastPath) {
+      process.env.AGENT = "1"
+      process.env.SPINOSA = "1"
+      process.env.SPINOSA_PID = String(process.pid)
+      return
+    }
+
     Heap.start()
 
     process.env.AGENT = "1"
@@ -131,38 +137,32 @@ const cli = yargs(args)
     process.env.SPINOSA_PID = String(process.pid)
   })
   .usage("")
-  .completion("completion", "generate shell completion script")
-  .command(McpCommand)
+  // --- Curated Spinosa help: keep core workflow visible, hide advanced, eliminate opencode fork internals ---
+  // Visible (14): TUI default + new/add/update/status/list/doctor/providers/models/agent/mcp/upgrade/uninstall/version
   .command(TuiThreadCommand)
-  .command(AttachCommand)
-  .command(RunCommand)
-  .command(GenerateCommand)
-  .command(DebugCommand)
-  .command(ConsoleCommand)
-  .command(ProvidersCommand)
-  .command(AgentCommand)
-  .command(UpgradeCommand)
-  .command(PreflightCommand)
-  .command(UninstallCommand)
-  .command(ServeCommand)
-  .command(WebCommand)
-  .command(ModelsCommand)
-  .command(StatsCommand)
-  .command(ExportCommand)
-  .command(ImportCommand)
-  .command(PrCommand)
-  .command(SessionCommand)
-  .command(PluginCommand)
-  .command(DbCommand)
   .command(WorkspaceNewCommand)
   .command(WorkspaceAddCommand)
   .command(WorkspaceUpdateCommand)
   .command(WorkspaceStatusCommand)
   .command(WorkspaceListCommand)
   .command(DoctorCommand)
-  .command(StartupAutocleanCommand)
+  .command(ProvidersCommand)
+  .command(AgentCommand)
+  .command(McpCommand)
+  .command(UpgradeCommand)
+  .command(UninstallCommand)
+  .command(ModelsCommand)
   .command(VersionCommand)
-  .command(InternalCommand)
+  // Keep but hide from main help (still callable via `spinosa <cmd> --help`): advanced/debug
+  .command({ ...AttachCommand, describe: false } as any)
+  .command({ ...RunCommand, describe: false } as any)
+  .command({ ...DebugCommand, describe: false } as any)
+  .command({ ...GenerateCommand, describe: false } as any)
+  .command({ ...DbCommand, describe: false } as any)
+  .command({ ...PreflightCommand, describe: false } as any)
+  .command({ ...StartupAutocleanCommand, describe: false } as any)
+  .command({ ...InternalCommand, describe: false } as any)
+  // Eliminated: StatsCommand, TuiThreadCommand, ConsoleCommand, ServeCommand (duplicate of web), ExportCommand, ImportCommand, PrCommand, SessionCommand, PluginCommand — not registered; yargs completion disabled
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
@@ -191,12 +191,14 @@ try {
     bootLog("kernel.parse.done", "yargs command finished")
   }
 } catch (e) {
-  bootLog("kernel.error", "unhandled error", { error: String(e) })
+  const chain = dumpErrorChain(e)
+  bootLog("kernel.error", "unhandled error", { error: String(e), chain })
   const formatted = FormatError(e)
   if (formatted) UI.error(formatted)
   if (formatted === undefined) {
     UI.error("Unexpected error" + EOL)
     process.stderr.write(errorMessage(e) + EOL)
+    process.stderr.write(chain + EOL)
   }
   process.exitCode = 1
 } finally {

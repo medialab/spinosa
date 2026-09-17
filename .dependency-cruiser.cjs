@@ -10,6 +10,20 @@ module.exports = {
       },
     },
     {
+      name: "no-circular-product-packages",
+      severity: "error",
+      from: {
+        path: "^packages/(spinosa-core|spinosa-runtime|spinosa-cli)/src/",
+      },
+      to: { circular: true },
+    },
+    {
+      name: "core-not-product-hosts",
+      severity: "error",
+      from: { path: "^packages/core/" },
+      to: { path: "^packages/(spinosa-kernel|tui|spinosa-cli)/" },
+    },
+    {
       name: "kernel-core-not-executable-kernel",
       severity: "error",
       from: { path: "^packages/core/" },
@@ -38,6 +52,12 @@ module.exports = {
         pathNot: [
           "^packages/spinosa-core/src/utils/version",
           "^packages/spinosa-core/src/utils/yaml-config",
+          "^packages/spinosa-core/src/distribution/contract",
+          "^packages/spinosa-core/src/distribution/workspace-launcher",
+          "^packages/spinosa-core/src/framework/template-pack",
+          "^packages/spinosa-core/src/system/bun-launch",
+          "^packages/spinosa-kernel/src/cli/cmd/tui",
+          "^packages/spinosa-kernel/script/build",
         ],
       },
     },

@@ -54,7 +54,7 @@ export function SessionsView(props: CanvasViewProps) {
               </box>
               <For each={entries}>
                 {([tool, count]) => {
-                  const typeColor = toolCalloutColor(tool, theme as any)
+                  const typeColor = toolCalloutColor(tool, theme)
                   const scaled = (count / maxCount) * barWidth
                   const full = Math.floor(scaled)
                   const partial = Math.round((scaled - full) * 8)

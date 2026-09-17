@@ -14,6 +14,7 @@ import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
 import { resolveDefaultPrimaryAgent } from "../util/agent"
+import { bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -189,7 +190,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (typeof value.variant === "object" && value.variant !== null)
             setModelStore("variant", value.variant as Record<string, string | undefined>)
         })
-        .catch((e) => { console.error("spinosa: failed to read model.json", e) })
+        .catch((e) => {
+          if (!e || typeof e !== "object" || !("code" in e) || (e as { code?: string }).code !== "ENOENT") {
+            bootLogError("tui.model.read", e)
+          }
+        })
         .finally(() => {
           setModelStore("ready", true)
           if (state.pending) save()
@@ -409,6 +414,74 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const model = createModel()
 
+    function createVision() {
+      const [visionStore, setVisionStore] = createStore<{
+        ready: boolean
+        last?: { providerID: string; modelID: string }
+      }>({
+        ready: false,
+        last: undefined,
+      })
+      const filePath = path.join(paths.state, "vision-model.json")
+      const state = { pending: false }
+      function save() {
+        if (!visionStore.ready) {
+          state.pending = true
+          return
+        }
+        state.pending = false
+        if (!visionStore.last) return
+        void writeJsonAtomic(filePath, { last: visionStore.last })
+      }
+      readJson<unknown>(filePath)
+        .then((x) => {
+          if (!x || typeof x !== "object") return
+          const value = x as Record<string, unknown>
+          const last = value.last as { providerID?: string; modelID?: string } | undefined
+          if (last && typeof last.providerID === "string" && typeof last.modelID === "string") {
+            if (isModelValid(last as { providerID: string; modelID: string })) {
+              setVisionStore("last", last as { providerID: string; modelID: string })
+            } else {
+              // Still keep it if valid structure but provider not yet loaded — will be validated on use
+              setVisionStore("last", last as { providerID: string; modelID: string })
+            }
+          }
+        })
+        .catch((e) => {
+          if (!e || typeof e !== "object" || !("code" in e) || (e as { code?: string }).code !== "ENOENT") {
+            bootLogError("tui.vision-model.read", e)
+          }
+        })
+        .finally(() => {
+          setVisionStore("ready", true)
+          if (state.pending) save()
+        })
+      return {
+        get ready() {
+          return visionStore.ready
+        },
+        current() {
+          return visionStore.last
+        },
+        set(model: { providerID: string; modelID: string }) {
+          if (typeof model.providerID !== "string" || typeof model.modelID !== "string") return
+          setVisionStore("last", { providerID: model.providerID, modelID: model.modelID })
+          save()
+        },
+        clear() {
+          setVisionStore("last", undefined)
+          void writeJsonAtomic(filePath, {})
+        },
+        isValid() {
+          const last = visionStore.last
+          if (!last) return false
+          return isModelValid(last)
+        },
+      }
+    }
+
+    const vision = createVision()
+
     function createSession() {
       const [sessionStore, setSessionStore] = createStore<{
         ready: boolean
@@ -446,7 +519,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         })
         .catch((error) => {
           if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
-            console.error("spinosa: failed to read session.json", error)
+            bootLogError("tui.session-json.read", error)
           }
         })
         .finally(() => {
@@ -537,6 +610,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const result = {
       model,
+      vision,
       agent,
       mcp,
       session,

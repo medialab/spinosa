@@ -5,6 +5,30 @@ import type { FileProgressStatus } from "@spinosa/core/progress/progress"
 export type ImportFileProgressItem = {
   rel: string
   status: FileProgressStatus
+  /** Current PDF page being transcribed (from a "rel (page N[/M])" event). Cleared on terminal events. */
+  page?: number
+  /** Total PDF pages, when known (from a "rel (page N/M)" event). */
+  pageTotal?: number
+}
+
+/**
+ * Split a per-page progress rel ("memo.pdf (page 2)" or "memo.pdf (page 2/12)")
+ * into its file base, page number, and optional page total. Non-page rels
+ * return the input as base with no page.
+ */
+export function splitPageSuffix(relPath: string): { base: string; page?: number; total?: number } {
+  const match = /^(.*) \(page (\d+)(?:\/(\d+))?\)$/.exec(relPath)
+  if (!match) return { base: relPath }
+  return {
+    base: match[1]!,
+    page: Number(match[2]),
+    ...(match[3] !== undefined ? { total: Number(match[3]) } : {}),
+  }
+}
+
+/** Blue page marker shown next to the filename while a page transcribes. */
+export function formatPageMarker(page: number, total?: number): string {
+  return ` (PG: ${page}${total !== undefined ? `/${total}` : ""})`
 }
 
 /** Product log dir: `$SPINOSA_HOME/logs` or `~/.spinosa/logs`. */
@@ -25,7 +49,7 @@ export function displaySpinosaLogsDir(logsDir = resolveSpinosaLogsDir()): string
 
 /** Short pointer when verify/done has failures or gaps — no verbose LogScrollbox dump. */
 export function formatImportDetailLogHint(logsDirDisplay = displaySpinosaLogsDir()): string {
-  return `Details saved in ${logsDirDisplay}/`
+  return `Spinosa saved details in ${logsDirDisplay}/`
 }
 
 export function shouldShowImportDetailLogHint(opts: {
@@ -44,6 +68,16 @@ export function shortImportFileName(relPath: string, maxLen = 36): string {
   const head = Math.ceil((maxLen - 1) / 2)
   const tail = Math.floor((maxLen - 1) / 2)
   return `${base.slice(0, head)}…${base.slice(-tail)}`
+}
+
+/** Display a relative path while retaining enough directory context to disambiguate sources. */
+export function displayImportFilePath(relPath: string, maxLen = 64): string {
+  const normalized = relPath.replace(/\\/g, "/")
+  if (normalized.length <= maxLen) return normalized
+  if (maxLen < 8) return normalized.slice(0, maxLen)
+  const head = Math.ceil((maxLen - 1) / 2)
+  const tail = Math.floor((maxLen - 1) / 2)
+  return `${normalized.slice(0, head)}…${normalized.slice(-tail)}`
 }
 
 export function statusAccentKey(
@@ -164,6 +198,21 @@ export function formatImportPhaseRecapFromCounters(
 }
 
 /**
+ * Count line that never prints a substituted total: unknown work shows the
+ * processed count alone instead of a fabricated "of 1".
+ */
+export function progressCountLabel(current: number, total: number): string {
+  if (total <= 0) return `${current} processed`
+  return `${current} of ${total}`
+}
+
+/** Percentage only for known totals; unknown work shows no percentage. */
+export function progressPercentLabel(current: number, total: number): string | undefined {
+  if (total <= 0) return undefined
+  return `${Math.round(Math.min(current / total, 1) * 100)}%`
+}
+
+/**
  * Complete-state results order: failures first, then succeeded.
  * UI scrolls the full list (no hard “… +N more” truncation).
  */
@@ -179,8 +228,10 @@ export function applyImportProgressStatus(
   status: FileProgressStatus,
 ): ImportFileProgressItem[] {
   if (!relPath) return items
-  // Strip page suffixes like "file.pdf (page 2)" for matching.
-  const key = relPath.replace(/\s+\(.*\)$/, "").trim()
+  // Strip derived suffixes like "file.pdf → OCR fallback" and page suffixes
+  // like "file.pdf (page 2)" so phantom progress rows map to the original file
+  // instead of leaking a new pending entry.
+  const key = relPath.replace(/\s+→\s+.*$/, "").trim().replace(/\s+\(.*\)$/, "").trim()
   // Exact rel match only. Suffix/substring matching conflates distinct rows
   // (e.g. `apple/notes.txt` would also "end with" `pineapple/notes.txt`) and
   // can paint the wrong file done/failed.
@@ -222,7 +273,7 @@ export function importOutcomeHeading(opts: {
   stillMissing?: number
 }): string {
   const key = importOutcomeAccentKey(opts)
-  if (key === "error") return "● Import finished with failures"
-  if (key === "warning") return "● Import finished with gaps"
+  if (key === "error") return "● Import complete with failures"
+  if (key === "warning") return "● Import complete with missing files"
   return "● Import complete"
 }

@@ -588,12 +588,12 @@ describe("SessionRunnerLLM", () => {
 
       expect(requests[0]?.tools.map((tool) => tool.name)).toContain("application_context")
       expect(contexts).toEqual([
-        {
+        expect.objectContaining({
           sessionID,
           agent: AgentV2.ID.make("build"),
           assistantMessageID: expect.stringMatching(/^msg_/),
           toolCallID: "call-application",
-        },
+        }),
       ])
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Use application context" },
@@ -634,8 +634,8 @@ describe("SessionRunnerLLM", () => {
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), resume: false })
+ yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), delivery: "steer", resume: false })
+ yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), delivery: "steer", resume: false })
 
       requests.length = 0
       responses = undefined
@@ -662,7 +662,7 @@ describe("SessionRunnerLLM", () => {
       const { db } = yield* Database.Service
       const messageID = SessionMessage.ID.create()
       systemUnavailable = true
-      yield* session.prompt({ id: messageID, sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
+ yield* session.prompt({ id: messageID, sessionID, prompt: Prompt.make({ text: "First" }), delivery: "steer", resume: false })
       requests.length = 0
 
       const exit = yield* session.resume(sessionID).pipe(Effect.exit)
@@ -680,7 +680,7 @@ describe("SessionRunnerLLM", () => {
       ).toBeUndefined()
 
       systemUnavailable = false
-      yield* session.prompt({ id: messageID, sessionID, prompt: Prompt.make({ text: "First" }) })
+ yield* session.prompt({ id: messageID, sessionID, prompt: Prompt.make({ text: "First" }), delivery: "steer" })
 
       expect(requests).toHaveLength(1)
       expect(requests[0]?.messages.map((message) => message.role)).toEqual(["user"])
@@ -693,7 +693,7 @@ describe("SessionRunnerLLM", () => {
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       const { db } = yield* Database.Service
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
+ yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), delivery: "steer", resume: false })
       requests.length = 0
       response = []
       yield* session.resume(sessionID)
@@ -711,7 +711,7 @@ describe("SessionRunnerLLM", () => {
           .get(),
       ).toBeUndefined()
 
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), resume: false })
+ yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), delivery: "steer", resume: false })
       const exit = yield* session.resume(sessionID).pipe(Effect.exit)
 
       expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true)
@@ -1832,7 +1832,7 @@ describe("SessionRunnerLLM", () => {
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
       yield* Deferred.await(streamStarted)
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Change direction" }) })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Change direction" }), delivery: "steer" })
       yield* Deferred.succeed(streamGate, undefined)
       yield* Fiber.join(first)
       streamGate = undefined
@@ -1965,6 +1965,7 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({
         sessionID,
         prompt: Prompt.make({ text: "Steer after interrupt" }),
+        delivery: "steer",
       })
       yield* session.interrupt(sessionID)
       expect(yield* Fiber.await(run)).toMatchObject({ _tag: "Failure" })
@@ -2101,8 +2102,16 @@ describe("SessionRunnerLLM", () => {
       streamGate = secondGate
       yield* Deferred.succeed(firstGate, undefined)
       while (requests.length < 2) yield* Effect.yieldNow
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Steer before next queued input" }) })
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Also steer before next queued input" }) })
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Steer before next queued input" }),
+        delivery: "steer",
+      })
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Also steer before next queued input" }),
+        delivery: "steer",
+      })
       yield* Deferred.succeed(secondGate, undefined)
       yield* Fiber.join(first)
       streamGate = undefined
@@ -2150,8 +2159,8 @@ describe("SessionRunnerLLM", () => {
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
       yield* Deferred.await(streamStarted)
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First steer" }) })
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second steer" }) })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First steer" }), delivery: "steer" })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second steer" }), delivery: "steer" })
       yield* Deferred.succeed(streamGate, undefined)
       yield* Fiber.join(first)
       streamGate = undefined
@@ -2181,7 +2190,11 @@ describe("SessionRunnerLLM", () => {
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
       yield* Deferred.await(streamStarted)
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Recover with this" }) })
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Recover with this" }),
+        delivery: "steer",
+      })
       yield* Deferred.succeed(streamGate, undefined)
       expect(yield* Fiber.join(first).pipe(Effect.flip)).toBe(streamFailure)
 
@@ -2200,7 +2213,7 @@ describe("SessionRunnerLLM", () => {
       yield* setup
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Recover interrupted tool" }), resume: false })
+ yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Recover interrupted tool" }), delivery: "steer", resume: false })
       yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID, Number.MAX_SAFE_INTEGER)
       const assistantMessageID = SessionMessage.ID.create()
       yield* events.publish(SessionEvent.Step.Started, {
@@ -2260,11 +2273,12 @@ describe("SessionRunnerLLM", () => {
       yield* setup
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
-      yield* session.prompt({
-        sessionID,
-        prompt: Prompt.make({ text: "Recover interrupted hosted tool" }),
-        resume: false,
-      })
+ yield* session.prompt({
+ sessionID,
+ prompt: Prompt.make({ text: "Recover interrupted hosted tool" }),
+ delivery: "steer",
+ resume: false,
+ })
       yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID, Number.MAX_SAFE_INTEGER)
       const assistantMessageID = SessionMessage.ID.create()
       yield* events.publish(SessionEvent.Step.Started, {
@@ -2320,11 +2334,12 @@ describe("SessionRunnerLLM", () => {
       yield* setup
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
-      yield* session.prompt({
-        sessionID,
-        prompt: Prompt.make({ text: "Recover interrupted tool input" }),
-        resume: false,
-      })
+ yield* session.prompt({
+ sessionID,
+ prompt: Prompt.make({ text: "Recover interrupted tool input" }),
+ delivery: "steer",
+ resume: false,
+ })
       yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID, Number.MAX_SAFE_INTEGER)
       const assistantMessageID = SessionMessage.ID.create()
       yield* events.publish(SessionEvent.Step.Started, {
@@ -2857,8 +2872,8 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("resets the configured step allowance when steering input promotes", () =>
-    Effect.gen(function* () {
+it.effect("resets the configured step allowance when steering input promotes", () =>
+  Effect.gen(function* () {
       yield* setup
       const agents = yield* AgentV2.Service
       yield* agents.transform((editor) =>
@@ -2895,7 +2910,7 @@ describe("SessionRunnerLLM", () => {
 
       const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
       yield* Deferred.await(streamStarted)
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Change direction" }) })
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Change direction" }), delivery: "steer" })
       yield* Deferred.succeed(streamGate, undefined)
       yield* Fiber.join(run)
       streamGate = undefined

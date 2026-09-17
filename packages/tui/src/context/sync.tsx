@@ -36,7 +36,9 @@ import { usePermission } from "./permission"
 import { dbg } from "../util/debug-log"
 import { KV } from "../constants/kv-keys"
 import { normalizeToolInputForDisplay, normalizeToolMetadataForDisplay } from "../util/tool-display"
+import { errorMessage } from "../util/error"
 import { sessionMatchesWorkspaceScope } from "../util/session"
+import { bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 
 const emptyConsoleState: ConsoleState = {
   consoleManagedProviders: [],
@@ -111,6 +113,14 @@ export const {
       provider: Provider[]
       provider_default: Record<string, string>
       provider_next: ProviderListResponse
+      /** Last provider-catalog fetch failure; cleared on success. */
+      provider_error: string | undefined
+      /**
+       * Dedicated provider-catalog fetch state (not derived from the global
+       * TUI bootstrap status): only `ready` means provider data was actually
+       * committed to the store. `error` offers a retry in the connect dialog.
+       */
+      provider_catalog: "idle" | "loading" | "ready" | "error"
       console_state: ConsoleState
       capabilities: {
         experimentalBackgroundSubagents: boolean
@@ -173,6 +183,8 @@ export const {
       command: [],
       provider: [],
       provider_default: {},
+      provider_error: undefined,
+      provider_catalog: "idle",
       session: [],
       session_status: {},
       session_diff: {},
@@ -295,6 +307,21 @@ export const {
             .then((x) => setStore("vcs", reconcile(x.data)))
             .catch(() => {}),
         ])
+        // Recovery must also repair conversation content: events missed while
+        // offline are not replayed, so re-run hydration for sessions with a
+        // local projection. Invalidation (not silent reuse) keeps failed
+        // hydrations eligible for retry instead of permanently exempt.
+        void (async () => {
+          const known = Object.keys(store.message)
+          for (const sessionID of known) fullSyncedSessions.delete(sessionID)
+          for (const sessionID of known) {
+            try {
+              await result.session.sync(sessionID)
+            } catch {
+              // Next reconnect or navigation retries; never throw into events.
+            }
+          }
+        })()
         return
       }
       // SDK gen can lag schema for newer session.next.* types; handle those first.
@@ -312,7 +339,9 @@ export const {
           void bootstrap()
           break
         case "catalog.updated":
-          void refreshProviders()
+          // refreshProviders records failures in provider_error; swallow
+          // here so a failed refresh never throws into the event loop.
+          void refreshProviders().catch(() => {})
           break
         case "permission.replied": {
           const requests = store.permission[event.properties.sessionID]
@@ -1636,15 +1665,29 @@ export const {
 
     async function refreshProviders() {
       const workspace = project.workspace.current()
-      const [providers, providerList] = await Promise.all([
-        sdk.client.config.providers({ workspace }, { throwOnError: true }),
-        sdk.client.provider.list({ workspace }, { throwOnError: true }),
-      ])
-      batch(() => {
-        setStore("provider", reconcile(providers.data!.providers))
-        setStore("provider_default", reconcile(providers.data!.default))
-        setStore("provider_next", reconcile(providerList.data!))
-      })
+      setStore("provider_catalog", "loading")
+      try {
+        const [providers, providerList] = await Promise.all([
+          sdk.client.config.providers({ workspace }, { throwOnError: true }),
+          sdk.client.provider.list({ workspace }, { throwOnError: true }),
+        ])
+        batch(() => {
+          setStore("provider", reconcile(providers.data!.providers))
+          setStore("provider_default", reconcile(providers.data!.default))
+          setStore("provider_next", reconcile(providerList.data!))
+          setStore("provider_error", undefined)
+          setStore("provider_catalog", "ready")
+        })
+      } catch (error) {
+        // Record the failure so the connect dialog can offer a retry
+        // instead of showing a bare empty list. Rethrow: callers decide
+        // whether to toast.
+        batch(() => {
+          setStore("provider_error", errorMessage(error).slice(0, 300))
+          setStore("provider_catalog", "error")
+        })
+        throw error
+      }
     }
 
     async function runBootstrap(input: { fatal?: boolean } = {}) {
@@ -1655,7 +1698,28 @@ export const {
 
       // blocking - include session.list when continuing a session
       const providersPromise = sdk.client.config.providers({ workspace }, { throwOnError: true })
-      const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true })
+      // Attribute catalog failures precisely: the bootstrap catch below
+      // cannot tell which fetch failed, but the connect dialog needs to
+      // know the provider list specifically failed so it can offer a retry.
+      // NOTE: success clears nothing here — provider_error is only cleared
+      // (and the catalog marked ready) in the commit batch below, so a
+      // config.providers() failure cannot leave a committed-looking empty
+      // catalog with no retry row.
+      let providerListSettled = false
+      setStore("provider_catalog", "loading")
+      const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true }).then(
+        (response) => {
+          return response
+        },
+        (error) => {
+          providerListSettled = true
+          batch(() => {
+            setStore("provider_error", errorMessage(error).slice(0, 300))
+            setStore("provider_catalog", "error")
+          })
+          throw error
+        },
+      )
       const capabilitiesPromise = sdk.client.experimental.capabilities
         .get({ workspace }, { throwOnError: true })
         .then((x) => x.data)
@@ -1705,6 +1769,8 @@ export const {
               setStore("provider", reconcile(providers.providers))
               setStore("provider_default", reconcile(providers.default))
               setStore("provider_next", reconcile(providerList))
+              setStore("provider_error", undefined)
+              setStore("provider_catalog", "ready")
               setStore("capabilities", "experimentalBackgroundSubagents", capabilities?.backgroundSubagents === true)
               setStore("console_state", reconcile(consoleState))
               setStore("agent", reconcile(agents))
@@ -1737,11 +1803,21 @@ export const {
           })
         })
         .catch(async (e) => {
-          console.error("tui bootstrap failed", {
-            error: e instanceof Error ? e.message : String(e),
-            name: e instanceof Error ? e.name : undefined,
-            stack: e instanceof Error ? e.stack : undefined,
-          })
+          bootLogError("tui.bootstrap", e)
+          console.error("tui bootstrap failed", e instanceof Error ? e.message : String(e))
+          // The commit batch above never ran: provider data (if any) was not
+          // stored. A still-loading catalog here means /provider succeeded but
+          // a sibling leg (e.g. config.providers) failed — surface a retry
+          // instead of an empty list with no recovery row.
+          if (store.provider_catalog === "loading" && !providerListSettled) {
+            batch(() => {
+              setStore(
+                "provider_error",
+                `Provider list did not finish loading: ${errorMessage(e).slice(0, 200)}`,
+              )
+              setStore("provider_catalog", "error")
+            })
+          }
           setStore("status", "partial")
           if (fatal) {
             exit(e)
@@ -1753,6 +1829,7 @@ export const {
     onMount(() => {
       // Non-fatal bootstrap: provider/config failures should degrade, not kill the TUI.
       void bootstrap({ fatal: false }).catch((e) => {
+        bootLogError("tui.bootstrap.degraded", e)
         console.error("tui bootstrap degraded", e instanceof Error ? e.message : String(e))
         setStore("status", "partial")
       })
@@ -1817,18 +1894,26 @@ export const {
           const task = (async () => {
             const [session, messages, todo, diff] = await Promise.all([
               sdk.client.session.get({ sessionID }, { throwOnError: true }),
-              sdk.client.session.messages({ sessionID, limit: 100 }),
+              // Isolated: a failed history request must never masquerade as
+              // an empty transcript (see below).
+              sdk.client.session.messages({ sessionID, limit: 100 }).catch(() => undefined),
               sdk.client.session.todo({ sessionID }),
               sdk.client.session.diff({ sessionID }),
             ])
+            // An SDK error response carries no data: keep the last known
+            // good projection and stay eligible for a later retry instead
+            // of replacing history with [] and marking it fully synced.
+            const messageList = messages?.data
+            const messagesOk = Array.isArray(messageList)
             setStore(
               produce((draft) => {
                 const match = search(draft.session, sessionID, (s) => s.id)
                 if (match.found) draft.session[match.index] = session.data!
                 if (!match.found) draft.session.splice(match.index, 0, session.data!)
                 draft.todo[sessionID] = todo.data ?? []
+                if (!messagesOk) return
                 const currentMessages = draft.message[sessionID] ?? []
-                const infos = (messages.data ?? []).flatMap((message) => {
+                const infos = (messageList ?? []).flatMap((message) => {
                   if (!tracker.messages.has(message.info.id)) return [message.info]
                   const current = currentMessages.find((item) => item.id === message.info.id)
                   return current ? [current] : []
@@ -1841,7 +1926,7 @@ export const {
                 const removed = infos.slice(0, -100)
                 const visible = infos.slice(-100)
                 const visibleIDs = new Set(visible.map((message) => message.id))
-                for (const message of messages.data ?? []) {
+                for (const message of messageList ?? []) {
                   if (!visibleIDs.has(message.info.id)) {
                     delete draft.part[message.info.id]
                     continue
@@ -1873,7 +1958,7 @@ export const {
                 draft.session_diff[sessionID] = diff.data ?? []
               }),
             )
-            fullSyncedSessions.add(sessionID)
+            if (messagesOk) fullSyncedSessions.add(sessionID)
           })().finally(() => {
             syncingSessions.delete(sessionID)
             hydratingSessions.delete(sessionID)

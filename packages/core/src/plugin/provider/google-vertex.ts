@@ -1,12 +1,13 @@
 import { Effect } from "effect"
-import { define } from "../internal"
+import type { LanguageModelV3 } from "@ai-sdk/provider"
+import { define } from "../define"
 import { ProviderV2 } from "../../provider"
 
-function resolveProject(options: Record<string, any>) {
+function resolveProject(options: Record<string, unknown>) {
   // models.dev advertises GOOGLE_VERTEX_PROJECT for Vertex, while Google SDKs
   // and ADC examples commonly use the broader Google Cloud project aliases.
   return (
-    options.project ??
+    stringOption(options, "project") ??
     process.env.GOOGLE_VERTEX_PROJECT ??
     process.env.GOOGLE_CLOUD_PROJECT ??
     process.env.GCP_PROJECT ??
@@ -14,9 +15,9 @@ function resolveProject(options: Record<string, any>) {
   )
 }
 
-function resolveLocation(options: Record<string, any>) {
+function resolveLocation(options: Record<string, unknown>) {
   return (
-    options.location ??
+    stringOption(options, "location") ??
     process.env.GOOGLE_VERTEX_LOCATION ??
     process.env.GOOGLE_CLOUD_LOCATION ??
     process.env.VERTEX_LOCATION ??
@@ -106,7 +107,7 @@ export const GoogleVertexPlugin = define({
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== ProviderV2.ID.googleVertex) return
-        evt.language = (evt.sdk as any).languageModel(String(evt.model.api.id).trim())
+      evt.language = (evt.sdk as { languageModel: (modelID: string) => LanguageModelV3 }).languageModel(String(evt.model.api.id).trim())
       }),
     )
   }),
@@ -166,8 +167,12 @@ export const GoogleVertexAnthropicPlugin = define({
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== ProviderV2.ID.make("google-vertex-anthropic")) return
-        evt.language = (evt.sdk as any).languageModel(String(evt.model.api.id).trim())
+        evt.language = (evt.sdk as { languageModel: (modelID: string) => LanguageModelV3 }).languageModel(String(evt.model.api.id).trim())
       }),
     )
   }),
 })
+
+function stringOption(options: Record<string, unknown>, key: string): string | undefined {
+  return typeof options[key] === "string" ? options[key] : undefined
+}

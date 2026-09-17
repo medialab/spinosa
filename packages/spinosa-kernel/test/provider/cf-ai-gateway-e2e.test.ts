@@ -7,8 +7,8 @@
 // upstream, which is the only place the bug was observable.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import type { JSONValue } from "ai"
 import { generateText } from "ai"
+import type { SharedV3ProviderOptions } from "@ai-sdk/provider"
 import { createAiGateway } from "ai-gateway-provider"
 import { createUnified } from "ai-gateway-provider/providers/unified"
 import { ProviderTransform } from "@/provider/transform"
@@ -17,7 +17,7 @@ import { ProviderV2 } from "@spinosa/kernel-core/provider"
 import { ModelV2 } from "@spinosa/kernel-core/model"
 
 type Captured = { url: string; outerBody: unknown }
-type ProviderOptions = Record<string, Record<string, JSONValue>>
+type ProviderOptions = SharedV3ProviderOptions
 
 const realFetch = globalThis.fetch
 let captured: Captured | null = null

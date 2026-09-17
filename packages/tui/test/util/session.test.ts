@@ -21,16 +21,16 @@ describe("util.session", () => {
     expect(sessionIsBusy({ type: "idle" }, "idle")).toBeFalse()
   })
 
-  test("falls back to transcript-derived busy when session_status is missing", () => {
-    expect(resolveSessionRuntimeStatus(undefined, "working")).toEqual({ type: "busy" })
-    expect(resolveSessionRuntimeStatus(undefined, "compacting")).toEqual({ type: "busy" })
-    expect(sessionIsBusy(undefined, "working")).toBeTrue()
+  test("missing server status is idle so a past session does not look live", () => {
+    expect(resolveSessionRuntimeStatus(undefined, "working")).toEqual({ type: "idle" })
+    expect(resolveSessionRuntimeStatus(undefined, "compacting")).toEqual({ type: "idle" })
+    expect(sessionIsBusy(undefined, "working")).toBeFalse()
   })
 
   test("blocks organisation switch when any session is busy", () => {
     expect(
       anySessionBusy({
-        sessionStatus: { a: { type: "idle" } },
+        sessionStatus: { a: { type: "idle" }, b: { type: "busy" } },
         sessions: [{ id: "a" }, { id: "b" }],
         derivedStatus: (id) => (id === "b" ? "working" : "idle"),
       }),

@@ -1,4 +1,4 @@
-import { define } from "./internal"
+import { define } from "./define"
 import type { ModelV2Info } from "@spinosa/sdk/v2/types"
 import { Effect, Stream } from "effect"
 import { EventV2 } from "../event"

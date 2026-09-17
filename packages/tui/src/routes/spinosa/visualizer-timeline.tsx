@@ -2,9 +2,9 @@ import { createMemo, createSignal, For } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 import { DialogToolDetail } from "./dialog-tool-detail"
 import { inputSummary, toolCalloutColor } from "./visualizer-utils"
+import type { CanvasViewProps, ToolCallRecord } from "./visualizer-types"
 import { buttonBackground, buttonText } from "../../util/button"
 import { useTheme } from "../../context/theme"
-import type { CanvasViewProps } from "./visualizer-types"
 
 export function TimelineView(props: CanvasViewProps & { workdir?: string }) {
   const { theme } = useTheme()
@@ -20,7 +20,7 @@ export function TimelineView(props: CanvasViewProps & { workdir?: string }) {
     return max
   })
 
-  const openDetail = (call: any) => props.dialog.replace(() => <DialogToolDetail part={call.part} workdir={props.workdir} />)
+  const openDetail = (call: ToolCallRecord) => props.dialog.replace(() => <DialogToolDetail part={call.part} workdir={props.workdir} />)
 
   return (
     <box flexDirection="column" width="100%">
@@ -39,7 +39,7 @@ export function TimelineView(props: CanvasViewProps & { workdir?: string }) {
           {(call, idx) => {
           const duration = call.timeStart && call.timeEnd ? call.timeEnd - call.timeStart : 0
           const barLen = maxDuration() > 0 ? Math.round((duration / maxDuration()) * 8) : 0
-          const typeColor = toolCalloutColor(call.tool, theme as any)
+          const typeColor = toolCalloutColor(call.tool, theme)
           const dotColor = call.status === "error" ? theme.error : typeColor
           const dotIcon = call.status === "completed" ? "✔" : call.status === "error" ? "✗" : call.status === "running" ? "◌" : "●"
           const isLast = idx() === props.toolCalls.length - 1

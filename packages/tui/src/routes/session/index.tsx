@@ -50,7 +50,7 @@ import { useDialog } from "../../ui/dialog"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
-import { isConversationShellReady, shouldBounceMissingSession, shouldConfirmLeaveBusySession } from "./conversation-shell-ready"
+import { isConversationShellReady, shouldBounceMissingSession, shouldConfirmLeaveBusySession, resolveBackNavigation } from "./conversation-shell-ready"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
@@ -63,7 +63,6 @@ import { SessionFooter } from "./footer"
 import {
   assistantPartGapBefore,
   steerControlLabel,
-  toggleSteerDelivery,
   useV2SessionPrompt,
 } from "../../util/session-prompt-v2"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -80,9 +79,9 @@ import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import * as Model from "../../util/model"
-import { formatTranscript } from "../../util/transcript"
+import { formatExportContent, type ExportFormat } from "../../util/transcript"
 import { sessionEpilogue } from "../../util/presentation"
-import { setPreLayoutSiblingMargin } from "../../util/layout"
+import { setPreLayoutSiblingMargin, transcriptBudget } from "../../util/layout"
 import { useTuiConfig } from "../../config"
 import { useClipboard } from "../../context/clipboard"
 import { nextThinkingMode, reasoningSummary, useThinkingMode, type ThinkingMode } from "../../context/thinking"
@@ -97,6 +96,15 @@ import { LocationProvider } from "../../context/location"
 import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
+import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
+import {
+  dispatchPositions,
+  kickPump,
+  mergeTranscriptRows,
+  outboundForSession,
+  steerOutbound,
+  type OutboundEntry,
+} from "../../spinosa/outbound-queue"
 
 addDefaultParsers(parsers.parsers)
 
@@ -132,9 +140,6 @@ type TranscriptLayout =
       maxWidth: number
     }
 
-const TRANSCRIPT_RAIL_GAP = 2
-const TRANSCRIPT_CENTER_MIN_WIDTH = 54
-
 function goUpsellKeys(action: RetryAction) {
   if (!action) return
   if (!GO_UPSELL_PROVIDERS.has(action.provider)) return
@@ -153,17 +158,14 @@ function goUpsellKeys(action: RetryAction) {
 }
 
 const sessionBindingCommands = [
-  "session.share",
   "session.rename",
   "session.timeline",
   "session.fork",
   "session.compact",
-  "session.unshare",
   "session.undo",
   "session.redo",
   "session.queued_prompts",
   "session.toggle.conceal",
-  "session.toggle.timestamps",
   "session.toggle.thinking",
   "session.toggle.actions",
   "session.toggle.scrollbar",
@@ -173,8 +175,6 @@ const sessionBindingCommands = [
   "session.messages_last_user",
   "session.message.next",
   "session.message.previous",
-  "messages.copy",
-  "session.copy",
   "session.export",
   "session.child.first",
   "session.parent",
@@ -201,7 +201,6 @@ const context = createContext<{
   conceal: () => boolean
   thinkingMode: () => ThinkingMode
   showThinking: () => boolean
-  showTimestamps: () => boolean
   showDetails: () => boolean
   showGenericToolOutput: () => boolean
   diffWrapMode: () => "word" | "none"
@@ -230,6 +229,18 @@ const resolveExportPath = (filename: string): string => {
   if (trimmed.startsWith("~/")) return path.join(homedir(), trimmed.slice(2))
   return path.join(homedir(), "Downloads", trimmed)
 }
+  const ensureExportFilename = (filename: string, format: ExportFormat) => {
+    const trimmed = filename.trim()
+    if (!trimmed) return `session-${session()?.id.slice(0, 8) ?? "export"}.${format}`
+    const lower = trimmed.toLowerCase()
+    if (lower.endsWith(`.${format}`)) return trimmed
+    const ext = lower.match(/\.([^.]+)$/)?.[1]
+    if (ext && ["md", "txt", "json"].includes(ext)) {
+      return trimmed.slice(0, -(ext.length + 1)) + `.${format}`
+    }
+    return `${trimmed}.${format}`
+  }
+
   const openExportDialog = async () => {
     try {
       const sessionData = session()
@@ -237,31 +248,51 @@ const resolveExportPath = (filename: string): string => {
       const sessionMessages = messages()
       const defaultFilename = `session-${sessionData.id.slice(0, 8)}.md`
       const options = await DialogExportOptions.show(
-        dialog, defaultFilename,
-        showThinking(), showDetails(), showAssistantMetadata(), false,
+        dialog,
+        defaultFilename,
+        showThinking(),
+        showDetails(),
+        showAssistantMetadata(),
+        false,
+        "md",
       )
       if (options === null) return
-      const transcript = formatTranscript(
-        sessionData,
-        sessionMessages.map((msg) => ({ info: msg, parts: sync.data.part[msg.id] ?? [] })),
-        {
-          thinking: options.thinking,
-          toolDetails: options.toolDetails,
-          assistantMetadata: options.assistantMetadata,
-          providers: sync.data.provider,
-        },
-      )
+      const withParts = sessionMessages.map((msg) => ({ info: msg, parts: sync.data.part[msg.id] ?? [] }))
+      const format: ExportFormat = options.format ?? "md"
+      const content =
+        format === "json"
+          ? formatExportContent(format, sessionData, withParts, {
+              thinking: true,
+              toolDetails: true,
+              assistantMetadata: true,
+              providers: sync.data.provider,
+            })
+          : formatExportContent(format, sessionData, withParts, {
+              thinking: options.thinking,
+              toolDetails: options.toolDetails,
+              assistantMetadata: options.assistantMetadata,
+              providers: sync.data.provider,
+            })
       if (options.openWithoutSaving) {
         await openEditor({
-          renderer, value: transcript,
-          cwd: (project.instance.path().worktree === "/" ? undefined : project.instance.path().worktree) || project.instance.directory() || paths.cwd,
+          renderer,
+          value: content,
+          cwd:
+            (project.instance.path().worktree === "/" ? undefined : project.instance.path().worktree) ||
+            project.instance.directory() ||
+            paths.cwd,
         })
       } else {
-        const filepath = resolveExportPath(options.filename.trim())
-        await writeExport(filepath, transcript)
+        const filename = ensureExportFilename(options.filename, format)
+        const filepath = resolveExportPath(filename)
+        await writeExport(filepath, content)
         const result = await openEditor({
-          renderer, value: transcript,
-          cwd: (project.instance.path().worktree === "/" ? undefined : project.instance.path().worktree) || project.instance.directory() || paths.cwd,
+          renderer,
+          value: content,
+          cwd:
+            (project.instance.path().worktree === "/" ? undefined : project.instance.path().worktree) ||
+            project.instance.directory() ||
+            paths.cwd,
         })
         if (result !== undefined) await writeExport(filepath, result)
         toast.show({ message: `Session exported to ${filepath}`, variant: "success" })
@@ -297,7 +328,6 @@ const resolveExportPath = (filename: string): string => {
         title,
         sessionID: session()?.id,
         spinosa: useArgs().spinosa,
-        projectDir: session()?.directory,
       }),
     )
   })
@@ -363,12 +393,21 @@ const resolveExportPath = (filename: string): string => {
     return messages().findLast((x) => x.role === "assistant")
   })
 
+  // One chronological list: every outbound row (queued, steered, active,
+  // interrupted, failed) merges with server messages by birth time. Status
+  // flips happen in place — rows never move between lists.
+  const outboundEntries = createMemo(() => outboundForSession(route.sessionID ?? ""))
+  const transcriptRows = createMemo(() => mergeTranscriptRows(messages(), outboundEntries()))
+  // Dispatch-order position per live entry key (first to send = #1). Rows
+  // render chronologically; the counter visualizes queue position.
+  const queuePositions = createMemo(() => dispatchPositions(route.sessionID ?? ""))
+  const showQueuePositions = createMemo(() => queuePositions().size > 1)
+
   const dimensions = useTerminalDimensions()
   const [conceal, setConceal] = createSignal(true)
   const thinking = useThinkingMode()
   const thinkingMode = thinking.mode
   const showThinking = createMemo(() => true)
-  const [timestamps, setTimestamps] = kv.signal<"hide" | "show">("timestamps", "hide")
   const [showDetails, setShowDetails] = kv.signal("tool_details_visibility", true)
   const [showAssistantMetadata, _setShowAssistantMetadata] = kv.signal("assistant_metadata_visibility", true)
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
@@ -376,28 +415,7 @@ const resolveExportPath = (filename: string): string => {
   const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
 
-  const showTimestamps = createMemo(() => timestamps() === "show")
-  const transcriptLayout = createMemo<TranscriptLayout>(() => {
-    const totalWidth = dimensions().width - 4
-    const railWidth = Math.floor(totalWidth * 0.4 / 2.6)
-    const centerWidth = totalWidth - railWidth * 2 - TRANSCRIPT_RAIL_GAP * 2
-
-    if (centerWidth < TRANSCRIPT_CENTER_MIN_WIDTH) {
-      return {
-        mode: "classic",
-        contentWidth: Math.max(1, totalWidth - 4),
-        maxWidth: totalWidth,
-      }
-    }
-
-    return {
-      mode: "callout",
-      contentWidth: centerWidth,
-      railWidth,
-      gap: TRANSCRIPT_RAIL_GAP,
-      maxWidth: totalWidth,
-    }
-  })
+  const transcriptLayout = createMemo<TranscriptLayout>(() => transcriptBudget(dimensions().width))
   const promptPadding = createMemo(() => {
     const layout = transcriptLayout()
     return layout.mode === "callout" ? layout.railWidth + layout.gap : undefined
@@ -665,46 +683,6 @@ const resolveExportPath = (filename: string): string => {
 
   const sessionCommandList = createMemo(() => [
     {
-      title: session()?.share?.url ? "Copy share link" : "Share session",
-      value: "session.share",
-      suggested: route.type === "workspace",
-      category: "Session",
-      enabled: sync.data.config.share !== "disabled",
-      slash: {
-        name: "share",
-      },
-      run: async () => {
-        const copy = (url: string) =>
-          clipboard
-            .write?.(url)
-            .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
-            .catch(() => toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }))
-        const url = session()?.share?.url
-        if (url) {
-          await copy(url)
-          dialog.clear()
-          return
-        }
-        if (!kv.get("share_consent", false)) {
-          const ok = await DialogConfirm.show(dialog, "Share Session", "Are you sure you want to share it?")
-          if (ok !== true) return
-          kv.set("share_consent", true)
-        }
-        await sdk.client.session
-          .share({
-            sessionID: route.sessionID,
-          })
-          .then((res) => copy(res.data!.share!.url))
-          .catch((error) => {
-            toast.show({
-              message: error instanceof Error ? error.message : "Failed to share session",
-              variant: "error",
-            })
-          })
-        dialog.clear()
-      },
-    },
-    {
       title: "Rename session",
       value: "session.rename",
       category: "Session",
@@ -792,29 +770,6 @@ const resolveExportPath = (filename: string): string => {
             toast.show({
               title: "Couldn’t compact",
               message: errorMessage(error),
-              variant: "error",
-            })
-          })
-        dialog.clear()
-      },
-    },
-    {
-      title: "Unshare session",
-      value: "session.unshare",
-      category: "Session",
-      enabled: !!session()?.share?.url,
-      slash: {
-        name: "unshare",
-      },
-      run: async () => {
-        await sdk.client.session
-          .unshare({
-            sessionID: route.sessionID,
-          })
-          .then(() => toast.show({ message: "Session unshared successfully", variant: "success" }))
-          .catch((error) => {
-            toast.show({
-              message: error instanceof Error ? error.message : "Failed to unshare session",
               variant: "error",
             })
           })
@@ -941,19 +896,6 @@ const resolveExportPath = (filename: string): string => {
       category: "Session",
       run: () => {
         setConceal((prev) => !prev)
-        dialog.clear()
-      },
-    },
-    {
-      title: showTimestamps() ? "Hide timestamps" : "Show timestamps",
-      value: "session.toggle.timestamps",
-      category: "Session",
-      slash: {
-        name: "timestamps",
-        aliases: ["toggle-timestamps"],
-      },
-      run: () => {
-        setTimestamps((prev) => (prev === "show" ? "hide" : "show"))
         dialog.clear()
       },
     },
@@ -1127,150 +1069,13 @@ const resolveExportPath = (filename: string): string => {
       run: () => scrollToMessage("prev", dialog),
     },
     {
-      title: "Copy last assistant message",
-      value: "messages.copy",
-      category: "Session",
-      run: () => {
-        const revertID = session()?.revert?.messageID
-        const lastAssistantMessage = messages().findLast(
-          (msg) => msg.role === "assistant" && (!revertID || msg.id < revertID),
-        )
-        if (!lastAssistantMessage) {
-          toast.show({ message: "No assistant messages found", variant: "error" })
-          dialog.clear()
-          return
-        }
-
-        const parts = sync.data.part[lastAssistantMessage.id] ?? []
-        const textParts = parts.filter((part) => part.type === "text")
-        if (textParts.length === 0) {
-          toast.show({ message: "No text parts found in last assistant message", variant: "error" })
-          dialog.clear()
-          return
-        }
-
-        const text = textParts
-          .map((part) => part.text)
-          .join("\n")
-          .trim()
-        if (!text) {
-          toast.show({
-            message: "No text content found in last assistant message",
-            variant: "error",
-          })
-          dialog.clear()
-          return
-        }
-
-        clipboard
-          .write?.(text)
-          .then(() => toast.show({ message: "Message copied to clipboard!", variant: "success" }))
-          .catch(() => toast.show({ message: "Failed to copy to clipboard", variant: "error" }))
-        dialog.clear()
-      },
-    },
-    {
-      title: "Copy session transcript",
-      value: "session.copy",
-      category: "Session",
-      slash: {
-        name: "copy",
-      },
-      run: async () => {
-        try {
-          const sessionData = session()
-          if (!sessionData) return
-          const sessionMessages = messages()
-          const transcript = formatTranscript(
-            sessionData,
-            sessionMessages.map((msg) => ({ info: msg, parts: sync.data.part[msg.id] ?? [] })),
-            {
-              thinking: showThinking(),
-              toolDetails: showDetails(),
-              assistantMetadata: showAssistantMetadata(),
-              providers: sync.data.provider,
-            },
-          )
-          await clipboard.write?.(transcript)
-          toast.show({ message: "Session transcript copied to clipboard!", variant: "success" })
-        } catch {
-          toast.show({ message: "Failed to copy session transcript", variant: "error" })
-        }
-        dialog.clear()
-      },
-    },
-    {
       title: "Export session transcript",
       value: "session.export",
       category: "Session",
       slash: {
         name: "export",
       },
-      run: async () => {
-        try {
-          const sessionData = session()
-          if (!sessionData) return
-          const sessionMessages = messages()
-
-          const defaultFilename = `session-${sessionData.id.slice(0, 8)}.md`
-
-          const options = await DialogExportOptions.show(
-            dialog,
-            defaultFilename,
-            showThinking(),
-            showDetails(),
-            showAssistantMetadata(),
-            false,
-          )
-
-          if (options === null) return
-
-          const transcript = formatTranscript(
-            sessionData,
-            sessionMessages.map((msg) => ({ info: msg, parts: sync.data.part[msg.id] ?? [] })),
-            {
-              thinking: options.thinking,
-              toolDetails: options.toolDetails,
-              assistantMetadata: options.assistantMetadata,
-              providers: sync.data.provider,
-            },
-          )
-
-          if (options.openWithoutSaving) {
-            // Just open in editor without saving
-            await openEditor({
-              renderer,
-              value: transcript,
-              cwd:
-                (project.instance.path().worktree === "/" ? undefined : project.instance.path().worktree) ||
-                project.instance.directory() ||
-                paths.cwd,
-            })
-          } else {
-            const filepath = resolveExportPath(options.filename.trim())
-
-            await writeExport(filepath, transcript)
-
-            // Open with EDITOR if available
-            const result = await openEditor({
-              renderer,
-              value: transcript,
-              cwd:
-                (project.instance.path().worktree === "/" ? undefined : project.instance.path().worktree) ||
-                project.instance.directory() ||
-                paths.cwd,
-            })
-            if (result !== undefined) {
-              await writeExport(filepath, result)
-            }
-
-            toast.show({ message: `Session exported to ${filepath}`, variant: "success" })
-          }
-        } catch {
-          toast.show({ message: "Failed to export session", variant: "error" })
-        }
-        dialog.clear()
-      },
+      run: () => openExportDialog(),
     },
     {
       title: "Background subagents",
@@ -1415,7 +1220,6 @@ const resolveExportPath = (filename: string): string => {
           conceal,
           thinkingMode,
           showThinking,
-          showTimestamps,
           showDetails,
           showGenericToolOutput,
           diffWrapMode,
@@ -1434,6 +1238,16 @@ const resolveExportPath = (filename: string): string => {
               onMouseOver={() => setBackHover(true)}
               onMouseOut={() => setBackHover(false)}
               onMouseUp={async () => {
+                // Sub-agent (child) view: Back behaves exactly like the
+                // Parent button — return to the parent conversation at once.
+                // The child keeps running in background; never confirm,
+                // never abort.
+                const viewed = session()
+                const dest = resolveBackNavigation(viewed)
+                if (dest.type === "workspace") {
+                  navigate(dest)
+                  return
+                }
                 const currentID = route.sessionID
                 const busy =
                   !!currentID &&
@@ -1452,9 +1266,7 @@ const resolveExportPath = (filename: string): string => {
                   if (!leave) return
                   await sdk.client.session.abort({ sessionID: currentID }).catch(() => {})
                 }
-                const s = session()
-                if (s?.parentID) navigate({ type: "workspace", sessionID: s.parentID })
-                else navigate({ type: "global" })
+                navigate(dest)
               }}
               paddingLeft={2}
               paddingRight={2}
@@ -1518,98 +1330,117 @@ const resolveExportPath = (filename: string): string => {
                 scrollAcceleration={scrollAcceleration()}
               >
                 <box height={1} />
-                <For each={messages()}>
-                  {(message, index) => (
+                <For each={transcriptRows()}>
+                  {(row) => (
                     <Switch>
-                      <Match when={message.id === revert()?.messageID}>
-                        {(function () {
-                          const redoShortcut = useCommandShortcut("session.redo")
-                          const [hover, setHover] = createSignal(false)
-                          const dialog = useDialog()
-
-                          const handleUnrevert = async () => {
-                            const confirmed = await DialogConfirm.show(
-                              dialog,
-                              "Confirm Redo",
-                              "Are you sure you want to restore the reverted messages?",
-                            )
-                            if (confirmed) {
-                              keymap.dispatchCommand("session.redo")
-                            }
-                          }
-
+                      <Match when={row.kind === "outbound" ? row : undefined}>
+                        {(outboundRow) => (
+                          <OptimisticUserRow
+                            entry={outboundRow().entry}
+                            queuePosition={queuePositions().get(outboundRow().entry.key)}
+                            showQueuePosition={showQueuePositions()}
+                          />
+                        )}
+                      </Match>
+                      <Match when={row.kind === "message" ? row : undefined}>
+                        {(messageRow) => {
+                          const message = () => messageRow().message
+                          const index = () => messageRow().messageIndex
                           return (
-                            <TranscriptRow>
-                              <box
-                                onMouseOver={() => setHover(true)}
-                                onMouseOut={() => setHover(false)}
-                                onMouseUp={handleUnrevert}
-                                marginTop={1}
-                                flexShrink={0}
-                                border={["left"]}
-                                customBorderChars={SplitBorder.customBorderChars}
-                                borderColor={theme.backgroundPanel}
-                              >
-                                <box
-                                  paddingTop={1}
-                                  paddingBottom={1}
-                                  paddingLeft={2}
-                                  backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
-                                >
-                                  <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
-                                  <text fg={theme.textMuted}>
-                                    <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
-                                  </text>
-                                  <Show when={revert()!.diffFiles?.length}>
-                                    <box marginTop={1}>
-                                      <For each={revert()!.diffFiles}>
-                                        {(file) => (
-                                          <text fg={theme.text}>
-                                            {file.filename}
-                                            <Show when={file.additions > 0}>
-                                              <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
-                                            </Show>
-                                            <Show when={file.deletions > 0}>
-                                              <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
-                                            </Show>
+                            <Switch>
+                              <Match when={message().id === revert()?.messageID}>
+                                {(function () {
+                                  const redoShortcut = useCommandShortcut("session.redo")
+                                  const [hover, setHover] = createSignal(false)
+                                  const dialog = useDialog()
+
+                                  const handleUnrevert = async () => {
+                                    const confirmed = await DialogConfirm.show(
+                                      dialog,
+                                      "Confirm Redo",
+                                      "Are you sure you want to restore the reverted messages?",
+                                    )
+                                    if (confirmed) {
+                                      keymap.dispatchCommand("session.redo")
+                                    }
+                                  }
+
+                                  return (
+                                    <TranscriptRow>
+                                      <box
+                                        onMouseOver={() => setHover(true)}
+                                        onMouseOut={() => setHover(false)}
+                                        onMouseUp={handleUnrevert}
+                                        marginTop={1}
+                                        flexShrink={0}
+                                        border={["left"]}
+                                        customBorderChars={SplitBorder.customBorderChars}
+                                        borderColor={theme.backgroundPanel}
+                                      >
+                                        <box
+                                          paddingTop={1}
+                                          paddingBottom={1}
+                                          paddingLeft={2}
+                                          backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                                        >
+                                          <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
+                                          <text fg={theme.textMuted}>
+                                            <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
                                           </text>
-                                        )}
-                                      </For>
-                                    </box>
-                                  </Show>
-                                </box>
-                              </box>
-                            </TranscriptRow>
+                                          <Show when={revert()!.diffFiles?.length}>
+                                            <box marginTop={1}>
+                                              <For each={revert()!.diffFiles}>
+                                                {(file) => (
+                                                  <text fg={theme.text}>
+                                                    {file.filename}
+                                                    <Show when={file.additions > 0}>
+                                                      <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
+                                                    </Show>
+                                                    <Show when={file.deletions > 0}>
+                                                      <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
+                                                    </Show>
+                                                  </text>
+                                                )}
+                                              </For>
+                                            </box>
+                                          </Show>
+                                        </box>
+                                      </box>
+                                    </TranscriptRow>
+                                  )
+                                })()}
+                              </Match>
+                              <Match when={revert()?.messageID && message().id >= revert()!.messageID}>
+                                <></>
+                              </Match>
+                              <Match when={message().role === "user"}>
+                                <UserMessage
+                                  index={index()}
+                                  onMouseUp={() => {
+                                    if (renderer.getSelection()?.getSelectedText()) return
+                                    dialog.replace(() => (
+                                      <DialogMessage
+                                        messageID={message().id}
+                                        sessionID={route.sessionID}
+                                        setPrompt={(promptInfo) => prompt?.set(promptInfo)}
+                                      />
+                                    ))
+                                  }}
+                                  message={message() as UserMessage}
+                                  parts={sync.data.part[message().id] ?? []}
+                                  pending={pending()}
+                                />
+                              </Match>
+                              <Match when={message().role === "assistant"}>
+                                <AssistantMessage
+                                  last={lastAssistant()?.id === message().id}
+                                  message={message() as AssistantMessage}
+                                  parts={sync.data.part[message().id] ?? []}
+                                />
+                              </Match>
+                            </Switch>
                           )
-                        })()}
-                      </Match>
-                      <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
-                        <></>
-                      </Match>
-                      <Match when={message.role === "user"}>
-                        <UserMessage
-                          index={index()}
-                          onMouseUp={() => {
-                            if (renderer.getSelection()?.getSelectedText()) return
-                            dialog.replace(() => (
-                              <DialogMessage
-                                messageID={message.id}
-                                sessionID={route.sessionID}
-                                setPrompt={(promptInfo) => prompt?.set(promptInfo)}
-                              />
-                            ))
-                          }}
-                          message={message as UserMessage}
-                          parts={sync.data.part[message.id] ?? []}
-                          pending={pending()}
-                        />
-                      </Match>
-                      <Match when={message.role === "assistant"}>
-                        <AssistantMessage
-                          last={lastAssistant()?.id === message.id}
-                          message={message as AssistantMessage}
-                          parts={sync.data.part[message.id] ?? []}
-                        />
+                        }}
                       </Match>
                     </Switch>
                   )}
@@ -1938,12 +1769,16 @@ function UserMessage(props: {
   const showSteer = createMemo(() => canSteer() || waitingSteer())
   const color = createMemo(() => local.agent.color(props.message.agent))
   const queuedFg = createMemo(() => selectedForeground(theme, color()))
-  const metadataVisible = createMemo(() => queued() || showSteer() || ctx.showTimestamps())
+  const metadataVisible = createMemo(() => queued() || showSteer())
   const steerLabel = createMemo(() =>
     steerControlLabel({ delivery: delivery(), pending: steerPending() }),
   )
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
+  // Route badge: workflow identity is stamped at submit time; routed
+  // general verdicts stamp a General prompt badge so the header never
+  // flips from "Evaluating" to empty. Direct (unrouted) sends stay bare.
+  const routeInfo = createMemo(() => routeBadgeFromParts(props.parts))
 
   createEffect(() => {
     const current = delivery()
@@ -1953,26 +1788,52 @@ function UserMessage(props: {
   })
 
   const toggleSteer = () => {
-    const current = delivery()
-    if ((current !== "queue" && current !== "steer") || steerPending() || !text()) return
+    // The server promotes queue→steer on identical full payloads; the
+    // reverse is a silent no-op there, so the UI offers only the upgrade.
+    // Text-only resubmits fail payload equivalence for file/agent prompts,
+    // so the complete prompt is always re-sent.
+    if (delivery() !== "queue" || steerPending() || !text()) return
     const body = text()
     if (!body) return
-    const next = toggleSteerDelivery(current)
-    setSteerPending(next)
+    const files = props.parts.flatMap((part) => {
+      if (part.type !== "file" || typeof part.url !== "string") return []
+      return [
+        {
+          uri: part.url,
+          ...(typeof part.filename === "string" ? { name: part.filename } : {}),
+          ...(typeof part.mime === "string" ? { mime: part.mime } : {}),
+        },
+      ]
+    })
+    const agents = props.parts.flatMap((part) => {
+      if (part.type !== "agent" || typeof part.name !== "string") return []
+      return [{ name: part.name }]
+    })
+    const payload = {
+      text: body,
+      ...(files.length > 0 ? { files } : {}),
+      ...(agents.length > 0 ? { agents } : {}),
+    }
+    setSteerPending("steer")
     void sdk.client.v2.session
       .prompt(
         {
           sessionID: props.message.sessionID,
           id: props.message.id,
-          prompt: { text: body },
-          delivery: next,
+          prompt: payload,
+          delivery: "steer",
         },
         { throwOnError: true },
       )
+      .then(() => {
+        // Steering to the front means now: stop the current run so the
+        // drain restarts into this item.
+        void sdk.client.session.abort({ sessionID: props.message.sessionID }).then(() => undefined)
+      })
       .catch((error) => {
         setSteerPending(null)
         toast.show({
-          title: next === "steer" ? "Couldn’t steer" : "Couldn’t cancel steer",
+          title: "Couldn’t steer",
           message: errorMessage(error),
           variant: "error",
         })
@@ -1986,7 +1847,7 @@ function UserMessage(props: {
           <box
             ref={(el: BoxRenderable) => alwaysSeparate.add(el)}
             border={["left"]}
-            borderColor={color()}
+            borderColor={routeInfo()?.kind === "general" ? theme.success : color()}
             customBorderChars={SplitBorder.customBorderChars}
             marginTop={props.index === 0 ? 0 : 1}
           >
@@ -2001,9 +1862,25 @@ function UserMessage(props: {
               paddingTop={1}
               paddingBottom={1}
               paddingLeft={2}
+              paddingRight={2}
               backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
               flexShrink={0}
             >
+              <box
+                flexDirection="row"
+                width="100%"
+                paddingBottom={1}
+                justifyContent={routeInfo() ? "space-between" : "flex-end"}
+                alignItems="center"
+                gap={1}
+              >
+              <Show when={routeInfo()}>
+                {(info) => <RouteBadge info={info()} />}
+              </Show>
+                <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+                  {Locale.todayTimeOrDateTime(props.message.time.created)}
+                </text>
+              </box>
               <text fg={theme.text}>{stripAnsi(text())}</text>
               <Show when={files().length}>
                 <box
@@ -2028,23 +1905,16 @@ function UserMessage(props: {
                   </For>
                 </box>
               </Show>
-              <Show
-                when={queued() || showSteer()}
-                fallback={
-                  <Show when={ctx.showTimestamps()}>
-                    <text fg={theme.textMuted}>
-                      <span style={{ fg: theme.textMuted }}>
-                        {Locale.todayTimeOrDateTime(props.message.time.created)}
-                      </span>
-                    </text>
-                  </Show>
-                }
-              >
+              <Show when={queued() || showSteer()}>
                 <box flexDirection="row" gap={1} paddingTop={files().length ? 0 : 1}>
                   <text fg={theme.textMuted}>
                     <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
                   </text>
                   <Show when={showSteer()}>
+                    <Show
+                      when={canSteer()}
+                      fallback={<text fg={theme.textMuted}>{steerLabel()}</text>}
+                    >
                     <box
                       onMouseOver={() => setSteerHover(true)}
                       onMouseOut={() => setSteerHover(false)}
@@ -2060,6 +1930,7 @@ function UserMessage(props: {
                         {steerLabel()}
                       </text>
                     </box>
+                    </Show>
                   </Show>
                 </box>
               </Show>
@@ -2079,6 +1950,88 @@ function UserMessage(props: {
         </TranscriptRow>
       </Show>
     </>
+  )
+}
+
+/**
+ * Optimistic outbound row: a queued prompt rendered instantly at Enter,
+ * before any server round-trip. Same transcript chrome as a user message;
+ * the badge slot shows each transient state, then the server echo takes over.
+ */
+function OptimisticUserRow(props: { entry: OutboundEntry; queuePosition?: number; showQueuePosition?: boolean }) {
+  const { theme } = useTheme()
+  const sdk = useSDK()
+  const [steerHover, setSteerHover] = createSignal(false)
+  const badge = (): RouteBadgeInfo => {
+    if (props.entry.state === "sent") return { kind: "sent", stale: props.entry.stale }
+    return { kind: props.entry.state }
+  }
+  const border = () => {
+    if (props.entry.state === "interrupted") return theme.error
+    if (props.entry.state === "failed") return theme.error
+    if (props.entry.state === "steered") return theme.primary
+    return theme.textMuted
+  }
+  // Steer: this queued prompt goes next — stop the current run first so
+  // the pump dispatches it immediately after the abort settles.
+  const steer = () => {
+    const { sessionID, key } = props.entry
+    if (!steerOutbound(sessionID, key)) return
+    void sdk.client.session.abort({ sessionID }).finally(() => kickPump(sessionID))
+  }
+  return (
+    <TranscriptRow id={props.entry.key}>
+      <box
+        border={["left"]}
+        borderColor={border()}
+        customBorderChars={SplitBorder.customBorderChars}
+        marginTop={1}
+      >
+        <box
+          paddingTop={1}
+          paddingBottom={1}
+          paddingLeft={2}
+          paddingRight={2}
+          backgroundColor={theme.backgroundPanel}
+          flexShrink={0}
+        >
+          <box
+            flexDirection="row"
+            width="100%"
+            paddingBottom={1}
+            justifyContent="space-between"
+            alignItems="center"
+            gap={1}
+          >
+            <box flexDirection="row" gap={1} alignItems="center">
+              <RouteBadge info={badge()} />
+              <Show when={props.showQueuePosition && props.queuePosition !== undefined}>
+                <text fg={theme.textMuted}>#{props.queuePosition}</text>
+              </Show>
+              <Show when={props.entry.state === "queued"}>
+                <box
+                  onMouseOver={() => setSteerHover(true)}
+                  onMouseOut={() => setSteerHover(false)}
+                  onMouseUp={(e: { stopPropagation?: () => void }) => {
+                    e.stopPropagation?.()
+                    steer()
+                  }}
+                  backgroundColor={buttonBackground(theme, steerHover())}
+                  paddingLeft={1}
+                  paddingRight={1}
+                >
+                  <text fg={buttonText(theme, steerHover(), theme.primary)}>Steer</text>
+                </box>
+              </Show>
+            </box>
+            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+              {Locale.todayTimeOrDateTime(props.entry.createdAt)}
+            </text>
+          </box>
+          <text fg={theme.text}>{stripAnsi(props.entry.text)}</text>
+        </box>
+      </box>
+    </TranscriptRow>
   )
 }
 
@@ -2112,6 +2065,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
 
   return (
     <>
+      {/* Timestamps render on user messages only, not agent messages. */}
       <For each={props.parts}>
         {(part, index) => {
           const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])

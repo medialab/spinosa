@@ -39,3 +39,16 @@ describe("truncateDestPath", () => {
     expect(truncateDestPath(dest)).toBe(truncated)
   })
 })
+
+describe("truncateDestPath reserve", () => {
+  test("reserved room keeps the rescue temp file inside limits", () => {
+    // The rescue copy writes `target + .spinosa-part-<pid>-<uuid>` (~50B).
+    // Without the reserve the temp file itself overflows and rescue dies.
+    const reserve = Buffer.byteLength(`.spinosa-part-${process.pid}-${"0".repeat(36)}`, "utf8")
+    const dest = path.join("/tmp", "ws", "raw", `${"a".repeat(240)}.txt`)
+    const target = truncateDestPath(dest, reserve)
+    const tmpComponent = path.basename(target) + `.spinosa-part-${process.pid}-${"0".repeat(36)}`
+    expect(Buffer.byteLength(path.basename(target), "utf8")).toBeLessThanOrEqual(250 - reserve)
+    expect(Buffer.byteLength(tmpComponent, "utf8")).toBeLessThanOrEqual(255)
+  })
+})

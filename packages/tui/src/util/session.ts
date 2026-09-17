@@ -9,16 +9,14 @@ export type DerivedSessionStatus = "idle" | "working" | "compacting"
 
 /**
  * Prefer live server status when present (including explicit idle after abort).
- * Fall back to transcript-derived working/compacting only when session_status was
- * wiped (undefined) so interrupt/spinner UI survives dispose/bootstrap races.
- * Transcript "compacting" maps to busy (SDK SessionStatus has no compacting variant).
+ * Missing server status is idle: an incomplete transcript after process restart
+ * must not look like live work.
  */
 export function resolveSessionRuntimeStatus(
   fromServer: SessionStatus | undefined,
-  derived?: DerivedSessionStatus,
+  _derived?: DerivedSessionStatus,
 ): SessionStatus {
   if (fromServer !== undefined) return fromServer
-  if (derived === "working" || derived === "compacting") return { type: "busy" }
   return { type: "idle" }
 }
 

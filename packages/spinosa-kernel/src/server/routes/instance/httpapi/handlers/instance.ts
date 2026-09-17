@@ -9,7 +9,7 @@ import { Skill } from "@/skill"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ApiVcsApplyError } from "../groups/instance"
+import { ApiVcsApplyError, ApiVcsDiffUnavailableError } from "../groups/instance"
 import { markInstanceForDisposal } from "../lifecycle"
 
 export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance", (handlers) =>
@@ -54,9 +54,17 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
       return yield* vcs.diff(ctx.query.mode, { context: ctx.query.context })
     })
 
-    const getVcsDiffRaw = Effect.fn("InstanceHttpApi.vcsDiffRaw")(function* () {
-      return yield* vcs.diffRaw()
-    })
+const getVcsDiffRaw = Effect.fn("InstanceHttpApi.vcsDiffRaw")(function* () {
+  return yield* vcs.diffRaw().pipe(
+    Effect.mapError(
+      (error) =>
+        new ApiVcsDiffUnavailableError({
+          name: "VcsDiffUnavailableError",
+          data: { reason: error.reason },
+        }),
+    ),
+  )
+})
 
     const applyVcs = Effect.fn("InstanceHttpApi.vcsApply")(function* (ctx: { payload: Vcs.ApplyInput }) {
       return yield* vcs.apply(ctx.payload).pipe(

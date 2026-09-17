@@ -1,6 +1,6 @@
 export * as ConfigSkillPlugin from "./skill"
 
-import { define } from "../../plugin/internal"
+import { define } from "../../plugin/define"
 import path from "path"
 import { Effect } from "effect"
 import { Config } from "../../config"

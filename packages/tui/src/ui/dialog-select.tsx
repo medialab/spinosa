@@ -8,11 +8,15 @@ import {
 } from "@opentui/core"
 import type { Binding } from "@opentui/keymap"
 import { useTheme, selectedForeground } from "../context/theme"
-import { entries, filter, flatMap, groupBy, pipe } from "remeda"
+import {
+  filterDialogOptions,
+  flattenDialogOptions,
+  groupDialogOptions,
+  nextDialogSelection,
+} from "./dialog-select-model"
 import { batch, createEffect, createMemo, createSignal, For, Show, type JSX, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTerminalDimensions } from "@opentui/solid"
-import * as fuzzysort from "fuzzysort"
 import { isDeepEqual } from "remeda"
 import { useDialog, type DialogContext } from "./dialog"
 import { Locale } from "../util/locale"
@@ -53,7 +57,7 @@ export interface DialogSelectProps<T> {
   current?: T
 }
 
-export interface DialogSelectOption<T = any> {
+export interface DialogSelectOption<T = string> {
   title: string
   titleView?: JSX.Element
   value: T
@@ -151,26 +155,9 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     if (index !== undefined && index >= actionItems().length) setFocusedAction(undefined)
   })
 
-  const filtered = createMemo(() => {
-    if (props.skipFilter || props.renderFilter === false) return props.options.filter((x) => x.disabled !== true)
-    const needle = store.filter.toLowerCase()
-    const options = pipe(
-      props.options,
-      filter((x) => x.disabled !== true),
-    )
-    if (!needle) return options
-
-    // prioritize title matches (weight: 2) over category matches (weight: 1).
-    // users typically search by the item name, and not its category.
-    const result = fuzzysort
-      .go(needle, options, {
-        keys: ["title", "category"],
-        scoreFn: (r) => r[0].score * 2 + r[1].score,
-      })
-      .map((x) => x.obj)
-
-    return result
-  })
+  const filtered = createMemo(() =>
+    filterDialogOptions(props.options, store.filter, props.skipFilter || props.renderFilter === false),
+  )
 
   // When the filter changes due to how TUI works, the mousemove might still be triggered
   // via a synthetic event as the layout moves underneath the cursor. This is a workaround to make sure the input mode remains keyboard
@@ -181,36 +168,17 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     setFocusedAction(undefined)
   })
 
-  const flatten = createMemo(() => props.flat && store.filter.length > 0)
+  const flatten = createMemo(() => props.flat === true && store.filter.length > 0)
 
-  const grouped = createMemo<[string, DialogSelectOption<T>[]][]>(() => {
-    if (flatten()) return [["", filtered()]]
-    const result = pipe(
-      filtered(),
-      groupBy((x) => x.category ?? ""),
-      // mapValues((x) => x.sort((a, b) => a.title.localeCompare(b.title))),
-      entries(),
-    )
-    return result
-  })
+  const grouped = createMemo(() => groupDialogOptions(filtered(), flatten()))
 
-  const flat = createMemo(() => {
-    return pipe(
-      grouped(),
-      flatMap(([_, options]) => options),
-    )
-  })
-
-  const rows = createMemo(() => {
-    const headers = grouped().reduce((acc, [category], i) => {
-      if (!category) return acc
-      return acc + (i > 0 ? 2 : 1)
-    }, 0)
-    return flat().reduce((acc, option) => acc + 1 + (option.details?.length ?? 0), headers)
-  })
+  const flat = createMemo(() => flattenDialogOptions(grouped()))
 
   const dimensions = useTerminalDimensions()
-  const height = createMemo(() => Math.min(rows(), Math.floor(dimensions().height / 2) - 6))
+  // Fixed height per viewport — never derived from the filtered row count,
+  // so typing in the filter no longer resizes (and jumps) the dialog.
+  // Short lists render in stable space; the empty fallback covers zero rows.
+  const height = createMemo(() => Math.max(4, Math.floor(dimensions().height / 2) - 6))
 
   const selected = createMemo(() => flat()[store.selected])
 
@@ -243,8 +211,9 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         const previous = selection
         const index = flat().findIndex((option) => isDeepEqual(option.value, previous.value))
         if (index >= 0) {
-          const option = flat()[index]
-          const moved = index !== store.selected || option.category !== previous.category
+      const option = flat()[index]
+      if (!option) return
+      const moved = index !== store.selected || option.category !== previous.category
           setStore("selected", index)
           selection = option
           if (!moved) return
@@ -293,10 +262,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   function move(direction: number) {
     if (props.locked) return
     if (flat().length === 0) return
-    let next = store.selected + direction
-    if (next < 0) next = flat().length - 1
-    if (next >= flat().length) next = 0
-    moveTo(next, true)
+    moveTo(nextDialogSelection(store.selected, direction, flat().length), true)
   }
 
   function moveTo(next: number, center = false, preserve = true) {
@@ -337,7 +303,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       }
       if (y < 0) {
         scroll.scrollBy(y)
-        if (isDeepEqual(flat()[0].value, selected()?.value)) {
+        const first = flat()[0]
+        if (first && isDeepEqual(first.value, selected()?.value)) {
           scroll.scrollTo(0)
         }
       }
@@ -615,7 +582,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             scrollbarOptions={{ visible: false }}
             scrollAcceleration={scrollAcceleration()}
             ref={(r: ScrollBoxRenderable) => (scroll = r)}
-            maxHeight={height()}
+            height={height()}
           >
             <For each={grouped()}>
               {([category, options], index) => (
@@ -753,9 +720,14 @@ function Option(props: {
     return theme.text
   })
 
-  return (
+    return (
     <>
-      <Show when={props.current && !props.gutter}>
+      <Show when={props.active && !props.muted && !props.gutter}>
+        <text flexShrink={0} fg={text()} marginRight={1}>
+          ›
+        </text>
+      </Show>
+      <Show when={props.current && !props.gutter && !(props.active && !props.muted)}>
         <text flexShrink={0} fg={text()} marginRight={1}>
           ●
         </text>

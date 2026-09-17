@@ -13,9 +13,9 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
 import { spawnSync } from "node:child_process"
-import { homedir } from "node:os"
 import { confirmPrompt } from "../utils/confirm"
 import { spinosaLogInfo } from "../utils/log"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 import { updateWorkspace, type UpdateResult } from "./update"
 import {
   checkUpgradeAvailable,
@@ -36,16 +36,19 @@ import { isSpinosaWorkspace, readWorkspaceMeta } from "../workspace/meta"
 import { listRegisteredWorkspaces } from "../workspace/registry"
 
 /** User-facing line printed before the remote version check. */
-export const LAUNCH_STATUS_CHECKING = "checking for updates..."
+export const LAUNCH_STATUS_CHECKING = "Checking for updates..."
 
 /** User-facing line printed when the installed version is current. */
-export const LAUNCH_STATUS_NO_UPDATES = "no updates available"
+export const LAUNCH_STATUS_NO_UPDATES = "No updates available"
 
 /** User-facing line printed immediately before the TUI starts. */
-export const LAUNCH_STATUS_LAUNCHING = "launching TUI..."
+export const LAUNCH_STATUS_LAUNCHING = "Launching TUI..."
 
 /** User-facing line printed after a successful launch-time upgrade. */
-export const LAUNCH_STATUS_UPGRADE_DONE = "upgrade complete — run spinosa again to launch"
+export const LAUNCH_STATUS_UPGRADE_DONE = "Upgrade complete — run spinosa again to launch"
+
+/** Minimum time each status line stays visible (ms). Cache-hit path skips this. */
+export const MIN_STATUS_MS = 300
 
 export type StaleTemplatePackWorkspace = {
   path: string
@@ -81,6 +84,8 @@ export interface PreflightDependencies extends WorkspaceUpgradeOfferDeps {
   inspectPack?(workspacePath: string, frameworkRoot: string): TemplatePackFreshness | Promise<TemplatePackFreshness>
   /** When false, skip interactive pack prompts (CI / no TTY). */
   canPrompt?(): boolean
+  /** Delay helper (injected for tests to avoid real sleep). */
+  sleep?(ms: number): Promise<void>
 }
 
 export interface LaunchPreflightOptions {
@@ -93,7 +98,7 @@ export interface LaunchPreflightOptions {
 }
 
 function defaultFrameworkRootForVersion(version: string): string {
-  const home = process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  const home = productHomeDir()
   const envRoot = process.env.SPINOSA_TEMPLATE_ROOT
   if (envRoot) return envRoot
 
@@ -103,6 +108,8 @@ function defaultFrameworkRootForVersion(version: string): string {
       const probe = spawnSync(binary, ["internal", "template", "ensure", "--json"], {
         encoding: "utf-8",
         env: process.env,
+        timeout: 5000,
+        maxBuffer: 1024 * 1024,
       })
       if (probe.status === 0) {
         const parsed = JSON.parse(probe.stdout) as { templateRoot?: string; ok?: boolean }
@@ -122,6 +129,18 @@ function defaultCanPrompt(): boolean {
   if (process.argv.includes("--yes") || process.argv.includes("-y")) return false
   if (!process.stdin.isTTY) return false
   return true
+}
+
+async function defaultSleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+async function ensureMinVisibleSince(start: number, minMs: number, deps: PreflightDependencies): Promise<void> {
+  if (process.env.SPINOSA_DISABLE_PREFLIGHT_DELAY === "1") return
+  const elapsed = Date.now() - start
+  if (elapsed >= minMs) return
+  const sleep = deps.sleep ?? defaultSleep
+  await sleep(minMs - elapsed)
 }
 
 export async function defaultListPackCheckCandidates(targetWorkspace?: string): Promise<string[]> {
@@ -152,6 +171,7 @@ const defaults: PreflightDependencies = {
   listPackCheckCandidates: defaultListPackCheckCandidates,
   canPrompt: defaultCanPrompt,
   out: (message) => process.stdout.write(`${message}\n`),
+  sleep: defaultSleep,
 }
 
 async function inspectPackFreshness(
@@ -175,6 +195,16 @@ export function printLaunchingTui(out: (message: string) => void = defaults.out)
   out(LAUNCH_STATUS_LAUNCHING)
 }
 
+/** Same as printLaunchingTui but ensures the line stays visible at least MIN_STATUS_MS. */
+export async function printLaunchingTuiWithDelay(
+  out: (message: string) => void = defaults.out,
+  sleep: (ms: number) => Promise<void> = defaults.sleep ?? defaultSleep,
+): Promise<void> {
+  out(LAUNCH_STATUS_LAUNCHING)
+  if (process.env.SPINOSA_DISABLE_PREFLIGHT_DELAY === "1") return
+  await sleep(MIN_STATUS_MS)
+}
+
 /**
  * After a successful CLI/framework upgrade, optionally update registered
  * workspaces still pinned to an older framework version.
@@ -186,26 +216,26 @@ export async function offerWorkspaceUpgrades(
   deps: WorkspaceUpgradeOfferDeps,
 ): Promise<void> {
   if (workspaces.length === 0) return
-  if (!(await deps.confirm(`Upgrade ${workspaces.length} outdated workspace(s) now?`))) return
+  if (!(await deps.confirm(`\x1b[36m?\x1b[0m Upgrade ${workspaces.length} outdated workspace(s) now?`))) return
 
   const frameworkRoot = deps.frameworkRoot(frameworkVersion)
   let failed = 0
   for (const workspace of workspaces) {
     try {
-      const result = await deps.updateWorkspace(workspace, frameworkRoot)
+      const result = await deps.updateWorkspace(workspace, frameworkRoot, { force: true })
       if (result.success && result.presence) {
-        deps.out(`↷ Skipped ${path.basename(workspace) || workspace}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
-      } else if (result.success) deps.out(`✓ Updated ${path.basename(workspace) || workspace}`)
+        deps.out(`\x1b[36m●\x1b[0m Skipped ${path.basename(workspace) || workspace}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
+      } else if (result.success) deps.out(`\x1b[32m●\x1b[0m Updated ${path.basename(workspace) || workspace}`)
       else {
         failed++
-        deps.out(`⚠ Could not update ${path.basename(workspace) || workspace}`)
+        deps.out(`\x1b[31m●\x1b[0m Could not update ${path.basename(workspace) || workspace}`)
       }
     } catch (error) {
       failed++
-      deps.out(`⚠ Could not update ${path.basename(workspace) || workspace}: ${error instanceof Error ? error.message : String(error)}`)
+      deps.out(`\x1b[31m●\x1b[0m Could not update ${path.basename(workspace) || workspace}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (failed > 0) deps.out(`⚠ ${failed} workspace update(s) failed; run 'spinosa update <workspace>' to retry.`)
+  if (failed > 0) deps.out(`\x1b[31m●\x1b[0m ${failed} workspace update(s) failed; run 'spinosa update <workspace>' to retry.`)
 }
 
 function formatStalePaths(freshness: TemplatePackFreshness): string {
@@ -263,13 +293,13 @@ export async function offerStaleTemplatePackUpdates(
     return
   }
 
-  deps.out(`Workspace template pack update available for ${stale.length} workspace(s):`)
+  deps.out(`\x1b[1m→\x1b[0m Workspace template pack update available for ${stale.length} workspace(s):`)
   for (const entry of stale) {
-    deps.out(`  • ${entry.name} — ${formatStalePaths(entry.freshness)}`)
+    deps.out(`\x1b[36m●\x1b[0m ${entry.name} — ${formatStalePaths(entry.freshness)}`)
   }
-  deps.out("  (updates protocol files, AGENTS.md, and agent skills)")
+  deps.out("(updates protocol files, AGENTS.md, and agent skills)")
 
-  if (!(await deps.confirm(`Update ${stale.length} workspace template pack(s) now?`, true))) {
+  if (!(await deps.confirm(`\x1b[36m?\x1b[0m Update ${stale.length} workspace template pack(s) now?`, true))) {
     deps.out("Continuing without updating — you can run Update workspace from Home later.")
     return
   }
@@ -281,12 +311,12 @@ export async function offerStaleTemplatePackUpdates(
       // replace_if_unmodified managed files so probes cannot stay forever-stale.
       const result = await deps.updateWorkspace(entry.path, frameworkRoot, { force: true })
       if (result.success && result.presence) {
-        deps.out(`↷ Skipped ${entry.name}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
+        deps.out(`\x1b[36m●\x1b[0m Skipped ${entry.name}: ${result.presence.replaceAll("_", " ").toUpperCase()}`)
         continue
       }
       if (!result.success) {
         failed++
-        deps.out(`⚠ Could not update ${entry.name}${result.error ? `: ${result.error}` : ""}`)
+        deps.out(`\x1b[31m●\x1b[0m Could not update ${entry.name}${result.error ? `: ${result.error}` : ""}`)
         continue
       }
 
@@ -294,21 +324,18 @@ export async function offerStaleTemplatePackUpdates(
       if (after.refreshRecommended) {
         failed++
         const detail = formatStalePaths(after)
-        deps.out(`⚠ ${entry.name} still stale after update${detail ? `: ${detail}` : ""}`)
-        spinosaLogInfo(
-          "preflight",
-          `template pack still stale after forced update: ${entry.path} (${detail || "version behind"})`,
-        )
+        deps.out(`\x1b[31m●\x1b[0m ${entry.name} still stale after update${detail ? `: ${detail}` : ""}`)
+        spinosaLogInfo("preflight", "template pack still stale after forced update")
       } else {
-        deps.out(`✓ Updated ${entry.name} — template pack current`)
-        spinosaLogInfo("preflight", `template pack refreshed: ${entry.path}`)
+        deps.out(`\x1b[32m●\x1b[0m Updated ${entry.name} — template pack current`)
+        spinosaLogInfo("preflight", "template pack refreshed")
       }
     } catch (error) {
       failed++
-      deps.out(`⚠ Could not update ${entry.name}: ${error instanceof Error ? error.message : String(error)}`)
+      deps.out(`\x1b[31m●\x1b[0m Could not update ${entry.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (failed > 0) deps.out(`⚠ ${failed} workspace update(s) failed; run 'spinosa update <workspace> --force' to retry.`)
+  if (failed > 0) deps.out(`\x1b[31m●\x1b[0m ${failed} workspace update(s) failed; run 'spinosa update <workspace> --force' to retry.`)
 }
 
 /**
@@ -322,19 +349,33 @@ export async function runLaunchPreflight(
   const resolved = deps ?? defaults
   spinosaLogInfo("preflight", `preflight check started (pid=${process.pid})`)
   resolved.out(LAUNCH_STATUS_CHECKING)
+  const tChecking = Date.now()
 
   const available = await resolved.checkUpgradeAvailable()
-  spinosaLogInfo("preflight", `upgrade check: available=${available.available} latest=${available.latestVersion ?? "none"}`)
+  const elapsedChecking = Date.now() - tChecking
+  spinosaLogInfo("preflight", `upgrade check: available=${available.available} latest=${available.latestVersion ?? "none"} elapsed=${elapsedChecking}ms`)
+
+  // Cache-hit (disk <150ms) skips MIN_STATUS delay — version cache TTL is beta:300 stable:3600
+  const isCacheHit = elapsedChecking < 150
+  if (!isCacheHit) {
+    await ensureMinVisibleSince(tChecking, MIN_STATUS_MS, resolved)
+  }
 
   if (!available.available || !available.latestVersion) {
     resolved.out(LAUNCH_STATUS_NO_UPDATES)
-    spinosaLogInfo("preflight", "no upgrade needed, continuing")
+    if (!isCacheHit) {
+      const tNoUpdates = Date.now()
+      spinosaLogInfo("preflight", "no upgrade needed, continuing")
+      await ensureMinVisibleSince(tNoUpdates, MIN_STATUS_MS, resolved)
+    } else {
+      spinosaLogInfo("preflight", "no upgrade needed (cached), continuing without delay")
+    }
     await offerStaleTemplatePackUpdates(resolved, options)
     return "continue"
   }
 
   const current = available.currentVersion ? ` (current \x1b[32mv${available.currentVersion}\x1b[0m)` : ""
-  if (!(await resolved.confirm(`✨ \x1b[1mSpinosa v${available.latestVersion}\x1b[0m is available${current}. Upgrade now?`, true))) {
+  if (!(await resolved.confirm(`\x1b[36m?\x1b[0m \x1b[1mSpinosa v${available.latestVersion}\x1b[0m is available${current}. Upgrade now?`, true))) {
     await offerStaleTemplatePackUpdates(resolved, options)
     return "continue"
   }

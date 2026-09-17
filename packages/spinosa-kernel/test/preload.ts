@@ -44,6 +44,7 @@ process.env["SPINOSA_EXPERIMENTAL_WORKSPACES"] = "true"
 const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["SPINOSA_TEST_HOME"] = testHome
+process.env["SPINOSA_HOME"] = path.join(testHome, ".spinosa")
 
 // Set test managed config directory to isolate tests from system managed settings
 const testManagedConfigDir = path.join(dir, "managed")

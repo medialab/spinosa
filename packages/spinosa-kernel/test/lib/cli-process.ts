@@ -8,7 +8,7 @@
 // Configuration flows through opencode's built-in test affordances:
 //   - SPINOSA_CONFIG_CONTENT      : provider config inline, no files to find
 //   - SPINOSA_TEST_HOME           : pins os.homedir() → tmpdir
-//   - SPINOSA_DISABLE_PROJECT_CONFIG : skip walking up for opencode.json
+//   - SPINOSA_DISABLE_PROJECT_CONFIG : skip walking up for spinosa.json
 //   - SPINOSA_PURE                : skip external plugin discovery + install
 //   - SPINOSA_DISABLE_AUTOUPDATE / AUTOCOMPACT / MODELS_FETCH : no background work
 // Plus HOME / XDG_* pointing at the tmpdir for belt-and-suspenders isolation.
@@ -73,6 +73,7 @@ function isolatedEnv(home: string, configJson: string): Record<string, string> {
     SPINOSA_DISABLE_AUTOUPDATE: "1",
     SPINOSA_DISABLE_AUTOCOMPACT: "1",
     SPINOSA_DISABLE_MODELS_FETCH: "1",
+    SPINOSA_DISABLE_PREFLIGHT_DELAY: "1",
     SPINOSA_AUTH_CONTENT: "{}",
   }
 }

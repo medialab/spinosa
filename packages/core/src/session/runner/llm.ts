@@ -10,6 +10,8 @@ import {
 } from "@spinosa/llm"
 import { Cause, DateTime, Effect, FiberSet, Layer, Option, Semaphore, Stream } from "effect"
 import { AgentV2 } from "../../agent"
+import { Permission } from "@spinosa/schema/permission"
+import { PermissionV2 } from "../../permission"
 import { Config } from "../../config"
 import { Database } from "../../database/database"
 import { EventV2 } from "../../event"
@@ -40,6 +42,18 @@ import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { SessionLoopControl } from "../loop-control"
 
+const DOOM_LOOP_THRESHOLD = 3
+const DOOM_LOOP_ACTION = "doom_loop"
+
+const serializeToolInput = (input: unknown): string => {
+  try {
+    const serialized = JSON.stringify(input)
+    return serialized ?? String(input)
+  } catch {
+    return String(input)
+  }
+}
+
 /**
  * Runs one durable coding-agent Session until it settles.
  *
@@ -52,7 +66,7 @@ import { SessionLoopControl } from "../loop-control"
  *   - [ ] Mark busy, retrying, idle, interrupted, or terminal-failure status durably.
  *   - [ ] Honor interruption and reject stale work after runtime attachment replacement.
  *   - [x] Honor optional agent step limits.
- *   - [ ] Bound provider retries and repeated identical tool calls.
+ *   - [x] Bound repeated identical tool calls via doom_loop guard (3 identical consecutive).
  *
  * - Runtime context assembly
  *   - Track V1 runtime-context parity canonically in `specs/v2/session.md`.
@@ -107,6 +121,10 @@ const layer = Layer.effect(
     const snapshots = yield* Snapshot.Service
     const db = (yield* Database.Service).db
     const compaction = SessionCompaction.make({ events, llm, config: yield* config.entries() })
+    const permission = yield* PermissionV2.Service
+    // Doom-loop guard: per-session sliding window of last 3 tool calls.
+    // Mirrors spinosa-kernel processor.ts DOOM_LOOP_THRESHOLD=3 permission.ask("doom_loop").
+    const doomLoopHistory = new Map<string, Array<{ name: string; serialized: string }>>()
     // Default Pi-style turn hooks; keep the surface callable/overridable but minimal.
     const hooks = SessionLoopControl.resolveTurnHooks()
     const getSession = Effect.fn("SessionRunner.getSession")(function* (sessionID: SessionSchema.ID) {
@@ -207,7 +225,11 @@ const layer = Layer.effect(
       const entries = yield* SessionHistory.entriesForRunner(db, session.id, system.baselineSeq)
       const context = entries.map((entry) => entry.message)
       const isLastStep = agent.info?.steps !== undefined && currentStep >= agent.info.steps
-      const toolMaterialization = isLastStep ? undefined : yield* tools.materialize(agent.info?.permissions)
+      const sessionPermission = (session as SessionSchema.Info & { permission?: Permission.Ruleset }).permission
+      const mergedPermissions = sessionPermission
+        ? [...(agent.info?.permissions ?? []), ...sessionPermission]
+        : agent.info?.permissions
+      const toolMaterialization = isLastStep ? undefined : yield* tools.materialize(mergedPermissions)
       const systemParts = [agent.info?.system, system.baseline].filter(
         (part): part is string => part !== undefined && part.length > 0,
       )
@@ -290,6 +312,66 @@ const layer = Layer.effect(
             }
             needsContinuation = true
             const assistantMessageID = yield* publisher.assistantMessageID(event.id)
+            // doom_loop guard: 3 identical consecutive tool calls (name + stringified input)
+            // Mirrors spinosa-kernel/src/session/processor.ts:356 DOOM_LOOP_THRESHOLD=3
+            {
+              const serialized = serializeToolInput(event.input)
+              const key = session.id as string
+              const history: Array<{ name: string; serialized: string }> =
+                doomLoopHistory.get(key) ?? ([] as Array<{ name: string; serialized: string }>)
+              history.push({ name: event.name, serialized })
+              if (history.length > DOOM_LOOP_THRESHOLD) history.shift()
+              doomLoopHistory.set(key, history)
+              const isDoomLoop =
+                history.length === DOOM_LOOP_THRESHOLD &&
+                history.every((entry) => entry.name === event.name && entry.serialized === serialized)
+              if (isDoomLoop) {
+                const doomResult = yield* permission
+                  .assert({
+                    action: DOOM_LOOP_ACTION,
+                    resources: [event.name],
+                    save: [event.name],
+                    sessionID: session.id,
+                    agent: agent.id,
+                    source: { type: "tool", messageID: assistantMessageID, callID: event.id },
+                    metadata: { tool: event.name, input: event.input },
+                  })
+                  .pipe(
+                    Effect.map(() => ({ blocked: false as const })),
+                    Effect.catch((error: unknown) =>
+                      Effect.gen(function* () {
+                        const message =
+                          error instanceof PermissionV2.CorrectedError
+                            ? error.feedback
+                            : error instanceof PermissionV2.DeniedError
+                              ? `Permission denied for ${DOOM_LOOP_ACTION}:${event.name}`
+                              : error instanceof PermissionV2.RejectedError
+                                ? "Doom loop rejected"
+                                : error instanceof Error
+                                  ? error.message
+                                  : String(error)
+                        yield* publish(
+                          LLMEvent.toolResult({
+                            id: event.id,
+                            name: event.name,
+                            result: {
+                              type: "error",
+                              value: `Doom loop detected: 3 identical ${event.name} calls blocked. ${message}`,
+                            },
+                          }),
+                        )
+                        needsContinuation = false
+                        terminateAfterTools = true
+                        doomLoopHistory.set(key, [])
+                        return { blocked: true as const }
+                      }),
+                    ),
+                  )
+                if (doomResult.blocked) return
+                // Allowed — reset window so next identical burst requires 3 more.
+                doomLoopHistory.set(key, [])
+              }
+            }
             // beforeToolCall gate: skip/deny without entering Permission.ask.
             const gate = hooks.beforeToolCall({ toolName: event.name, callID: event.id })
             if (gate.action === "skip") {
@@ -305,14 +387,18 @@ const layer = Layer.effect(
               )
               return
             }
+            const controller = new AbortController()
             yield* Effect.uninterruptibleMask((restore) =>
               restore(
-                toolMaterialization.settle({
-                  sessionID: session.id,
-                  agent: agent.id,
-                  assistantMessageID,
-                  call: event,
-                }),
+                toolMaterialization
+                  .settle({
+                    sessionID: session.id,
+                    agent: agent.id,
+                    assistantMessageID,
+                    call: event,
+                    abort: controller.signal,
+                  })
+                  .pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort()))),
               ).pipe(
                 Effect.flatMap((settlement) => {
                   // Optional tool terminate: skip the next LLM call when a tool
@@ -472,40 +558,42 @@ const layer = Layer.effect(
       readonly sessionID: SessionSchema.ID
       readonly force: boolean
     }) {
-      const hasSteer = yield* SessionInput.hasPending(db, input.sessionID, "steer")
-      const hasQueue = hasSteer ? false : yield* SessionInput.hasPending(db, input.sessionID, "queue")
-      if (!input.force && !hasSteer && !hasQueue) return
-      yield* failInterruptedTools(input.sessionID)
-      let promotion: SessionInput.Delivery | undefined = hasSteer ? "steer" : hasQueue ? "queue" : undefined
-      let shouldRun = input.force || hasSteer || hasQueue
-      const savePoints = new Map<string, SessionLoopControl.SavePoint>()
-      while (shouldRun) {
-        let needsContinuation = true
-        let step = 1
-        while (needsContinuation) {
-          const result = yield* runTurn(input.sessionID, promotion, step, savePoints)
-          // After each successful turn, refresh the save-point so mid-run config
-          // mutations only apply on the next turn.
-          savePoints.set(
-            input.sessionID,
-            SessionLoopControl.refreshSavePoint({
-              snapshot: result.snapshot,
-              previous: savePoints.get(input.sessionID),
-            }),
-          )
-          const stop = hooks.shouldStopAfterTurn({
-            terminated: result.terminated,
-            maxStepsReached: result.maxStepsReached,
-            needsContinuation: result.needsContinuation,
-          })
-          needsContinuation = !stop
-          step = result.step + 1
-          promotion = "steer"
-          if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
+      return yield* Effect.gen(function* () {
+        const hasSteer = yield* SessionInput.hasPending(db, input.sessionID, "steer")
+        const hasQueue = hasSteer ? false : yield* SessionInput.hasPending(db, input.sessionID, "queue")
+        if (!input.force && !hasSteer && !hasQueue) return
+        yield* failInterruptedTools(input.sessionID)
+        let promotion: SessionInput.Delivery | undefined = hasSteer ? "steer" : hasQueue ? "queue" : undefined
+        let shouldRun = input.force || hasSteer || hasQueue
+        const savePoints = new Map<string, SessionLoopControl.SavePoint>()
+        while (shouldRun) {
+          let needsContinuation = true
+          let step = 1
+          while (needsContinuation) {
+            const result = yield* runTurn(input.sessionID, promotion, step, savePoints)
+            // After each successful turn, refresh the save-point so mid-run config
+            // mutations only apply on the next turn.
+            savePoints.set(
+              input.sessionID,
+              SessionLoopControl.refreshSavePoint({
+                snapshot: result.snapshot,
+                previous: savePoints.get(input.sessionID),
+              }),
+            )
+            const stop = hooks.shouldStopAfterTurn({
+              terminated: result.terminated,
+              maxStepsReached: result.maxStepsReached,
+              needsContinuation: result.needsContinuation,
+            })
+            needsContinuation = !stop
+            step = result.step + 1
+            promotion = "steer"
+            if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
+          }
+          shouldRun = yield* SessionInput.hasPending(db, input.sessionID, "queue")
+          promotion = shouldRun ? "queue" : undefined
         }
-        shouldRun = yield* SessionInput.hasPending(db, input.sessionID, "queue")
-        promotion = shouldRun ? "queue" : undefined
-      }
+      }).pipe(Effect.ensuring(Effect.sync(() => doomLoopHistory.delete(input.sessionID as string))))
     })
 
     const compact = Effect.fn("SessionRunner.compact")(function* (sessionID: SessionSchema.ID) {
@@ -559,5 +647,6 @@ export const node = makeLocationNode({
     Config.node,
     Snapshot.node,
     Database.node,
+    PermissionV2.node,
   ],
 })

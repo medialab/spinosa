@@ -20,7 +20,7 @@ export * from "./tool.js"
 export type ProviderContext = {
   source: "env" | "config" | "custom" | "api"
   info: Provider
-  options: Record<string, any>
+  options: Record<string, unknown>
 }
 
 export type WorkspaceInfo = {

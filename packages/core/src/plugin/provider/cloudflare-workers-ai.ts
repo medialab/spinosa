@@ -1,8 +1,9 @@
 import os from "os"
 import { InstallationVersion } from "../../installation/version"
 import { Effect } from "effect"
-import { define } from "../internal"
+import { define } from "../define"
 import { ProviderV2 } from "../../provider"
+import type { LanguageModelV3 } from "@ai-sdk/provider"
 
 const providerID = ProviderV2.ID.make("cloudflare-workers-ai")
 
@@ -26,21 +27,23 @@ export const CloudflareWorkersAIPlugin = define({
         if (evt.model.providerID !== providerID) return
         if (evt.package !== "@ai-sdk/openai-compatible") return
 
-        const accountId = resolveAccountId(evt.options)
-        if (!hasWorkersEndpoint(evt.model.api) && !accountId) return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/openai-compatible"))
-        evt.sdk = mod.createOpenAICompatible(
-          sdkOptions({
-            ...evt.options,
-            baseURL: evt.options.baseURL ?? (accountId ? workersEndpoint(accountId) : undefined),
-          }) as any,
-        )
+      const accountId = resolveAccountId(evt.options)
+      const configuredBaseURL = stringOption(evt.options, "baseURL")
+      const baseURL = configuredBaseURL ?? (accountId ? workersEndpoint(accountId) : undefined)
+      if (!hasWorkersEndpoint(evt.model.api) && !baseURL) return
+      const mod = yield* Effect.promise(() => import("@ai-sdk/openai-compatible"))
+      evt.sdk = mod.createOpenAICompatible(
+        sdkOptions({
+          ...evt.options,
+          baseURL,
+        }),
+      )
       }),
     )
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== providerID) return
-        evt.language = (evt.sdk as any).languageModel(evt.model.api.id)
+        evt.language = (evt.sdk as { languageModel: (modelID: string) => LanguageModelV3 }).languageModel(evt.model.api.id)
       }),
     )
   }),
@@ -58,11 +61,19 @@ function hasWorkersEndpoint(api: ProviderV2.Api) {
   return api.type === "aisdk" && Boolean(api.url)
 }
 
-function sdkOptions(options: Record<string, any>) {
+type SDKOptions = Record<string, unknown> & {
+  readonly baseURL?: string
+  readonly apiKey?: unknown
+  readonly headers?: Record<string, string>
+}
+
+function sdkOptions(options: SDKOptions) {
+  const baseURL = expandAccountId(options.baseURL)
+  if (!baseURL) throw new Error("Cloudflare Workers AI baseURL is required")
   return {
     ...options,
-    baseURL: expandAccountId(options.baseURL),
-    apiKey: process.env.CLOUDFLARE_API_KEY ?? options.apiKey,
+    baseURL,
+    apiKey: process.env.CLOUDFLARE_API_KEY ?? stringOption(options, "apiKey"),
     headers: {
       "User-Agent": `spinosa/${InstallationVersion} cloudflare-workers-ai (${os.platform()} ${os.release()}; ${os.arch()})`,
       ...options.headers,
@@ -71,8 +82,8 @@ function sdkOptions(options: Record<string, any>) {
   }
 }
 
-function expandAccountId(baseURL: unknown) {
-  if (typeof baseURL !== "string") return baseURL
+function expandAccountId(baseURL: unknown): string | undefined {
+  if (typeof baseURL !== "string") return undefined
   return baseURL.replaceAll("${CLOUDFLARE_ACCOUNT_ID}", process.env.CLOUDFLARE_ACCOUNT_ID ?? "${CLOUDFLARE_ACCOUNT_ID}")
 }
 

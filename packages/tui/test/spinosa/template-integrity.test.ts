@@ -47,11 +47,13 @@ describe("workspace template integrity", () => {
       for (const relative of [path.join(".opencode", "agents", agent), path.join(".claude", "agents", agent)]) {
         if (body(readFileSync(path.join(templateRoot, relative), "utf-8")) !== body(canonicalAgent)) drift.push(relative)
       }
-      const canonicalSkill = readFileSync(path.join(templateRoot, ".agents", "skills", skill, "SKILL.md"), "utf-8")
-      for (const vendor of [".opencode", ".claude", ".codex", ".hermes"]) {
-        const relative = path.join(vendor, "skills", skill, "SKILL.md")
-        if (readFileSync(path.join(templateRoot, relative), "utf-8") !== canonicalSkill) drift.push(relative)
-      }
+    const canonicalSkill = body(
+      readFileSync(path.join(templateRoot, ".agents", "skills", skill, "SKILL.md"), "utf-8"),
+    )
+    for (const vendor of [".opencode", ".claude", ".codex", ".hermes"]) {
+      const relative = path.join(vendor, "skills", skill, "SKILL.md")
+      if (body(readFileSync(path.join(templateRoot, relative), "utf-8")) !== canonicalSkill) drift.push(relative)
+    }
     }
     expect(drift).toEqual([])
   })

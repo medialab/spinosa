@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { define } from "../internal"
+import { define } from "../define"
 
 export const OpenAICompatiblePlugin = define({
   id: "openai-compatible",
@@ -10,7 +10,9 @@ export const OpenAICompatiblePlugin = define({
         if (!evt.package.includes("@ai-sdk/openai-compatible")) return
         if (evt.options.includeUsage !== false) evt.options.includeUsage = true
         const mod = yield* Effect.promise(() => import("@ai-sdk/openai-compatible"))
-        evt.sdk = mod.createOpenAICompatible(evt.options as any)
+      evt.sdk = mod.createOpenAICompatible(
+        evt.options as unknown as Parameters<typeof mod.createOpenAICompatible>[0],
+      )
       }),
     )
   }),

@@ -1,4 +1,4 @@
-import { SILENT_AGENT_OUTPUT_METADATA } from "@spinosa/harness"
+const SILENT_AGENT_OUTPUT_METADATA = "spinosaSilent"
 
 type Message = {
   role: string

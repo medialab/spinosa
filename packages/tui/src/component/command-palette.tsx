@@ -61,19 +61,27 @@ export function CommandPaletteDialog() {
   )
 
   let ref: DialogSelectRef<string>
-  const list = () => {
-    if (ref?.filter) return options()
-    return [
-      ...options()
-        .filter((option) => option.suggested)
-        .map((option) => ({
-          ...option,
-          value: `suggested:${option.value}`,
-          category: "Suggested",
-        })),
-      ...options(),
-    ]
-  }
+  const list = () => buildPaletteList(options(), ref?.filter)
 
   return <DialogSelect ref={(value) => (ref = value)} title="Commands" options={list()} />
+}
+
+type PaletteOption = {
+  value: string
+  suggested?: boolean
+  category?: string
+}
+
+/**
+ * Suggested commands render once under "Suggested" and are excluded from the
+ * unfiltered remainder. Filtered search stays complete over all options.
+ */
+export function buildPaletteList<T extends PaletteOption>(options: readonly T[], filter: unknown): T[] {
+  if (filter) return [...options]
+  return [
+    ...options
+      .filter((option) => option.suggested)
+      .map((option) => ({ ...option, value: `suggested:${option.value}`, category: "Suggested" })),
+    ...options.filter((option) => !option.suggested),
+  ]
 }

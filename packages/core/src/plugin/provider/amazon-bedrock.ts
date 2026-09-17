@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
-import { define } from "../internal"
+import { define } from "../define"
 import { ProviderV2 } from "../../provider"
 
 type MantleSDK = {
@@ -119,7 +119,7 @@ export const AmazonBedrockPlugin = define({
           return
         }
         const region = typeof evt.options.region === "string" ? evt.options.region : process.env.AWS_REGION
-        evt.language = (evt.sdk as any).languageModel(resolveModelID(evt.model.api.id, region))
+      evt.language = (evt.sdk as MantleSDK).languageModel(resolveModelID(evt.model.api.id, region))
       }),
     )
   }),

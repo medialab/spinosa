@@ -28,7 +28,7 @@ export type PlugDeps = {
   readText: (file: string) => Promise<string>
   write: (file: string, text: string) => Promise<void>
   exists: (file: string) => Promise<boolean>
-  files: (dir: string, name: "opencode" | "tui") => string[]
+  files: (dir: string, name: "spinosa" | "tui") => string[]
   global: string
 }
 
@@ -205,6 +205,7 @@ export const PluginCommand = effectCmd({
       return
     }
 
+    UI.println(UI.logo(" "))
     UI.empty()
     intro(`Install plugin ${mod}`)
 

@@ -1,48 +1,43 @@
-# Prompt Routing Split
+# Prompt Routing Split (generated — do not hand-edit)
 
-Map the prompt to one route, then pick a chain shape.
+Source of truth: `packages/spinosa-runtime/src/workflows/`.
+Regenerate with `renderWorkflowTable()` in `packages/spinosa-runtime/src/documentation.ts`.
 
-## Route split
+## Fast vs orchestrated
 
-| Route | When |
-| ----- | ---- |
-| `fast_path` | Operational answer, no source search or orchestrated artifact chain needed |
-| `non-fast-path` | Any source-grounded, verification, maintenance, cleanup, indexing, or synthesis request that requires orchestrated artifacts |
+A request is **fast** when it completes correctly as one bounded operation:
+explain a term, summarize one selected document, retrieve one quoted passage,
+convert a supplied table, plot a few values.
 
-## Chain shapes (non-fast-path)
+A request is **orchestrated** when correctness depends on corpus-wide coverage,
+multiple partitions, cohort balance, completeness claims, comparative synthesis,
+hypothesis testing, hidden-pattern discovery, persistent artifacts, multiple
+cognitive operations, mutation or approval, strict source verification, or
+indexing/remapping. Response length does not determine the mode.
 
-After route split, choose the initial chain. The orchestrator may adapt after each inspect step — see `AGENTS.md` §4.
+## Workflow registry
 
-| Shape | Typical chain | When to use |
-| ----- | ------------- | ----------- |
-| **Q0 — Startup indexing** | Follow [[startup-prompt.md]] only | `setup_status: cli_started` or explicit startup/indexing handoff. Orchestrator + `spinosa-mapper` / `spinosa-serendippo` / `spinosa-verifier` / `spinosa-evaluator` as named in startup phases. **Never** `spinosa-overseer` or `agent-interception`. |
-| **Q1 — Evidence answer** | Goal → Searcher → Writer → Verifier → Evaluator | Single-topic factual lookup; quotes and paths are enough |
-| **Q2 — Contextual answer** | Goal → Searcher → Analyst → Writer → Verifier → Evaluator | Synthesis, cohort comparison, taxonomy, claim-strength guidance |
-| **Q3 — Hidden connections** | Goal → Searcher → Analyst → **Serendippo** → Writer → Verifier → Evaluator | Implicit/subtle signals, cross-file patterns, tone readable only in context, participant trajectories |
-| **Q4 — Cleanup** | Goal → Janitor → Verifier → Evaluator | Hygiene audit, stale files, archival moves |
-| **Q5 — Coverage** | Goal → Overseer → Evaluator | Every 5 routes, user request, or discretionary trigger — **only after `workspace_started`** |
-| **Q6 — Visualization** | Goal → Visualizer → Writer → Verifier → Evaluator | Data needs a visual form; pure-Unicode chart in markdown |
+| Workflow | Version |
+| -------- | ------- |
+| `research.targeted_evidence` | v1 |
+| `research.contextual_synthesis` | v1 |
+| `research.corpus_census` | v1 |
+| `research.comparative_synthesis` | v1 |
+| `research.hypothesis_test` | v1 |
+| `research.exploratory_discovery` | v1 |
+| `corpus.startup_index` | v1 |
+| `corpus.add_sources` | v1 |
+| `maintenance.cleanup_proposal` | v1 |
+| `maintenance.cleanup_apply` | v1 |
+| `meta.coverage_audit` | v1 |
+| `meta.framework_evolution` | v1 |
 
-### Prompt signals → chain hint
+## Notes
 
-| Signals in user prompt | Prefer |
-| ---------------------- | ------ |
-| startup / indexing handoff, `cli_started`, "index this workspace" | Q0 (startup-prompt only; no overseer / interception) |
-| "find evidence", "what does the corpus say", single entity | Q1 |
-| "compare", "across cohorts", "patterns", "taxonomy" | Q2 |
-| "subtle", "implicit", "from context", "not declared", "hidden", "cross-cutting", "unexpected connections" | Q3 (include Serendippo) |
-| "cleanup", "hygiene", "stale", "archive" | Q4 |
-| "coverage", "gaps", "what are we missing" | Q5 (after `workspace_started` only) |
-| "visualize", "chart", "plot this", "graph this data", "show me" + numbers | Q6 |
-
-**Visualizer:** Called when data tables, arrays, or numerical evidence need a Unicode chart. Runs inline (called by Writer) or as standalone Q6 route.
-
-**Serendippo vs Analyst:** Analyst organizes evidence the Searcher already found. Serendippo roams `raw/` for connections Searcher did not surface. Use both when the question needs interpretation **and** discovery.
-
-### Default phase order
-
-```
-searcher → [analyst] → [serendippo] → writer → verifier → evaluator
-```
-
-Omit bracketed phases when the chain shape does not need them. Never skip verifier or evaluator on routes that produce claims, citations, or quotes.
+- **Startup indexing** (`corpus.startup_index`) runs while `setup_status` is
+  `cli_started` or on explicit startup handoff. Never `spinosa-overseer`.
+- **Coverage audit** (`meta.coverage_audit`) runs only after
+  `workspace_started`, on user request or coverage triggers.
+- **Cleanup** never mutates without an explicit approval transition.
+- **Serendippo vs Analyst:** Analyst organizes evidence the Searcher already
+  found. Serendippo roams `raw/` for connections Searcher did not surface.

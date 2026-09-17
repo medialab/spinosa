@@ -420,6 +420,7 @@ const step = (state: ParserState, event: GeminiEvent) => {
   let lifecycle = state.lifecycle
 
   for (const part of candidate.content.parts) {
+    if ("text" in part && part.thought && part.thoughtSignature) reasoningSignature = part.thoughtSignature
     if ("text" in part && part.text.length > 0) {
       if (part.thought) {
         // Start a new reasoning block with a unique ID

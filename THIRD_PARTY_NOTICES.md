@@ -25,3 +25,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## pdf.js + Canvas (PDF rendering)
+
+Spinosa renders PDF pages internally with
+[pdf.js](https://github.com/mozilla/pdf.js) (`pdfjs-dist`) and
+[@napi-rs/canvas](https://github.com/Brooooooklyn/canvas) (Skia).
+No Poppler/`pdftoppm` binaries are distributed or required.

@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { ModelV2 } from "../../model"
 import { define } from "../internal"
 import { ProviderV2 } from "../../provider"
+import type { OpenaiCompatibleProvider } from "../../github-copilot/copilot-provider"
 
 function shouldUseResponses(modelID: string) {
   // Copilot supports Responses for GPT-5 class models, except mini variants
@@ -35,7 +36,7 @@ export const GithubCopilotPlugin = define({
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== ProviderV2.ID.githubCopilot) return
-        const sdk = evt.sdk as any
+        const sdk = evt.sdk as OpenaiCompatibleProvider
         if (sdk.responses === undefined && sdk.chat === undefined) {
           evt.language = sdk.languageModel(evt.model.api.id)
           return

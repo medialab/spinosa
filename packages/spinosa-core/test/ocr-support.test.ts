@@ -1,18 +1,22 @@
 import { describe, expect, test } from "bun:test"
 import { isOcrPlatformSupported, ocrUnsupportedReason } from "../src/tools/ocr-support"
 
-describe("OCR platform gate", () => {
-  test("linux-x64 is explicitly unsupported", () => {
+describe("OCR platform gate (local OCR removed)", () => {
+  test("no platform reports local OCR support", () => {
     expect(isOcrPlatformSupported({ platform: "linux", arch: "x64" })).toBe(false)
-    expect(ocrUnsupportedReason({ platform: "linux", arch: "x64" })).toMatch(/unsupported on linux-x64/i)
-    expect(ocrUnsupportedReason({ platform: "linux", arch: "x64" })).toMatch(/onnxruntime/i)
+    expect(isOcrPlatformSupported({ platform: "darwin", arch: "arm64" })).toBe(false)
+    expect(isOcrPlatformSupported({ platform: "darwin", arch: "x64" })).toBe(false)
+    expect(isOcrPlatformSupported({ platform: "linux", arch: "arm64" })).toBe(false)
   })
 
-  test("darwin and linux-arm64 remain supported", () => {
-    expect(isOcrPlatformSupported({ platform: "darwin", arch: "arm64" })).toBe(true)
-    expect(isOcrPlatformSupported({ platform: "darwin", arch: "x64" })).toBe(true)
-    expect(isOcrPlatformSupported({ platform: "linux", arch: "arm64" })).toBe(true)
-    expect(ocrUnsupportedReason({ platform: "linux", arch: "arm64" })).toBeUndefined()
-    expect(ocrUnsupportedReason({ platform: "darwin", arch: "arm64" })).toBeUndefined()
+  test("unsupported reason directs at vision/copy", () => {
+    for (const hints of [
+      { platform: "linux", arch: "x64" },
+      { platform: "darwin", arch: "arm64" },
+    ] as const) {
+      const reason = ocrUnsupportedReason(hints)
+      expect(reason).toBeDefined()
+      expect(reason!).toMatch(/vision model|copy/i)
+    }
   })
 })

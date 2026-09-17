@@ -187,7 +187,9 @@ export class GraphHitMap {
   }
 }
 
-const DENSITY_CHARS = [" ", "\u2591", "\u2592", "\u2593", "\u2588"]
+import { isUnicodeSupported } from "../../util/terminal"
+
+const DENSITY_CHARS = isUnicodeSupported() ? [" ", "\u2591", "\u2592", "\u2593", "\u2588"] : [" ", ".", ":", "+", "#"]
 
 /** Blend factor per density level: higher = more saturated fg color. */
 const DENSITY_FG_BLEND = [0, 0.15, 0.35, 0.6, 1.0]
@@ -319,7 +321,7 @@ export class GraphRaster {
     const hitIndex = this.hits.indexFor(hit)
     for (let py = y0; py < y1; py++) {
       for (let px = x0; px < x1; px++) {
-        this.pixel(px, py, color, hitIndex)
+        put(px, py, color, hitIndex)
       }
     }
   }

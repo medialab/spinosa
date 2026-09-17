@@ -4,6 +4,7 @@ import { Cause, Clock, Duration, Effect, Schedule } from "effect"
 import { MessageV2 } from "./message-v2"
 import { iife } from "@/util/iife"
 import { isRecord } from "@/util/record"
+import { spinosaLogError } from "@spinosa/core/utils/log"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
@@ -73,6 +74,9 @@ export function retryable(error: Err, provider: string) {
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.
     if (!error.data.isRetryable && !(status !== undefined && status >= 500)) return undefined
+    if (status === 504 || error.data.message.toLowerCase().includes("upstream idle timeout")) {
+      spinosaLogError("provider", `gateway idle timeout provider=${provider} status=${status} msg=${error.data.message.slice(0, 200)}`)
+    }
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
       return {
         message: GO_UPSELL_MESSAGE,
@@ -122,15 +126,23 @@ export function retryable(error: Err, provider: string) {
     return { message: error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message }
   }
 
-  // Check for rate limit patterns in plain text error messages
+  // Check for rate limit and gateway timeout patterns in plain text error messages
   const msg = isRecord(error.data) ? error.data.message : undefined
   if (typeof msg === "string") {
     const lower = msg.toLowerCase()
     if (
       lower.includes("rate increased too quickly") ||
       lower.includes("rate limit") ||
-      lower.includes("too many requests")
+      lower.includes("too many requests") ||
+      lower.includes("504") ||
+      lower.includes("upstream idle timeout") ||
+      lower.includes("idle timeout exceeded") ||
+      lower.includes("gateway timeout") ||
+      lower.includes("streaming response failed")
     ) {
+      if (lower.includes("504") || lower.includes("upstream") || lower.includes("idle timeout") || lower.includes("gateway timeout")) {
+        spinosaLogError("provider", `gateway idle timeout (plain) provider=${provider} msg=${msg.slice(0, 200)}`)
+      }
       return { message: msg }
     }
   }

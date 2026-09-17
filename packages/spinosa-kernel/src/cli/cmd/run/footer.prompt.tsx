@@ -28,6 +28,16 @@ import { realignEditorPromptParts, resolveEditorSlashValue } from "./prompt.edit
 import { FOOTER_MENU_ROWS, createFooterMenuState, type RunFooterMenuItem } from "./footer.menu"
 import type { RunFooterTheme } from "./theme"
 import type { FooterState, RunAgent, RunCommand, RunPrompt, RunPromptPart, RunResource, RunTuiConfig } from "./types"
+import {
+  clonePrompt,
+  emptyPrompt,
+  extractLineRange,
+  parseSlashCommand,
+  removeLineRange,
+  selectedCommand,
+  slashHead,
+  slashQuery,
+} from "./footer.prompt.helpers"
 
 const AUTOCOMPLETE_ROWS = FOOTER_MENU_ROWS
 const AUTOCOMPLETE_BOTTOM_ROWS = 1
@@ -101,101 +111,6 @@ export type PromptState = {
 
 function clamp(rows: number): number {
   return Math.max(TEXTAREA_MIN_ROWS, Math.min(TEXTAREA_MAX_ROWS, rows))
-}
-
-function clonePrompt(prompt: RunPrompt): RunPrompt {
-  return {
-    text: prompt.text,
-    parts: structuredClone(prompt.parts),
-    ...(prompt.mode ? { mode: prompt.mode } : {}),
-    ...(prompt.command ? { command: prompt.command } : {}),
-  }
-}
-
-function emptyPrompt(shell: boolean): RunPrompt {
-  return shell ? { text: "", parts: [], mode: "shell" } : { text: "", parts: [] }
-}
-
-function removeLineRange(input: string) {
-  const hash = input.lastIndexOf("#")
-  return hash === -1 ? input : input.slice(0, hash)
-}
-
-function extractLineRange(input: string) {
-  const hash = input.lastIndexOf("#")
-  if (hash === -1) {
-    return { base: input }
-  }
-
-  const base = input.slice(0, hash)
-  const line = input.slice(hash + 1)
-  const match = line.match(/^(\d+)(?:-(\d*))?$/)
-  if (!match) {
-    return { base }
-  }
-
-  const start = Number(match[1])
-  const end = match[2] && start < Number(match[2]) ? Number(match[2]) : undefined
-  return { base, line: { start, end } }
-}
-
-function slashHead(text: string) {
-  if (!text.startsWith("/")) {
-    return
-  }
-
-  for (let i = 1; i < text.length; i++) {
-    switch (text[i]) {
-      case " ":
-      case "\t":
-      case "\n":
-        return { name: text.slice(1, i), arguments: text.slice(i + 1), end: i }
-    }
-  }
-
-  return { name: text.slice(1), arguments: "", end: text.length }
-}
-
-function slashQuery(text: string, cursor: number) {
-  const head = slashHead(text.slice(0, cursor))
-  if (!head || head.end !== cursor) {
-    return
-  }
-
-  return head.name
-}
-
-function parseSlashCommand(text: string, commands: RunCommand[] | undefined) {
-  const head = slashHead(text)
-  if (!head || head.name.length === 0) {
-    return { type: "none" as const }
-  }
-
-  if (!commands) {
-    return { type: "pending" as const }
-  }
-
-  if (!commands.some((item) => item.name === head.name)) {
-    return { type: "none" as const }
-  }
-
-  return { type: "command" as const, command: { name: head.name, arguments: head.arguments } }
-}
-
-function selectedCommand(text: string, command: RunPrompt["command"]) {
-  if (!command) {
-    return
-  }
-
-  const head = slashHead(text)
-  if (!head || head.name !== command.name) {
-    return
-  }
-
-  return {
-    name: command.name,
-    arguments: head.arguments,
-  }
 }
 
 export function RunPromptBody(props: {

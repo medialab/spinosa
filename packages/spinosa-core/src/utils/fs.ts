@@ -18,6 +18,7 @@ import { createHash } from "node:crypto"
 import path from "node:path"
 
 import { isCloudStoragePath } from "./path"
+import { SpinosaCancellationError } from "../import/cancellation"
 
 const DEFAULT_RETRIES = 3
 const CLOUD_TIMEOUT_SEC = 60
@@ -39,6 +40,11 @@ function asyncCopyAttemptTimeoutMs(src: string): number {
 const MAX_NAME_BYTES = 250
 const MAX_PATH_BYTES = 1000
 
+/** Byte length of the `.spinosa-part-<pid>-<uuid>` temp suffix appended during copies. */
+function tempSuffixReserveBytes(): number {
+  return Buffer.byteLength(`.spinosa-part-${process.pid}-${"0".repeat(36)}`, "utf8")
+}
+
 function truncateUtf8ByBytes(value: string, maxBytes: number): string {
   if (Buffer.byteLength(value, "utf8") <= maxBytes) return value
   let end = value.length
@@ -49,12 +55,14 @@ function truncateUtf8ByBytes(value: string, maxBytes: number): string {
 // Truncate the longest path component(s) so the destination fits filesystem
 // limits (macOS: 255 bytes/component, ~1024 for the full path). Used when a
 // copy fails with ENAMETOOLONG so we reprocess under a safe name instead of
-// dropping the file.
-export function truncateDestPath(dest: string): string {
+// dropping the file. `reserveBytes` keeps room for a temp suffix: the rescue
+// copy writes `target + .spinosa-part-<pid>-<uuid>`, so without the reserve
+// the temp file itself overflows and the rescue can never succeed.
+export function truncateDestPath(dest: string, reserveBytes = 0): string {
   const parsed = path.parse(dest)
   const root = parsed.root
   const ext = parsed.ext
-  const stemBudget = MAX_NAME_BYTES - Buffer.byteLength(ext, "utf8")
+  const stemBudget = Math.max(1, MAX_NAME_BYTES - reserveBytes - Buffer.byteLength(ext, "utf8"))
   const safeStem = truncateUtf8ByBytes(parsed.name, stemBudget)
   const safeBase = safeStem + ext
 
@@ -90,6 +98,45 @@ export interface SafeCopyOptions {
   retries?: number
   onRetry?: (attempt: number, reason: string) => void
   onRename?: (original: string, renamed: string) => void
+  shouldAbort?: () => boolean
+  signal?: AbortSignal
+}
+
+/** Race a copy against cancellation; cleans up the temp file on abort. */
+async function copyAbortable(
+  op: Promise<unknown>,
+  tmp: string,
+  options: SafeCopyOptions | undefined,
+): Promise<void> {
+  if (!options?.shouldAbort && !options?.signal) {
+    await op
+    return
+  }
+  await new Promise<void>((resolve, reject) => {
+    let settled = false
+    const cleanup = () => {
+      clearInterval(timer)
+      options?.signal?.removeEventListener("abort", onAbort)
+    }
+    const abort = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(new SpinosaCancellationError("copy aborted"))
+    }
+    const onAbort = () => abort()
+    const timer = setInterval(() => {
+      if (options?.shouldAbort?.() || options?.signal?.aborted) abort()
+    }, 200)
+    options?.signal?.addEventListener("abort", onAbort, { once: true })
+    op.then(
+      () => { if (!settled) { settled = true; cleanup(); resolve() } },
+      (err) => { if (!settled) { settled = true; cleanup(); reject(err) } },
+    )
+  }).catch(async (err) => {
+    await rmAsync(tmp, { force: true }).catch(() => {})
+    throw err
+  })
 }
 
 export function shouldSkipTemplateCopyEntry(name: string, isDirectory: boolean): boolean {
@@ -180,7 +227,7 @@ export function writeTextAtomicSafe(dest: string, content: string): string {
     return dest
   } catch (err) {
     if (String(err).includes("ENAMETOOLONG")) {
-      const safe = truncateDestPath(dest)
+      const safe = truncateDestPath(dest, tempSuffixReserveBytes())
       writeTextAtomic(safe, content)
       return safe
     }
@@ -215,20 +262,22 @@ export async function safeCopyAsync(src: string, dest: string, options?: SafeCop
   let target = dest
   let tmp = `${target}.spinosa-part-${process.pid}-${crypto.randomUUID()}`
   try {
-    await withTimeout(copyFileAsync(src, tmp), timeoutMs, `copy of ${src}`)
+    await copyAbortable(withTimeout(copyFileAsync(src, tmp), timeoutMs, `copy of ${src}`), tmp, options)
     replaceFromTemp(tmp, target)
     return true
   } catch (err) {
     await rmAsync(tmp, { force: true }).catch(() => {})
+    if (err instanceof SpinosaCancellationError) throw err
     const reason = String(err)
     // Name too long: truncate the destination and reprocess under a safe name
-    // instead of failing/retrying the doomed path.
+    // instead of failing/retrying the doomed path. The reserve keeps room
+    // for this attempt's temp suffix so the rescue copy itself fits.
     if (reason.includes("ENAMETOOLONG") && target === dest) {
-      target = truncateDestPath(dest)
+      target = truncateDestPath(dest, tempSuffixReserveBytes())
       tmp = `${target}.spinosa-part-${process.pid}-${crypto.randomUUID()}`
       try {
         await mkdirAsync(path.dirname(target), { recursive: true })
-        await withTimeout(copyFileAsync(src, tmp), timeoutMs, `copy of ${src}`)
+        await copyAbortable(withTimeout(copyFileAsync(src, tmp), timeoutMs, `copy of ${src}`), tmp, options)
         replaceFromTemp(tmp, target)
         // Only report the rename after the truncated copy actually succeeded,
         // so a renamed-then-failed file is not double-counted.
@@ -236,6 +285,7 @@ export async function safeCopyAsync(src: string, dest: string, options?: SafeCop
         return true
       } catch (err2) {
         await rmAsync(tmp, { force: true }).catch(() => {})
+        if (err2 instanceof SpinosaCancellationError) throw err2
         options?.onRetry?.(0, String(err2))
         return false
       }

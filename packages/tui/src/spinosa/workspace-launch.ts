@@ -7,6 +7,11 @@ export const STARTUP_PROMPT_FALLBACK =
 export type WorkspaceLaunchDecision =
   | { type: "open" }
   | {
+      type: "incomplete-import"
+      workspacePath: string
+      workspaceName: string
+    }
+  | {
       type: "startup-choice"
       workspacePath: string
       workspaceName: string
@@ -15,6 +20,13 @@ export type WorkspaceLaunchDecision =
 
 export async function getWorkspaceLaunchDecision(workspacePath: string): Promise<WorkspaceLaunchDecision> {
   const meta = await readWorkspaceMeta(workspacePath).catch(() => undefined)
+  if (meta?.setupStatus === "importing") {
+    return {
+      type: "incomplete-import",
+      workspacePath,
+      workspaceName: resolveWorkspaceDisplayName(workspacePath, meta?.projectName),
+    }
+  }
   if (meta?.setupStatus !== "cli_started") return { type: "open" }
   return {
     type: "startup-choice",

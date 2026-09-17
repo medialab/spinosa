@@ -2,6 +2,7 @@
 
 import { $ } from "bun"
 import fs from "fs"
+import { createHash } from "node:crypto"
 import path from "path"
 import { fileURLToPath } from "url"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
@@ -9,15 +10,11 @@ import type { BunPlugin } from "bun"
 import {
   assertNapiCanvasPlatformInstalled,
   materializeCanvasNativeEmbed,
-  materializeOnnxNativeEmbed,
   napiCanvasForceModule,
   napiCanvasPlatformPackage,
-  isOcrEmbeddedTarget,
-  resolveOnnxRuntimeNodeRoot,
   restoreCanvasNativeStub,
-  restoreOnnxNativeStub,
-  ONNX_NATIVE_STUB_MODULE,
-} from "./onnx-native.ts"
+} from "./canvas-embed.ts"
+import { compiledTuiWorkerPath } from "../src/cli/tui/worker-boot.ts"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -42,7 +39,6 @@ export type BuildSpinosaBinariesOptions = {
   /** When set, write flat product assets: <outdir>/spinosa-<os>-<arch> */
   flatOutDir?: string
   skipInstall?: boolean
-  skipEmbedWebUi?: boolean
   sourcemaps?: boolean
   /** Smoke host-matching binary with --version */
   smokeHost?: boolean
@@ -56,25 +52,245 @@ function packageDirectory(name: string) {
   return name.startsWith("@spinosa/") ? name.slice("@spinosa/".length) : name
 }
 
+function createPortableDependencyPlugin(): BunPlugin {
+  return {
+    name: "spinosa-portable-dependencies",
+    setup(build) {
+      build.onLoad(
+        {
+          filter: /jsdom.*XMLHttpRequest-impl\.js$/,
+        },
+        async (args) => {
+          const contents = await Bun.file(args.path).text()
+          const marker =
+            'const syncWorkerFile = require.resolve ? require.resolve("./xhr-sync-worker.js") : null;'
+          if (!contents.includes(marker)) {
+            throw new Error(
+              `jsdom XMLHttpRequest source changed; portability rewrite no longer applies: ${args.path}`,
+            )
+          }
+          return { contents: contents.replace(marker, "const syncWorkerFile = null;"), loader: "js" }
+        },
+      )
+    },
+  }
+}
+
+/** Modules that must compile from the workspace, never `$HOME/node_modules`. */
+export const WORKSPACE_BUNDLED_MODULE_NAMES = ["unzipper", "markitdown-ts"] as const
+
+export function workspaceBundledModuleFromDir(): string {
+  return path.resolve(dir, "../spinosa-markitdown")
+}
+
+/**
+ * Pin unzipper / markitdown-ts to the workspace copy.
+ * Bun compile otherwise walks from kernel cwd into `$HOME/node_modules/markitdown-ts`,
+ * which has no unzipper (local soak failure on darwin-arm64).
+ */
+export function resolveWorkspaceBundledModule(
+  specifier: string,
+  fromDir = workspaceBundledModuleFromDir(),
+): string {
+  const pkg = WORKSPACE_BUNDLED_MODULE_NAMES.find(
+    (name) => specifier === name || specifier.startsWith(`${name}/`),
+  )
+  if (!pkg) {
+    throw new Error(`not a workspace-bundled module: ${specifier}`)
+  }
+  const resolved = path.resolve(Bun.resolveSync(specifier, fromDir))
+  const repoRootAbs = path.resolve(dir, "../..")
+  if (resolved !== repoRootAbs && !resolved.startsWith(repoRootAbs + path.sep)) {
+    throw new Error(
+      `${specifier} resolved outside the repo (${resolved}). Home node_modules must not shadow workspace ${pkg}.`,
+    )
+  }
+  return resolved
+}
+
+function createWorkspaceBundledModulePlugin(): BunPlugin {
+  return {
+    name: "spinosa-workspace-bundled-modules",
+    setup(build) {
+      build.onResolve({ filter: /^(unzipper|markitdown-ts)(\/|$)/ }, (args) => ({
+        path: resolveWorkspaceBundledModule(args.path),
+      }))
+    },
+  }
+}
+
+import os from "node:os"
+const builderHome = os.homedir().replaceAll("\\", "/").replace(/\/$/, "")
+const builderHomeWin = builderHome.replaceAll("/", "\\")
+const repoRoot = path.resolve(__dirname, "../..").replaceAll("\\", "/")
+// Report-only scan prefixes. Generic builder/runner paths are NOT secrets and
+// must never trigger a binary rewrite: mutating opaque native Mach-O payloads
+// (OpenTUI, FFF, watcher, node-pty, canvas) corrupts their embedded signatures
+// and macOS kills the host on dlopen (v1.1.0-beta.18/beta.19 darwin outage).
+// This list exists only to report what builder strings remain in the output.
+const EMBEDDED_BUILD_PATH_PREFIXES = [
+  // Rust dependency metadata can retain the Windows cache path from the
+  // cross-build image. Known path, reported without masking arbitrary user
+  // paths (broad C:\\Users replacement corrupts binaries).
+  Buffer.from(
+    "C:\\Users\\silvi\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f",
+  ),
+  // Repo root first (longer) so "/Users/.../spinosa-main" reports as repo path.
+  ...(repoRoot && repoRoot !== builderHome ? [Buffer.from(repoRoot)] : []),
+  ...(builderHome ? [Buffer.from(builderHome)] : []),
+  ...(builderHomeWin && builderHomeWin !== builderHome ? [Buffer.from(builderHomeWin)] : []),
+] as const
+
+/** Byte range of pristine embedded file data inside the compiled binary. */
+export interface EmbeddedSpan {
+  start: number
+  end: number
+}
+
+/**
+ * Locate pristine embedded file bytes (e.g. a staged `.node` native) inside
+ * the compiled binary. Bun may embed the same file asset more than once, so
+ * every fullverbatim occurrence is returned. Slices are verified with a full
+ * byte compare — fail closed when no complete copy is found, so packaging
+ * problems surface here instead of as a corrupt native at runtime.
+ */
+export function findEmbeddedSpans(haystack: Buffer, needle: Buffer): EmbeddedSpan[] {
+  if (needle.byteLength < 4096) {
+    throw new Error(`embedded span needle too small to locate uniquely (${needle.byteLength} bytes)`)
+  }
+  for (const sliceOffset of [1048576, 524288, 131072, 16384, 1024]) {
+    if (sliceOffset + 256 > needle.byteLength) continue
+    const slice = needle.subarray(sliceOffset, sliceOffset + 256)
+    const spans: EmbeddedSpan[] = []
+    let from = 0
+    while (true) {
+      const hit = haystack.indexOf(slice, from)
+      if (hit < 0) break
+      const start = hit - sliceOffset
+      const end = start + needle.byteLength
+      if (start >= 0 && end <= haystack.byteLength && haystack.subarray(start, end).equals(needle)) {
+        spans.push({ start, end })
+      }
+      from = hit + 1
+    }
+    if (spans.length > 0) return spans
+  }
+  throw new Error("embedded native span not locatable — refusing to proceed (fail closed)")
+}
+
+export function spanIntersects(match: number, end: number, spans: readonly EmbeddedSpan[]): boolean {
+  return spans.some((span) => match < span.end && end > span.start)
+}
+
+export function sha256Hex(data: Buffer | Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex")
+}
+
+/**
+ * Fail closed when embedded bytes differ from pristine. With byte scrubbing
+ * removed, this stays as a packaging-integrity probe for the canvas embed.
+ */
+export function assertEmbeddedSpanIntact(
+  binaryPath: string,
+  span: EmbeddedSpan,
+  expectedHash: string,
+  label: string,
+): void {
+  const bytes = fs.readFileSync(binaryPath)
+  const actual = sha256Hex(bytes.subarray(span.start, span.end))
+  if (actual !== expectedHash) {
+    throw new Error(
+      `embedded ${label} changed after packaging (bytes ${span.start}..${span.end}): expected ${expectedHash}, got ${actual}`,
+    )
+  }
+}
+
+/**
+ * Report-only scan for builder path strings left in the compiled binary.
+ * Generic runner/checkout paths are not secrets — this never mutates the
+ * binary. Returns the match count for logging. Byte-level rewriting of the
+ * whole binary is forbidden: it corrupts embedded native Mach-O payloads
+ * (OpenTUI, FFF) that only canvas-span protection used to spare, and macOS
+ * code-signing enforcement kills the host on dlopen (beta.18/beta.19).
+ */
+export function scanEmbeddedBuildPaths(binaryPath: string): number {
+  const bytes = fs.readFileSync(binaryPath)
+  let matches = 0
+  for (const prefix of EMBEDDED_BUILD_PATH_PREFIXES) {
+    if (prefix.length === 0) continue
+    let offset = 0
+    while (true) {
+      const match = bytes.indexOf(prefix, offset)
+      if (match < 0) break
+      matches++
+      if (matches <= 5) {
+        console.log(`embedded build path: ${prefix.toString()} at byte ${match} (report-only, binary untouched)`)
+      }
+      offset = match + 1
+    }
+  }
+  return matches
+}
+
+/**
+ * @deprecated Whole-binary rewriting is removed. Use scanEmbeddedBuildPaths
+ * (report-only). Kept as a non-mutating alias so old callers/tests fail open
+ * toward the safe behavior instead of corrupting the binary.
+ */
+export function scrubEmbeddedBuildPaths(binaryPath: string, _skipSpans: readonly EmbeddedSpan[] = []): number {
+  return scanEmbeddedBuildPaths(binaryPath)
+}
+
+export function assertNoEmbeddedBuildPaths(binaryPath: string, skipSpans: readonly EmbeddedSpan[] = []): void {
+  // Generic builder paths are report-only (see scanEmbeddedBuildPaths).
+  // Personal markers are fail-closed in CI (release binaries must never
+  // carry a maintainer username) but warn-only for local builds, where the
+  // builder's own checkout path legitimately appears in stack-trace strings
+  // and the binary is never rewritten to hide it (beta.18/beta.19 outage).
+  const bytes = fs.readFileSync(binaryPath)
+  // Personal markers that should never ship in CI binaries.
+  // Verified-pristine spans are exempt: their bytes are hash-pinned vendored
+  // input (assertEmbeddedSpanIntact), never rewritten.
+  const personal = [Buffer.from("tommasoprinetti"), Buffer.from("thdxr")]
+  const strict = Boolean(process.env.CI || process.env.GITHUB_ACTIONS)
+  for (const p of personal) {
+    let offset = 0
+    while (true) {
+      const off = bytes.indexOf(p, offset)
+      if (off < 0) break
+      if (!spanIntersects(off, off + p.byteLength, skipSpans)) {
+        const message = `binary ${binaryPath} still contains personal marker ${p.toString()} at byte ${off}`
+        if (strict) throw new Error(message)
+        console.warn(`warning: ${message} (local build only — CI release gates fail closed)`)
+        break
+      }
+      offset = off + 1
+    }
+  }
+}
+
 export function productAssetName(item: BinaryTarget): string {
   const os = item.os === "win32" ? "windows" : item.os
   const parts = [os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi]
   return `spinosa-${parts.filter(Boolean).join("-")}`
 }
 
-/** Pin onnxruntime-node to the workspace paddle-linked install (ignore polluted home node_modules). */
-function createOnnxWorkspacePlugin(onnxRoot: string): BunPlugin {
-  const indexJs = path.join(onnxRoot, "dist", "index.js")
-  return {
-    name: "onnxruntime-workspace",
-    setup(build) {
-      build.onResolve({ filter: /^onnxruntime-node$/ }, () => ({ path: indexJs }))
-      build.onResolve({ filter: /^onnxruntime-node\// }, (args) => ({
-        path: path.join(onnxRoot, args.path.slice("onnxruntime-node/".length)),
-      }))
-    },
-  }
-}
+/**
+ * Bun external dependency audit (release contract — keep in sync).
+ *
+ * | module                | why external                          | prod reachable? | where on user machine              | tested by                          |
+ * |-----------------------|---------------------------------------|-----------------|------------------------------------|------------------------------------|
+ * | unzipper              | BUNDLED (compiled in) — ZIP imports   | yes             | inside spinosa binary              | zip conversion tests               |
+ * | youtube-transcript    | external — URL transcription, not a   | no              | n/a (feature not advertised)       | inventory test asserts unreachable |
+ * |                       | file-import path; never imported      |                 |                                    |                                    |
+ * | @aws-sdk/client-s3    | external — transitive draft dep,      | no              | n/a                                | inventory test asserts unreachable |
+ * |                       | never imported in src                 |                 |                                    |                                    |
+ * | node-gyp              | external — build-time only, never     | no              | n/a                                | inventory test asserts unreachable |
+ * |                       | imported at runtime                   |                 |                                    |                                    |
+ *
+ * Rule: any module needed by a production feature must be compiled into the
+ * executable. Never leave an external because it happened to work in-repo.
+ */
 
 export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions): Promise<{
   binaries: Record<string, string>
@@ -87,42 +303,15 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
   const pkg = await Bun.file(path.join(cwd, "package.json")).json()
   const solidPlugin = createSolidTransformPlugin()
   const coreFrom = path.resolve(cwd, "../spinosa-core")
-  const onnxRoot = resolveOnnxRuntimeNodeRoot(coreFrom)
-  const plugins = [solidPlugin, createOnnxWorkspacePlugin(onnxRoot)]
+  const plugins = [
+    createWorkspaceBundledModulePlugin(),
+    createPortableDependencyPlugin(),
+    solidPlugin,
+  ]
 
   const distribution = options.distribution ?? "binary"
   const templatePackId = options.templatePackId ?? ""
   const templatePackVersion = options.templatePackVersion ?? options.version
-
-  const createEmbeddedWebUIBundle = async () => {
-    console.log(`Building Web UI to embed in the binary`)
-    const appDir = path.join(cwd, "../app")
-    const dist = path.join(appDir, "dist")
-    if (!fs.existsSync(appDir)) {
-      console.warn(`Web UI app directory missing at ${appDir} — skipping embed`)
-      return null
-    }
-    await $`SPINOSA_CHANNEL=${options.channel} bun run --cwd ${appDir} build`
-    const files = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: dist })))
-      .map((file) => file.replaceAll("\\", "/"))
-      .filter((file) => !file.endsWith(".map"))
-      .sort()
-    const imports = files.map((file, i) => {
-      const spec = path.relative(cwd, path.join(dist, file)).replaceAll("\\", "/")
-      return `import file_${i} from ${JSON.stringify(spec.startsWith(".") ? spec : `./${spec}`)} with { type: "file" };`
-    })
-    const entries = files.map((file, i) => `  ${JSON.stringify(file)}: file_${i},`)
-    return [
-      `// Import all files as file_$i with type: "file"`,
-      ...imports,
-      `// Export with original mappings`,
-      `export default {`,
-      ...entries,
-      `}`,
-    ].join("\n")
-  }
-
-  const embeddedFileMap = options.skipEmbedWebUi ? null : await createEmbeddedWebUIBundle()
 
   if (!options.flatOutDir) {
     await $`rm -rf dist`.cwd(cwd)
@@ -130,6 +319,10 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     fs.mkdirSync(options.flatOutDir, { recursive: true })
   }
 
+  // Multi-platform optionals for cross-target local builds. CI matrix jobs
+  // build natively (target == host) from the frozen install and pass
+  // --skip-install; the per-target canvas assert below fails closed when the
+  // needed platform package is absent.
   if (!options.skipInstall) {
     await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`.cwd(cwd)
     await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`.cwd(cwd)
@@ -185,37 +378,17 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     const workerRelativePath = path.relative(cwd, parserWorker).replaceAll("\\", "/")
 
     const files: Record<string, string> = {}
-    if (embeddedFileMap) files["opencode-web-ui.gen.ts"] = embeddedFileMap
     if (options.templatePackModule) {
       files["src/generated/template-pack.gen.ts"] = options.templatePackModule
     }
 
-    // Fail closed: write onnx embed to disk only (template-blobs pattern).
-    // A Bun.build `files` virtual module cannot resolve sibling `with { type: "file" }`
-    // imports, so companion .so/.dylib never embed when injected only via `files`.
-    // linux-x64 ships without OCR/onnx (product gate) — keep the empty stub.
-    const embedOcr = isOcrEmbeddedTarget({ os: item.os, arch: item.arch })
-    let onnxEmbed: Awaited<ReturnType<typeof materializeOnnxNativeEmbed>> | null = null
-    if (embedOcr) {
-      onnxEmbed = await materializeOnnxNativeEmbed({
-        cwd,
-        target: { os: item.os, arch: item.arch },
-        fromDir: coreFrom,
-      })
-      console.log(
-        `embedding onnxruntime natives for ${item.os}-${item.arch}: ${onnxEmbed.libs
-          .map((l) => `${l.name} (${fs.statSync(path.join(onnxEmbed!.libsDir, l.name)).size} bytes)`)
-          .join(", ")}`,
-      )
-    } else {
-      fs.writeFileSync(path.join(cwd, "src/generated/onnx-native.gen.ts"), ONNX_NATIVE_STUB_MODULE)
-      console.log(`skipping onnxruntime embed for ${item.os}-${item.arch} (OCR unsupported on this product binary)`)
-    }
+    // No OCR binaries ship — nothing to embed here.
+    console.log(`canvas-only native embed for ${item.os}-${item.arch}`)
 
     const canvasTarget = { os: item.os, arch: item.arch, abi: item.abi }
     const canvasPkg = napiCanvasPlatformPackage(canvasTarget)
     assertNapiCanvasPlatformInstalled(canvasTarget, coreFrom)
-    // Embed skia.<triple>.node on disk (template-blobs / onnx pattern). Nested
+    // Embed skia.<triple>.node on disk (template-blobs pattern). Nested
     // OCR chunks cannot require() optional @napi-rs/canvas-* on Linux compile;
     // index.ts stages this file and sets NAPI_RS_NATIVE_LIBRARY_PATH first.
     const canvasEmbed = materializeCanvasNativeEmbed({
@@ -228,18 +401,18 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     )
     // Package-only force module stays on the virtual files map (writing it to disk
     // breaks Bun resolution of optional @napi-rs/canvas-* platform packages).
-    files["src/generated/napi-canvas-force.gen.ts"] = napiCanvasForceModule(canvasPkg, {
-      includeOcr: embedOcr,
-    })
-    console.log(`embedding ${canvasPkg} for ${item.os}-${item.arch}${embedOcr ? " (+ OCR)" : " (no OCR)"}`)
+    files["src/generated/napi-canvas-force.gen.ts"] = napiCanvasForceModule(canvasPkg)
+    console.log(`embedding ${canvasPkg} for ${item.os}-${item.arch}`)
 
     const result = await Bun.build({
       conditions: ["bun", "node"],
       tsconfig: "./tsconfig.json",
       plugins,
-      // youtube-transcript / unzipper are optional markitdown-ts deps; keep them
-      // external so a polluted global markitdown install cannot fail the compile.
-      external: ["node-gyp", "@aws-sdk/client-s3", "youtube-transcript", "unzipper"],
+      // unzipper is BUNDLED (ZIP imports are an advertised feature — the
+      // markitdown-ts ZipConverter dynamic-imports it at runtime, which
+      // fails inside the compiled binary unless compiled in). The remaining
+      // externals are unreachable in production file import (see audit above).
+      external: ["node-gyp", "@aws-sdk/client-s3", "youtube-transcript"],
       format: "esm",
       minify: true,
       sourcemap: options.sourcemaps ? "linked" : "none",
@@ -255,18 +428,14 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
         windows: {},
       },
       files,
-      entrypoints: [
-        "./src/index.ts",
-        parserWorker,
-        workerPath,
-        ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : []),
-      ],
+      entrypoints: ["./src/index.ts", parserWorker, workerPath],
       define: {
         FFF_LIBC: JSON.stringify(item.abi === "musl" ? "musl" : "gnu"),
         SPINOSA_VERSION: `'${options.version}'`,
+        OPENCODE_VERSION: `'${pkg.version}'`,
         SPINOSA_MODELS_DEV: generated.modelsData,
         OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
-        SPINOSA_WORKER_PATH: workerPath,
+        SPINOSA_WORKER_PATH: compiledTuiWorkerPath(bunfsRoot),
         SPINOSA_CHANNEL: `'${options.channel}'`,
         SPINOSA_DISTRIBUTION: `'${distribution}'`,
         SPINOSA_TEMPLATE_PACK_ID: `'${templatePackId}'`,
@@ -290,47 +459,43 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     // Bun renames `with { type: "file" }` assets (hashed filenames), so path
     // strings are not a reliable marker — fingerprint the lib contents instead.
     const binBytes = fs.readFileSync(outfile)
-    if (onnxEmbed) {
-      for (const lib of onnxEmbed.libs) {
-        const libPath = path.join(onnxEmbed.libsDir, lib.name)
-        const libData = fs.readFileSync(libPath)
-        if (libData.byteLength < 1024) {
-          throw new Error(`onnx lib too small to fingerprint: ${libPath}`)
-        }
-        if (binBytes.byteLength < libData.byteLength) {
-          throw new Error(
-            `binary ${outfile} (${binBytes.byteLength} bytes) smaller than onnx lib ${lib.name} (${libData.byteLength} bytes)`,
-          )
-        }
-        const probeAt = Math.min(4096, libData.byteLength - 64)
-        const probe = libData.subarray(probeAt, probeAt + 64)
-        if (!binBytes.includes(probe)) {
-          throw new Error(
-            `binary ${outfile} missing embedded bytes for ${lib.name} (${item.os}-${item.arch}) — companion lib not packaged`,
-          )
-        }
-      }
-    }
 
     // Same fingerprint gate for canvas skia .node (OCR load path on Linux).
-    {
-      const libPath = path.join(canvasEmbed.libsDir, canvasEmbed.name)
-      const libData = fs.readFileSync(libPath)
-      if (libData.byteLength < 1024) {
-        throw new Error(`canvas native too small to fingerprint: ${libPath}`)
-      }
-      if (binBytes.byteLength < libData.byteLength) {
-        throw new Error(
-          `binary ${outfile} (${binBytes.byteLength} bytes) smaller than canvas native ${canvasEmbed.name} (${libData.byteLength} bytes)`,
-        )
-      }
-      const probeAt = Math.min(4096, libData.byteLength - 64)
-      const probe = libData.subarray(probeAt, probeAt + 64)
-      if (!binBytes.includes(probe)) {
-        throw new Error(
-          `binary ${outfile} missing embedded bytes for ${canvasEmbed.name} (${item.os}-${item.arch}) — canvas native not packaged`,
-        )
-      }
+    // The binary is never rewritten after compile: embedded native Mach-O
+    // payloads keep their pristine signatures (beta.18/beta.19 outage).
+    const canvasLibPath = path.join(canvasEmbed.libsDir, canvasEmbed.name)
+    const canvasLibData = fs.readFileSync(canvasLibPath)
+    if (canvasLibData.byteLength < 1024) {
+      throw new Error(`canvas native too small to fingerprint: ${canvasLibPath}`)
+    }
+    if (binBytes.byteLength < canvasLibData.byteLength) {
+      throw new Error(
+        `binary ${outfile} (${binBytes.byteLength} bytes) smaller than canvas native ${canvasEmbed.name} (${canvasLibData.byteLength} bytes)`,
+      )
+    }
+    const probeAt = Math.min(4096, canvasLibData.byteLength - 64)
+    const probe = canvasLibData.subarray(probeAt, probeAt + 64)
+    if (!binBytes.includes(probe)) {
+      throw new Error(
+        `binary ${outfile} missing embedded bytes for ${canvasEmbed.name} (${item.os}-${item.arch}) — canvas native not packaged`,
+      )
+    }
+    const canvasSpans = findEmbeddedSpans(binBytes, canvasLibData)
+    const canvasHash = sha256Hex(canvasLibData)
+
+    const reportedPaths = scanEmbeddedBuildPaths(outfile)
+    assertNoEmbeddedBuildPaths(outfile, canvasSpans)
+    for (const span of canvasSpans) {
+      assertEmbeddedSpanIntact(outfile, span, canvasHash, `canvas native ${canvasEmbed.name}`)
+    }
+    if (process.platform === "darwin" && item.os === "darwin") {
+      const signed = await $`codesign --force --sign - ${outfile}`.nothrow()
+      if (signed.exitCode !== 0) throw new Error(`failed to ad-hoc sign binary: ${outfile}`)
+      const verified = await $`codesign --verify ${outfile}`.nothrow()
+      if (verified.exitCode !== 0) throw new Error(`outer signature verification failed: ${outfile}`)
+    }
+    if (reportedPaths > 0) {
+      console.log(`reported ${reportedPaths} embedded build path${reportedPaths === 1 ? "" : "s"} in ${assetName} (binary untouched)`)
     }
 
     if (
@@ -339,40 +504,33 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
       item.arch === process.arch &&
       !item.abi
     ) {
-      console.log(`Running smoke test: ${outfile} version`)
+      console.log(`Running smoke test: ${outfile} version + native-imports + tui-worker + parser-worker`)
       try {
-        // Clear any leftover staged lib so smoke proves embed→tmpdir staging works.
-        const { tmpdir } = await import("node:os")
-        if (onnxEmbed) {
-          for (const lib of onnxEmbed.libs) {
-            try {
-              fs.rmSync(path.join(tmpdir(), lib.name), { force: true })
-            } catch {
-              /* ignore */
-            }
-          }
-        }
         const versionOutput = await $`${outfile} version`.text()
         console.log(`Smoke test passed: ${versionOutput.trim()}`)
         if (!versionOutput.includes(options.version)) {
           throw new Error(`version smoke mismatch: expected ${options.version}, got ${versionOutput}`)
         }
-        if (onnxEmbed) {
-          for (const lib of onnxEmbed.libs) {
-            const staged = path.join(tmpdir(), lib.name)
-            if (!fs.existsSync(staged) || fs.statSync(staged).size < 1024) {
-              throw new Error(`host smoke: onnx lib not staged to tmpdir after version: ${staged}`)
-            }
-          }
+        // version/doctor never dlopen OpenTUI/FFF — native-imports does.
+        const nativeOutput = await $`${outfile} internal smoke native-imports --json`.text()
+        console.log(`Native-imports smoke passed: ${nativeOutput.trim().slice(0, 400)}`)
+        // Run tui-worker from a temp cwd. Kernel `src/cli/tui/worker.ts` exists
+        // on disk here, so a cwd-relative worker path would false-pass.
+        const smokeCwd = fs.mkdtempSync(path.join(os.tmpdir(), "spinosa-tui-worker-smoke-"))
+        try {
+          const tuiWorkerOutput = await $`${outfile} internal smoke tui-worker --json`.cwd(smokeCwd).text()
+          console.log(`TUI-worker smoke passed: ${tuiWorkerOutput.trim().slice(0, 400)}`)
+          const parserWorkerOutput = await $`${outfile} internal smoke parser-worker --json`.cwd(smokeCwd).text()
+          console.log(`Parser-worker smoke passed: ${parserWorkerOutput.trim().slice(0, 400)}`)
+        } finally {
+          fs.rmSync(smokeCwd, { recursive: true, force: true })
         }
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e)
-        // Host smoke should pass once onnx natives are embedded; keep non-strict escape hatch.
-        if (process.env.SPINOSA_BINARY_SMOKE_STRICT === "1") {
-          console.error(`Smoke test failed for ${packageName}:`, e)
-          throw e
-        }
-        console.warn(`Smoke test warning for ${packageName} (non-strict): ${detail.slice(0, 400)}`)
+        // Release gates fail closed: smoke failures are fatal (no non-strict
+        // escape hatch — see scripts/quality-binary.ts).
+        console.error(`Smoke test failed for ${packageName}:`, e)
+        throw new Error(`host binary smoke failed (fail closed): ${detail.slice(0, 400)}`)
       }
     }
 
@@ -398,7 +556,6 @@ export async function buildSpinosaBinaries(options: BuildSpinosaBinariesOptions)
     assets[assetName] = outfile
   }
   } finally {
-    restoreOnnxNativeStub(cwd)
     restoreCanvasNativeStub(cwd)
   }
 
@@ -411,8 +568,6 @@ if (import.meta.main) {
   const baselineFlag = process.argv.includes("--baseline")
   const skipInstall = process.argv.includes("--skip-install")
   const sourcemapsFlag = process.argv.includes("--sourcemaps")
-  const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
-
   const { Script } = await import("@spinosa/script")
 
   const allTargets: BinaryTarget[] = [
@@ -445,7 +600,6 @@ if (import.meta.main) {
     channel: Script.channel,
     distribution: "binary",
     skipInstall,
-    skipEmbedWebUi,
     sourcemaps: sourcemapsFlag,
   })
 }

@@ -2,6 +2,7 @@ import { DateTime } from "effect"
 import { AgentV2 } from "../agent"
 import { Location } from "../location"
 import { ModelV2 } from "../model"
+import { Permission } from "@spinosa/schema/permission"
 import { ProjectV2 } from "../project"
 import { ProviderV2 } from "../provider"
 import { AbsolutePath, RelativePath } from "../schema"
@@ -10,6 +11,22 @@ import { SessionSchema } from "./schema"
 import { SessionTable } from "./sql"
 import { SessionMessage } from "./message"
 import { Snapshot } from "../snapshot"
+import { PermissionV1 } from "../v1/permission"
+
+function normalizePermission(
+  raw: PermissionV1.Ruleset | Permission.Ruleset | null | undefined,
+): Permission.Ruleset | undefined {
+  if (!raw || raw.length === 0) return undefined
+  const first = (raw as unknown[])[0] as Record<string, unknown> | undefined
+  if (first && "permission" in first && "pattern" in first) {
+    return (raw as PermissionV1.Ruleset).map((rule) => ({
+      action: rule.permission,
+      resource: rule.pattern,
+      effect: rule.action,
+    }))
+  }
+  return raw as Permission.Ruleset
+}
 
 export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.Info {
   return SessionSchema.Info.make({
@@ -41,6 +58,7 @@ export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.In
     }),
     subpath: row.path ? RelativePath.make(row.path) : undefined,
     revert: row.revert ? { ...row.revert, messageID: SessionMessage.ID.make(row.revert.messageID) } : undefined,
+    permission: normalizePermission(row.permission as PermissionV1.Ruleset | Permission.Ruleset | null | undefined),
     time: {
       created: DateTime.makeUnsafe(row.time_created),
       updated: DateTime.makeUnsafe(row.time_updated),

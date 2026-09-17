@@ -1,40 +1,81 @@
-import path from "node:path"
-import { existsSync, readdirSync, statSync } from "node:fs"
-import { TextareaRenderable, TextAttributes } from "@opentui/core"
-import { useTerminalDimensions } from "@opentui/solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
-import { createStore } from "solid-js/store"
-import { useTheme } from "../../context/theme"
-import { useRoute } from "../../context/route"
-import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
-import { createWorkspace, resolveWorkspacePath } from "@spinosa/core/commands/create"
-import { useSDK } from "../../context/sdk"
-import { createImportJob, type ImportJobHandle } from "../../spinosa/job-events"
-import { prepareOnboarding, completeOnboarding } from "@spinosa/core/commands/onboard"
-import type { OnboardingContext } from "@spinosa/core/commands/onboard"
-import { scanAndClassifySource } from "@spinosa/core/import/pipeline"
-import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation"
-import { runImportWorkflow } from "@spinosa/core/import/import-workflow"
-import { addFiles } from "@spinosa/core/commands/add"
+import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { TextareaRenderable, TextAttributes } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/solid";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
+import { createStore } from "solid-js/store";
+import { useTheme } from "../../context/theme";
+import { useRoute } from "../../context/route";
+import { useSpinosaWorkspace } from "../../context/spinosa-workspace";
+import {
+  createWorkspace,
+  resolveWorkspacePath,
+} from "@spinosa/core/commands/create";
+import { OCR_MODEL_OPTIONS, type OcrModelOption } from "./onboarding-helpers";
+import { useSync } from "../../context/sync";
+import { useSDK } from "../../context/sdk";
+import { useLocal } from "../../context/local";
+import { useDialog } from "../../ui/dialog";
+import { DialogProvider } from "../../component/dialog-provider";
+import { DialogVisionModel, isVisionProviderSelectable } from "../../component/dialog-vision";
+import { useToast } from "../../ui/toast";
+import { createVisionAuthFlow } from "../../spinosa/vision-auth-flow";
+import { useBackgroundImport, isBackgroundAvailable, detachImportToBackground } from "../../spinosa/import-background";
+import {
+  prepareOnboarding,
+  completeOnboarding,
+} from "@spinosa/core/commands/onboard";
+import type { OnboardingContext } from "@spinosa/core/commands/onboard";
+import {
+  scanAndClassifySource,
+  verifyAndRecoverImport,
+  applyResumeFilter,
+} from "@spinosa/core/import/pipeline";
+import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation";
+import { runImportWorkflow } from "@spinosa/core/import/import-workflow";
+import { createVisionTranscriber } from "../../spinosa/vision-transcribe";
 import {
   buildStartupChatPrompt,
   formatStartupProgressMessage,
   STARTUP_PROGRESS_INTERVAL_MS,
   STARTUP_PROGRESS_THRESHOLD_MS,
   runStartup as tsRunStartup,
-} from "@spinosa/core/commands/startup"
-import { resolveFrameworkRoot } from "@spinosa/core/framework/discovery"
-import { spawn } from "node:child_process"
-import { tuiLog, logStep, logAction, logPhase, logTool, logResult, logError, logGate, persistImportWizardLogLines } from "../../spinosa/log"
-import { useExit } from "../../context/exit"
-import { useDialog } from "../../ui/dialog"
-import type { CliRunResult } from "../../spinosa/types"
-import { readBundledFrameworkVersion, isPrereleaseFrameworkVersion, readStartupPrompt, writePreferredCli } from "../../spinosa/service"
-import { writeWorkspaceStatus } from "@spinosa/core/workspace/meta"
-import { normalizePathInput, resolveExistingUserPaths, isCloudStoragePath } from "@spinosa/core/utils/path"
-import { CenteredColumn } from "../../component/centered-column"
-import { SPINOSA_BASE_MODE, useOpencodeKeymap, useOpencodeModeStack } from "../../keymap"
-import { buttonBackground, buttonBorder, buttonText } from "../../util/button"
+} from "@spinosa/core/commands/startup";
+import { resolveFrameworkRoot } from "@spinosa/core/framework/discovery";
+import {
+  logStep,
+  logAction,
+  logPhase,
+  logTool,
+  logResult,
+  logError,
+  persistImportWizardLogLines,
+} from "../../spinosa/log";
+import { useExit } from "../../context/exit";
+import { readStartupPrompt, writePreferredCli } from "../../spinosa/service";
+import { writeWorkspaceStatus } from "@spinosa/core/workspace/meta";
+import {
+  normalizePathInput,
+  resolveExistingUserPaths,
+  isCloudStoragePath,
+} from "@spinosa/core/utils/path";
+import { CenteredColumn } from "../../component/centered-column";
+import {
+  SPINOSA_BASE_MODE,
+  useOpencodeKeymap,
+  useOpencodeModeStack,
+} from "../../keymap";
+import { buttonBackground, buttonBorder, buttonText } from "../../util/button";
 import {
   buildNewWorkspacePreview,
   detectDocumentTools,
@@ -42,8 +83,8 @@ import {
   resolveUserPath,
   suggestWorkspacePath,
   type NewWorkspacePreview,
-} from "../../spinosa/onboarding-preview"
-import { shouldClearActiveOnOnboardingCancel } from "../../spinosa/onboarding-leave"
+} from "../../spinosa/onboarding-preview";
+import { shouldClearActiveOnOnboardingCancel } from "../../spinosa/onboarding-leave";
 import {
   blurIfFocused,
   confirmSpinosaBack,
@@ -51,6 +92,7 @@ import {
   createWorkflowGuard,
   deferPress,
   delay,
+  formatImportProgressStatus,
   generateScanLines,
   ImportOptionsSelector,
   nextFocusedSourceIndexForAppend,
@@ -66,424 +108,660 @@ import {
   LogScrollbox,
   LogoSummary,
   ProgressBar,
-  stripAnsi,
   WizardActionButton,
   WizardActionRow,
   WizardGateButton,
   WizardPanel,
   wizardScrollboxMaxHeight,
   yieldToEventLoop,
-} from "./wizard-ui"
+} from "./wizard-ui";
+import { OnboardingView } from "./onboarding-view";
 import {
-  applyImportProgressStatus,
+  formatBytes,
+  initialToolChecks,
+  mergeImportOptions,
+  OCR_ENGINE_HINT_LINE,
+  toolActionLabel as resolveToolActionLabel,
+  toolCheckResults,
+  toolChecksReady,
+  validateSinglePath as validatePath,
+  wavePulse,
+  waveRow,
+  waveString,
+} from "./onboarding-helpers";
+import {
+  checkDocumentTools,
+  repairDocumentTools,
+} from "./onboarding-tool-actions";
+import { scanOnboardingSources } from "./onboarding-scan";
+import { prepareOnboardingWorkspace } from "./onboarding-workspace";
+import {
+  countImportProgress,
   formatImportDetailLogHint,
   importOutcomeAccentKey,
   importOutcomeHeading,
-  seedImportQueue,
   shouldShowImportDetailLogHint,
   type ImportFileProgressItem,
-} from "../../spinosa/import-progress-ui"
+} from "../../spinosa/import-progress-ui";
 
-type WizardStep = "path" | "name" | "tools" | "scan" | "imports" | "setup" | "direct" | "markitdown" | "ocr" | "verification" | "provider" | "startup" | "done" | "error"
+type WizardStep =
+  | "path"
+  | "name"
+  | "tools"
+  | "scan"
+  | "imports"
+  | "vision"
+  | "setup"
+  | "direct"
+  | "markitdown"
+  | "pdf"
+  | "ocr"
+  | "verification"
+  | "provider"
+  | "startup"
+  | "done"
+  | "error";
 
 type ToolCheckResult = {
-  label: string
-  status: "checking" | "available" | "missing" | "unsupported"
-  detail?: string
-}
-
+  label: string;
+  status: "checking" | "available" | "missing" | "unsupported";
+  detail?: string;
+};
 type CliOption = {
-  value: string
-  label: string
-  description: string
-}
+  value: string;
+  label: string;
+  description: string;
+};
 
 type SourcePathEntry = {
-  id: number
-}
+  id: number;
+};
 
-const CANCELABLE_STEPS = ["setup", "direct", "markitdown", "ocr", "verification"] as const
+const CANCELABLE_STEPS = [
+  "tools",
+  "setup",
+  "direct",
+  "markitdown",
+  "ocr",
+  "verification",
+] as const;
 
-let nextSourceId = 1
+let nextSourceId = 1;
 
 const CLI_OPTIONS: CliOption[] = [
-  { value: "spinosa", label: "Spinosa", description: "Open the Spinosa TUI with the startup prompt ready." },
-  { value: "opencode", label: "Spinosa", description: "Run the Spinosa CLI with the startup prompt." },
-  { value: "opencode_desktop", label: "Spinosa Desktop", description: "Open Spinosa and paste the copied prompt." },
-  { value: "gemini", label: "Gemini", description: "Run the Gemini CLI in this workspace." },
-  { value: "qwen", label: "Qwen", description: "Run the Qwen CLI in this workspace." },
-  { value: "claude_code", label: "Claude Code", description: "Run the terminal CLI in this workspace." },
+  {
+    value: "spinosa",
+    label: "Spinosa TUI",
+    description: "Open the Spinosa TUI with the startup prompt ready.",
+  },
+  {
+    value: "opencode",
+    label: "Spinosa CLI",
+    description: "Run the Spinosa CLI with the startup prompt.",
+  },
+  {
+    value: "opencode_desktop",
+    label: "Spinosa Desktop",
+    description: "Open Spinosa and paste the copied prompt.",
+  },
+  {
+    value: "gemini",
+    label: "Gemini",
+    description: "Run the Gemini CLI in this workspace.",
+  },
+  {
+    value: "qwen",
+    label: "Qwen",
+    description: "Run the Qwen CLI in this workspace.",
+  },
+  {
+    value: "claude_code",
+    label: "Claude Code",
+    description: "Run the terminal CLI in this workspace.",
+  },
   {
     value: "claude_code_desktop",
     label: "Claude Code Desktop",
     description: "Open the desktop app with the prompt ready.",
   },
-  { value: "codex", label: "Codex", description: "Run the Codex terminal CLI in this workspace." },
-  { value: "codex_app", label: "Codex App", description: "Open the Codex app and paste the copied prompt." },
-  { value: "hermes", label: "Hermes Agent", description: "Run the Hermes CLI in this workspace." },
-  { value: "kilo", label: "Kilo", description: "Run the Kilo terminal CLI in this workspace." },
-  { value: "other", label: "Other", description: "Copy a generic launch command for another tool." },
-]
+  {
+    value: "codex",
+    label: "Codex",
+    description: "Run the Codex terminal CLI in this workspace.",
+  },
+  {
+    value: "codex_app",
+    label: "Codex App",
+    description: "Open the Codex app and paste the copied prompt.",
+  },
+  {
+    value: "hermes",
+    label: "Hermes Agent",
+    description: "Run the Hermes CLI in this workspace.",
+  },
+  {
+    value: "kilo",
+    label: "Kilo",
+    description: "Run the Kilo terminal CLI in this workspace.",
+  },
+  {
+    value: "other",
+    label: "Other",
+    description: "Copy a generic launch command for another tool.",
+  },
+];
 
-function launchForCli(cliValue: string): string {
-  if (cliValue === "other") return "copy"
-  if (cliValue.endsWith("_desktop") || cliValue === "codex_app") return "desktop"
-  return "run"
-}
-
-function validateSinglePath(p: string): "valid" | "invalid" {
-  try {
-    if (!existsSync(p)) return "invalid"
-    const st = statSync(p)
-    if (st.isFile()) return "valid"
-    if (st.isDirectory()) return readdirSync(p).length > 0 ? "valid" : "invalid"
-    return "invalid"
-  } catch {
-    return "invalid"
-  }
-}
-
-
-/**
- * Reinstall vendor tools via install.sh.
- * The only remaining bash-spawned operation used by the TUI.
- */
-async function runReinstall(input?: {
-  channel?: string
-  onStdout?: (chunk: string) => void
-  onStderr?: (chunk: string) => void
-}): Promise<CliRunResult> {
-  tuiLog("runReinstall (bash)")
-
-  const fwRoot = resolveFrameworkRoot()
-  if (!fwRoot) {
-    const msg = "Framework root not found — cannot reinstall vendor tools."
-    input?.onStderr?.(msg + "\n")
-    return { exitCode: 1, stdout: "", stderr: msg }
-  }
-
-  const localInstaller = path.join(fwRoot, "install.sh")
-  if (!existsSync(localInstaller)) {
-    const msg = "install.sh not found in framework root."
-    input?.onStderr?.(msg + "\n")
-    return { exitCode: 1, stdout: "", stderr: msg }
-  }
-
-  const version = await readBundledFrameworkVersion()
-  if (!version) {
-    const msg = "Could not read bundled framework version."
-    input?.onStderr?.(msg + "\n")
-    return { exitCode: 1, stdout: "", stderr: msg }
-  }
-
-  input?.onStdout?.(`Reinstalling vendor tools for v${version}...\n`)
-
-  return new Promise<CliRunResult>((resolve) => {
-    let timedOut = false
-    let stdout = ""
-    let stderr = ""
-
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill("SIGTERM")
-      resolve({ exitCode: 124, stdout, stderr: "Reinstall timed out after 120s." })
-    }, 120_000)
-
-    const child = spawn("bash", [localInstaller, "--reinstall", "--version", version, "--yes", "--no-launch", "--no-bundled-tools"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    })
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8")
-      stdout += text
-      // Strip ANSI escape codes and spinner control chars for clean TUI display
-      const clean = text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").replace(/\r/g, "\n").replace(/\n{2,}/g, "\n").trim()
-      if (clean) input?.onStdout?.(clean + "\n")
-    })
-    child.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8")
-      stderr += text
-      const clean = text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").replace(/\r/g, "\n").replace(/\n{2,}/g, "\n").trim()
-      if (clean) input?.onStderr?.(clean + "\n")
-    })
-
-    const done = (code: number | null) => {
-      clearTimeout(timer)
-      if (timedOut) return
-      if (code === 0) {
-        input?.onStdout?.("Reinstall complete.\n")
-        resolve({ exitCode: 0, stdout, stderr })
-      } else {
-        resolve({ exitCode: code ?? 1, stdout, stderr })
-      }
-    }
-    child.on("close", (code) => done(code))
-    child.on("error", (err) => {
-      clearTimeout(timer)
-      resolve({ exitCode: 1, stdout, stderr: err.message })
-    })
-  })
+function DialogVisionPicker(props: { onPicked: (providerId: string, modelId: string) => void }) {
+  return <DialogVisionModel onPicked={props.onPicked} />
 }
 
 export function Onboarding() {
-  const { theme } = useTheme()
-  const route = useRoute()
-  const { navigate } = route
-  const spinosa = useSpinosaWorkspace()
-  const sdk = useSDK()
-  const dimensions = useTerminalDimensions()
-  const keymap = useOpencodeKeymap()
-  const modeStack = useOpencodeModeStack()
-  const exit = useExit()
-  const dialog = useDialog()
-  const onboardingRoute = route.data.type === "onboarding" ? route.data : undefined
-  const resumeWorkspacePath = onboardingRoute?.workspacePath
-  const resumeSourceLocation = onboardingRoute?.sourceLocation
-  const resumeWorkspaceName = onboardingRoute?.workspaceName
-  const resumeSourcePath = resumeSourceLocation ? resolveExistingUserPaths([resumeSourceLocation])[0] : undefined
-  const resumeSourceAccepted = Boolean(resumeSourcePath && validateSinglePath(resumeSourcePath) === "valid")
+  const { theme } = useTheme();
+  const route = useRoute();
+  const { navigate } = route;
+  const spinosa = useSpinosaWorkspace();
+  const sdk = useSDK();
+  const dimensions = useTerminalDimensions();
+  const keymap = useOpencodeKeymap();
+  const modeStack = useOpencodeModeStack();
+  const exit = useExit();
+  const dialog = useDialog();
+  const onboardingRoute =
+    route.data.type === "onboarding" ? route.data : undefined;
+  const resumeWorkspacePath = onboardingRoute?.workspacePath;
+  const resumeSourceLocation = onboardingRoute?.sourceLocation;
+  const resumeWorkspaceName = onboardingRoute?.workspaceName;
+  const resumeSourcePath = resumeSourceLocation
+    ? resolveExistingUserPaths([resumeSourceLocation])[0]
+    : undefined;
+  const resumeSourceAccepted = Boolean(
+    resumeSourcePath && validatePath(resumeSourcePath) === "valid",
+  );
 
-  const [step, setStep] = createSignal<WizardStep>(resumeSourceAccepted ? "name" : "path")
-  const [sourcePaths, setSourcePaths] = createSignal<SourcePathEntry[]>([{ id: 0 }])
-  const [logLines, setLogLines] = createSignal<string[]>([])
-  const [createdWorkspace, setCreatedWorkspace] = createSignal<string | undefined>(resumeWorkspacePath)
-  const [busy, setBusy] = createSignal(false)
-  const [importOptions, setImportOptions] = createSignal<ImportOption[]>([])
-  const [selectedImport, setSelectedImport] = createSignal(0)
-  const [selectedCli, setSelectedCli] = createSignal(0)
-  const [focusedSource, setFocusedSource] = createSignal(0)
-  const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>()
-  const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([])
-  const toolActionLabel = createMemo(() => {
-    const checks = toolChecks()
-    if (checks.length === 0) return ""
-    if (checks.some((t) => t.status === "checking")) return "Checking..."
-    if (checks.some((t) => t.status === "missing")) return "Reinstall missing tools"
-    return "Scan source folders"
+  const [step, setStep] = createSignal<WizardStep>(
+    resumeSourceAccepted ? "name" : "path",
+  );
+  const [sourcePaths, setSourcePaths] = createSignal<SourcePathEntry[]>([
+    { id: 0 },
+  ]);
+  const [logLines, setLogLines] = createSignal<string[]>([]);
+  const [createdWorkspace, setCreatedWorkspace] = createSignal<
+    string | undefined
+  >(resumeWorkspacePath);
+  const [busy, setBusy] = createSignal(false);
+  const [importOptions, setImportOptions] = createSignal<ImportOption[]>([]);
+  const [selectedImport, setSelectedImport] = createSignal(0);
+  const [selectedCli, setSelectedCli] = createSignal(0);
+  const [selectedOcrModel, setSelectedOcrModel] = createSignal("none");
+  const [selectedOcrModelIndex, setSelectedOcrModelIndex] = createSignal(1);
+  const sync = useSync();
+  const local = useLocal();
+  const toast = useToast();
+  // Background-capable import run owner. Survives wizard unmount so the run
+  // can detach to the workspace home; wizard + home monitor are views over it.
+  const bg = useBackgroundImport();
+
+  // Mirror service run state into wizard display signals while a run owns
+  // them. Local appends before startProcessing are untouched (service idle).
+  createEffect(() => {
+    if (!bg.active()) return;
+    setProcessingStatus(bg.phaseLabel());
+    setProcessingFile(bg.currentFile());
+    setVisionError(bg.visionError());
+    setVisionPaused(bg.snapshot().visionPause !== undefined);
+    setSelectedOcrModel(bg.modelId());
+    const files = bg.files();
+    setProgressFiles(files);
+    const counts = countImportProgress(files);
+    setProgTotal(files.length > 0 ? files.length : 1);
+    setProgCurrent(counts.succeeded + counts.failed);
+    setLogLines(bg.logLines());
+    // Phase gates: show the wizard Continue UI unless detached (service
+    // auto-passes gates in background). Launch gate ("Go to the workspace")
+    // is set after done, so it never collides here.
+    if (!bg.done() && !bg.background()) {
+      const gate = bg.pendingGate();
+      if (gate) {
+        setGateLabel(gate.label);
+        setGateAction(() => () => {
+          logAction("gate-click", gate.label);
+          bg.resolveGate(true);
+        });
+        setGateAutoPress(true);
+        setWaitingForGate(true);
+      } else {
+        setWaitingForGate(false);
+      }
+    }
+  });
+
+  // Slow phases only: detach the run and open the workspace home. Same
+  // button slot as the phase actions, different copy + function. When the
+  // queue already finished, the normal "Go to the workspace" applies.
+  const detachToBackground = () => {
+    detachImportToBackground(bg, {
+      from: "onboarding",
+      notify: (message) => toast.show({ variant: "info", message }),
+      navigateHome: (ws) => {
+        const target = ws ?? createdWorkspace();
+        if (target) void spinosa.openWorkspace(target, { route: { type: "global" } });
+        else navigate({ type: "global" });
+      },
+    });
+  };
+  const backgroundAvailable = () => isBackgroundAvailable(bg);
+  const ocrModelOptions = createMemo(() => {
+    const base = [...OCR_MODEL_OPTIONS] as OcrModelOption[]
+    const picked = selectedOcrModel()
+    if (picked.includes("/")) {
+      const [prov, ...rest] = picked.split("/")
+      const model = rest.join("/")
+      // Update the Vision button (index 0) to show the chosen model — keep 2 buttons total.
+      // The name stays visible here and top-right; only gate/status copy stays generic.
+      base[0] = {
+        ...base[0]!,
+        label: `Vision model: ${picked} ✓`,
+        detail: `Selected — ${prov}/${model} — press space to select, Continue to re-choose vision model`,
+        id: "vision:provider-picker",
+        kind: "vision",
+        modelId: model,
+        provider: prov,
+        vision: true,
+      }
+    }
+    return base
   })
-  const toolAllReady = createMemo(() => {
-    const checks = toolChecks()
-    return checks.length > 0 && checks.every((t) => t.status === "available" || t.status === "unsupported")
+
+  // Selector UX: focused index (hover/keyboard) vs chosen id (●). Mirrors ImportOptionsSelector pattern.
+  let hasRestoredVision = false
+  let hasUserInteracted = false
+  const selectOcrOption = (index: number) => {
+    hasUserInteracted = true
+    const opts = ocrModelOptions()
+    const opt = opts[index]
+    if (!opt) return
+    setSelectedOcrModelIndex(index)
+    // Vision row click is handled by openVisionPicker — don't just set placeholder here
+    if (opt.id === "vision:provider-picker") return
+    setSelectedOcrModel(opt.id)
+  }
+
+  // Persist vision default: copy-as-is until user picks a vision model, thereafter that vision is default
+  // Reads from same KV as chat (vision-model.json) — single source of truth via local.vision.
+  // Only runs once on initial load; user can still pick vision/"copy files only" afterwards
+  createEffect(() => {
+    if (hasRestoredVision) return
+    if (!local.vision.ready) return
+    // Wait for provider catalog to hydrate — otherwise isValid/auth checks are premature
+    if (sync.data.provider.length === 0 && sync.data.provider_next.connected.length === 0) return
+    if (hasUserInteracted) {
+      hasRestoredVision = true
+      return
+    }
+    const last = local.vision.current()
+    if (!last) {
+      hasRestoredVision = true
+      return
+    }
+    if (selectedOcrModel() !== "none") {
+      hasRestoredVision = true
+      return
+    }
+    const id = `${last.providerID}/${last.modelID}`
+    // Guard against stale/purged vision model – fallback to copy with toast
+    if (!local.vision.isValid()) {
+      logAction("vision", `Stored vision ${id} no longer valid – staying on copy-as-is`)
+      hasRestoredVision = true
+      return
+    }
+    // Don't restore a vision model whose provider isn't authenticated/available — would show openai as selected without a key
+    const isProviderAvailable = sync.data.provider.some((p) => p.id === last.providerID)
+    const isConnected = sync.data.provider_next.connected.includes(last.providerID)
+    if (!isProviderAvailable && !isConnected) {
+      logAction("vision", `Stored vision ${id} provider not authenticated – staying on copy-as-is`)
+      hasRestoredVision = true
+      return
+    }
+    // ChatGPT OAuth lacks api.responses.write. Provider.source identifies the active credential
+    // synchronously with the connected provider list, unlike the later auth-methods hydration.
+    const providerInfo = sync.data.provider.find((provider) => provider.id === last.providerID)
+    if (providerInfo && !isVisionProviderSelectable(providerInfo)) {
+      logAction("vision", `Stored vision ${id} is openai oauth without api.responses.write – staying on copy-as-is, use openrouter for vision`)
+      hasRestoredVision = true
+      return
+    }
+    hasRestoredVision = true
+    setSelectedOcrModel(id)
+    setSelectedOcrModelIndex(0)
+    logAction("vision", `Restored vision default ${id} from previous pick`)
   })
-  const [hoveredButton, setHoveredButton] = createSignal<string | null>(null)
-  const [scanProgress, setScanProgress] = createSignal(0)
-  const [scanTotal, setScanTotal] = createSignal(0)
-  const [processingDone, setProcessingDone] = createSignal(false)
-  const [progCurrent, setProgCurrent] = createSignal(0)
-  const [progTotal, setProgTotal] = createSignal(1)
-  const [failedCount, setFailedCount] = createSignal(0)
-  const [stillMissingCount, setStillMissingCount] = createSignal(0)
-  const [processingFile, setProcessingFile] = createSignal("")
-  const [progressFiles, setProgressFiles] = createSignal<ImportFileProgressItem[]>([])
-  const [scanDone, setScanDone] = createSignal(false)
+  // Whenever a concrete vision model is selected, persist it as new default and also to chat recents
+  createEffect(
+    on(selectedOcrModel, (id) => {
+      if (!id.includes("/")) return
+      const [prov, ...rest] = id.split("/")
+      const model = rest.join("/")
+      if (!prov || !model) return
+      try {
+        local.vision.set({ providerID: prov, modelID: model })
+      } catch {}
+      try {
+        local.model.set({ providerID: prov, modelID: model }, { recent: true })
+      } catch {}
+    }),
+  )
+
+  // True when a concrete provider/model is chosen (selectedOcrModel holds "provider/model").
+  // The visible label stays generic ("Vision Model") per copy, so never gate UI on the label text.
+  const hasVisionModel = () => selectedOcrModel().includes("/")
+
+  // Shared vision provider/model auth flow (also used by the background
+  // import monitor). Order: select → auth if needed → confirm.
+  const visionAuth = createVisionAuthFlow({ dialog, sync, sdk, toast })
+  const { isVisionProviderAvailable, ensureProviderAuth, visionCredentialNote } = visionAuth
+
+  // Vision picker order: 1. select model → 2. auth if needed → 3. confirm.
+  // No dummy probes in production: the first real file transcription is the
+  // validation (auth failures pause with re-auth, empty results skip).
+  const openVisionPicker = () => {
+    hasUserInteracted = true
+    const prevChosenId = selectedOcrModel()
+    const prevFocused = selectedOcrModelIndex()
+    let didPick = false
+    const restorePrev = () => {
+      const opts = ocrModelOptions()
+      const chosenIdx = opts.findIndex((o) => o.id === prevChosenId || (prevChosenId.includes("/") && o.id === "vision:provider-picker"))
+      if (chosenIdx >= 0) setSelectedOcrModelIndex(chosenIdx)
+      else setSelectedOcrModelIndex(prevFocused)
+    }
+
+    logAction("vision", "Opening provider/model picker for vision")
+    dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
+      const id = `${providerId}/${modelId}`
+      const authed = isVisionProviderAvailable(providerId)
+        ? true
+        : await ensureProviderAuth(providerId).catch((e) => {
+            logAction("vision", `Vision auth sequence failed for ${id}: ${e instanceof Error ? e.message : String(e)}`)
+            return false
+          })
+      if (!authed) {
+        logAction("vision", `Vision ${id} auth cancelled — keeping ${prevChosenId}`)
+        restorePrev()
+        dialog.clear()
+        return
+      }
+      // No dummy probe in production: auth is done, the first real file
+      // transcription is the validation (auth failures pause with re-auth,
+      // empty results skip — see onVisionFailure).
+      if (dialog.stack.length === 0) {
+        // Dismissed during auth: never confirm behind their back.
+        logAction("vision", `Vision auth dismissed for ${id} — keeping ${prevChosenId}`)
+        restorePrev()
+        return
+      }
+      didPick = true
+      setSelectedOcrModel(id)
+      setSelectedOcrModelIndex(0)
+      logAction("vision", `Picked vision model ${id} — press Continue or reclick to change`)
+      dialog.clear()
+    }} />, () => {
+      if (visionAuth.wasSuppressedCancel()) return
+      if (!didPick) {
+        restorePrev()
+        logAction("vision", `Vision picker cancelled — keeping ${prevChosenId}`)
+      }
+    })
+  }
+  // Kernel vision transcribe callback — sends only provider/model/prompt/mime+base64, never API keys
+  const transcribeVision = createVisionTranscriber(sdk)
+
+  const [focusedSource, setFocusedSource] = createSignal(0);
+  const [preview, setPreview] = createSignal<NewWorkspacePreview | undefined>();
+  const [toolChecks, setToolChecks] = createSignal<ToolCheckResult[]>([]);
+  const toolActionLabel = createMemo(() =>
+    resolveToolActionLabel(toolChecks()),
+  );
+  const toolAllReady = createMemo(() => toolChecksReady(toolChecks()));
+  const [hoveredButton, setHoveredButton] = createSignal<string | null>(null);
+  const [scanProgress, setScanProgress] = createSignal(0);
+  const [scanTotal, setScanTotal] = createSignal(0);
+  const [processingDone, setProcessingDone] = createSignal(false);
+  const [progCurrent, setProgCurrent] = createSignal(0);
+  const [progTotal, setProgTotal] = createSignal(1);
+  const [failedCount, setFailedCount] = createSignal(0);
+  const [stillMissingCount, setStillMissingCount] = createSignal(0);
+  const [processingFile, setProcessingFile] = createSignal("");
+  const [visionError, setVisionError] = createSignal<string | undefined>(undefined);
+  const [visionPaused, setVisionPaused] = createSignal(false);
+  const [progressFiles, setProgressFiles] = createSignal<
+    ImportFileProgressItem[]
+  >([]);
+  const [scanDone, setScanDone] = createSignal(false);
   const importOutcome = createMemo(() => ({
     failedCount: failedCount(),
     stillMissing: stillMissingCount(),
-  }))
+  }));
   const importOutcomeFg = createMemo(() => {
-    const key = importOutcomeAccentKey(importOutcome())
-    if (key === "error") return theme.error
-    if (key === "warning") return theme.warning
-    return theme.success
-  })
-  const [scanningFile, setScanningFile] = createSignal("")
-  const [scanCount, setScanCount] = createSignal(0)
-  function formatBytes(b: number): string {
-    if (b >= 1_000_000_000) return `${(b / 1_000_000_000).toFixed(1)} GB`
-    if (b >= 1_000_000) return `${(b / 1_000_000).toFixed(1)} MB`
-    if (b >= 1_000) return `${(b / 1_000).toFixed(1)} KB`
-    return `${b} B`
-  }
-  const [processingStatus, setProcessingStatus] = createSignal("")
-  const [verifyStatus, setVerifyStatus] = createSignal("")
-  const [sourceIsCloud, setSourceIsCloud] = createSignal(Boolean(resumeSourcePath && isCloudStoragePath(resumeSourcePath)))
-  const [importSummary, setImportSummary] = createSignal("")
-  const [workspaceName, setWorkspaceName] = createSignal(resumeWorkspaceName ?? "")
-  const [startupMessage, setStartupMessage] = createSignal("")
-  const [startupElapsedMs, setStartupElapsedMs] = createSignal(0)
-  const [startupError, setStartupError] = createSignal<string | undefined>()
-  const [pathValidities, setPathValidities] = createStore<Record<number, "unchecked" | "valid" | "invalid">>({})
-  const WAVE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
-  const waveString = (f: number) => { let r = ""; for (let i = 0; i < 6; i++) { const p = (i + f) % 14, l = p <= 6 ? p : 13 - p; r += WAVE[l] }; return r }
-  const wavePulse = (f: number) => { const p = f % 14; return WAVE[p <= 6 ? p : 13 - p] }
-  const waveRow = (f: number, width: number) => { let r = ""; for (let i = 0; i < width; i++) { const angle = (i * Math.PI) / 7 + f * Math.PI / 7; const l = Math.max(0, Math.min(7, Math.round(3.5 + 3.5 * Math.sin(angle)))); r += WAVE[l] }; return r }
-  const [spinIdx, setSpinIdx] = createSignal(0)
-  const [stopping, setStopping] = createSignal(false)
-  const [stopHint, setStopHint] = createSignal(STOP_SCREEN_DEFAULT_HINT)
-  let forceLeaveResolve: (() => void) | undefined
-  let spinTimer: ReturnType<typeof setInterval> | undefined
-  const spinOn = () => { if (!spinTimer) spinTimer = setInterval(() => setSpinIdx((i) => (i + 1) % 14), 200) }
+    const key = importOutcomeAccentKey(importOutcome());
+    if (key === "error") return theme.error;
+    if (key === "warning") return theme.warning;
+    return theme.success;
+  });
+  const [scanningFile, setScanningFile] = createSignal("");
+  const [scanCount, setScanCount] = createSignal(0);
+  const [processingStatus, setProcessingStatus] = createSignal("");
+  const [verifyStatus, setVerifyStatus] = createSignal("");
+  const [sourceIsCloud, setSourceIsCloud] = createSignal(
+    Boolean(resumeSourcePath && isCloudStoragePath(resumeSourcePath)),
+  );
+  const [importSummary, setImportSummary] = createSignal("");
+  const [workspaceName, setWorkspaceName] = createSignal(
+    resumeWorkspaceName ?? "",
+  );
+  const [startupMessage, setStartupMessage] = createSignal("");
+  const [startupElapsedMs, setStartupElapsedMs] = createSignal(0);
+  const [startupError, setStartupError] = createSignal<string | undefined>();
+  const [pathValidities, setPathValidities] = createStore<
+    Record<number, "unchecked" | "valid" | "invalid">
+  >({});
+  const [spinIdx, setSpinIdx] = createSignal(0);
+  const [stopping, setStopping] = createSignal(false);
+  const [stopHint, setStopHint] = createSignal(STOP_SCREEN_DEFAULT_HINT);
+  let forceLeaveResolve: (() => void) | undefined;
+  let spinTimer: ReturnType<typeof setInterval> | undefined;
+  const spinOn = () => {
+    if (!spinTimer)
+      spinTimer = setInterval(() => setSpinIdx((i) => (i + 1) % 14), 200);
+  };
   // Don't freeze the stop overlay wave — abort paths call spinOff() while stopping is still shown.
   const spinOff = () => {
-    if (stopping()) return
-    if (spinTimer) { clearInterval(spinTimer); spinTimer = undefined; setSpinIdx(0) }
-  }
-  const [gateLabel, setGateLabel] = createSignal("")
-  const [gateAction, setGateAction] = createSignal<() => void>(() => {})
-  const [waitingForGate, setWaitingForGate] = createSignal(false)
-  let abortProcessing = false
-  let gateResolve: (() => void) | undefined
-  let sourceInput: TextareaRenderable | undefined
-  let pendingPaths: string[] | undefined = resumeSourcePath && resumeSourceAccepted ? [resumeSourcePath] : undefined
-let nameInput: TextareaRenderable | undefined
-  let startupTimer: ReturnType<typeof setInterval> | undefined
+    if (stopping()) return;
+    if (spinTimer) {
+      clearInterval(spinTimer);
+      spinTimer = undefined;
+      setSpinIdx(0);
+    }
+  };
+  const [gateLabel, setGateLabel] = createSignal("");
+  const [gateAction, setGateAction] = createSignal<() => void>(() => {});
+  const [waitingForGate, setWaitingForGate] = createSignal(false);
+  // Phase gates auto-press after 30s; the terminal "Go to the workspace"
+  // gate must NOT (launching without consent). View picks the component.
+  const [gateAutoPress, setGateAutoPress] = createSignal(true);
+  // Pre-run cancellation flag for scan phase (the run itself is service-owned).
+  let abortProcessing = false;
+  let sourceInput: TextareaRenderable | undefined;
+  let pendingPaths: string[] | undefined =
+    resumeSourcePath && resumeSourceAccepted ? [resumeSourcePath] : undefined;
+  let nameInput: TextareaRenderable | undefined;
+  let startupTimer: ReturnType<typeof setInterval> | undefined;
 
   const selectedExtensions = createMemo(() =>
     importOptions()
       .filter((item) => item.selected)
       .map((item) => item.ext),
-  )
+  );
 
-  const totalSteps = 11
+  const totalSteps = 13;
   const stepIndex = createMemo(() => {
-    if (step() === "path") return 1
-    if (step() === "name") return 2
-    if (step() === "tools") return 3
-    if (step() === "scan") return 4
-    if (step() === "imports") return 5
-    if (step() === "setup") return 6
-    if (step() === "direct") return 7
-    if (step() === "markitdown") return 8
-    if (step() === "ocr") return 9
-    if (step() === "verification") return 10
-    if (step() === "provider") return 11
-    if (step() === "startup") return 11
-    if (step() === "done") return totalSteps
-    return totalSteps
-  })
+    if (step() === "path") return 1;
+    if (step() === "name") return 2;
+    if (step() === "tools") return 3;
+    if (step() === "scan") return 4;
+    if (step() === "imports") return 5;
+    if (step() === "vision") return 6;
+    if (step() === "setup") return 7;
+    if (step() === "direct") return 8;
+    if (step() === "markitdown") return 9;
+    if (step() === "pdf") return 10;
+    if (step() === "ocr") return 11;
+    if (step() === "verification") return 12;
+    if (step() === "provider") return 13;
+    if (step() === "startup") return 13;
+    if (step() === "done") return totalSteps;
+    return totalSteps;
+  });
 
   const appendLogLine = (...lines: string[]) =>
     setLogLines((prev) => {
-      const result = [...prev]
+      const result = [...prev];
       for (const line of lines) {
         if (line.startsWith("\r")) {
-          const clean = line.replace(/^\r+/, "").trimEnd()
-          if (result.length > 0 && clean) result[result.length - 1] = clean
-          else if (clean) result.push(clean)
+          const clean = line.replace(/^\r+/, "").trimEnd();
+          if (result.length > 0 && clean) result[result.length - 1] = clean;
+          else if (clean) result.push(clean);
         } else {
-          result.push(line.trimEnd())
+          result.push(line.trimEnd());
         }
       }
-      return result.slice(-200)
-    })
+      return result.slice(-200);
+    });
 
-  const clearLog = () => setLogLines([])
-
+  const clearLog = () => setLogLines([]);
 
   const focusSourceInput = () => {
     queueMicrotask(() => {
-      if (!sourceInput || sourceInput.isDestroyed) return
-      sourceInput.focus()
-      sourceInput.gotoLineEnd()
-    })
-  }
+      if (!sourceInput || sourceInput.isDestroyed) return;
+      sourceInput.focus();
+      sourceInput.gotoLineEnd();
+    });
+  };
 
   const focusSourceEntry = (id: number) => {
     queueMicrotask(() => {
-      const input = sourceInputs.get(id)
-      if (!input || input.isDestroyed) return
-      input.focus()
-      input.gotoLineEnd()
-    })
-  }
+      const input = sourceInputs.get(id);
+      if (!input || input.isDestroyed) return;
+      input.focus();
+      input.gotoLineEnd();
+    });
+  };
 
   const addSourcePath = (options?: { focusNewInput?: boolean }) => {
-    const id = nextSourceId++
-    const nextIndex = sourcePaths().length
-    setSourcePaths((prev) => [...prev, { id }])
-    setFocusedSource((current) => nextFocusedSourceIndexForAppend(current, nextIndex, options))
-    if (options?.focusNewInput === false) return
-    focusSourceEntry(id)
-  }
+    const id = nextSourceId++;
+    const nextIndex = sourcePaths().length;
+    setSourcePaths((prev) => [...prev, { id }]);
+    setFocusedSource((current) =>
+      nextFocusedSourceIndexForAppend(current, nextIndex, options),
+    );
+    if (options?.focusNewInput === false) return;
+    focusSourceEntry(id);
+  };
 
   const removeSourcePath = (id: number) => {
     setSourcePaths((prev) => {
-      if (prev.length <= 1) return prev
-      pathSnapshot.delete(id)
-      sourceInputs.delete(id)
-      return prev.filter((e) => e.id !== id)
-    })
-  }
+      if (prev.length <= 1) return prev;
+      pathSnapshot.delete(id);
+      sourceInputs.delete(id);
+      return prev.filter((e) => e.id !== id);
+    });
+  };
 
-  const workflow = createWorkflowGuard()
-  const activeWork = createActiveWorkTracker()
-  let activeJob: ImportJobHandle | undefined
-  const pathSnapshot = new Map<number, string>(resumeSourceLocation ? [[0, resumeSourceLocation]] : [])
-  const sourceInputs = new Map<number, TextareaRenderable>()
+  const workflow = createWorkflowGuard();
+  const activeWork = createActiveWorkTracker();
+  const pathSnapshot = new Map<number, string>(
+    resumeSourceLocation ? [[0, resumeSourceLocation]] : [],
+  );
+  const sourceInputs = new Map<number, TextareaRenderable>();
 
   const readPathText = (id: number) => {
-    const live = sourceInputs.get(id)?.plainText?.trim()
-    if (live) return live
-    return pathSnapshot.get(id)?.trim() ?? ""
-  }
+    const live = sourceInputs.get(id)?.plainText?.trim();
+    if (live) return live;
+    return pathSnapshot.get(id)?.trim() ?? "";
+  };
 
   const snapshotSourcePaths = () => {
     for (const entry of sourcePaths()) {
-      const text = sourceInputs.get(entry.id)?.plainText ?? pathSnapshot.get(entry.id) ?? ""
-      pathSnapshot.set(entry.id, text)
+      const text =
+        sourceInputs.get(entry.id)?.plainText ??
+        pathSnapshot.get(entry.id) ??
+        "";
+      pathSnapshot.set(entry.id, text);
     }
-  }
+  };
 
   const blurSourceInputs = () => {
-    for (const input of sourceInputs.values()) blurIfFocused(input)
-    blurIfFocused(sourceInput)
-  }
+    for (const input of sourceInputs.values()) blurIfFocused(input);
+    blurIfFocused(sourceInput);
+  };
 
   onCleanup(() => {
-    clearInterval(startupTimer)
-    clearInterval(spinTimer)
-  })
+    clearInterval(startupTimer);
+    clearInterval(spinTimer);
+  });
 
-  const sourceInputFocused = () => focusedSourceIndex() >= 0
+  const sourceInputFocused = () => focusedSourceIndex() >= 0;
 
   const focusedSourceIndex = () => {
-    const paths = sourcePaths()
+    const paths = sourcePaths();
     for (let i = 0; i < paths.length; i++) {
-      const input = sourceInputs.get(paths[i]!.id)
-      if (input && !input.isDestroyed && input.focused) return i
+      const input = sourceInputs.get(paths[i]!.id);
+      if (input && !input.isDestroyed && input.focused) return i;
     }
-    return -1
-  }
+    return -1;
+  };
 
   const cycleFocusedSource = (offset: number) => {
-    const paths = sourcePaths()
-    const current = focusedSourceIndex()
-    if (current < 0 || paths.length === 0) return
-    const next = (current + offset + paths.length) % paths.length
-    setFocusedSource(next)
-    const entry = paths[next]
-    if (entry) focusSourceEntry(entry.id)
-  }
+    const paths = sourcePaths();
+    const current = focusedSourceIndex();
+    if (current < 0 || paths.length === 0) return;
+    const next = (current + offset + paths.length) % paths.length;
+    setFocusedSource(next);
+    const entry = paths[next];
+    if (entry) focusSourceEntry(entry.id);
+  };
 
   const allPathsResolved = () =>
-    resolveExistingUserPaths(sourcePaths().map((entry) => readPathText(entry.id)))
+    resolveExistingUserPaths(
+      sourcePaths().map((entry) => readPathText(entry.id)),
+    );
 
-  if (resumeSourceLocation) setPathValidities(0, validateSinglePath(resumeSourceLocation))
+  if (resumeSourceLocation)
+    setPathValidities(0, validatePath(resumeSourceLocation));
 
   const defaultWorkspaceName = createMemo(() => {
-    const resolved = allPathsResolved()
-    if (resolved.length === 0) return "workspace"
-    const first = resolved[0]!
-    const base = path.basename(first)
-    return base || "workspace"
-  })
+    const resolved = allPathsResolved();
+    if (resolved.length === 0) return "workspace";
+    const first = resolved[0]!;
+    const base = path.basename(first);
+    return base || "workspace";
+  });
 
   const hasValidPaths = createMemo(() => {
-    const entries = sourcePaths()
-    return entries.some((e) => pathValidities[e.id] === "valid")
-  })
+    const entries = sourcePaths();
+    return entries.some((e) => pathValidities[e.id] === "valid");
+  });
 
   const stopActiveWork = () => {
-    setStopping(true)
-    spinOn()
-    if (gateResolve) { gateResolve(); gateResolve = undefined }
-    workflow.bump()
-    abortProcessing = true
-    activeJob?.cancel()
-    activeJob = undefined
-    setBusy(false)
-    setWaitingForGate(false)
-  }
+    setStopping(true);
+    spinOn();
+    // The background service owns gates/pauses now; Back aborts the run
+    // unless it was explicitly detached to the home monitor.
+    if (bg.active() && !bg.background()) bg.cancel();
+    workflow.bump();
+    abortProcessing = true;
+    setBusy(false);
+    setWaitingForGate(false);
+  };
 
   const goHome = (reason: "cancel" | "finish" = "finish") => {
     // Resume-incomplete cancel must not leave an unfinished workspace active
@@ -498,52 +776,92 @@ let nameInput: TextareaRenderable | undefined
         setupStatus: spinosa.meta?.setupStatus,
       })
     ) {
-      spinosa.clearActiveWorkspace()
+      spinosa.clearActiveWorkspace();
     }
-    navigate({ type: "global" })
-  }
+    navigate({ type: "global" });
+  };
   const navigateBackFrom = (from: WizardStep) => {
-    if (from === "path") { goHome("cancel"); return }
-    if (from === "name" && resumeSourceAccepted) { logAction("back", `from ${from} to global`); goHome("cancel"); return }
-    if (from === "name") { logAction("back", `from ${from} to path`); setStep("path"); return }
-    if (from === "tools") { logAction("back", `from ${from} to name`); setStep("name"); return }
-    if (from === "scan") { logAction("back", `from ${from} to path`); setStep("path"); return }
-    if (from === "setup" || from === "direct" || from === "markitdown" || from === "ocr" || from === "verification") { logAction("back", `from ${from} to scan`); setStep("scan"); return }
+    if (from === "path") {
+      goHome("cancel");
+      return;
+    }
+    if (from === "name" && resumeSourceAccepted) {
+      logAction("back", `from ${from} to global`);
+      goHome("cancel");
+      return;
+    }
+    if (from === "name") {
+      logAction("back", `from ${from} to path`);
+      setStep("path");
+      return;
+    }
+    if (from === "tools") {
+      logAction("back", `from ${from} to name`);
+      setStep("name");
+      return;
+    }
+    if (from === "scan") {
+      logAction("back", `from ${from} to path`);
+      setStep("path");
+      return;
+    }
+    if (from === "imports") {
+      logAction("back", `from ${from} to scan`);
+      setStep("scan");
+      return;
+    }
+    if (from === "vision") {
+      logAction("back", `from ${from} to imports`);
+      setStep("imports");
+      return;
+    }
+    if (
+      from === "setup" ||
+      from === "direct" ||
+      from === "markitdown" ||
+      from === "pdf" ||
+      from === "ocr" ||
+      from === "verification"
+    ) {
+      logAction("back", `from ${from} to vision`);
+      setStep("vision");
+      return;
+    }
     if (from === "provider") {
-      setGateLabel("Choose provider")
-      setGateAction(() => () => {
-        setWaitingForGate(false)
-        setStep("provider")
-      })
-      setWaitingForGate(true)
-      setStep("verification")
-      return
+      // Back out of provider returns straight to provider selection — no
+      // fake gate (a gate here would sit on a 30s auto-press timer).
+      logAction("back", "from provider to provider");
+      setStep("provider");
+      return;
     }
-    if (from === "startup") { setStep("provider"); return }
+    if (from === "startup") {
+      setStep("provider");
+      return;
+    }
     if (from === "error") {
-      setStep(importOptions().length > 0 ? "imports" : "path")
+      setStep(importOptions().length > 0 ? "imports" : "path");
     }
-  }
+  };
 
-  let backNavigationPending = false
+  let backNavigationPending = false;
   const requestForceLeave = () => {
-    if (!forceLeaveResolve) return false
-    const resolve = forceLeaveResolve
-    forceLeaveResolve = undefined
-    resolve()
-    return true
-  }
+    if (!forceLeaveResolve) return false;
+    const resolve = forceLeaveResolve;
+    forceLeaveResolve = undefined;
+    resolve();
+    return true;
+  };
   const requestBack = (confirmIfActive = true) => {
-    if (backNavigationPending) return
-    const from = step()
-    backNavigationPending = true
-    setStopHint(STOP_SCREEN_DEFAULT_HINT)
+    if (backNavigationPending) return;
+    const from = step();
+    backNavigationPending = true;
+    setStopHint(STOP_SCREEN_DEFAULT_HINT);
     const cancelPath = shouldConfirmSpinosaBack({
       step: from,
       busy: busy(),
       waitingForGate: waitingForGate(),
       cancellableSteps: CANCELABLE_STEPS as unknown as string[],
-    })
+    });
     void runGuardedBackNavigation({
       shouldConfirm: confirmIfActive && cancelPath,
       confirm: () => confirmSpinosaBack(dialog, from),
@@ -551,365 +869,363 @@ let nameInput: TextareaRenderable | undefined
       waitForStop: () => activeWork.wait(STOP_WAIT_SOFT_MS),
       waitUntilSettled: () => activeWork.wait(0).then(() => undefined),
       onStillStopping: () => setStopHint(STOP_SCREEN_STILL_HINT),
-      waitForForceLeave: () => new Promise<void>((resolve) => { forceLeaveResolve = resolve }),
+      waitForForceLeave: () =>
+        new Promise<void>((resolve) => {
+          forceLeaveResolve = resolve;
+        }),
       // Keep the "Stopping process..." overlay readable even when cancel is instant.
       minStopDisplayMs: cancelPath ? STOP_SCREEN_MIN_DWELL_MS : 0,
       navigate: () => navigateBackFrom(from),
     }).finally(() => {
-      forceLeaveResolve = undefined
-      backNavigationPending = false
-      setStopping(false)
-      setStopHint(STOP_SCREEN_DEFAULT_HINT)
-      spinOff()
-    })
-  }
+      forceLeaveResolve = undefined;
+      backNavigationPending = false;
+      setStopping(false);
+      setStopHint(STOP_SCREEN_DEFAULT_HINT);
+      spinOff();
+    });
+  };
 
-  const handleBackPress = () => requestBack(true)
-  const leavePathStep = handleBackPress
+  const handleBackPress = () => requestBack(true);
+  const leavePathStep = handleBackPress;
 
   const handleInterrupt = () => {
     if (stopping()) {
-      requestForceLeave()
-      return
+      requestForceLeave();
+      return;
     }
-    if (!shouldCancelSpinosaWorkOnCtrlC({
-      step: step(),
-      busy: busy(),
-      waitingForGate: waitingForGate(),
-      cancellableSteps: CANCELABLE_STEPS,
-    })) {
-      exit()
-      return
+    if (
+      !shouldCancelSpinosaWorkOnCtrlC({
+        step: step(),
+        busy: busy(),
+        waitingForGate: waitingForGate(),
+        cancellableSteps: CANCELABLE_STEPS,
+      })
+    ) {
+      exit();
+      return;
     }
 
-    appendLogLine("Cancellation requested. Stopping current Spinosa operation...")
-    requestBack(false)
-  }
+    appendLogLine(
+      "Cancellation requested. Stopping current Spinosa operation...",
+    );
+    requestBack(false);
+  };
 
   const renderToolSummaryLine = (check: ToolCheckResult): string => {
-    const icon = check.status === "available" ? "✓" : check.status === "missing" ? "✗" : check.status === "unsupported" ? "–" : "▁"
-    const detail = check.detail ? ` | ${check.detail}` : ""
-    return `${icon} ${check.label} — ${check.status}${detail}`
-  }
+    const icon =
+      check.status === "available"
+        ? "✓"
+        : check.status === "missing"
+          ? "✗"
+          : check.status === "unsupported"
+            ? "–"
+            : "▁";
+    const detail = check.detail ? ` | ${check.detail}` : "";
+    return `${icon} ${check.label} — ${check.status}${detail}`;
+  };
 
-  const generateToolCheckLines = (): ToolCheckResult[] => [
-    { label: "PPU PaddleOCR", status: "checking", detail: "scanned PDFs and images" },
-    { label: "MarkItDown", status: "checking", detail: "Office docs, EPUB, HTML, text PDFs" },
-    { label: "PDF.js", status: "checking", detail: "PDF text extraction and page rendering" },
-  ]
-
-  const runToolCheck = async () => {
-    logStep("tools", "Checking document processing tools")
-    const checks: ToolCheckResult[] = [
-      { label: "PPU PaddleOCR", status: "checking", detail: "scanned PDFs and images" },
-      { label: "MarkItDown", status: "checking", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: "checking", detail: "PDF text extraction and page rendering" },
-    ]
-    setToolChecks(checks)
-    setStep("tools")
-    spinOn()
-
-    await delay(80)
-    const toolStatus = await detectDocumentTools()
-    const ocrStatus = toolStatus.ocr
-      ? "available"
-      : toolStatus.ocrUnsupportedReason
-        ? "unsupported"
-        : "missing"
-    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs and images"
-    const results: ToolCheckResult[] = [
-      { label: "PPU PaddleOCR", status: ocrStatus, detail: ocrDetail },
-      { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
-    ]
-    setToolChecks(results)
-    for (const r of results) logTool(r.label, r.status, r.detail)
-    spinOff()
-  }
-
-  const runToolRepair = async () => {
-    logAction("repair", "Tools missing — repairing")
-    // Set all missing tools back to checking
-    setToolChecks((prev) => prev.map((t) => t.status === "missing" ? { ...t, status: "checking" as const } : t))
-    await delay(80)
-    const bv = await readBundledFrameworkVersion()
-    const channel = bv && isPrereleaseFrameworkVersion(bv) ? "beta" : "stable"
-    await runReinstall({
-      channel,
-      onStdout: (chunk) => {
-        const clean = stripAnsi(chunk)
-        if (clean) appendLogLine(clean)
-      },
-      onStderr: (chunk) => {
-        const clean = stripAnsi(chunk)
-        if (clean) appendLogLine(clean)
-      },
-    })
-    // Re-check after repair
-    await delay(200)
-    const toolStatus = await detectDocumentTools()
-    const ocrStatus = toolStatus.ocr
-      ? "available"
-      : toolStatus.ocrUnsupportedReason
-        ? "unsupported"
-        : "missing"
-    const ocrDetail = toolStatus.ocrUnsupportedReason ?? "scanned PDFs and images"
-    const results = [
-      { label: "PPU PaddleOCR", status: ocrStatus, detail: ocrDetail },
-      { label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", detail: "Office docs, EPUB, HTML, text PDFs" },
-      { label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", detail: "PDF text extraction and page rendering" },
-    ] as ToolCheckResult[]
-    setToolChecks(results)
-    for (const r of results) logTool(r.label, r.status, r.detail)
-    appendLogLine("Tool repair complete.")
-  }
+  const toolActionDeps = {
+    setToolChecks,
+    setStep,
+    spinOn,
+    spinOff,
+    delay,
+    appendLogLine,
+    logStep,
+    logTool,
+    logAction,
+    logError,
+  };
+  const runToolCheck = () => checkDocumentTools(toolActionDeps);
+  const runToolRepair = () => repairDocumentTools(toolActionDeps);
 
   const handleToolAction = () => {
-    if (busy()) return
-    const checks = toolChecks()
-    const needsRepair = checks.some((t) => t.status === "missing")
-    const toolsReady = checks.every((t) => t.status === "available" || t.status === "unsupported")
+    if (busy()) return;
+    const checks = toolChecks();
+    const needsRepair = checks.some((t) => t.status === "missing");
+    const toolsReady = checks.every(
+      (t) => t.status === "available" || t.status === "unsupported",
+    );
     if (needsRepair) {
-      logAction("repair-tools", `${checks.filter(t => t.status === "missing").length} tools missing`)
-      void runToolRepair().catch((err) => {
-        logError("runToolRepair", err)
-        appendLogLine(`Tool repair failed: ${err instanceof Error ? err.message : String(err)}`)
+      logAction(
+        "repair-tools",
+        `${checks.filter((t) => t.status === "missing").length} tools missing`,
+      );
+      void activeWork.run(async () => {
+        setBusy(true)
+        try {
+          await runToolRepair()
+        } catch (err) {
+          logError("runToolRepair", err);
+          appendLogLine(
+            `Tool repair failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        } finally {
+          setBusy(false)
+        }
       })
     } else if (toolsReady) {
-      logAction("start-scan", "All tools ready")
-      void startScan()
+      // Vision/copy flows need nothing local; digital PDFs extract via pdf.js.
+      logAction("start-scan", "All tools ready");
+      void startScan();
     }
+  };
+
+  const startScan = () => {
+    abortProcessing = false
+    workflow.bump()
+    return scanOnboardingSources({
+      pendingPaths,
+      workspaceName,
+      defaultWorkspaceName,
+      setSourceIsCloud,
+      setScanDone,
+      setScanningFile,
+      setScanCount,
+      setScanTotal,
+      setStep,
+      delay,
+      spinOn,
+      spinOff,
+      clearLog,
+      appendLogLine,
+      logStep,
+      logAction,
+      logError,
+      setPreview,
+      setImportOptions,
+      shouldAbort: () => abortProcessing,
+    })
   }
-
-  const startScan = async () => {
-    const resolved = pendingPaths
-    if (!resolved || resolved.length === 0) { logError("startScan", "No pending paths"); setStep("error"); return }
-    setSourceIsCloud(resolved.some((p) => isCloudStoragePath(p)))
-    const shouldAbort = () => abortProcessing
-    logStep("scan", "Scanning source folder")
-    clearLog()
-    setScanDone(false)
-    setScanningFile("")
-    setScanCount(0)
-    setStep("scan")
-    await delay(100)
-    spinOn()
-
-    try {
-      console.error("[scan] startScan begin", resolved)
-      let mergedOptions: ImportOption[] = []
-      for (const src of resolved) {
-        appendLogLine(`Scanning: ${src}`)
-        let scanned = 0
-        console.error("[scan] buildNewWorkspacePreview ->", src)
-        const scanPreview = await buildNewWorkspacePreview(src, workspaceName() || defaultWorkspaceName(), (rel, isFile, discovered) => {
-          setScanningFile(rel)
-          setScanTotal((t) => t + discovered)
-          if (isFile) { scanned++; setScanCount((c) => c + 1) }
-        }, shouldAbort)
-        console.error("[scan] buildNewWorkspacePreview done ->", src, "options:", scanPreview.importOptions.length)
-        setPreview(scanPreview)
-        for (const opt of scanPreview.importOptions) {
-          const existing = mergedOptions.find((m) => m.ext === opt.ext)
-          if (existing) { existing.count += opt.count; existing.bytes += opt.bytes }
-          else { mergedOptions.push({ ...opt }) }
-        }
-      }
-      console.error("[scan] merged options:", mergedOptions.length)
-      setImportOptions(mergedOptions)
-      clearLog()
-      spinOff()
-      setScanDone(true)
-      console.error("[scan] scanDone=true")
-      logAction("scan-done", `${mergedOptions.length} file types found`)
-    } catch (err) {
-      console.error("[scan] startScan threw", err)
-      logError("startScan", err)
-      appendLogLine(`Scan failed: ${err instanceof Error ? err.message : String(err)}`)
-      setStep("error")
-    }
-  }
-
 
   const continueFromPath = async () => {
-    if (busy()) return
-    logAction("continue", "Path step → Name step")
-    snapshotSourcePaths()
-    const resolved = allPathsResolved()
+    if (busy()) return;
+    logAction("continue", "Path step → Name step");
+    snapshotSourcePaths();
+    const resolved = allPathsResolved();
     if (resolved.length === 0) {
-      appendLogLine("At least one valid source path is required.")
-      setStep("error")
-      return
+      appendLogLine("At least one valid source path is required.");
+      setStep("error");
+      return;
     }
     for (const p of resolved) {
       if (!existsSync(p)) {
-        appendLogLine(`Source folder does not exist: ${p}`)
-        setStep("error")
-        return
+        appendLogLine(`Source folder does not exist: ${p}`);
+        setStep("error");
+        return;
       }
     }
-    pendingPaths = resolved
-    if (!workspaceName()) setWorkspaceName(defaultWorkspaceName())
-    logStep("name", `Sources: ${resolved.join(", ")}`)
-    setStep("name")
-  }
+    pendingPaths = resolved;
+    if (!workspaceName()) setWorkspaceName(defaultWorkspaceName());
+    logStep("name", `Sources: ${resolved.join(", ")}`);
+    setStep("name");
+  };
 
   const continueFromName = () => {
-    const primarySource = pendingPaths?.[0]
-    const nextWorkspaceName = workspaceName().trim() || defaultWorkspaceName()
-    if (primarySource) setCreatedWorkspace(resumeWorkspacePath ?? resolveWorkspacePath(primarySource, nextWorkspaceName))
-    logAction("continue", "Name step → Tools step")
-    void runToolCheck()
-  }
+    const primarySource = pendingPaths?.[0];
+    const nextWorkspaceName = workspaceName().trim() || defaultWorkspaceName();
+    if (primarySource)
+      setCreatedWorkspace(
+        resumeWorkspacePath ??
+          resolveWorkspacePath(primarySource, nextWorkspaceName),
+      );
+    logAction("continue", "Name step → Tools step");
+    void runToolCheck();
+  };
 
   const continueFromImports = () => {
+    if (importOptions().length === 0) {
+      // Empty scan: stay put with guidance instead of dead-ending to error.
+      appendLogLine("No importable files found — go back and pick a different source.");
+      return;
+    }
     if (selectedExtensions().length === 0) {
-      appendLogLine("Select at least one file type to continue.")
-      logError("continueFromImports", "No file types selected")
-      setStep("error")
+      appendLogLine("Select at least one file type to continue.");
+      logError("continueFromImports", "No file types selected");
+      setStep("error");
+      return;
+    }
+    // Show OCR model selector as a pop-up step before setup.
+    // This is the lacing point for vision MarkItDown: selected model flows into
+    // scanAndClassify + processMarkitdown (llmModel). No local fallback.
+    logAction(
+      "continue",
+      `Imports → Vision (${selectedExtensions().length} types: ${selectedExtensions().join(",")})`,
+    );
+    setStep("vision");
+  };
+
+  const continueFromVision = () => {
+    const chosenId = selectedOcrModel()
+    const opts = ocrModelOptions()
+    // Chosen is the ●-selected id (not the keyboard focus). Vision picker holds placeholder id
+    // "vision:provider-picker" until a concrete provider/model is picked (chosenId includes "/").
+    let chosenOpt: OcrModelOption | undefined
+    if (chosenId.includes("/")) {
+      chosenOpt = opts.find((o) => o.id === "vision:provider-picker")
+    } else {
+      chosenOpt = opts.find((o) => o.id === chosenId) ?? opts[selectedOcrModelIndex()]
+    }
+    const chosen = chosenId
+
+    if (chosen === "vision:provider-picker") {
+      // No concrete model yet — clicking Continue on vision placeholder opens picker (same as clicking the row)
+      openVisionPicker()
       return
     }
-    logAction("continue", `Imports → Processing (${selectedExtensions().length} types: ${selectedExtensions().join(",")})`)
-    void activeWork.run(startProcessing)
-  }
-
-
-  const gate = (label = "Continue") => new Promise<void>((resolve) => {
-    gateResolve = resolve
-    logGate(label)
-    setGateLabel(label)
-    setGateAction(() => () => { logAction("gate-click", label); setWaitingForGate(false); gateResolve = undefined; resolve() })
-    setWaitingForGate(true)
-  })
+    // Concrete vision model already picked (e.g. "openai/gpt-..." or "openrouter/...:free")
+    if (chosen.includes("/")) {
+      logAction("continue", `Vision → Processing (ocrModel=${chosen})`)
+      void activeWork.run(startProcessing)
+      return
+    }
+    setSelectedOcrModel(chosen);
+    logAction("continue", `Vision → Processing (ocrModel=${chosen})`);
+    void activeWork.run(startProcessing);
+  };
 
   const startProcessing = async () => {
-    if (busy()) return
-    const resolved = pendingPaths
+    if (busy()) return;
+    const resolved = pendingPaths;
     if (!resolved || resolved.length === 0) {
-      appendLogLine("At least one valid source path is required.")
-      setStep("error")
-      return
+      appendLogLine("At least one valid source path is required.");
+      setStep("error");
+      return;
     }
-    setBusy(true)
-    clearLog()
-    setFailedCount(0)
-    setProcessingDone(false)
-    setProgCurrent(0)
-    setProgTotal(1)
-    setProcessingFile("")
-    setProcessingStatus("Starting...")
-    abortProcessing = false
-    const generation = workflow.bump()
-    gateResolve = undefined
-    spinOn()
-    await delay(200)
-    const extensions = selectedExtensions().join(",")
-    const primarySource = resolved[0]!
-    const plannedWorkspace = resumeWorkspacePath ?? preview()?.workspacePath ?? suggestWorkspacePath(primarySource)
-    if (plannedWorkspace) setCreatedWorkspace(plannedWorkspace)
-    let totalFailed = 0
-    let totalRenamed = 0
-
-    const job = createImportJob({
-      kind: "import",
+    setBusy(true);
+    clearLog();
+    setFailedCount(0);
+    setStillMissingCount(0);
+    setImportSummary("");
+    setProcessingDone(false);
+    setProgCurrent(0);
+    setProgTotal(1);
+    setProcessingFile("");
+    setProgressFiles([]);
+    setVerifyStatus("");
+    setProcessingStatus("Starting...");
+    // Hand-off happens after the workspace path is planned (service needs
+    // it for the home chip + detach navigation). See below.
+    const extensions = selectedExtensions().join(",");
+    const primarySource = resolved[0]!;
+    const plannedWorkspace =
+      resumeWorkspacePath ??
+      preview()?.workspacePath ??
+      suggestWorkspacePath(primarySource);
+    if (plannedWorkspace) setCreatedWorkspace(plannedWorkspace);
+    // Hand the run to the background-capable service (single-flight: a
+    // second start while one is active is refused).
+    const started = bg.start({
+      kind: "onboarding",
       title: "Onboarding import",
-      directory: plannedWorkspace ?? sdk.directory,
+      directory: sdk.directory,
+      workspacePath: plannedWorkspace,
+      modelId: selectedOcrModel(),
       publish: sdk.publishJobEvent,
       localEmit: (event) => sdk.event.emit("event", event),
-    })
-    activeJob = job
-    const shouldAbort = () => abortProcessing || !workflow.active(generation) || job.shouldAbort()
-    job.start()
-    const sharedProg = job.prog
-    sharedProg.on((e) => {
-      // Use the emitter as the source of truth for both numerator and denominator
-      // so the bar self-corrects even if the pre-set total was wrong/empty.
-      if (e.total > 0) setProgTotal(e.total)
-      if (e.current >= 0) setProgCurrent(e.current)
-      if (e.relPath) setProcessingFile(e.relPath)
-      if (e.status && e.relPath) {
-        setProgressFiles((prev) => applyImportProgressStatus(prev, e.relPath, e.status!))
-      }
-    })
-    const onPhaseLog = job.wrapLog((msg: string) => {
-      if (msg.startsWith("  ")) {
-        // Per-file progress lines (e.g. "file → OCR ...") are shown as the
-        // status only; the emitter already drives processingFile, so setting it
-        // here too would duplicate the same text as a second line.
-        const label = msg.trim()
-        setProcessingStatus(label)
-        return
-      }
-      appendLogLine(msg)
-    })
+      credentialNote: (providerId) => visionCredentialNote(providerId),
+    });
+    if (!started) {
+      appendLogLine("An import is already running — finish or cancel it first.");
+      setBusy(false);
+      return;
+    }
+    const { job, shouldAbort } = started;
+    // (service owns the job from here; local `job` alias keeps the tail readable)
+    const sharedProg = job.prog;
+    sharedProg.on((e) => bg.reportProgress(e));
+    const onPhaseLog = job.wrapLog((msg: string) => bg.reportPhaseLog(msg, formatImportProgressStatus));
+    bg.setPhase("setup");
+    bg.reportStatus("Starting...");
+    spinOn();
+    await delay(200);
 
     try {
-      setStep("setup")
-      setProcessingStatus("Creating workspace...")
+      setStep("setup");
+      setProcessingStatus("Creating workspace...");
       // Drive the progress bar off the setup sub-steps emitted by createWorkspace
       // so the bar is truthful (0% → 100%) instead of a frozen placeholder.
       const setupSteps = [
         "Creating workspace directory",
         "Resuming interrupted workspace",
         "Copying workspace template",
-        "Creating user-state directories",
-        "Writing workspace metadata",
-        "Registering in global registry",
+        "Creating workspace folders",
+        "Saving workspace settings",
+        "Registering the workspace",
         "Writing setup files",
-      ]
-      let setupDone = 0
-      setProgTotal(setupSteps.length)
-      setProgCurrent(0)
+      ];
+      let setupDone = 0;
+      bg.setProgTotal(setupSteps.length);
+      bg.setProgCurrent(0);
       const setupProgress = (msg: string) => {
-        appendLogLine(msg)
-        setProcessingStatus(msg)
+        bg.appendLog(msg);
+        bg.reportStatus(msg);
         if (setupSteps.some((s) => msg.startsWith(s))) {
-          setupDone = Math.min(setupSteps.length, setupDone + 1)
-          setProgCurrent(setupDone)
-          sharedProg.file("setup", setupDone, setupSteps.length, msg)
+          setupDone = Math.min(setupSteps.length, setupDone + 1);
+          bg.setProgCurrent(setupDone);
+          sharedProg.file("setup", setupDone, setupSteps.length, msg);
         }
-      }
-      await yieldToEventLoop()
-      const frameworkRoot = resolveFrameworkRoot()
-      if (!frameworkRoot) {
-        appendLogLine("Framework root not found — cannot create workspace.")
-        spinOff()
-        setBusy(false)
-        setStep("error")
-        return
-      }
-      const wsResult = await createWorkspace({
-        corpusPath: primarySource,
-        frameworkRoot,
+      };
+      await yieldToEventLoop();
+      const preparation = await prepareOnboardingWorkspace({
+        primarySource,
         workspaceName: workspaceName() || defaultWorkspaceName(),
-        resumeWorkspacePath,
-        onProgress: setupProgress,
-        onRecover: (msg) => appendLogLine(`Note: ${msg}`),
-        shouldAbort,
-      })
-      if (shouldAbort()) return
-      if (!wsResult.success) { setStep("error"); return }
-      // Registration / status writes are non-essential: a wedged registry lock
-      // or missing marker must not abort an otherwise-good workspace.
-      const statusOk = await writeWorkspaceStatus(wsResult.workspacePath, "importing")
-      if (!statusOk) appendLogLine("Warning: could not write workspace status marker (non-fatal).")
-      const ctx: OnboardingContext = await prepareOnboarding({
-        workspacePath: wsResult.workspacePath,
-        frameworkRoot,
-        sourcePath: primarySource,
         projectTitle: workspaceName() || path.basename(primarySource),
-        flagExtensions: extensions,
-      }) as OnboardingContext
-      if ("success" in ctx && !ctx.success) { setStep("error"); return }
-      setCreatedWorkspace(ctx.workspacePath)
+        resumeWorkspacePath,
+        extensions,
+        sourcePaths: resolved,
+        onProgress: setupProgress,
+        onRecover: (message) => bg.appendLog(`Note: ${message}`),
+        shouldAbort,
+        appendLogLine,
+      });
+      if (preparation.kind === "aborted") return;
+      if (preparation.kind === "error") {
+        bg.appendLog(preparation.message);
+        setStep("error");
+        return;
+      }
+      const { frameworkRoot, context: ctx } = preparation;
 
-      setProcessingStatus("Preparing import plan...")
-      const classified = await scanAndClassifySource(ctx.sourcePath, ctx.rawDir, ctx.batches, undefined, shouldAbort)
-      if (!classified) { setStep("error"); return }
-      const totalMd = classified.markitdownFiles.length
-      const totalOcr = classified.ocrFiles.length
-      const totalDirect = classified.directFiles.length
-      appendLogLine(`[diag] direct=${totalDirect} markitdown=${classified.markitdownFiles.length} ocr=${classified.ocrFiles.length}`)
+      bg.reportStatus("Preparing import plan...");
+      // The scan selector merges extensions from every source. Re-apply that
+      // selection after the primary workspace scan so extra-source-only
+      // extensions do not cause the primary batch to fall back to select-all.
+      ctx.batches.parseExtensionsFromFlag(extensions);
+      const classified = await scanAndClassifySource(
+        ctx.sourcePath,
+        ctx.rawDir,
+        ctx.batches,
+        undefined,
+        shouldAbort,
+        bg.getModel(),
+      );
+      if (!classified) {
+        setStep("error");
+        return;
+      }
+      // Resume: drop already-imported files (unchanged fingerprint + route)
+      // so re-runs only process new, changed, re-routed, or failed files.
+      // Already-done rows render done immediately for truthful progress.
+      const resume = applyResumeFilter(classified, classified.logsDir, {
+        modelId: bg.getModel(),
+        onLog: (m) => bg.appendLog(m),
+      });
+      for (const rel of resume.skippedUnchanged) bg.reportProgress({ relPath: rel, status: "done" });
+      const totalMd = classified.markitdownFiles.length;
+      const totalVision = (classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles?.length ?? 0;
+      const totalOcr = classified.ocrFiles.length;
+      const totalDirect = classified.directFiles.length;
+      bg.seedQueue([
+        ...classified.directFiles,
+        ...((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []),
+        ...classified.markitdownFiles,
+        ...((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles ?? []),
+        ...classified.ocrFiles,
+      ].map((file) => file.rel));
+      bg.appendLog(
+        `[diag] direct=${totalDirect} markitdown=${classified.markitdownFiles.length} vision=${totalVision} ocr=${classified.ocrFiles.length} copy=${((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []).length}`,
+      );
 
       const phases = await runImportWorkflow(classified, {
         prog: sharedProg,
@@ -917,908 +1233,1013 @@ let nameInput: TextareaRenderable | undefined
         shouldAbort,
         signal: job.registered.signal,
         onChild: job.registerChild,
+        ocrModelId: () => bg.getModel(),
+        transcribeVision,
+        // Shared service policy: empty results skip, auth/other errors pause
+        // until the wizard red button or the home monitor resolves.
+        onVisionFailure: (rel, modelId, error) => bg.onVisionFailure(rel, modelId, error),
         onRetry: (attempt, reason) => {
-          setProcessingStatus(`Retrying file (attempt ${attempt}): ${reason}`)
+          bg.reportStatus(`Retrying file (attempt ${attempt}): ${reason}`);
         },
         onRename: (original, renamed) => {
-          totalRenamed++
-          appendLogLine(`  renamed (name too long): ${original} → ${renamed}`)
+          bg.appendLog(`  renamed (name too long): ${original} → ${renamed}`);
         },
         beforePhase: async (id, count) => {
           if (id === "direct") {
-            setStep("direct")
-            setProgTotal(count > 0 ? count : 1)
-            setProgCurrent(0)
-            setProgressFiles(seedImportQueue(classified.directFiles.map((f) => f.rel)))
-            setProcessingStatus("Preparing direct copy...")
-            await delay(1000)
-            return true
+            setStep("direct");
+            bg.setPhase("direct");
+            bg.reportStatus(`Copying text-based files to raw — ${count} files`);
+            await delay(500);
+            return true;
+          }
+          if (id === "copy") {
+            setStep("direct");
+            bg.setPhase("copy");
+            bg.reportStatus(`Copying ${count} files as-is (no OCR engine selected)`);
+            await delay(500);
+            return true;
           }
           if (id === "markitdown") {
-            setBusy(false)
-            await gate("Process text files")
-            if (shouldAbort()) return false
-            setBusy(true)
-            setStep("markitdown")
-            setProgTotal(count)
-            setProgCurrent(0)
-            setProgressFiles(seedImportQueue(classified.markitdownFiles.map((f) => f.rel)))
-            setProcessingStatus("Preparing MarkItDown conversion...")
-            await delay(1000)
-            return true
+            setBusy(false);
+            // Foreground: wizard Continue UI (30s auto-press) resolves the
+            // service gate. Background: auto-passed, no UI.
+            if (!await bg.requestGate(id, count, "Converting office docs")) return false;
+            if (shouldAbort()) return false;
+            setBusy(true);
+            setStep("markitdown");
+            bg.setPhase("markitdown");
+            bg.setVisionError(undefined)
+            bg.reportStatus(`Converting via MarkItDown — ${count} files — Back to change model`);
+            await delay(500);
+            return true;
           }
-          setBusy(false)
-          await gate("Process images and PDFs")
-          if (shouldAbort()) return false
-          setBusy(true)
-          setStep("ocr")
-          setProgTotal(count)
-          setProgCurrent(0)
-          setProgressFiles(seedImportQueue(classified.ocrFiles.map((f) => f.rel)))
-          setProcessingStatus("Preparing OCR...")
-          await delay(1000)
-          return true
+          if (id === "vision") {
+            setBusy(false);
+            if (!await bg.requestGate(id, count, `Transcribe images via Vision model`)) return false;
+            if (shouldAbort()) return false;
+            setBusy(true);
+            setStep("markitdown");
+            bg.setPhase("vision");
+            bg.setVisionError(undefined)
+            bg.reportStatus(`Transcribing images via Vision model — ${count} files — Back to change model`);
+            await delay(500);
+            return true;
+          }
+          if (id === "pdf") {
+            setBusy(false);
+            if (!await bg.requestGate(id, count, `Process PDFs (text pages direct, image pages via engine)`)) return false;
+            if (shouldAbort()) return false;
+            setBusy(true);
+            setStep("pdf");
+            bg.setPhase("pdf");
+            bg.setVisionError(undefined)
+            bg.reportStatus(`Processing PDFs — ${count} files — Back to change model`);
+            await delay(500);
+            return true;
+          }
+          setBusy(false);
+          if (!await bg.requestGate(id, count, "Copy scanned leftovers as-is (no local OCR)")) return false;
+          if (shouldAbort()) return false;
+          setBusy(true);
+          setStep("ocr");
+          bg.setPhase("ocr");
+          // OCR phase is now a copy fallback (local OCR removed); images via vision/copy externalized
+          bg.reportStatus(`Copying scanned leftovers as-is — ${count} files — Back to change vision model`);
+          await delay(500);
+          return true;
         },
         afterPhase: async (id, result) => {
-          if (result.failed > 0) totalFailed += result.failed
-          if (result.renamed > 0) totalRenamed += result.renamed
           if (id === "direct") {
-            setProcessingStatus(`Direct copy complete — ${totalDirect} files`)
-            await delay(1000)
+            bg.reportStatus(`Text-based files copied — ${result.converted} files`);
+            await delay(500);
+          }
+          if (id === "copy") {
+            bg.reportStatus(`Files copied as-is — ${result.converted} files`);
+            await delay(500);
           }
           if (id === "markitdown") {
-            setProcessingStatus(`MarkItDown complete — ${totalMd} files`)
-            await delay(1000)
+            bg.setVisionError(undefined)
+            bg.reportStatus(
+              `Office docs converted — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+            );
+            await delay(500);
+          }
+          if (id === "pdf") {
+            bg.setVisionError(undefined)
+            bg.reportStatus(
+              `PDFs processed — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+            );
+            await delay(500);
+          }
+          if (id === "vision") {
+            const visionFailed = result.failed > 0
+            if (visionFailed) {
+              const failedNoun = result.failed === 1 ? "file" : "files"
+              bg.setVisionError(`Vision ${bg.getModel()} failed on ${result.failed} ${failedNoun}. Check the provider key or rate limit. Then change the model and retry.`)
+              bg.reportStatus(
+                `Vision model — ${result.converted} transcribed, ${result.failed} failed. See the error below.`
+              );
+            } else {
+              bg.setVisionError(undefined)
+              bg.reportStatus(
+                `Images & scanned PDFs via Vision model — ${result.converted} files${result.failed ? `, ${result.failed} failed` : ""}`,
+              );
+            }
+            await delay(visionFailed ? 2500 : 500);
           }
           if (id === "ocr") {
-            setProcessingStatus(
+            bg.reportStatus(
               result.failed > 0
-                ? `OCR complete — ${result.converted} ok, ${result.failed} failed`
-                : `OCR complete — ${totalOcr} files`,
-            )
-            // Dwell so failure-first 100% results are readable before verify.
-            await delay(1500)
+                ? `Scanned leftovers copied — ${result.converted} ok, ${result.failed} failed — Back to change vision model`
+                : `Scanned leftovers copied as-is — ${result.converted} files`,
+            );
+            await delay(1000);
           }
         },
-      })
+      });
       if (classified.markitdownFiles.length === 0) {
-        appendLogLine("MarkItDown: 0 files to convert — skipping")
+        bg.appendLog("MarkItDown: 0 files to convert — skipping");
+      }
+      if (((classified as unknown as { visionFiles?: typeof classified.markitdownFiles }).visionFiles?.length ?? 0) === 0) {
+        bg.appendLog("Vision: 0 images to transcribe — skipping");
       }
       if (classified.ocrFiles.length === 0) {
-        appendLogLine("OCR: 0 files to convert — skipping")
+        bg.appendLog("OCR: 0 files to convert — skipping");
       }
-      if (shouldAbort()) { spinOff(); setBusy(false); return }
+      {
+        const pdfCount =
+          ((classified as unknown as { visionFiles?: { src: string }[] }).visionFiles ?? []).filter((f) => f.src.toLowerCase().endsWith(".pdf")).length +
+          classified.ocrFiles.filter((f) => f.src.toLowerCase().endsWith(".pdf")).length;
+        if (pdfCount === 0) {
+          bg.appendLog("PDF: 0 files to process — skipping");
+        }
+      }
+      if ((((classified as unknown as { copyFiles?: typeof classified.markitdownFiles }).copyFiles ?? []).length) === 0) {
+        bg.appendLog("Copy: 0 files to keep as-is — skipping");
+      }
+      if (shouldAbort()) {
+        spinOff();
+        setBusy(false);
+        return;
+      }
 
-      const dr = phases.direct
-      const mr = phases.markitdown
-      const or = phases.ocr
+      const dr = phases.direct;
+      const mr = phases.markitdown;
+      const pr = phases.pdf;
+      const vr = (phases as unknown as { vision?: typeof mr }).vision ?? { converted: 0, skipped: 0, failed: 0, renamed: 0, recoverable: [] as typeof mr.recoverable };
+      const or = phases.ocr;
+
+      const mergePhase = (target: typeof dr, addition: typeof dr) => {
+        target.converted += addition.converted;
+        target.skipped += addition.skipped;
+        target.failed += addition.failed;
+        target.renamed += addition.renamed;
+        target.recoverable.push(...addition.recoverable);
+      };
+      // Copy-as-is counts ride with direct ("copied" family) in totals.
+      mergePhase(dr, phases.copy);
+      let totalRecovered = 0;
+      let totalStillMissing = 0;
+      const applyVerification = (verification: {
+        recoveredFiles?: string[];
+        stillMissingFiles?: string[];
+      }) => {
+        for (const file of verification.recoveredFiles ?? []) {
+          bg.reportProgress({ relPath: file, status: "done" });
+        }
+        for (const file of verification.stillMissingFiles ?? []) {
+          bg.reportProgress({ relPath: file, status: "failed" });
+        }
+      };
+
+      // Namespace additional source folders so equal filenames do not overwrite
+      // one another and all sources remain distinguishable in the result list.
+      for (let i = 1; i < resolved.length; i++) {
+        const source = resolved[i]!;
+        const sourceFolder = `source-${i + 1}`;
+        bg.appendLog(`Processing: ${source} → ${sourceFolder}/`);
+        const extraClassified = await scanAndClassifySource(
+          source,
+          ctx.rawDir,
+          ctx.batches,
+          sourceFolder,
+          shouldAbort,
+          bg.getModel(),
+        );
+        if (!extraClassified) {
+          bg.appendLog(`No importable files in: ${source}`);
+          continue;
+        }
+
+        const extraResume = applyResumeFilter(extraClassified, extraClassified.logsDir, {
+          modelId: bg.getModel(),
+          onLog: (m) => bg.appendLog(m),
+        });
+        for (const rel of extraResume.skippedUnchanged) bg.reportProgress({ relPath: rel, status: "done" });
+
+        bg.seedQueue([
+          ...extraClassified.directFiles,
+          ...((extraClassified as unknown as { copyFiles?: typeof extraClassified.markitdownFiles }).copyFiles ?? []),
+          ...extraClassified.markitdownFiles,
+          ...((extraClassified as unknown as { visionFiles?: typeof extraClassified.markitdownFiles }).visionFiles ?? []),
+          ...extraClassified.ocrFiles,
+        ].map((file) => file.rel));
+
+        const extraPhases = await runImportWorkflow(extraClassified, {
+          prog: sharedProg,
+          onLog: onPhaseLog,
+          shouldAbort,
+          signal: job.registered.signal,
+          onChild: job.registerChild,
+          ocrModelId: () => bg.getModel(),
+          transcribeVision,
+          onVisionFailure: (rel, modelId, error) => bg.onVisionFailure(rel, modelId, error),
+          onRetry: (attempt, reason) => {
+            bg.reportStatus(`Retrying file (attempt ${attempt}): ${reason}`);
+          },
+          onRename: (original, renamed) => {
+            bg.appendLog(`  renamed (name too long): ${original} → ${renamed}`);
+          },
+          beforePhase: async (id, count) => {
+            // Extra sources skip gates (primary run already gated); still
+            // track phase truthfully for the monitor + BG availability.
+            // Copy rides the direct step visuals (same "copied as-is" family).
+            if (shouldAbort()) return false;
+            setStep(id === "copy" ? "direct" : id);
+            bg.setPhase(id);
+            bg.reportStatus(`${sourceFolder}: ${id} — ${count} files`);
+            return true;
+          },
+          afterPhase: async (id, result) => {
+            bg.reportStatus(
+              `${sourceFolder}: ${id} complete — ${result.converted} delivered`+
+              (result.failed > 0 ? `, ${result.failed} failed` : ""),
+            );
+          },
+        });
+        mergePhase(dr, extraPhases.direct);
+        mergePhase(dr, extraPhases.copy);
+        mergePhase(mr, extraPhases.markitdown);
+        mergePhase(pr, extraPhases.pdf);
+        mergePhase(vr, (extraPhases as unknown as { vision?: typeof mr }).vision ?? { converted: 0, skipped: 0, failed: 0, renamed: 0, recoverable: [] as typeof mr.recoverable });
+        mergePhase(or, extraPhases.ocr);
+
+        const extraVerify = await verifyAndRecoverImport(
+          source,
+          ctx.rawDir,
+          ctx.batches,
+          true,
+          true,
+          onPhaseLog,
+          shouldAbort,
+          ctx.rawDir,
+          sourceFolder,
+          undefined,
+          bg.getModel(),
+        );
+        totalRecovered += extraVerify.recovered;
+        totalStillMissing += extraVerify.stillMissing;
+        applyVerification(extraVerify);
+      }
+      if (shouldAbort()) return;
+
+      // Summary accounting must cover every namespaced source, not only the
+      // primary source scanned while creating the workspace.
+      ctx.copyableCount = bg.snapshot().files.length;
 
       // Phase C: Finalize (verification). Keep last-phase progressFiles, bar
       // counters, and phase status so the results panel stays accurate during verify.
-      setProcessingFile("")
-      setVerifyStatus("Verifying import...")
-      setStep("verification")
-      const result = await completeOnboarding(ctx, { direct: dr, markitdown: mr, ocr: or }, {
-        workspacePath: ctx.workspacePath,
-        frameworkRoot,
-        sourcePath: ctx.sourcePath,
-        projectTitle: ctx.projectTitle,
-        onPhase: (_phase, msg) => {
-          setVerifyStatus(msg)
-          appendLogLine(msg)
+      setVerifyStatus("Verifying import...");
+      setStep("verification");
+      bg.setPhase("verification");
+      bg.reportStatus("Verifying import...");
+      const result = await completeOnboarding(
+        ctx,
+        { direct: dr, markitdown: mr, pdf: pr, vision: vr, ocr: or },
+        {
+          workspacePath: ctx.workspacePath,
+          frameworkRoot,
+          sourcePath: ctx.sourcePath,
+          projectTitle: ctx.projectTitle,
+          ocrModelId: bg.getModel(),
+          onPhase: (_phase, msg) => {
+            setVerifyStatus(msg);
+            bg.appendLog(msg);
+          },
+          shouldAbort,
+          additionalRecovered: totalRecovered,
         },
-        shouldAbort,
-      })
-      if (shouldAbort()) return
+      );
+      if (shouldAbort()) return;
+
+      if (result.verify) {
+        totalRecovered += result.verify.recovered;
+        totalStillMissing += result.verify.stillMissing;
+        applyVerification(result.verify);
+      }
 
       if (result.success) {
-        // Import additional source paths
-        let extraCopied = 0, extraMd = 0, extraOcr = 0, extraDirect = 0, extraMdTotal = 0, extraOcrTotal = 0, extraFailed = 0
-        for (let i = 1; i < resolved.length; i++) {
-          const extra = resolved[i]!
-          setProcessingStatus(`Importing: ${extra}`)
-          const addFileResult = await addFiles({
-            workspacePath: ctx.workspacePath,
-            sourcePath: extra,
-            sourceIsDir: true,
-            extensions,
-            onProgress: (msg) => appendLogLine(msg),
-            shouldAbort,
-            signal: job.registered.signal,
-            onChild: job.registerChild,
-          })
-          // Fold the extra-source results into the summary totals so a
-          // multi-source import is reported accurately.
-          extraCopied += addFileResult.copied
-          extraMd += addFileResult.mdConverted
-          extraOcr += addFileResult.ocrConverted
-          extraDirect += addFileResult.copied + addFileResult.skipped
-          extraMdTotal += addFileResult.mdConverted + addFileResult.mdSkipped
-          extraOcrTotal += addFileResult.ocrConverted + addFileResult.ocrSkipped
-          extraFailed += addFileResult.failed + addFileResult.mdFailed + addFileResult.ocrFailed
-          if (!addFileResult.success) {
-            appendLogLine(`  ⚠ Partial import for ${extra}`)
-          }
-        }
-        dr.converted += extraCopied
-        mr.converted += extraMd
-        or.converted += extraOcr
-        totalFailed += extraFailed
-
-        const stillMissing = result.verify?.stillMissing ?? 0
-        const recovered = result.verify?.recovered ?? 0
-        setFailedCount(totalFailed)
-        setStillMissingCount(stillMissing)
+        const counts = countImportProgress(bg.snapshot().files);
+        const directTotal = dr.converted + dr.skipped + dr.failed;
+        const markitdownTotal = mr.converted + mr.skipped + mr.failed;
+        const pdfTotal = pr.converted + pr.skipped + pr.failed;
+        const visionTotal = vr.converted + vr.skipped + vr.failed;
+        const ocrTotal = or.converted + or.skipped + or.failed;
+        const totalFailed = counts.failed;
+        const totalRenamed = dr.renamed + mr.renamed + pr.renamed + vr.renamed + or.renamed;
+        setFailedCount(totalFailed);
+        setStillMissingCount(totalStillMissing);
         const summary =
-          `${dr.converted}/${totalDirect + extraDirect} copied · ${mr.converted}/${totalMd + extraMdTotal} markitdown · ${or.converted}/${totalOcr + extraOcrTotal} ocr` +
+          `${dr.converted + dr.skipped}/${directTotal} copied · ${mr.converted + mr.skipped}/${markitdownTotal} markitdown · ${pr.converted + pr.skipped}/${pdfTotal} pdf · ${vr.converted + vr.skipped}/${visionTotal} vision · ${or.converted + or.skipped}/${ocrTotal} ocr` +
           (totalRenamed > 0 ? ` · ${totalRenamed} renamed` : "") +
-          (totalFailed > 0 ? ` · ${totalFailed} failed → _failed_files/` : "") +
-          (recovered > 0 ? ` · ${recovered} recovered` : "") +
-          (stillMissing > 0 ? ` · ${stillMissing} still missing` : "")
-        setImportSummary(summary)
-        setProcessingDone(true)
-        setProcessingStatus("All done")
-        if (totalFailed > 0 || stillMissing > 0) {
-          persistImportWizardLogLines(logLines(), "onboarding-import")
-          job.finish("error", summary)
-        } else {
-          job.finish("completed", summary)
+          (totalFailed > 0 ? ` · ${totalFailed} failed` : "") +
+          (totalRecovered > 0 ? ` · ${totalRecovered} recovered` : "") +
+          (totalStillMissing > 0 && totalFailed === 0 ? ` · ${totalStillMissing} still missing` : "");
+        const ok = totalFailed === 0 && totalStillMissing === 0;
+        if (bg.background()) {
+          // Headless finish: no wizard summary screen — the monitor dialog
+          // and home chip carry the result (chip toasts on completion).
+          bg.finish({
+            converted: dr.converted + mr.converted + pr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + pr.skipped + vr.skipped + or.skipped,
+            failed: totalFailed,
+            renamed: totalRenamed,
+            recovered: totalRecovered,
+            stillMissing: totalStillMissing,
+            text: summary,
+            success: ok,
+          });
+          persistImportWizardLogLines(bg.snapshot().logs, "onboarding-import");
+          setBusy(false);
+          spinOff();
+          return;
         }
-        setGateLabel("Go to the workspace")
-        setGateAction(() => () => { setWaitingForGate(false); void finishProvider("spinosa") })
-        setWaitingForGate(true)
+        setImportSummary(summary);
+        setProcessingDone(true);
+        setProcessingStatus("All done");
+        if (!ok) {
+          persistImportWizardLogLines(bg.snapshot().logs, "onboarding-import");
+          bg.finish({
+            converted: dr.converted + mr.converted + pr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + pr.skipped + vr.skipped + or.skipped,
+            failed: totalFailed,
+            renamed: totalRenamed,
+            recovered: totalRecovered,
+            stillMissing: totalStillMissing,
+            text: summary,
+            success: false,
+          });
+        } else {
+          bg.finish({
+            converted: dr.converted + mr.converted + pr.converted + vr.converted + or.converted,
+            skipped: dr.skipped + mr.skipped + pr.skipped + vr.skipped + or.skipped,
+            failed: totalFailed,
+            renamed: totalRenamed,
+            recovered: totalRecovered,
+            stillMissing: totalStillMissing,
+            text: summary,
+            success: true,
+          });
+        }
+        setGateLabel("Open workspace");
+        setGateAction(() => () => {
+          setWaitingForGate(false);
+          void finishProvider("spinosa");
+        });
+        setGateAutoPress(false);
+        setWaitingForGate(true);
       } else {
-        job.finish("error", "Onboarding import failed")
-        setStep("error")
+        const counts = countImportProgress(bg.snapshot().files);
+        setFailedCount(counts.failed);
+        setStillMissingCount(totalStillMissing);
+        bg.finish({
+          converted: 0,
+          skipped: 0,
+          failed: counts.failed,
+          renamed: 0,
+          recovered: totalRecovered,
+          stillMissing: totalStillMissing,
+          text: "Spinosa found nothing to import.",
+          success: false,
+        });
+        if (bg.background()) {
+          setBusy(false);
+          spinOff();
+          return;
+        }
+        setImportSummary("Spinosa found nothing to import.");
+        setProcessingDone(true);
+        setStep("error");
       }
     } catch (err) {
       if (isSpinosaCancellationError(err) || shouldAbort()) {
-        appendLogLine("Spinosa import cancelled.")
-        setProcessingStatus("Cancelled.")
-        job.cancel()
-        return
+        bg.appendLog("Spinosa import cancelled.");
+        bg.reportStatus("Import cancelled.");
+        bg.cancel();
+        return;
       }
-      appendLogLine(`Error: ${err instanceof Error ? err.message : String(err)}`)
-      job.finish("error", err instanceof Error ? err.message : String(err))
-      setStep("error")
+      bg.appendLog(
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      bg.finish({
+        converted: 0,
+        skipped: 0,
+        failed: 0,
+        renamed: 0,
+        recovered: 0,
+        stillMissing: 0,
+        text: err instanceof Error ? err.message : String(err),
+        success: false,
+      });
+      if (!bg.background()) setStep("error");
     } finally {
-      if (shouldAbort() && !processingDone()) job.cancel()
-      if (activeJob === job) activeJob = undefined
-      spinOff()
-      setBusy(false)
+      if (shouldAbort() && !processingDone() && !bg.background()) bg.cancel();
+      spinOff();
+      setBusy(false);
     }
-  }
-
+  };
 
   const stopStartupProgress = () => {
     if (startupTimer) {
-      clearInterval(startupTimer)
-      startupTimer = undefined
+      clearInterval(startupTimer);
+      startupTimer = undefined;
     }
-  }
+  };
 
   const startStartupProgress = () => {
-    const startedAt = Date.now()
-    setStartupElapsedMs(0)
-    setStartupError(undefined)
-    setStartupMessage(formatStartupProgressMessage(0))
-    stopStartupProgress()
+    const startedAt = Date.now();
+    setStartupElapsedMs(0);
+    setStartupError(undefined);
+    setStartupMessage(formatStartupProgressMessage(0));
+    stopStartupProgress();
     startupTimer = setInterval(() => {
-      const elapsed = Date.now() - startedAt
-      setStartupElapsedMs(elapsed)
-      setStartupMessage(formatStartupProgressMessage(elapsed))
-    }, STARTUP_PROGRESS_INTERVAL_MS)
-  }
+      const elapsed = Date.now() - startedAt;
+      setStartupElapsedMs(elapsed);
+      setStartupMessage(formatStartupProgressMessage(elapsed));
+    }, STARTUP_PROGRESS_INTERVAL_MS);
+  };
 
   const finishProvider = async (cliValue: string) => {
-    logAction("finish-provider", `CLI: ${cliValue}`)
+    logAction("finish-provider", `CLI: ${cliValue}`);
     try {
-      setStep("startup")
-      startStartupProgress()
-      const workspacePath = createdWorkspace()
+      setStep("startup");
+      startStartupProgress();
+      const workspacePath = createdWorkspace();
       if (workspacePath) {
-        await writePreferredCli(workspacePath, cliValue)
+        await writePreferredCli(workspacePath, cliValue);
       }
-      setSelectedCli(CLI_OPTIONS.findIndex((o) => o.value === cliValue))
+      setSelectedCli(CLI_OPTIONS.findIndex((o) => o.value === cliValue));
 
       if (cliValue === "spinosa") {
         if (workspacePath) {
-          const prompt = await readStartupPrompt(workspacePath)
+          const prompt = await readStartupPrompt(workspacePath);
           spinosa.queuePrompt(
             buildStartupChatPrompt(
-              prompt ?? "Error: startup-prompt.md not found. Run the startup indexing workflow manually.",
+              prompt ??
+                "Error: startup-prompt.md not found. Run the startup indexing workflow manually.",
             ),
             workspacePath,
-          )
-          setStartupMessage("Startup complete")
-          stopStartupProgress()
-          await delay(300)
-          await spinosa.openWorkspace(workspacePath, { route: { type: "global" } })
+          );
+          setStartupMessage("Startup complete");
+          stopStartupProgress();
+          await delay(300);
+          await spinosa.openWorkspace(workspacePath, {
+            route: { type: "global" },
+          });
         }
       } else {
         if (workspacePath) {
-          await tsRunStartup({ workspacePath, frameworkRoot: resolveFrameworkRoot() ?? "", preferredCli: cliValue })
+          await tsRunStartup({
+            workspacePath,
+            frameworkRoot: resolveFrameworkRoot() ?? "",
+            preferredCli: cliValue,
+          });
         }
-        setStartupMessage("Startup complete")
-        stopStartupProgress()
-        await delay(300)
-        goHome()
+        setStartupMessage("Startup complete");
+        stopStartupProgress();
+        await delay(300);
+        goHome();
       }
-      logAction("finish-done", `Workspace: ${workspacePath}, CLI: ${cliValue}`)
+      logAction("finish-done", `Workspace: ${workspacePath}, CLI: ${cliValue}`);
     } catch (err) {
-      stopStartupProgress()
-      logError("finishProvider", err)
-      const msg = err instanceof Error ? err.message : String(err)
-      setStartupError(msg)
-      setStartupMessage(formatStartupProgressMessage(Math.max(startupElapsedMs(), STARTUP_PROGRESS_THRESHOLD_MS)))
-      appendLogLine(`Failed to launch ${cliValue}: ${msg}`)
-      setStep("startup")
+      stopStartupProgress();
+      logError("finishProvider", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setStartupError(msg);
+      setStartupMessage(
+        formatStartupProgressMessage(
+          Math.max(startupElapsedMs(), STARTUP_PROGRESS_THRESHOLD_MS),
+        ),
+      );
+      appendLogLine(`Failed to launch ${cliValue}: ${msg}`);
+      setStep("startup");
     }
-  }
+  };
   const finish = async () => {
-    const workspacePath = createdWorkspace()
+    const workspacePath = createdWorkspace();
     if (workspacePath) {
-      await spinosa.openWorkspace(workspacePath)
-      return
+      await spinosa.openWorkspace(workspacePath);
+      return;
     }
-    goHome()
-  }
+    goHome();
+  };
 
   const toggleImport = (index: number) =>
     setImportOptions((items) =>
-      items.map((item, itemIndex) => (itemIndex === index ? { ...item, selected: !item.selected } : item)),
-    )
+      items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, selected: !item.selected } : item,
+      ),
+    );
 
   const toggleAllImports = () => {
-    const shouldEnableAll = importOptions().some((item) => !item.selected)
-    setImportOptions((items) => items.map((item) => ({ ...item, selected: shouldEnableAll })))
-  }
+    const shouldEnableAll = importOptions().some((item) => !item.selected);
+    setImportOptions((items) =>
+      items.map((item) => ({ ...item, selected: shouldEnableAll })),
+    );
+  };
 
   onMount(() => {
     if (step() === "name") {
       queueMicrotask(() => {
-        if (!nameInput || nameInput.isDestroyed) return
-        nameInput.focus()
-        nameInput.gotoLineEnd()
-      })
+        if (!nameInput || nameInput.isDestroyed) return;
+        nameInput.focus();
+        nameInput.gotoLineEnd();
+      });
     } else {
-      focusSourceInput()
+      focusSourceInput();
     }
 
     // Auto-add new path input when last input has content
     const autoAddTimer = setInterval(() => {
-      if (step() !== "path") return
-      const entries = sourcePaths()
-      if (entries.length === 0) return
-      const last = entries[entries.length - 1]
-      const input = sourceInputs.get(last.id)
-      if (!input || input.isDestroyed) return
+      if (step() !== "path") return;
+      const entries = sourcePaths();
+      if (entries.length === 0) return;
+      const last = entries[entries.length - 1];
+      const input = sourceInputs.get(last.id);
+      if (!input || input.isDestroyed) return;
       if (input.plainText?.trim()?.length > 0) {
-        addSourcePath({ focusNewInput: false })
+        addSourcePath({ focusNewInput: false });
       }
-    }, 300)
+    }, 300);
 
     // Path validation: periodically re-validate all path inputs
     const validateTimer = setInterval(() => {
-      if (step() !== "path") return
+      if (step() !== "path") return;
       for (const entry of sourcePaths()) {
-        const text = normalizePathInput(readPathText(entry.id))
+        const text = normalizePathInput(readPathText(entry.id));
         if (!text) {
-          setPathValidities(entry.id, "unchecked")
-          continue
+          setPathValidities(entry.id, "unchecked");
+          continue;
         }
-        const resolved = resolveUserPath(text)
+        const resolved = resolveUserPath(text);
         if (!resolved) {
-          setPathValidities(entry.id, "invalid")
-          continue
+          setPathValidities(entry.id, "invalid");
+          continue;
         }
-        setPathValidities(entry.id, validateSinglePath(resolved))
+        setPathValidities(entry.id, validatePath(resolved));
       }
-    }, 400)
+    }, 400);
 
     // Ctrl+C closes the TUI (SIGINT) — handled in the keymap intercept above.
     // No back-navigation wrapping: SIGINT always terminates the session.
 
     // Sync workspace name from textarea
     const nameSyncTimer = setInterval(() => {
-      if (step() !== "name") return
-      if (!nameInput || nameInput.isDestroyed) return
-      setWorkspaceName(nameInput.plainText?.trim() ?? defaultWorkspaceName())
-    }, 300)
+      if (step() !== "name") return;
+      if (!nameInput || nameInput.isDestroyed) return;
+      setWorkspaceName(nameInput.plainText?.trim() ?? defaultWorkspaceName());
+    }, 300);
     const off = keymap.intercept("key", ({ event, consume }) => {
-      if (modeStack.current() !== SPINOSA_BASE_MODE) return
-      setHoveredButton(null)
+      if (modeStack.current() !== SPINOSA_BASE_MODE) return;
+      setHoveredButton(null);
 
       if (event.ctrl && event.name === "c") {
-        handleInterrupt()
-        consume(); return
+        handleInterrupt();
+        consume();
+        return;
       }
       if (event.name === "escape") {
         if (stopping() && requestForceLeave()) {
-          consume(); return
+          consume();
+          return;
         }
-        handleBackPress()
-        consume(); return
+        handleBackPress();
+        consume();
+        return;
       }
 
-      if (busy()) return
+      // Slow-phase shortcuts (run phases keep busy() true, so these precede
+      // the busy guard; no text inputs exist while a run is active).
+      if (!sourceInputFocused()) {
+        if (event.name === "b" && backgroundAvailable()) {
+          detachToBackground();
+          consume();
+          return;
+        }
+        if (event.name === "v" && bg.active() && !bg.done() && (bg.phase() === "vision" || bg.phase() === "ocr")) {
+          openMidRunVisionPicker();
+          consume();
+          return;
+        }
+      }
 
-      if (waitingForGate() && (step() === "tools" || step() === "scan" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification") && event.name === "return") {
-        gateAction()()
-        consume(); return
+      if (busy()) return;
+
+      if (
+        waitingForGate() &&
+        (step() === "tools" ||
+          step() === "scan" ||
+          step() === "setup" ||
+          step() === "direct" ||
+          step() === "markitdown" ||
+          step() === "ocr" ||
+          step() === "verification") &&
+        event.name === "return"
+      ) {
+        gateAction()();
+        consume();
+        return;
       }
 
       if (step() === "path") {
-        const pathsLen = sourcePaths().length
-        const editingIndex = focusedSourceIndex()
+        const pathsLen = sourcePaths().length;
+        const editingIndex = focusedSourceIndex();
 
         if (editingIndex >= 0) {
           if (event.name === "up" || event.name === "k") {
-            cycleFocusedSource(-1)
-            consume(); return
+            cycleFocusedSource(-1);
+            consume();
+            return;
           }
           if (event.name === "down" || event.name === "j") {
-            cycleFocusedSource(1)
-            consume(); return
+            cycleFocusedSource(1);
+            consume();
+            return;
           }
         }
 
         if (!sourceInputFocused()) {
           if (event.name === "up" || event.name === "k") {
-            setFocusedSource((v) => Math.max(0, v - 1))
-            consume(); return
+            setFocusedSource((v) => Math.max(0, v - 1));
+            consume();
+            return;
           }
           if (event.name === "down" || event.name === "j") {
-            setFocusedSource((v) => Math.min(pathsLen + 1, v + 1))
-            consume(); return
+            setFocusedSource((v) => Math.min(pathsLen + 1, v + 1));
+            consume();
+            return;
+          }
+          if (event.name === "backspace") {
+            // Delete the focused source row (not while editing its text).
+            const entries = sourcePaths();
+            const entry = entries[Math.min(focusedSource(), entries.length - 1)];
+            if (entry && entries.length > 1) {
+              removeSourcePath(entry.id);
+              const nextIdx = Math.min(focusedSource(), sourcePaths().length - 1);
+              setFocusedSource(nextIdx);
+              const next = sourcePaths()[nextIdx];
+              if (next) focusSourceEntry(next.id);
+              consume();
+              return;
+            }
           }
           if (event.name === "return") {
-            const focus = focusedSource()
+            const focus = focusedSource();
             if (focus < pathsLen) {
-              const entry = sourcePaths()[focus]
-              if (entry) focusSourceEntry(entry.id)
+              const entry = sourcePaths()[focus];
+              if (entry) focusSourceEntry(entry.id);
             } else if (focus === pathsLen) {
-              leavePathStep()
+              leavePathStep();
             } else {
-              void continueFromPath()
+              void continueFromPath();
             }
-            consume(); return
+            consume();
+            return;
           }
         }
       }
 
       if (step() === "name") {
         if (event.name === "return") {
-          continueFromName()
-          consume(); return
+          continueFromName();
+          consume();
+          return;
         }
         if (event.name === "escape") {
-          handleBackPress()
-          consume(); return
+          handleBackPress();
+          consume();
+          return;
         }
       }
 
       if (step() === "scan" && scanDone()) {
-        const listLength = importOptions().length + 1
+        const listLength = importOptions().length + 1;
         if (event.name === "up" || event.name === "k") {
-          setSelectedImport((value) => Math.max(0, value - 1))
-          consume(); return
+          setSelectedImport((value) => Math.max(0, value - 1));
+          consume();
+          return;
         }
         if (event.name === "down" || event.name === "j") {
-          setSelectedImport((value) => Math.min(listLength - 1, value + 1))
-          consume(); return
+          setSelectedImport((value) => Math.min(listLength - 1, value + 1));
+          consume();
+          return;
         }
         if (event.name === "space") {
           if (selectedImport() === 0) {
-            toggleAllImports()
+            toggleAllImports();
           } else {
-            toggleImport(selectedImport() - 1)
+            toggleImport(selectedImport() - 1);
           }
-          consume(); return
+          consume();
+          return;
         }
         if (event.name === "a") {
-          toggleAllImports()
-          consume(); return
+          toggleAllImports();
+          consume();
+          return;
         }
         if (event.name === "return") {
-          continueFromImports()
-          consume(); return
+          continueFromImports();
+          consume();
+          return;
         }
       }
 
-      if (shouldActivateWizardToolAction({
-        step: step(),
-        keyName: event.name,
-        busy: busy(),
-        toolChecks: toolChecks(),
-      })) {
-        handleToolAction()
-        consume(); return
+      if (step() === "vision") {
+        const len = ocrModelOptions().length;
+        if (event.name === "up" || event.name === "k") {
+          setSelectedOcrModelIndex((v) => Math.max(0, v - 1));
+          consume();
+          return;
+        }
+        if (event.name === "down" || event.name === "j") {
+          setSelectedOcrModelIndex((v) => Math.min(len - 1, v + 1));
+          consume();
+          return;
+        }
+        if (event.name === "space") {
+          const idx = selectedOcrModelIndex()
+          if (idx === 0) {
+            openVisionPicker()
+          } else {
+            selectOcrOption(idx)
+          }
+          consume();
+          return;
+        }
+        if (event.name === "return") {
+          // Return is Continue — if focus differs from chosen, adopt focus first (radio arrow semantics)
+          const opts = ocrModelOptions();
+          const focusedOpt = opts[selectedOcrModelIndex()];
+          const chosenId = selectedOcrModel();
+          const isChosenVision = chosenId.includes("/");
+          const focusedIsPicker = focusedOpt?.id === "vision:provider-picker";
+          if (focusedOpt && focusedOpt.id !== chosenId && !(focusedIsPicker && isChosenVision)) {
+            selectOcrOption(selectedOcrModelIndex());
+          }
+          continueFromVision();
+          consume();
+          return;
+        }
+      }
+
+      if (
+        shouldActivateWizardToolAction({
+          step: step(),
+          keyName: event.name,
+          busy: busy(),
+          toolChecks: toolChecks(),
+        })
+      ) {
+        handleToolAction();
+        consume();
+        return;
       }
 
       if (step() === "provider") {
         if (event.name === "up" || event.name === "k") {
-          setSelectedCli((value) => Math.max(0, value - 1))
-          consume(); return
+          setSelectedCli((value) => Math.max(0, value - 1));
+          consume();
+          return;
         }
         if (event.name === "down" || event.name === "j") {
-          setSelectedCli((value) => Math.min(CLI_OPTIONS.length - 1, value + 1))
-          consume(); return
+          setSelectedCli((value) =>
+            Math.min(CLI_OPTIONS.length - 1, value + 1),
+          );
+          consume();
+          return;
         }
         if (event.name === "return") {
-          void finishProvider(CLI_OPTIONS[selectedCli()]!.value).catch((err) => appendLogLine(`Provider error: ${err instanceof Error ? err.message : String(err)}`))
-          consume(); return
+          void finishProvider(CLI_OPTIONS[selectedCli()]!.value).catch((err) =>
+            appendLogLine(
+              `Provider error: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
+          consume();
+          return;
         }
       }
 
       if (step() === "done" && event.name === "return") {
-        void finish()
-        consume(); return
+        void finish();
+        consume();
+        return;
       }
 
       if (step() === "error" && event.name === "return") {
-        handleBackPress()
-        consume(); return
+        handleBackPress();
+        consume();
+        return;
       }
-    })
+    });
     onCleanup(() => {
-      clearInterval(autoAddTimer)
-      clearInterval(validateTimer)
-      clearInterval(nameSyncTimer)
-      stopActiveWork()
-      off()
-    })
-  })
+      clearInterval(autoAddTimer);
+      clearInterval(validateTimer);
+      clearInterval(nameSyncTimer);
+      stopActiveWork();
+      off();
+    });
+  });
 
   createEffect(
     on(
       step,
       (current, previous) => {
-        if (current === "path" && current !== previous) focusSourceInput()
+        if (current === "path" && current !== previous) focusSourceInput();
         if (current === "name" && current !== previous) {
           queueMicrotask(() => {
-            if (!nameInput || nameInput.isDestroyed) return
-            nameInput.focus()
-            nameInput.gotoLineEnd()
-          })
+            if (!nameInput || nameInput.isDestroyed) return;
+            nameInput.focus();
+            nameInput.gotoLineEnd();
+          });
         }
       },
       { defer: true },
     ),
-  )
+  );
 
-  return (
-    <Show when={!stopping()} fallback={
-      <box width="100%" height="100%" alignItems="center" justifyContent="center">
-        <box flexDirection="column" alignItems="center" gap={1}>
-          <text fg={theme.textMuted}>{waveString(spinIdx())}</text>
-          <text fg={theme.textMuted}>{stopHint()}</text>
-        </box>
-      </box>
-    }>
-      <CenteredColumn>
-      <box flexGrow={1} alignItems="center" paddingLeft={2} paddingRight={2}>
-        <box flexGrow={1} minHeight={0} />
-        <box width="100%" maxWidth={72} flexDirection="column" gap={1}>
-          <box flexDirection="row" alignItems="center" gap={1}>
-            <box
-              paddingLeft={2}
-              paddingRight={2}
-              paddingTop={1}
-              paddingBottom={1}
-              backgroundColor={buttonBackground(theme, hoveredButton() === "back")}
-              onMouseOver={() => {
-                blurSourceInputs()
-                setHoveredButton("back")
-              }}
-              onMouseOut={() => setHoveredButton(null)}
-              onMouseDown={() => deferPress(handleBackPress)}
-            >
-              <text fg={buttonText(theme, hoveredButton() === "back", theme.text)}>←</text>
-            </box>
-            <text fg={theme.text}>
-              <span style={{ bold: true }}>{busy() ? `${waveString(spinIdx())} ` : ""}{resumeWorkspacePath ? "Resume Spinosa workspace" : "Create Spinosa workspace"}</span>
-            </text>
-          </box>
-          <text fg={theme.textMuted}>
-            Step {stepIndex()} of {totalSteps}
-            {step() === "name" ? " — naming your workspace" : ""}
-            {step() === "tools" ? " — checking your document tools" : ""}
-            {step() === "scan" ? " — scanning your source" : ""}
-            {step() === "imports" ? " — selecting file types to import" : ""}
-            {step() === "setup" ? " — creating your workspace" : step() === "direct" ? " — copying files into raw/" : step() === "markitdown" ? " — converting documents with MarkItDown" : step() === "ocr" ? " — running OCR on images and PDFs" : step() === "verification" ? " — verifying the import" : ""}
-            {step() === "provider" ? " — choosing your LLM provider" : ""}
-            {step() === "startup" ? " — preparing your startup" : ""}
-            {step() === "done" ? " — your workspace is ready" : ""}
-            {step() === "error" ? " — fixing the issue and retrying" : ""}
-          </text>
-          <Show when={sourceIsCloud() && (step() === "scan" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification")}>
-            <text fg={theme.error}>  ⚠ cloud folder — scans & copies can be slow due to sync latency</text>
-          </Show>
+  const registerSourceInput = (
+    id: number,
+    value: TextareaRenderable,
+    first: boolean,
+  ) => {
+    sourceInputs.set(id, value);
+    if (first) sourceInput = value;
+    value.traits = { status: "PATH" };
+  };
+  const registerNameInput = (value: TextareaRenderable) => {
+    nameInput = value;
+    value.traits = { status: "NAME" };
+  };
 
-          <Show when={step() === "path"}>
-            <WizardPanel theme={theme} accent>
-              <text fg={theme.textMuted}>Source folders</text>
-              <text fg={theme.textMuted}>
-                Add one or more source folders. Spinosa scans them, lets you choose file types, then creates a workspace beside the first folder and imports the selected files.
-              </text>
-              <box flexDirection="column" gap={1} paddingTop={1}>
-                <For each={sourcePaths()}>
-                  {(entry, index) => (
-                    <box
-                      flexDirection="row"
-                      gap={0}
-                      alignItems="center"
-                      backgroundColor={
-                        focusedSource() === index()
-                          ? theme.backgroundElement
-                          : undefined
-                      }
-                      border={focusedSource() === index() ? ["left"] : []}
-                      borderColor={theme.borderActive}
-                    >
-                      <box
-                        flexGrow={1}
-                        onMouseDown={() => {
-                          setFocusedSource(index())
-                          focusSourceEntry(entry.id)
-                        }}
-                      >
-                        <textarea
-                          ref={(value: TextareaRenderable) => {
-                            sourceInputs.set(entry.id, value)
-                            if (index() === 0) sourceInput = value
-                            value.traits = { status: "PATH" }
-                          }}
-                          initialValue={pathSnapshot.get(entry.id) ?? ""}
-                          placeholder="Paste the corpus folder path"
-                          placeholderColor={theme.textMuted}
-                          textColor={theme.text}
-                          focusedTextColor={theme.text}
-                          cursorColor={theme.primary}
-                          minHeight={1}
-                          maxHeight={1}
-                          flexGrow={1}
-                          onSubmit={() => {}}
-                        />
-                      </box>
-                      <box
-                        paddingLeft={1}
-                        paddingRight={1}
-                        paddingTop={0}
-                        paddingBottom={0}
-                      >
-                        <text fg={
-                          pathValidities[entry.id] === "valid"
-                            ? theme.success
-                            : pathValidities[entry.id] === "invalid"
-                              ? theme.error
-                              : theme.textMuted
-                        }>
-                          {pathValidities[entry.id] === "valid" ? "●" : pathValidities[entry.id] === "invalid" ? "●" : "○"}
-                        </text>
-                      </box>
-                      <box
-                        paddingLeft={1}
-                        paddingRight={1}
-                        paddingTop={0}
-                        paddingBottom={0}
-                        backgroundColor={theme.backgroundPanel}
-                        onMouseOver={() => blurSourceInputs()}
-                        onMouseDown={() => deferPress(() => removeSourcePath(entry.id))}
-                      >
-                        <text fg={theme.textMuted}>✕</text>
-                      </box>
-                    </box>
-                  )}
-                </For>
-              </box>
-            </WizardPanel>
-            <WizardActionRow>
-              <WizardActionButton
-                theme={theme}
-                label="Back"
-                primary={focusedSource() === sourcePaths().length}
-                onHover={() => {
-                  blurSourceInputs()
-                  setFocusedSource(sourcePaths().length)
-                }}
-                onPress={leavePathStep}
-              />
-              <box flexGrow={1} />
-              <Show when={hasValidPaths()}>
-                <WizardActionButton
-                  theme={theme}
-                  label="Continue"
-                  primary={focusedSource() === sourcePaths().length + 1}
-                  onHover={() => {
-                    blurSourceInputs()
-                    setFocusedSource(sourcePaths().length + 1)
-                  }}
-                  onPress={() => void continueFromPath()}
-                />
-              </Show>
-            </WizardActionRow>
-          </Show>
+  // Mid-run model switch (red Vision button + `v` shortcut): overlay picker,
+  // never aborts — the current file keeps the old model, next uses the new.
+  const openMidRunVisionPicker = () => {
+    logAction("change-vision", `from ${step()} picker opened — current task continues with ${bg.getModel()}, next file will use new model`)
+    // Don't abort — keep current markitdown file running with old model; dialog is overlay on step 9.
+    // Same order as the vision-step picker: select → auth if needed → confirm.
+    dialog.replace(() => <DialogVisionPicker onPicked={async (providerId, modelId) => {
+      const id = `${providerId}/${modelId}`
+      const forceReauth = bg.lastAuthFailedProvider() === providerId
+      const needsAuth = !isVisionProviderAvailable(providerId) || forceReauth
+      const authed = !needsAuth
+        ? true
+        : await ensureProviderAuth(providerId).catch((e) => {
+            logAction("vision", `Vision auth sequence failed for ${id}: ${e instanceof Error ? e.message : String(e)}`)
+            return false
+          })
+      if (!authed) {
+        logAction("vision", `Vision ${id} auth cancelled`)
+        dialog.clear()
+        return
+      }
+      // No dummy probe in production: the first real file transcription
+      // is the validation (see onVisionFailure for the failure order).
+      if (dialog.stack.length === 0) {
+        // Dismissed during auth: never confirm behind their back.
+        logAction("vision", `Vision auth dismissed for ${id} — keeping ${bg.getModel()}`)
+        dialog.clear()
+        return
+      }
+      bg.setModel(id)
+      setSelectedOcrModelIndex(0)
+      logAction("vision", `Picked vision model ${id} — will apply at next file (current continues with old model)`)
+      if (bg.snapshot().visionPause) {
+        bg.resolvePause("retry")
+      }
+      dialog.clear()
+    }} />, () => {
+      // Escape mid-picker just closes; selection and queue are untouched.
+      logAction("vision", "Mid-run model picker cancelled")
+    })
+  };
 
-          <Show when={step() === "name"}>
-            <WizardPanel theme={theme} accent>
-              <text fg={theme.textMuted}>Workspace name</text>
-              <text fg={theme.textMuted}>
-                The workspace folder is created beside the first source folder using this name.
-              </text>
-              <box paddingTop={1} alignItems="stretch">
-                <textarea
-                  ref={(value: TextareaRenderable) => {
-                    value.traits = { status: "NAME" }
-                    nameInput = value
-                  }}
-                  initialValue={workspaceName() || defaultWorkspaceName()}
-                  placeholder="Enter workspace name"
-                  placeholderColor={theme.textMuted}
-                  textColor={theme.text}
-                  focusedTextColor={theme.text}
-                  cursorColor={theme.primary}
-                  minHeight={1}
-                  maxHeight={1}
-                  onSubmit={() => {}}
-                />
-              </box>
-            </WizardPanel>
-            <WizardActionRow>
-              <WizardActionButton
-                theme={theme}
-                label="Back"
-                onPress={handleBackPress}
-              />
-              <box flexGrow={1} />
-              <WizardActionButton
-                theme={theme}
-                label="Continue"
-                primary
-                onPress={continueFromName}
-              />
-            </WizardActionRow>
-          </Show>
-          <Show when={step() === "tools" || step() === "scan" || step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr" || step() === "verification"}>
-            <WizardPanel theme={theme}>
-              <Show when={step() === "tools"}>
-                <text fg={theme.textMuted}>Document processing tools</text>
-                <box flexDirection="column" gap={1} paddingTop={1}>
-                  <For each={toolChecks()}>
-                    {(check) => {
-                      const icon =
-                        check.status === "available" || check.status === "unsupported"
-                          ? "●"
-                          : check.status === "missing"
-                            ? "●"
-                            : wavePulse(spinIdx())
-                      const color =
-                        check.status === "available"
-                          ? theme.success
-                          : check.status === "missing"
-                            ? theme.error
-                            : theme.textMuted
-                      return (
-                        <box flexDirection="row" gap={1} alignItems="center" paddingLeft={1} paddingRight={1}>
-                          <text fg={color} attributes={check.status === "checking" ? undefined : TextAttributes.BOLD}>{icon}</text>
-                          <text fg={check.status === "checking" ? theme.textMuted : theme.text}> {check.label}</text>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{check.detail ?? ""}</text>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </box>
-                <Show when={logLines().length > 0}>
-                  <box height={1} />
-                  <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
-                </Show>
-              </Show>
-              <Show when={step() === "scan"}>
-                <Show when={!scanDone()}>
-                  <text fg={theme.text}>{waveString(spinIdx())}</text>
-                  <text fg={theme.textMuted}>{scanningFile() || "…"}</text>
-                  <text fg={theme.textMuted}>Scanning {scanCount()} / {scanTotal()}</text>
-                  <Show when={logLines().length > 0}>
-                    <box height={1} />
-                    <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
-                  </Show>
-                </Show>
-                <Show when={scanDone()}>
-                  <text fg={theme.textMuted}>Select file types to import</text>
-                  <ImportOptionsSelector
-                    theme={theme}
-                    options={importOptions()}
-                    selectedIndex={selectedImport()}
-                    viewportHeight={dimensions().height}
-                    formatDetail={(item) => formatBytes(item.bytes)}
-                    onSelectIndex={setSelectedImport}
-                    onToggleAll={toggleAllImports}
-                    onToggleItem={toggleImport}
-                  />
-                  <text fg={theme.textMuted}>↑↓ move · space toggle · a toggle all · enter continue</text>
-                </Show>
-              </Show>
-              <Show when={step() === "setup" || step() === "direct" || step() === "markitdown" || step() === "ocr"}>
-                <Show when={!processingDone()}>
-                  <ProgressBar
-                    theme={theme}
-                    current={progCurrent()}
-                    total={progTotal()}
-                    status={processingStatus()}
-                    fileName={processingFile()}
-                    files={progressFiles()}
-                    barWidth={20}
-                    viewportHeight={dimensions().height}
-                  />
-                </Show>
-              </Show>
-              <Show when={step() === "verification"}>
-                <Show when={progressFiles().length > 0}>
-                  <ProgressBar
-                    theme={theme}
-                    current={progCurrent()}
-                    total={progTotal()}
-                    status={processingStatus()}
-                    fileName={processingFile()}
-                    files={progressFiles()}
-                    barWidth={20}
-                    viewportHeight={dimensions().height}
-                  />
-                </Show>
-                <Show when={!processingDone()}>
-                  <text fg={theme.textMuted}>{verifyStatus() || "Verifying import..."}</text>
-                </Show>
-                <Show when={processingDone()}>
-                  <text fg={importOutcomeFg()}>{importOutcomeHeading(importOutcome())}</text>
-                  <Show when={importSummary() !== ""}>
-                    <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.textMuted}>{importSummary()}</text>
-                    </box>
-                  </Show>
-                  <Show when={failedCount() > 0}>
-                    <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.error}>{failedCount()} file{failedCount() === 1 ? "" : "s"} failed — saved to raw/_failed_files/ for review</text>
-                    </box>
-                  </Show>
-                  <Show when={stillMissingCount() > 0}>
-                    <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.warning}>{stillMissingCount()} file{stillMissingCount() === 1 ? "" : "s"} still missing after verify/recover</text>
-                    </box>
-                  </Show>
-                  <Show when={shouldShowImportDetailLogHint(importOutcome())}>
-                    <box paddingTop={1} flexDirection="column" gap={0}>
-                      <text fg={theme.textMuted}>{formatImportDetailLogHint()}</text>
-                    </box>
-                  </Show>
-                </Show>
-              </Show>
-            </WizardPanel>
-            <WizardActionRow>
-              <WizardActionButton theme={theme} label="Back" onPress={handleBackPress} />
-              <box flexGrow={1} />
-              <Show when={step() === "tools" && toolActionLabel() !== "" && !toolChecks().some((t) => t.status === "checking")}>
-                <WizardActionButton
-                  theme={theme}
-                  label={toolActionLabel()}
-                  primary={toolAllReady()}
-                  onPress={handleToolAction}
-                />
-              </Show>
-              <Show when={step() === "scan" && scanDone()}>
-                <WizardActionButton
-                  theme={theme}
-                  label="Continue"
-                  primary
-                  onPress={() => void continueFromImports()}
-                />
-              </Show>
-              <Show when={step() !== "tools" && step() !== "scan" && waitingForGate()}>
-                <WizardGateButton theme={theme} label={gateLabel()} action={() => gateAction()()} />
-              </Show>
-            </WizardActionRow>
-          </Show>
+  const viewProps = {
+    theme,
+    dimensions,
+    stopping,
+    waveString,
+    wavePulse,
+    spinIdx,
+    stopHint,
+    hoveredButton,
+    setHoveredButton,
+    deferPress,
+    handleBackPress,
+    busy,
+    resumeWorkspacePath,
+    step,
+    stepIndex,
+    totalSteps,
+    sourceIsCloud,
+    sourcePaths,
+    focusedSource,
+    setFocusedSource,
+    registerSourceInput,
+    pathSnapshot,
+    pathValidities,
+    blurSourceInputs,
+    focusSourceEntry,
+    removeSourcePath,
+    leavePathStep,
+    hasValidPaths,
+    continueFromPath,
+    workspaceName,
+    setWorkspaceName,
+    registerNameInput,
+    defaultWorkspaceName,
+    continueFromName,
+    toolChecks,
+    logLines,
+    scanDone,
+    scanningFile,
+    scanCount,
+    scanTotal,
+    importOptions,
+    selectedImport,
+    formatBytes,
+    setSelectedImport,
+    toggleAllImports,
+    toggleImport,
+    processingDone,
+    progCurrent,
+    progTotal,
+    processingStatus,
+    processingFile,
+    progressFiles,
+    verifyStatus,
+    importOutcomeFg,
+    importOutcome,
+    importOutcomeHeading,
+    importSummary,
+    failedCount,
+    stillMissingCount,
+    shouldShowImportDetailLogHint,
+    formatImportDetailLogHint,
+    toolActionLabel,
+    toolAllReady,
+    handleToolAction,
+    continueFromImports,
+    ocrModelOptions,
+    ocrEngineHint: () => OCR_ENGINE_HINT_LINE,
+    selectedOcrModelIndex,
+    setSelectedOcrModelIndex,
+    selectedOcrModel,
+    selectOcrOption,
+    openVisionPicker,
+    continueFromVision,
+    visionError,
+    visionPaused,
+    onChangeVisionModel: openMidRunVisionPicker,
+    backgroundAvailable,
+    onBackground: detachToBackground,
+    // Same condition as the `v` key handler: the hint must never advertise a
+    // shortcut that does nothing on the current step.
+    visionShortcutAvailable: () => bg.active() && !bg.done() && (bg.phase() === "vision" || bg.phase() === "ocr"),
+    selectedVisionLabel: createMemo(() => {
+      const opts = ocrModelOptions()
+      const idx = selectedOcrModelIndex()
+      const picked = selectedOcrModel()
+      const opt = opts[idx]
+      // Top-right button carries the concrete model name so the selection is
+      // always visible. Visibility gating uses hasVisionModel(), never this text.
+      if (picked.includes("/") && !opts.some((o) => o.id === picked)) return picked
+      return opt?.label ?? picked
+    }),
+    hasVisionModel: createMemo(() => hasVisionModel()),
+    waitingForGate,
+    gateLabel,
+    gateAction,
+    gateAutoPress,
+    cliOptions: CLI_OPTIONS,
+    selectedCli,
+    setSelectedCli,
+    finishProvider,
+    startupError,
+    startupMessage,
+    startupElapsedMs,
+    finish,
+  };
 
-          <Show when={step() === "provider"}>
-            <WizardPanel theme={theme}>
-              <text fg={theme.textMuted}>Choose how to launch startup</text>
-              <text fg={theme.textMuted}>
-                Choose the tool Spinosa will use after import. Spinosa opens Chat with the setup brief ready; other tools launch with the prompt.
-              </text>
-               <scrollbox maxHeight={wizardScrollboxMaxHeight(dimensions().height, { min: 4, ratio: 0.5, max: 12 })}>
-                <For each={CLI_OPTIONS}>
-                  {(item, index) => (
-                    <box
-                      paddingTop={1}
-                      paddingBottom={1}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      backgroundColor={selectedCli() === index() ? buttonBackground(theme, true) : undefined}
-                      onMouseOver={() => setSelectedCli(index())}
-                      onMouseDown={() => deferPress(() => void finishProvider(item.value))}
-                    >
-                      <text fg={buttonText(theme, selectedCli() === index(), theme.primary)}>
-                        <span style={{ bold: selectedCli() === index() }}>{item.label}</span>
-                      </text>
-                      <text fg={buttonText(theme, selectedCli() === index(), theme.textMuted)}> {item.description}</text>
-                    </box>
-                  )}
-                </For>
-              </scrollbox>
-              <text fg={theme.textMuted}>↑↓ move · enter select</text>
-            </WizardPanel>
-          </Show>
-
-          <Show when={step() === "startup"}>
-            <WizardPanel theme={theme}>
-              <text fg={theme.textMuted}>Launching startup</text>
-              <text fg={startupError() ? theme.error : theme.text}>
-                <span style={{ bold: true }}>{startupError() ? "Startup failed" : startupMessage()}</span>
-              </text>
-              <Show when={!startupError()}>
-                <text fg={theme.textMuted}>
-                  {startupElapsedMs() >= STARTUP_PROGRESS_THRESHOLD_MS
-                    ? `Elapsed ${Math.round(startupElapsedMs() / 100) / 10}s`
-                    : "Preparing the setup brief…"}
-                </text>
-              </Show>
-              <Show when={startupError()}>
-                <text fg={theme.textMuted}>{startupError()}</text>
-              </Show>
-            </WizardPanel>
-            <WizardActionRow>
-              <Show when={startupError()}>
-                <WizardActionButton theme={theme} label="Back" onPress={handleBackPress} />
-                <box flexGrow={1} />
-                <WizardActionButton
-                  theme={theme}
-                  label="Retry"
-                  primary
-                  onPress={() => void finishProvider(CLI_OPTIONS[selectedCli()]?.value ?? "spinosa")}
-                />
-              </Show>
-            </WizardActionRow>
-          </Show>
-
-          <Show when={step() === "done" || step() === "error"}>
-            <WizardPanel theme={theme}>
-              <Show when={step() === "done"}>
-                <box gap={1}>
-                  <LogoSummary theme={theme} label="Workspace created." />
-                  <text fg={theme.textMuted}>
-                    Your files are imported. Open the workspace to continue with the setup brief.
-                  </text>
-                </box>
-              </Show>
-              <Show when={step() === "error"}>
-                <text fg={theme.error}>
-                  <span style={{ bold: true }}>Spinosa could not complete this step.</span>
-                </text>
-                <Show when={logLines().length > 0}>
-                  <LogScrollbox theme={theme} lines={logLines()} viewportHeight={dimensions().height} />
-                </Show>
-              </Show>
-            </WizardPanel>
-            <WizardActionRow>
-              <Show when={step() === "done"}>
-                <WizardActionButton
-                  theme={theme}
-                  label="Open workspace"
-                  primary
-                  onPress={() => void finish()}
-                />
-              </Show>
-              <Show when={step() === "error"}>
-                <WizardActionButton theme={theme} label="Back" onPress={handleBackPress} />
-                <box flexGrow={1} />
-                <WizardActionButton theme={theme} label="Retry" primary onPress={() => void continueFromPath()} />
-              </Show>
-            </WizardActionRow>
-          </Show>
-        </box>
-        <box flexGrow={1} minHeight={0} />
-      </box>
-    </CenteredColumn>
-    </Show>
-  )
+  return <OnboardingView {...viewProps} />;
 }

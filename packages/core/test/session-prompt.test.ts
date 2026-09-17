@@ -145,11 +145,11 @@ describe("SessionV2.prompt", () => {
       yield* setup
       const session = yield* SessionV2.Service
 
-      const message = yield* session.prompt({
-        sessionID,
-        prompt: Prompt.make({ text: "Fix the failing tests" }),
-        resume: false,
-      })
+  const message = yield* session.prompt({
+    sessionID,
+    prompt: Prompt.make({ text: "Fix the failing tests" }),
+    resume: false,
+  })
 
       expect(message.prompt.text).toBe("Fix the failing tests")
       expect(yield* session.messages({ sessionID })).toEqual([])
@@ -157,7 +157,7 @@ describe("SessionV2.prompt", () => {
         id: message.id,
         sessionID,
         prompt: { text: "Fix the failing tests" },
-        delivery: "steer",
+ delivery: "queue",
       })
     }),
   )
@@ -192,8 +192,18 @@ describe("SessionV2.prompt", () => {
       const fiber = yield* session.events({ sessionID }).pipe(Stream.take(4), Stream.runCollect, Effect.forkScoped)
       yield* Effect.yieldNow
 
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), resume: false })
+    yield* session.prompt({
+      sessionID,
+      prompt: Prompt.make({ text: "First" }),
+      delivery: "steer",
+      resume: false,
+    })
+    yield* session.prompt({
+      sessionID,
+      prompt: Prompt.make({ text: "Second" }),
+      delivery: "steer",
+      resume: false,
+    })
       yield* SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER)
       const streamed = Array.from(yield* Fiber.join(fiber))
 
@@ -213,14 +223,14 @@ describe("SessionV2.prompt", () => {
     }),
   )
 
-  it.effect("resumes through a recorded message without appending another prompt", () =>
-    Effect.gen(function* () {
+it.effect("resumes through a recorded message without appending another prompt", () =>
+  Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       const message = yield* session.prompt({
         sessionID,
         prompt: Prompt.make({ text: "Fix the failing tests" }),
-        resume: false,
+    resume: false,
       })
 
       executionCalls.length = 0
@@ -319,10 +329,11 @@ describe("SessionV2.prompt", () => {
       yield* setup
       const session = yield* SessionV2.Service
 
-      yield* session.prompt({
+    yield* session.prompt({
         id: messageID,
         sessionID,
         prompt: Prompt.make({ text: "Fix the failing tests" }),
+        delivery: "steer",
         resume: false,
       })
       const failure = yield* session
@@ -394,7 +405,7 @@ describe("SessionV2.prompt", () => {
       const { db } = yield* Database.Service
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
-      yield* session.prompt({ id: messageID, sessionID, prompt: Prompt.make({ text: "Promote once" }), resume: false })
+ yield* session.prompt({ id: messageID, sessionID, prompt: Prompt.make({ text: "Promote once" }), delivery: "steer", resume: false })
 
       yield* Effect.all(
         [
@@ -418,9 +429,9 @@ describe("SessionV2.prompt", () => {
       const { db } = yield* Database.Service
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
-      const first = yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Before cutoff" }), resume: false })
+ const first = yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Before cutoff" }), delivery: "steer", resume: false })
       const cutoff = first.admittedSeq
-      const second = yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "After cutoff" }), resume: false })
+ const second = yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "After cutoff" }), delivery: "steer", resume: false })
 
       yield* SessionInput.promoteSteers(db, events, sessionID, cutoff)
 
@@ -486,7 +497,7 @@ describe("SessionV2.prompt", () => {
         delivery: "steer",
       })
 
-      const retried = yield* session.prompt({ id: messageID, sessionID, prompt, resume: false })
+ const retried = yield* session.prompt({ id: messageID, sessionID, prompt, delivery: "steer", resume: false })
 
       expect(retried).toMatchObject({ id: messageID, prompt: { text: "Historical prompt" } })
       expect(yield* admitted(messageID)).toHaveProperty("promotedSeq")

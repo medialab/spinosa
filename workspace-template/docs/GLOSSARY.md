@@ -22,6 +22,5 @@ Plain-English definitions of terms you'll encounter.
 | **Verification status** | After the Verifier checks a report, it gets a badge: `✓ verified` (everything checks out), `⚠ corrections` (minor fixes applied), `✗ failed` (don't use as-is). |
 | **Startup** | The first-time indexing process. An agent reads every file in `raw/`, builds the dictionary and maps, runs validation checks. Takes 5-30 minutes depending on corpus size. |
 | **Source intake** | The workflow for adding new documents to an existing workspace. Converts, headers, and maps the new files without redoing everything. |
-| **OCR** | Optical Character Recognition. Turns images of text (scanned PDF pages, photos of documents) into searchable text. Spinosa runs this locally. |
+| **OCR** | Optical Character Recognition. Turns images of text (scanned PDF pages, photos of documents) into searchable text. Spinosa transcribes scans via a selected vision model, or copies them as-is. |
 | **MarkItDown** | The engine that converts Office documents (Word, Excel, PowerPoint), EPUB, HTML, and text-based PDFs to markdown format. |
-| **PaddleOCR** | The engine that processes scanned PDFs and images through OCR. Runs entirely on your machine. |

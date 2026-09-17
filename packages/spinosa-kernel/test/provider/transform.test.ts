@@ -445,6 +445,96 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
   })
 })
 
+describe("ProviderTransform.options - openai reasoning summaries", () => {
+  const sessionID = "test-session-123"
+
+  const createOpenAIModel = (apiId: string, reasoning = true) =>
+    ({
+      id: `openai/${apiId}`,
+      providerID: "openai",
+      api: {
+        id: apiId,
+        url: "https://api.openai.com",
+        npm: "@ai-sdk/openai",
+      },
+      name: apiId,
+      capabilities: {
+        temperature: true,
+        reasoning,
+        attachment: true,
+        toolcall: true,
+        input: { text: true, audio: false, image: true, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      cost: { input: 0.03, output: 0.06, cache: { read: 0.001, write: 0.002 } },
+      limit: { context: 128000, output: 4096 },
+      status: "active",
+      options: {},
+      headers: {},
+    }) as any
+
+  test("o3 requests reasoning summary + encrypted include (Thinking row streams)", () => {
+    const result = ProviderTransform.options({
+      model: createOpenAIModel("o3"),
+      sessionID,
+      providerOptions: {},
+    })
+    expect(result.reasoningSummary).toBe("auto")
+    expect(result.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  test("o4-mini requests reasoning summary + encrypted include", () => {
+    const result = ProviderTransform.options({
+      model: createOpenAIModel("o4-mini"),
+      sessionID,
+      providerOptions: {},
+    })
+    expect(result.reasoningSummary).toBe("auto")
+    expect(result.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  test("gpt-5-pro requests reasoning summary (gpt-5 defaults skip pro)", () => {
+    const result = ProviderTransform.options({
+      model: createOpenAIModel("gpt-5-pro"),
+      sessionID,
+      providerOptions: {},
+    })
+    expect(result.reasoningSummary).toBe("auto")
+    expect(result.include).toEqual(["reasoning.encrypted_content"])
+  })
+
+  test("non-reasoning models do not request summaries", () => {
+    const result = ProviderTransform.options({
+      model: createOpenAIModel("gpt-4.1", false),
+      sessionID,
+      providerOptions: {},
+    })
+    expect(result.reasoningSummary).toBeUndefined()
+    expect(result.include).toBeUndefined()
+  })
+
+  test("o1 family is excluded (predates summaries)", () => {
+    const result = ProviderTransform.options({
+      model: createOpenAIModel("o1"),
+      sessionID,
+      providerOptions: {},
+    })
+    expect(result.reasoningSummary).toBeUndefined()
+    expect(result.include).toBeUndefined()
+  })
+
+  test("gpt-5-chat is excluded (not a reasoning model)", () => {
+    const result = ProviderTransform.options({
+      model: createOpenAIModel("gpt-5-chat-latest"),
+      sessionID,
+      providerOptions: {},
+    })
+    expect(result.reasoningSummary).toBeUndefined()
+    expect(result.include).toBeUndefined()
+  })
+})
+
 describe("ProviderTransform.options - gpt-5 reasoningEffort", () => {
   const sessionID = "test-session-123"
 
@@ -2101,6 +2191,41 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
     expect(result[0].content).toBe("Hello")
     expect(result[1].content).toHaveLength(1)
     expect(result[1].content[0]).toEqual({ type: "text", text: "Answer" })
+  })
+
+  test("keeps empty Bedrock reasoning blocks with signed metadata", () => {
+    const bedrockModel = {
+      ...anthropicModel,
+      providerID: "amazon-bedrock",
+      api: {
+        ...anthropicModel.api,
+        id: "anthropic.claude-opus-4-6",
+        npm: "@ai-sdk/amazon-bedrock",
+      },
+    }
+    const msgs = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "",
+            providerOptions: { bedrock: { signature: "signed" } },
+          },
+        ],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, bedrockModel, {})
+
+    expect(result).toHaveLength(1)
+    expect(result[0].content).toEqual([
+      {
+        type: "reasoning",
+        text: "",
+        providerOptions: { bedrock: { signature: "signed" } },
+      },
+    ])
   })
 
   test("does not filter for non-anthropic providers", () => {

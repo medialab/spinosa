@@ -255,6 +255,25 @@ export const FileDiff = Schema.Struct({
 }).annotate({ identifier: "VcsFileDiff" })
 export type FileDiff = Schema.Schema.Type<typeof FileDiff>
 
+export const Diff = Schema.Union([
+  Schema.Struct({
+    _tag: Schema.Literal("available"),
+    files: Schema.Array(FileDiff),
+  }).annotate({ identifier: "VcsDiffAvailable" }),
+  Schema.Struct({
+    _tag: Schema.Literal("unavailable"),
+    reason: Schema.Literals(["non-git", "default-branch-unavailable", "merge-base-unavailable"]),
+  }).annotate({ identifier: "VcsDiffUnavailable" }),
+]).annotate({ identifier: "VcsDiff" })
+export type Diff = Schema.Schema.Type<typeof Diff>
+
+export class DiffUnavailableError extends Schema.TaggedErrorClass<DiffUnavailableError>()(
+  "VcsDiffUnavailableError",
+  {
+    reason: Schema.Literal("non-git"),
+  },
+) {}
+
 export const FileStatus = Schema.Struct({
   file: Schema.String,
   additions: Schema.Finite,
@@ -262,6 +281,18 @@ export const FileStatus = Schema.Struct({
   status: Schema.Literals(["added", "deleted", "modified"]),
 }).annotate({ identifier: "VcsFileStatus" })
 export type FileStatus = Schema.Schema.Type<typeof FileStatus>
+
+export const Status = Schema.Union([
+  Schema.Struct({
+    _tag: Schema.Literal("available"),
+    files: Schema.Array(FileStatus),
+  }).annotate({ identifier: "VcsStatusAvailable" }),
+  Schema.Struct({
+    _tag: Schema.Literal("unavailable"),
+    reason: Schema.Literal("non-git"),
+  }).annotate({ identifier: "VcsStatusUnavailable" }),
+]).annotate({ identifier: "VcsStatus" })
+export type Status = Schema.Schema.Type<typeof Status>
 
 export const ApplyInput = Schema.Struct({
   patch: Schema.String,
@@ -282,9 +313,9 @@ export interface Interface {
   readonly init: () => Effect.Effect<void>
   readonly branch: () => Effect.Effect<string | undefined>
   readonly defaultBranch: () => Effect.Effect<string | undefined>
-  readonly status: () => Effect.Effect<FileStatus[]>
-  readonly diff: (mode: Mode, options?: DiffOptions) => Effect.Effect<FileDiff[]>
-  readonly diffRaw: () => Effect.Effect<string>
+  readonly status: () => Effect.Effect<Status>
+  readonly diff: (mode: Mode, options?: DiffOptions) => Effect.Effect<Diff>
+  readonly diffRaw: () => Effect.Effect<string, DiffUnavailableError>
   readonly apply: (input: ApplyInput) => Effect.Effect<ApplyResult, PatchApplyError>
 }
 
@@ -345,16 +376,18 @@ const layer: Layer.Layer<Service, never, Git.Service | EventV2Bridge.Service> = 
       defaultBranch: Effect.fn("Vcs.defaultBranch")(function* () {
         return yield* InstanceState.use(state, (x) => x.root?.name)
       }),
-      status: Effect.fn("Vcs.status")(function* () {
-        const ctx = yield* InstanceState.context
-        if (ctx.project.vcs !== "git") return []
+    status: Effect.fn("Vcs.status")(function* () {
+      const ctx = yield* InstanceState.context
+      if (ctx.project.vcs !== "git") {
+        return { _tag: "unavailable", reason: "non-git" } satisfies Status
+      }
         const ref = (yield* git.hasHead(ctx.directory)) ? "HEAD" : undefined
         const [list, stats] = yield* Effect.all(
           [git.status(ctx.directory), ref ? git.stats(ctx.directory, ref) : Effect.succeed([])],
           { concurrency: 2 },
         )
         const map = nums(stats)
-        return yield* Effect.forEach(
+      const files = yield* Effect.forEach(
           list.toSorted((a, b) => a.file.localeCompare(b.file)),
           (item) =>
             Effect.gen(function* () {
@@ -367,26 +400,33 @@ const layer: Layer.Layer<Service, never, Git.Service | EventV2Bridge.Service> = 
                 deletions: stat?.deletions ?? 0,
                 status: item.status,
               } satisfies FileStatus
-            }),
-        )
-      }),
+          }),
+      )
+      return { _tag: "available", files } satisfies Status
+    }),
       diff: Effect.fn("Vcs.diff")(function* (mode: Mode, options?: DiffOptions) {
         const value = yield* InstanceState.get(state)
         const ctx = yield* InstanceState.context
-        if (ctx.project.vcs !== "git") return []
+        if (ctx.project.vcs !== "git") return { _tag: "unavailable", reason: "non-git" } satisfies Diff
         if (mode === "git") {
-          return yield* track(git, ctx.directory, (yield* git.hasHead(ctx.directory)) ? "HEAD" : undefined, options)
+          return {
+            _tag: "available",
+            files: yield* track(git, ctx.directory, (yield* git.hasHead(ctx.directory)) ? "HEAD" : undefined, options),
+          } satisfies Diff
         }
 
-        if (!value.root) return []
-        if (value.current && value.current === value.root.name) return []
+        if (!value.root) return { _tag: "unavailable", reason: "default-branch-unavailable" } satisfies Diff
+        if (value.current && value.current === value.root.name) return { _tag: "available", files: [] } satisfies Diff
         const ref = yield* git.mergeBase(ctx.directory, value.root.ref)
-        if (!ref) return []
-        return yield* diffAgainstRef(git, ctx.directory, ref, options)
+        if (!ref) return { _tag: "unavailable", reason: "merge-base-unavailable" } satisfies Diff
+        return {
+          _tag: "available",
+          files: yield* diffAgainstRef(git, ctx.directory, ref, options),
+        } satisfies Diff
       }),
-      diffRaw: Effect.fn("Vcs.diffRaw")(function* () {
-        const ctx = yield* InstanceState.context
-        if (ctx.project.vcs !== "git") return ""
+    diffRaw: Effect.fn("Vcs.diffRaw")(function* () {
+      const ctx = yield* InstanceState.context
+      if (ctx.project.vcs !== "git") return yield* new DiffUnavailableError({ reason: "non-git" })
         const [hasHead, status] = yield* Effect.all([git.hasHead(ctx.directory), git.status(ctx.directory)], {
           concurrency: 2,
         })

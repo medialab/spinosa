@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { Theme } from "../../context/theme"
 import { SplitBorder } from "../../ui/border"
@@ -10,14 +10,16 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 import type { FileProgressStatus } from "@spinosa/core/progress/progress"
 import {
   countImportProgress,
+  displayImportFilePath,
   formatImportPhaseRecap,
   formatImportPhaseRecapFromCounters,
+  formatPageMarker,
   isImportPhaseComplete,
-  selectImportFailedItems,
-  selectImportQueueWindow,
+  isTerminalImportFileStatus,
+  progressCountLabel,
+  progressPercentLabel,
   selectImportResultsWindow,
-  selectImportSucceededItems,
-  shortImportFileName,
+  splitPageSuffix,
   statusAccentKey,
   statusGlyph,
   type ImportFileProgressItem,
@@ -108,7 +110,7 @@ export async function confirmSpinosaBack(dialog: DialogContext, step: string) {
   const operation = step === "direct"
     ? "the current file copy"
     : step === "markitdown"
-      ? "the current MarkItDown conversion"
+      ? "the current conversion (MarkItDown / Vision)"
       : step === "ocr"
         ? "the current OCR operation"
         : step === "verification"
@@ -128,7 +130,7 @@ export const STOP_SCREEN_MIN_DWELL_MS = 3000
 /** Soft abort wait before showing "still stopping" / force-leave. */
 export const STOP_WAIT_SOFT_MS = 2500
 
-export const STOP_SCREEN_DEFAULT_HINT = "Stopping process, exit cleanly, wait"
+export const STOP_SCREEN_DEFAULT_HINT = "Stopping. Wait for a clean exit."
 export const STOP_SCREEN_STILL_HINT = "Still stopping… Esc to leave anyway"
 
 export async function runGuardedBackNavigation(input: {
@@ -184,7 +186,7 @@ export function shouldCancelSpinosaWorkOnCtrlC(props: {
   waitingForGate: boolean
   cancellableSteps: readonly string[]
 }) {
-  return props.busy || props.cancellableSteps.includes(props.step) || (props.waitingForGate && props.cancellableSteps.includes(props.step))
+  return props.busy || props.cancellableSteps.includes(props.step)
 }
 
 /** True when tools-step Enter should fire the Scan / repair action (matches button visibility). */
@@ -230,14 +232,19 @@ export function generateScanLines(preview: NewWorkspacePreview | ImportScanPrevi
     lines.push(`Importable file types: ${preview.importOptions.length}`)
     for (const opt of preview.importOptions) {
       lines.push(
-        `  .${opt.ext} — ${opt.count} file${opt.count === 1 ? "" : "s"}${opt.selected ? "" : " (audio/video, not selected by default)"}`,
+        `  .${opt.ext} — ${opt.count} file${opt.count === 1 ? "" : "s"}${opt.selected ? "" : " (audio/video skipped — press space to include)"}`,
       )
     }
   }
   return lines
 }
 
-export function WizardPanel(props: { theme: Theme; accent?: boolean; children: any }) {
+export function WizardPanel(props: {
+  theme: Theme
+  accent?: boolean
+  viewportHeight: number
+  children: JSX.Element
+}) {
   return (
     <box
       flexDirection="column"
@@ -246,6 +253,7 @@ export function WizardPanel(props: { theme: Theme; accent?: boolean; children: a
       paddingRight={2}
       paddingTop={1}
       paddingBottom={1}
+      minHeight={wizardPanelHeight(props.viewportHeight)}
       backgroundColor={props.theme.backgroundPanel}
       border={["left"]}
       customBorderChars={SplitBorder.customBorderChars}
@@ -256,10 +264,78 @@ export function WizardPanel(props: { theme: Theme; accent?: boolean; children: a
   )
 }
 
-export function WizardActionRow(props: { children: any }) {
+export function WizardActionRow(props: { children: JSX.Element }) {
   return (
     <box flexDirection="row" gap={1} flexWrap="wrap">
       {props.children}
+    </box>
+  )
+}
+
+export type ToolCheckStatus = "checking" | "available" | "missing" | "unsupported"
+
+export type ToolCheckItem = {
+  label: string
+  status: ToolCheckStatus
+  detail?: string
+}
+
+/** Left-accent color for a document-tool card, by check status. */
+export function toolCheckAccent(theme: Theme, status: ToolCheckStatus) {
+  switch (status) {
+    case "available":
+      return theme.success
+    case "missing":
+      return theme.error
+    case "unsupported":
+      return theme.warning
+    case "checking":
+      return theme.border
+  }
+}
+
+/**
+ * Document-tool status rows: plain check + text, no boxes. The label stays
+ * on its own line, so long detail text wraps cleanly underneath instead of
+ * mangling the first line.
+ */
+export function ToolChecksList(props: {
+  theme: Theme
+  checks: readonly ToolCheckItem[]
+  spinIdx: number
+  wavePulse: (frame: number) => string
+}) {
+  return (
+    <box flexDirection="column" gap={1} paddingTop={1}>
+      <For each={props.checks}>
+        {(check) => {
+          const settled = check.status !== "checking"
+          const icon = settled ? "●" : props.wavePulse(props.spinIdx)
+          const accent = toolCheckAccent(props.theme, check.status)
+          return (
+            <box flexDirection="column">
+              <box flexDirection="row" gap={1} alignItems="center">
+                <text
+                  fg={check.status === "checking" ? props.theme.textMuted : accent}
+                  attributes={check.status === "checking" ? undefined : TextAttributes.BOLD}
+                >
+                  {icon}
+                </text>
+                <text fg={check.status === "checking" ? props.theme.textMuted : props.theme.text}>
+                  {check.label}
+                </text>
+              </box>
+              <Show when={check.detail}>
+                <box paddingLeft={2}>
+                  <text fg={props.theme.textMuted} attributes={TextAttributes.DIM} wrapMode="word">
+                    {check.detail}
+                  </text>
+                </box>
+              </Show>
+            </box>
+          )
+        }}
+      </For>
     </box>
   )
 }
@@ -300,6 +376,13 @@ export function WizardActionButton(props: {
 export function WizardGateButton(props: { theme: Theme; label: string; action: () => void }) {
   const [remaining, setRemaining] = createSignal(30)
   let timer: ReturnType<typeof setInterval> | undefined
+
+  // A reused instance showing a new gate must restart the countdown —
+  // otherwise the stale timer fires the previous gate's action early.
+  createEffect(() => {
+    props.label
+    setRemaining(30)
+  })
 
   onMount(() => {
     timer = setInterval(() => {
@@ -365,13 +448,23 @@ export function wizardScrollboxMaxHeight(
   return max === undefined ? resolved : Math.min(resolved, max)
 }
 
+/**
+ * Fixed height for the central wizard grey box. Same value for every step
+ * (depends only on terminal height) so the panel never jumps between steps,
+ * with room left for the header above and the action row below. Applied as
+ * a minimum: short screens let the panel grow instead of clipping content.
+ */
+export function wizardPanelHeight(viewportHeight: number): number {
+  return Math.max(13, Math.min(23, viewportHeight - 11))
+}
+
 export function scanOptionListMaxHeight(viewportHeight: number): number {
-  return wizardScrollboxMaxHeight(viewportHeight)
+  return wizardScrollboxMaxHeight(viewportHeight, { min: 4, ratio: 0.35, max: 12 })
 }
 
 /** Complete-state import results: ~10–12 rows, adaptive within viewport. */
 export function importResultsListMaxHeight(viewportHeight: number): number {
-  return wizardScrollboxMaxHeight(viewportHeight, { min: 6, ratio: 0.4, max: 12 })
+  return wizardScrollboxMaxHeight(viewportHeight, { min: 5, ratio: 0.3, max: 9 })
 }
 
 function scrollSelectedImportOptionIntoView(scroll: ScrollBoxRenderable | undefined, selectedIndex: number) {
@@ -386,6 +479,80 @@ function scrollSelectedImportOptionIntoView(scroll: ScrollBoxRenderable | undefi
     scroll.scrollBy(y)
     if (selectedIndex === 1) scroll.scrollTo(0)
   }
+}
+
+export type OcrModelOption = {
+  id: string
+  label: string
+  detail: string
+  kind: "vision" | "none"
+  modelId?: string
+  provider?: string
+  vision: boolean
+  cost?: "free" | "paid" | "offline"
+  requiresKey?: string
+}
+
+export function OcrModelSelector(props: {
+  theme: Theme
+  options: OcrModelOption[]
+  selectedIndex: number
+  selectedId: string
+  viewportHeight: number
+  onSelectIndex: (index: number) => void
+  onSelect: (index: number) => void
+  /** Footer hint line. Defaults to the legacy copy; pass the shared
+      OCR_ENGINE_HINT_LINE to stay in sync with engine details. */
+  hint?: string
+}) {
+  let scroll: ScrollBoxRenderable | undefined
+  createEffect(() => {
+    const idx = props.selectedIndex
+    queueMicrotask(() => scrollSelectedImportOptionIntoView(scroll, idx + 1))
+  })
+  const isChosen = (item: OcrModelOption, chosenId: string) => {
+    if (item.id === chosenId) return true
+    if (item.id === "vision:provider-picker" && chosenId.includes("/")) return true
+    return false
+  }
+  return (
+    <box flexDirection="column" gap={1} paddingTop={1}>
+      <scrollbox
+        ref={(element: ScrollBoxRenderable) => (scroll = element)}
+        maxHeight={scanOptionListMaxHeight(props.viewportHeight)}
+        verticalScrollbarOptions={{ visible: true }} horizontalScrollbarOptions={{ visible: false }}
+      >
+        <For each={props.options}>
+          {(item, index) => {
+            const active = createMemo(() => props.selectedIndex === index())
+            const chosen = createMemo(() => isChosen(item, props.selectedId))
+            return (
+              <box
+                paddingLeft={1}
+                paddingRight={1}
+                paddingTop={1}
+                paddingBottom={1}
+                backgroundColor={buttonBackground(props.theme, active())}
+                onMouseOver={() => props.onSelectIndex(index())}
+                onMouseDown={() => deferPress(() => props.onSelect(index()))}
+              >
+                <box flexDirection="row" gap={1} alignItems="center">
+                  <text fg={buttonText(props.theme, active(), props.theme.primary)} width={2}>
+                    {chosen() ? "●" : "○"}
+                  </text>
+                  <box flexDirection="column" flexGrow={1}>
+                    <text fg={buttonText(props.theme, active(), props.theme.text)}>{item.label}</text>
+                    <text fg={buttonText(props.theme, active(), props.theme.textMuted)}>{item.detail}</text>
+                  </box>
+                </box>
+              </box>
+            )
+          }}
+        </For>
+      </scrollbox>
+      <text fg={props.theme.textMuted}>{props.hint ?? "↑↓ move · space select · enter continue · Vision: paid online transcription (needs key) · None: copy only"}</text>
+    </box>
+  )
 }
 
 export function ImportOptionsSelector(props: {
@@ -429,7 +596,7 @@ export function ImportOptionsSelector(props: {
       <scrollbox
         ref={(element: ScrollBoxRenderable) => (scroll = element)}
         maxHeight={scanOptionListMaxHeight(props.viewportHeight)}
-        scrollbarOptions={{ visible: false }}
+        verticalScrollbarOptions={{ visible: true }} horizontalScrollbarOptions={{ visible: false }}
       >
         <For each={props.options}>
           {(item, index) => {
@@ -470,9 +637,10 @@ export function ImportOptionsSelector(props: {
 export function LogScrollbox(props: { theme: Theme; lines: string[]; viewportHeight: number }) {
   return (
     <scrollbox
-      maxHeight={wizardScrollboxMaxHeight(props.viewportHeight, { min: 4, ratio: 0.45, max: 14 })}
+      maxHeight={wizardScrollboxMaxHeight(props.viewportHeight, { min: 3, ratio: 0.25, max: 7 })}
       stickyScroll={true}
       stickyStart="bottom"
+      verticalScrollbarOptions={{ visible: true }} horizontalScrollbarOptions={{ visible: false }}
     >
       <For each={props.lines}>
         {(line) => <text fg={props.theme.textMuted}>{line || " "}</text>}
@@ -489,6 +657,66 @@ export function LogoSummary(props: { theme: Theme; label: string }) {
   )
 }
 
+export function ImportFileResults(props: {
+  theme: Theme
+  files: ImportFileProgressItem[]
+  viewportHeight: number
+  complete?: boolean
+}) {
+  const items = createMemo(() => {
+    const files = props.files
+    const pending = files.filter((item) => !isTerminalImportFileStatus(item.status))
+    const terminal = selectImportResultsWindow(files)
+    return props.complete ? [...terminal, ...pending] : [...pending, ...terminal]
+  })
+  const counts = createMemo(() => countImportProgress(props.files))
+  // Fixed height (not max): the list area never resizes while files stream
+  // in, so the panel stops jumping up and down mid-run.
+  const resultsHeight = createMemo(() => importResultsListMaxHeight(props.viewportHeight))
+  const accent = (status: FileProgressStatus) => {
+    const key = statusAccentKey(status)
+    if (key === "primary") return props.theme.primary
+    if (key === "success") return props.theme.success
+    if (key === "error") return props.theme.error
+    if (key === "warning") return props.theme.warning
+    return props.theme.textMuted
+  }
+
+  return (
+    <Show when={items().length > 0}>
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={props.theme.textMuted}>
+          Files (<span style={{ fg: props.theme.success }}>{counts().succeeded} complete</span> · <span style={{ fg: props.theme.error }}>{counts().failed} failed</span> · <span style={{ fg: props.theme.textMuted }}>{counts().pending} pending</span>)
+        </text>
+        <scrollbox height={resultsHeight()} verticalScrollbarOptions={{ visible: true }} horizontalScrollbarOptions={{ visible: false }}>
+          <For each={items()}>
+            {(item) => {
+              const parsed = splitPageSuffix(item.rel)
+              const page = item.page ?? parsed.page
+              const total = item.pageTotal ?? parsed.total
+              return (
+                <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
+                  {statusGlyph(item.status)} {displayImportFilePath(parsed.base)}{page !== undefined ? <span style={{ fg: props.theme.primary }}>{formatPageMarker(page, total)}</span> : ""}
+                </text>
+              )
+            }}
+          </For>
+        </scrollbox>
+      </box>
+    </Show>
+  )
+}
+
+export function formatImportProgressStatus(message: string): string {
+  const value = message.trim()
+  const separator = value.indexOf("→")
+  return separator === -1 ? value : value.slice(separator + 1).trim()
+}
+
+export function progressStatusLabel(status: string, complete: boolean): string {
+  return complete ? "" : status.trim()
+}
+
 export function ProgressBar(props: {
   theme: Theme
   current: number
@@ -501,17 +729,15 @@ export function ProgressBar(props: {
   /** Used to size the complete-state results ScrollBox. */
   viewportHeight?: number
 }) {
+  // Math guard only (avoids div-by-zero in the bar): display text uses
+  // progressCountLabel/progressPercentLabel so unknown totals never print.
   const total = createMemo(() => (props.total > 0 ? props.total : 1))
   const pct = createMemo(() => Math.min(props.current / total(), 1))
   const blocks = () => props.barWidth ?? 20
   const filled = () => Math.round(pct() * blocks())
   const bar = () => "█".repeat(filled()) + "░".repeat(blocks() - filled())
   const complete = createMemo(() => isImportPhaseComplete(props.current, props.total, props.files))
-  const queue = createMemo(() => (complete() ? [] : selectImportQueueWindow(props.files ?? [], 4)))
-  const failed = createMemo(() => (complete() ? [] : selectImportFailedItems(props.files ?? [])))
-  const succeeded = createMemo(() => (complete() ? [] : selectImportSucceededItems(props.files ?? [])))
-  const results = createMemo(() => (complete() ? selectImportResultsWindow(props.files ?? []) : []))
-  const resultsMaxHeight = createMemo(() => importResultsListMaxHeight(props.viewportHeight ?? 24))
+  const statusLabel = createMemo(() => progressStatusLabel(props.status, complete()))
   const recap = createMemo(() => {
     if (!complete()) return ""
     const files = props.files ?? []
@@ -521,31 +747,44 @@ export function ProgressBar(props: {
     }
     return formatImportPhaseRecap(countImportProgress(files), props.status)
   })
-  const accent = (status: FileProgressStatus) => {
-    const key = statusAccentKey(status)
-    if (key === "primary") return props.theme.primary
-    if (key === "success") return props.theme.success
-    if (key === "error") return props.theme.error
-    if (key === "warning") return props.theme.warning
-    return props.theme.textMuted
-  }
-  const currentLabel = createMemo(() => {
-    if (complete()) return ""
+  const currentLabel = createMemo((): { text: string; marker: string } => {
+    if (complete()) return { text: "", marker: "" }
     if (props.files && props.files.length > 0) {
       const active = props.files.find((f) => f.status === "processing")
-      if (active) return shortImportFileName(active.rel)
+      if (active) {
+        const parsed = splitPageSuffix(active.rel)
+        const page = active.page ?? parsed.page
+        const total = active.pageTotal ?? parsed.total
+        return {
+          text: displayImportFilePath(parsed.base),
+          marker: page !== undefined ? formatPageMarker(page, total) : "",
+        }
+      }
+      // No active row in the file queue — don't fall back to stale
+      // `fileName` (last emitted rel, often already done). That would leave
+      // a phantom `›` (e.g. survey-results.csv) after MarkItDown finishes but
+      // OCR files remain queued (`pending` → `complete()` stays false).
+      return { text: "", marker: "" }
     }
-    return props.fileName ? shortImportFileName(props.fileName) : ""
+    if (!props.fileName) return { text: "", marker: "" }
+    const parsed = splitPageSuffix(props.fileName)
+    return {
+      text: displayImportFilePath(parsed.base),
+      marker: parsed.page !== undefined ? formatPageMarker(parsed.page, parsed.total) : "",
+    }
   })
 
   return (
     <box flexDirection="column" gap={1} paddingTop={1}>
       <box flexDirection="row" gap={0} alignItems="center">
         <text fg={props.theme.text}>
-          {bar()} {Math.round(pct() * 100)}%
+          {bar()}
+          <Show when={progressPercentLabel(props.current, props.total)}>
+            {(label) => <> {label()}</>}
+          </Show>
         </text>
         <text fg={props.theme.textMuted} attributes={TextAttributes.DIM}>
-          {" "}{props.current} of {total()}
+          {" "}{progressCountLabel(props.current, props.total)}
         </text>
       </box>
       <Show when={recap() !== ""}>
@@ -553,61 +792,22 @@ export function ProgressBar(props: {
           {recap()}
         </text>
       </Show>
-      <Show when={currentLabel() !== ""}>
-        <text fg={props.theme.primary} wrapMode="none" overflow="hidden">
-          {statusGlyph("processing")} {currentLabel()}
+      {/* Always rendered (blank when idle): mounting/unmounting this row
+          between files makes the layout jump up and down mid-run. */}
+      <text fg={props.theme.primary} wrapMode="none" overflow="hidden">
+        {currentLabel().text !== "" ? `${statusGlyph("processing")} ${currentLabel().text}${currentLabel().marker}` : " "}
+      </text>
+      <Show when={statusLabel() !== ""}>
+        <text fg={props.theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" overflow="hidden">
+          {Locale.truncate(statusLabel(), 80)}
         </text>
       </Show>
-      <Show when={!complete() && props.status !== "" && !(props.files && props.files.length > 0)}>
-        <text fg={props.theme.textMuted} wrapMode="none" overflow="hidden">{Locale.truncate(props.status, 80)}</text>
-      </Show>
-      <Show when={queue().length > 0}>
-        <box flexDirection="column" gap={0}>
-          <For each={queue()}>
-            {(item) => (
-              <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
-                {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-              </text>
-            )}
-          </For>
-        </box>
-      </Show>
-      <Show when={succeeded().length > 0}>
-        <scrollbox maxHeight={resultsMaxHeight()}>
-          <For each={succeeded()}>
-            {(item) => (
-              <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
-                {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-              </text>
-            )}
-          </For>
-        </scrollbox>
-      </Show>
-      <Show when={results().length > 0}>
-        <scrollbox maxHeight={resultsMaxHeight()}>
-          <For each={results()}>
-            {(item) => (
-              <text fg={accent(item.status)} wrapMode="none" overflow="hidden">
-                {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-              </text>
-            )}
-          </For>
-        </scrollbox>
-      </Show>
-      <Show when={failed().length > 0}>
-        <box flexDirection="column" gap={0} paddingTop={1}>
-          <text fg={props.theme.error}>Failed ({failed().length})</text>
-          <scrollbox maxHeight={resultsMaxHeight()}>
-            <For each={failed()}>
-              {(item) => (
-                <text fg={props.theme.error} wrapMode="none" overflow="hidden">
-                  {statusGlyph(item.status)} {shortImportFileName(item.rel)}
-                </text>
-              )}
-            </For>
-          </scrollbox>
-        </box>
-      </Show>
+      <ImportFileResults
+        theme={props.theme}
+        files={props.files ?? []}
+        viewportHeight={props.viewportHeight ?? 24}
+        complete={complete()}
+      />
     </box>
   )
 }

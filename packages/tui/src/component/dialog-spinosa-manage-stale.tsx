@@ -5,6 +5,7 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useBindings } from "../keymap"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { useTerminalDimensions } from "@opentui/solid"
 import { truncatePathTail } from "../spinosa/truncate-path"
 import { listRegisteredWorkspaces, unregisterWorkspace } from "../spinosa/service"
 import { resolveWorkspaceDisplayName } from "../spinosa/workspace-name"
@@ -14,6 +15,7 @@ import {
   isStaleWorkspacePresence,
   manageStaleActionGlyph,
   manageStaleNameBudget,
+  manageStaleResponsiveCols,
   manageStaleTableWidth,
   MANAGE_STALE_ACTION_BTN,
   MANAGE_STALE_COL,
@@ -42,6 +44,9 @@ export function DialogSpinosaManageStale(props: {
 }) {
   const dialog = useDialog()
   const { theme } = useTheme()
+  const dimensions = useTerminalDimensions()
+  const cols = createMemo(() => manageStaleResponsiveCols(dimensions().width))
+  const tableWidth = createMemo(() => manageStaleTableWidth(cols()))
   const [store, setStore] = createStore({
     selected: 0,
     action: "path" as ManageStaleAction,
@@ -356,7 +361,7 @@ export function DialogSpinosaManageStale(props: {
           </Show>
 
           <Show when={stale().length > 0}>
-            <box flexDirection="column" flexShrink={0} width={manageStaleTableWidth()}>
+            <box flexDirection="column" flexShrink={0} width={tableWidth()}>
               <box
                 flexDirection="row"
                 gap={1}
@@ -365,10 +370,10 @@ export function DialogSpinosaManageStale(props: {
                 flexShrink={0}
                 backgroundColor={theme.backgroundPanel}
               >
-                <box width={MANAGE_STALE_COL.name} flexShrink={0}><text fg={theme.textMuted}>Name</text></box>
-                <box width={MANAGE_STALE_COL.path} flexShrink={0}><text fg={theme.textMuted}>Path</text></box>
-                <box width={MANAGE_STALE_COL.status} flexShrink={0}><text fg={theme.textMuted}>Status</text></box>
-                <box width={MANAGE_STALE_COL.actions} flexShrink={0}><text fg={theme.textMuted}>Actions</text></box>
+                <box width={cols().name} flexShrink={0}><text fg={theme.textMuted}>Name</text></box>
+                <box width={cols().path} flexShrink={0}><text fg={theme.textMuted}>Path</text></box>
+                <box width={cols().status} flexShrink={0}><text fg={theme.textMuted}>Status</text></box>
+                <box width={cols().actions} flexShrink={0}><text fg={theme.textMuted}>Actions</text></box>
               </box>
               <scrollbox
                 stickyScroll={false}
@@ -379,7 +384,7 @@ export function DialogSpinosaManageStale(props: {
                 <For each={stale()}>
                   {(row, i) => {
                     const active = () => store.selected === i()
-                    const nameText = Locale.truncate(row.name, manageStaleNameBudget())
+                    const nameText = Locale.truncate(row.name, manageStaleNameBudget(cols().name))
                     return (
                       <box
                         flexDirection="row"
@@ -392,24 +397,24 @@ export function DialogSpinosaManageStale(props: {
                         borderColor={active() ? theme.borderActive : theme.border}
                         onMouseOver={() => setStore("selected", i())}
                       >
-                        <box width={MANAGE_STALE_COL.name} flexShrink={0}>
+                        <box width={cols().name} flexShrink={0}>
                           <text fg={theme.error} overflow="hidden" wrapMode="none">
                             <span style={{ bold: active() }}>{active() ? "› " : "  "}✕ {nameText}</span>
                           </text>
                         </box>
-                        <box width={MANAGE_STALE_COL.path} flexShrink={0}>
+                        <box width={cols().path} flexShrink={0}>
                           <text fg={theme.textMuted} overflow="hidden" wrapMode="none">
-                            {truncatePathTail(row.path, MANAGE_STALE_COL.path - 2)}
+                            {truncatePathTail(row.path, cols().path - 2)}
                           </text>
                         </box>
-                        <box width={MANAGE_STALE_COL.status} flexShrink={0}>
+                        <box width={cols().status} flexShrink={0}>
                           <text fg={theme.error} overflow="hidden" wrapMode="none">
                             {stalePresenceDisplay(row.presence)}
                           </text>
                         </box>
                         <box
-                          width={MANAGE_STALE_COL.actions}
-                          minWidth={MANAGE_STALE_COL.actions}
+                          width={cols().actions}
+                          minWidth={cols().actions}
                           flexShrink={0}
                           flexDirection="row"
                           gap={1}

@@ -7,7 +7,7 @@ Target: first binary-distribution hard cut (`distribution: binary`, four product
 ## Pre-cut (local, this machine)
 
 - [x] Branch: `binary-distribution-hard-cut`
-- [x] Four product binaries built via `SPINOSA_BINARY_SMOKE_STRICT=1 bun run build:binaries -- --skip-embed-web-ui`
+- [x] Four product binaries built via `SPINOSA_BINARY_SMOKE_STRICT=1 bun run build:binaries`
 - [x] Host strict smoke green: `bun script/smoke-install.ts --binary dist/v1.0.3-beta.9/spinosa-darwin-arm64`
 - [x] Cross assets verified (exist, mode `755`, size ≫ 1KiB, correct Mach-O/ELF, onnx + canvas embed strings)
 - [x] Stay on Bun for packaging (`packageManager: bun@1.3.14`); npm only if Bun compile fails (it did not)
@@ -47,7 +47,7 @@ Cannot run natively here: `darwin-x64` (needs Intel/Rosetta host), both Linux EL
 ## Verify commands
 
 ```bash
-SPINOSA_BINARY_SMOKE_STRICT=1 bun run build:binaries -- --skip-embed-web-ui
+SPINOSA_BINARY_SMOKE_STRICT=1 bun run build:binaries
 SPINOSA_BINARY_SMOKE_STRICT=1 bun script/smoke-install.ts --binary dist/v$(jq -r .version package.json)/spinosa-darwin-arm64
 SPINOSA_BINARY_SMOKE_STRICT=1 bun run quality:binary
 bun run quality

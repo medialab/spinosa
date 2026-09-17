@@ -1,4 +1,4 @@
-import { Show, type ParentProps } from "solid-js"
+import { Show, type JSX, type ParentProps } from "solid-js"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { ToolCallRecord, VisualizerMode } from "./visualizer-types"
@@ -27,7 +27,7 @@ export function Viewport(props: {
   loadedOnce: boolean
   error: string | undefined
   scrollRef?: (el: ScrollBoxRenderable) => void
-  children: any
+  children: JSX.Element
 }) {
   const { theme } = useTheme()
 

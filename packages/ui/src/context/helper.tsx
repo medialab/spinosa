@@ -1,6 +1,6 @@
 import { createContext, createMemo, Show, useContext, type ParentProps, type Accessor } from "solid-js"
 
-export function createSimpleContext<T, Props extends Record<string, any>>(
+export function createSimpleContext<T, Props extends Record<string, unknown>>(
   input: {
     name: string
     init: ((input: Props) => T) | (() => T)

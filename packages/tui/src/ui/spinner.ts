@@ -1,6 +1,7 @@
 import type { ColorInput } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import type { ColorGenerator } from "opentui-spinner"
+import { isUnicodeSupported } from "../util/terminal"
 
 interface AdvancedGradientOptions {
   colors: ColorInput[]
@@ -239,8 +240,25 @@ export function deriveTrailColors(brightColor: ColorInput, steps: number = 6): R
 export function deriveInactiveColor(brightColor: ColorInput, factor: number = 0.2): RGBA {
   const baseRgba = brightColor instanceof RGBA ? brightColor : RGBA.fromHex(brightColor as string)
 
-  // Use the full color brightness but adjust alpha for background-independent dimming
-  return RGBA.fromValues(baseRgba.r, baseRgba.g, baseRgba.b, factor)
+  // On limited-color terminals (TERM=linux, xterm without truecolor, NO_COLOR) a 0.2 alpha
+  // quantizes to the background and becomes invisible. Bump to 0.45 for visibility.
+  let effectiveFactor = factor
+  try {
+    if (process.env.NO_COLOR !== undefined) effectiveFactor = Math.max(factor, 0.45)
+    else {
+      const term = (process.env.TERM ?? "").toLowerCase()
+      if (!term) {
+        // test/dev with no TERM: keep 0.2 for snapshot stability
+      } else {
+        const colorterm = (process.env.COLORTERM ?? "").toLowerCase()
+        const hasTrueColor = colorterm.includes("truecolor") || colorterm.includes("24bit") || term.includes("direct") || term.includes("truecolor")
+        if (!hasTrueColor && (term === "linux" || term === "xterm" || term === "dumb" || !term.includes("256color"))) {
+          effectiveFactor = Math.max(factor, 0.45)
+        }
+      }
+    }
+  } catch {}
+  return RGBA.fromValues(baseRgba.r, baseRgba.g, baseRgba.b, effectiveFactor)
 }
 
 export type KnightRiderStyle = "blocks" | "diamonds"
@@ -306,11 +324,19 @@ export function createFrames(options: KnightRiderOptions = {}): string[] {
   const totalFrames = width + holdEnd + (width - 1) + holdStart
 
   // Generate dynamic frames where inactive pixels are dots and active ones are blocks
+  const unicode = isUnicodeSupported()
   const frames = Array.from({ length: totalFrames }, (_, frameIndex) => {
     return Array.from({ length: width }, (_, charIndex) => {
       const index = calculateColorIndex(frameIndex, charIndex, width, trailOptions)
 
       if (style === "diamonds") {
+        if (!unicode) {
+          const ascii = ["*", "o", ".", "+"] as const
+          if (index >= 0 && index < trailOptions.colors.length) {
+            return ascii[Math.min(index, ascii.length - 1)]
+          }
+          return "."
+        }
         const shapes = ["⬥", "◆", "⬩", "⬪"]
         if (index >= 0 && index < trailOptions.colors.length) {
           return shapes[Math.min(index, shapes.length - 1)]
@@ -319,8 +345,8 @@ export function createFrames(options: KnightRiderOptions = {}): string[] {
       }
 
       // Default to blocks
-      // It's active if we have a valid color index that is within our colors array
       const isActive = index >= 0 && index < trailOptions.colors.length
+      if (!unicode) return isActive ? "#" : "."
       return isActive ? "■" : "⬝"
     }).join("")
   })

@@ -26,7 +26,6 @@ describe("RuntimeFlags", () => {
             SPINOSA_PURE: "true",
             SPINOSA_DISABLE_DEFAULT_PLUGINS: "true",
             SPINOSA_AUTO_SHARE: "true",
-            SPINOSA_DISABLE_EMBEDDED_WEB_UI: "true",
             SPINOSA_DISABLE_EXTERNAL_SKILLS: "true",
             SPINOSA_DISABLE_LSP_DOWNLOAD: "true",
             SPINOSA_EXPERIMENTAL: "true",
@@ -42,7 +41,6 @@ describe("RuntimeFlags", () => {
       expect(flags.pure).toBe(true)
       expect(flags.autoShare).toBe(true)
       expect(flags.disableDefaultPlugins).toBe(true)
-      expect(flags.disableEmbeddedWebUi).toBe(true)
       expect(flags.disableExternalSkills).toBe(true)
       expect(flags.disableLspDownload).toBe(true)
       expect(flags.disableClaudeCodePrompt).toBe(false)
@@ -138,7 +136,6 @@ describe("RuntimeFlags", () => {
       expect(flags.pure).toBe(false)
       expect(flags.autoShare).toBe(false)
       expect(flags.disableDefaultPlugins).toBe(true)
-      expect(flags.disableEmbeddedWebUi).toBe(false)
       expect(flags.disableExternalSkills).toBe(false)
       expect(flags.disableLspDownload).toBe(false)
       expect(flags.disableClaudeCodePrompt).toBe(false)
@@ -364,7 +361,6 @@ describe("RuntimeFlags", () => {
 
       expect(flags.pure).toBe(false)
       expect(flags.disableDefaultPlugins).toBe(false)
-      expect(flags.disableEmbeddedWebUi).toBe(false)
       expect(flags.disableExternalSkills).toBe(false)
       expect(flags.disableLspDownload).toBe(false)
       expect(flags.disableClaudeCodePrompt).toBe(false)

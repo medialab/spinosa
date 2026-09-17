@@ -117,7 +117,8 @@ export function usePromptMove(input: { projectID: () => string | undefined; sess
   async function moveExistingSession(sessionID: string, selection: MoveSessionSelection) {
     const session = sync.session.get(sessionID)
     const status = await sdk.client.vcs.status({ directory: session?.directory }).catch(() => undefined)
-    const choice = status?.data?.length ? await DialogWorkspaceFileChanges.show(dialog, status.data) : "no"
+    const files = status?.data?._tag === "available" ? status.data.files : []
+    const choice = files.length ? await DialogWorkspaceFileChanges.show(dialog, files) : "no"
     if (!choice) return
     dialog.clear()
     const directory = selection.type === "new" ? await create(sessionContext(sessionID)) : selection.directory

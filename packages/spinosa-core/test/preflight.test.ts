@@ -43,6 +43,7 @@ function dependencies(overrides: Partial<PreflightDependencies> = {}) {
     listPackCheckCandidates: async () => [],
     canPrompt: () => false,
     out: (message) => output.push(message),
+    sleep: async () => {},
     ...overrides,
   }
   return { deps, output, updated }
@@ -64,7 +65,7 @@ describe("launch preflight", () => {
     })
 
     expect(await runLaunchPreflight(deps)).toBe("continue")
-    expect(questions).toEqual(["✨ \x1b[1mSpinosa v1.1.0\x1b[0m is available (current \x1b[32mv1.0.0\x1b[0m). Upgrade now?"])
+    expect(questions).toEqual(["\x1b[36m?\x1b[0m \x1b[1mSpinosa v1.1.0\x1b[0m is available (current \x1b[32mv1.0.0\x1b[0m). Upgrade now?"])
   })
 
   test("upgrades outdated workspaces and exits without auto-launching", async () => {
@@ -117,7 +118,7 @@ describe("launch preflight", () => {
     })
 
     expect(await runLaunchPreflight(deps)).toBe("exit")
-    expect(output).toContain("⚠ Could not update missing: workspace is missing")
+    expect(output.join("\n")).toContain("Could not update missing: workspace is missing")
     expect(output.at(-1)).toBe(LAUNCH_STATUS_UPGRADE_DONE)
   })
 
@@ -151,10 +152,10 @@ describe("launch preflight", () => {
     expect(updated).toEqual(["/work/stale"])
     expect(forced).toEqual([true])
     expect(inspectCalls).toBe(2)
-    expect(output).toContain("Workspace template pack update available for 1 workspace(s):")
-    expect(output).toContain("  • stale — AGENTS.md, startup-prompt.md")
-    expect(output).toContain("✓ Updated stale — template pack current")
-    expect(output).not.toContain(LAUNCH_STATUS_UPGRADE_DONE)
+    expect(output.join("\n")).toContain("Workspace template pack update available for 1 workspace(s):")
+    expect(output.join("\n")).toContain("stale — AGENTS.md, startup-prompt.md")
+    expect(output.join("\n")).toContain("Updated stale — template pack current")
+    expect(output.join("\n")).not.toContain(LAUNCH_STATUS_UPGRADE_DONE)
   })
 
   test("reports when forced pack update leaves probes stale", async () => {
@@ -171,8 +172,8 @@ describe("launch preflight", () => {
 
     expect(await runLaunchPreflight(deps)).toBe("continue")
     expect(updated).toEqual(["/work/stale"])
-    expect(output).toContain("⚠ stale still stale after update: .agents/references/classification.md")
-    expect(output).toContain("⚠ 1 workspace update(s) failed; run 'spinosa update <workspace> --force' to retry.")
+    expect(output.join("\n")).toContain("stale still stale after update: .agents/references/classification.md")
+    expect(output.join("\n")).toContain("1 workspace update(s) failed; run 'spinosa update <workspace> --force' to retry.")
   })
 
   test("continues without updating when user declines pack refresh", async () => {
@@ -233,6 +234,6 @@ describe("offerStaleTemplatePackUpdates", () => {
 
 describe("launch status constants", () => {
   test("exports stable launch status lines", () => {
-    expect(LAUNCH_STATUS_LAUNCHING).toBe("launching TUI...")
+    expect(LAUNCH_STATUS_LAUNCHING).toBe("Launching TUI...")
   })
 })

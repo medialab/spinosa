@@ -3292,6 +3292,55 @@ export class Oauth extends HeyApiClient {
   }
 }
 
+export class Vision extends HeyApiClient {
+  /**
+   * Transcribe image via vision model
+   *
+   * Transcribe an image to text using a vision-capable model. Uses the same provider SDK/auth as chat. Credentials never leave the kernel.
+   */
+  public transcribe<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      modelID: string
+      prompt: string
+      image: { mime: string; data: string }
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "path", key: "modelID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "image" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      { text: string },
+      unknown,
+      ThrowOnError
+    >({
+      url: "/provider/{providerID}/models/{modelID}/vision/transcribe",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Provider extends HeyApiClient {
   /**
    * List providers
@@ -3356,6 +3405,11 @@ export class Provider extends HeyApiClient {
   private _oauth?: Oauth
   get oauth(): Oauth {
     return (this._oauth ??= new Oauth({ client: this.client }))
+  }
+
+  private _vision?: Vision
+  get vision(): Vision {
+    return (this._vision ??= new Vision({ client: this.client }))
   }
 }
 

@@ -12,10 +12,12 @@ export const EmptyBorder = {
   rightT: "",
 }
 
+import { isUnicodeSupported } from "../util/terminal"
+
 export const SplitBorder = {
   border: ["left" as const, "right" as const],
   customBorderChars: {
     ...EmptyBorder,
-    vertical: "┃",
+    vertical: isUnicodeSupported() ? "┃" : "|",
   },
 }

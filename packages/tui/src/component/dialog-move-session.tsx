@@ -234,9 +234,10 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
     if (result.error) {
       setRemoving(undefined)
       setWorking(false)
-      if ("data" in result.error && result.error.data.forceRequired) {
-        const status = await sdk.client.vcs.status({ directory: selected.directory }).catch(() => undefined)
-        const choice = await DialogWorkspaceFileChanges.show(dialog, status?.data ?? [], {
+        if ("data" in result.error && result.error.data.forceRequired) {
+          const status = await sdk.client.vcs.status({ directory: selected.directory }).catch(() => undefined)
+          const files = status?.data?._tag === "available" ? status.data.files : []
+          const choice = await DialogWorkspaceFileChanges.show(dialog, files, {
           title: "Delete project copy?",
           message: "This project copy has file changes. Delete it anyway?",
         })

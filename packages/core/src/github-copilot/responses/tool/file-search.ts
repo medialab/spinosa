@@ -11,7 +11,7 @@ const comparisonFilterSchema = z.object({
   value: z.union([z.string(), z.number(), z.boolean()]),
 })
 
-const compoundFilterSchema: z.ZodType<any> = z.object({
+const compoundFilterSchema: z.ZodType<OpenAIResponsesFileSearchToolCompoundFilter> = z.object({
   type: z.enum(["and", "or"]),
   filters: z.array(z.union([comparisonFilterSchema, z.lazy(() => compoundFilterSchema)])),
 })

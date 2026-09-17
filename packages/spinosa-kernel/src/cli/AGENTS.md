@@ -19,7 +19,7 @@ Default command (`spinosa` with no args) runs `cmd/tui.ts`.
 1. `runLaunchPreflight()` in `@spinosa/core/commands/preflight` checks for Spinosa updates, then offers a Y/n refresh for stale workspace template packs (runs **before** the TUI worker spawns).
 2. The terminal prints status lines. Then `printLaunchingTui()` prints `launching TUI...`.
 3. `cli/tui/layer.ts` starts `@spinosa/tui`.
-4. `cli/tui/worker.ts` hosts the in-process server for fetch and events.
+4. `cli/tui/worker.ts` stubs DOM globals (DOMMatrix, ImageData, Path2D) and suppresses pdf.js boot noise, then loads `worker-main.ts`. It must not import `@napi-rs/canvas` — that extra isolate cannot require the native from bunfs chunks and `/provider` stalls. PDF render stays in the parent. The installer smoke captures boot noise and fails if those warnings appear. Compiled binaries load the extra entrypoint from `/$bunfs/root/src/cli/tui/worker.js` — never a cwd-relative `worker.ts`. The parent waits for an RPC `ping` before rendering. Worker fetch times out after 120s.
 
 Preflight runs once per launch. After a successful launch-time Spinosa upgrade it exits cleanly and the user relaunches manually. Template-pack updates apply in place and then continue into the TUI.
 
@@ -38,7 +38,6 @@ Upgrade logic lives in `@spinosa/core/commands/upgrade`. Do not duplicate it in 
 | Trigger | File | Flow |
 | ------- | ---- | ---- |
 | `spinosa attach` | `cmd/attach.ts` | Full TUI unless `--mini` |
-| `spinosa web` | `cmd/web.ts` | Server + browser |
 | `spinosa --mini` | `cmd/run.ts` | Lightweight split-footer mode |
 | `spinosa run` | `cmd/run.ts` | Batch or mini interactive |
 | `spinosa serve` | `cmd/serve.ts` | Headless API server |

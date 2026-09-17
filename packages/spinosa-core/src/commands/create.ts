@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { cleanMacMetadata } from "../utils/fs"
 import { recordFrameworkChecksums } from "../framework/checksums"
@@ -32,21 +33,51 @@ export interface CreateWorkspaceResult {
 
 function resumableWorkspace(candidate: string, corpusPath: string): boolean {
   const markerPath = path.join(candidate, ".spinosa", "workspace")
-  if (!existsSync(markerPath)) return false
+  if (existsSync(markerPath)) {
+    try {
+      const marker = readFileSync(markerPath, "utf-8")
+      const status = marker.match(/^setup_status:\s*(.+)$/m)?.[1]?.trim()
+      const source = marker.match(/^source_location:\s*(.+)$/m)?.[1]?.trim()
+      if (status === "importing" && source === path.resolve(corpusPath)) return true
+    } catch {}
+  }
+  // Single source of truth is system/configuration.md — check there as fallback
+  const configPath = path.join(candidate, "system", "configuration.md")
+  if (existsSync(configPath)) {
+    try {
+      const config = readFileSync(configPath, "utf-8")
+      const status = config.match(/^setup_status:\s*(.+)$/m)?.[1]?.trim()
+      // source_location lives in .spinosa/workspace, so also check there for source
+      const markerSource = existsSync(markerPath) ? readFileSync(markerPath, "utf-8").match(/^source_location:\s*(.+)$/m)?.[1]?.trim() : undefined
+      return status === "importing" && markerSource === path.resolve(corpusPath)
+    } catch {}
+  }
+  return false
+}
+
+export function isWritableDirectory(dir: string): boolean {
   try {
-    const marker = readFileSync(markerPath, "utf-8")
-    const status = marker.match(/^setup_status:\s*(.+)$/m)?.[1]?.trim()
-    const source = marker.match(/^source_location:\s*(.+)$/m)?.[1]?.trim()
-    return status === "importing" && source === path.resolve(corpusPath)
+    if (!dir || !existsSync(dir) || !statSync(dir).isDirectory()) return false
+    const probe = path.join(dir, `.spinosa-write-${process.pid}-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(probe)
+    rmdirSync(probe)
+    return true
   } catch {
     return false
   }
 }
 
+/** Prefer a sibling of the source. Fall back to home when the parent is not writable (Lima 9p, root mount). */
+export function workspaceParentDir(corpusPath: string, home = os.homedir()): string {
+  const parent = path.dirname(path.resolve(corpusPath))
+  if (parent !== path.resolve(home) && isWritableDirectory(parent)) return parent
+  return path.resolve(home)
+}
+
 export function resolveWorkspacePath(corpusPath: string, workspaceName?: string): string {
   const resolvedCorpus = path.resolve(corpusPath)
   const corpusName = path.basename(resolvedCorpus)
-  const parentDir = path.dirname(resolvedCorpus)
+  const parentDir = workspaceParentDir(resolvedCorpus)
   const baseName = workspaceName?.trim() || `${corpusName}-spinosa`
 
   let workspacePath = path.join(parentDir, baseName)
@@ -92,7 +123,7 @@ function reserveWorkspacePath(corpusPath: string, workspaceName?: string, resume
     return { path: candidate, resumed: true }
   }
   const corpusName = path.basename(resolvedCorpus)
-  const parentDir = path.dirname(resolvedCorpus)
+  const parentDir = workspaceParentDir(resolvedCorpus)
   if (workspaceName) assertSafeWorkspaceName(workspaceName)
   const baseName = workspaceName?.trim() || `${corpusName}-spinosa`
 
@@ -109,7 +140,8 @@ function reserveWorkspacePath(corpusPath: string, workspaceName?: string, resume
         n++
         continue
       }
-      throw error
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown"
+      throw new Error(`Cannot create workspace directory ${candidate} (${code})`)
     }
   }
 }
@@ -139,7 +171,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
   throwIfSpinosaCancelled(shouldAbort)
   const progress = onProgress ?? (() => {})
   const recover = onRecover ?? (() => {})
-  spinosaLogInfo("create", `corpusPath=${corpusPath} frameworkRoot=${frameworkRoot}`)
+  spinosaLogInfo("create", "create started")
 
   const resolvedCorpus = path.resolve(corpusPath)
   const corpusName = path.basename(resolvedCorpus)
@@ -184,7 +216,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
 
     // ── Step 3: Write workspace metadata ───────────────────────────────
     const sourceFrameworkVersion = readFrameworkVersionFromRoot(frameworkRoot)
-    progress("Writing workspace metadata...")
+    progress("Saving workspace settings...")
     const workspaceID = reservation.resumed ? ensureWorkspaceID(workspacePath) : createWorkspaceID()
     if (!reservation.resumed) {
       const markerLines = [
@@ -194,14 +226,13 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
         `created: ${today()}`,
         `project_name: ${projectName}`,
         `source_location: ${resolvedCorpus}`,
-        `setup_status: not_started`,
         "",
       ]
       writeFileSync(path.join(workspacePath, ".spinosa", "workspace"), markerLines.join("\n"), "utf-8")
     }
 
     // ── Step 4: Register workspace ─────────────────────────────────────
-    progress("Registering in global registry...")
+    progress("Registering the workspace...")
     await registerWorkspace(workspacePath, projectName, recover, workspaceID)
     throwIfSpinosaCancelled(shouldAbort)
 

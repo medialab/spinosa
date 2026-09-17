@@ -257,9 +257,49 @@ describe("instance HttpApi", () => {
       expect(yield* vcs.json).toMatchObject({ branch: expect.any(String) })
 
       expect(diff.status).toBe(200)
-      expect(yield* diff.json).toContainEqual(
-        expect.objectContaining({ file: "changed.txt", additions: 1, status: "added" }),
+      expect(yield* diff.json).toMatchObject({
+        _tag: "available",
+        files: [
+          expect.objectContaining({
+            file: "changed.txt",
+            additions: 1,
+            status: "added",
+          }),
+        ],
+      })
+    }),
+  )
+
+  it.live("reports an unavailable VCS diff instead of a clean empty diff", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const response = yield* HttpClientRequest.get(InstancePaths.vcsDiff).pipe(
+        HttpClientRequest.setUrlParam("mode", "git"),
+        directoryHeader(dir),
+        HttpClient.execute,
       )
+
+      expect(response.status).toBe(200)
+      expect(yield* response.json).toEqual({
+        _tag: "unavailable",
+        reason: "non-git",
+      })
+    }),
+  )
+
+  it.live("rejects raw VCS diff for a non-git project", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const response = yield* HttpClientRequest.get(InstancePaths.vcsDiffRaw).pipe(
+        directoryHeader(dir),
+        HttpClient.execute,
+      )
+
+      expect(response.status).toBe(400)
+      expect(yield* response.json).toEqual({
+        name: "VcsDiffUnavailableError",
+        data: { reason: "non-git" },
+      })
     }),
   )
 })

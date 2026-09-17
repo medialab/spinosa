@@ -4,43 +4,8 @@ import { createClient } from "./gen/client/client.gen.js"
 import { type Config } from "./gen/client/types.gen.js"
 import { OpencodeClient } from "./gen/sdk.gen.js"
 import { wrapClientError } from "./error-interceptor.js"
+import { rewriteLocationRequest } from "./location.js"
 export { type Config as OpencodeClientConfig, OpencodeClient }
-
-function pick(value: string | null, fallback?: string) {
-  if (!value) return
-  if (!fallback) return value
-  if (value === fallback) return fallback
-  if (value === encodeURIComponent(fallback)) return fallback
-  return value
-}
-
-function decode(value: string) {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
-function rewrite(request: Request, directory?: string) {
-  if (request.method !== "GET" && request.method !== "HEAD") return request
-
-  const value = pick(
-    request.headers.get("x-spinosa-directory") ?? request.headers.get("x-opencode-directory"),
-    directory,
-  )
-  if (!value) return request
-
-  const url = new URL(request.url)
-  if (!url.searchParams.has("directory")) {
-    url.searchParams.set("directory", decode(value))
-  }
-
-  const next = new Request(url, request)
-  next.headers.delete("x-spinosa-directory")
-  next.headers.delete("x-opencode-directory")
-  return next
-}
 
 export function createSpinosaClient(config?: Config & { directory?: string }) {
   if (!config?.fetch) {
@@ -58,7 +23,9 @@ export function createSpinosaClient(config?: Config & { directory?: string }) {
   }
 
   const client = createClient(config)
-  client.interceptors.request.use((request) => rewrite(request, config?.directory))
+  client.interceptors.request.use((request) =>
+    rewriteLocationRequest(request, { directory: config?.directory }),
+  )
   client.interceptors.error.use(wrapClientError)
   return new OpencodeClient({ client })
 }

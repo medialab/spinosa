@@ -11,6 +11,19 @@ __pycache__/
 .env.*
 !.env.example
 
+# Credentials and secrets (never commit; services read them from the environment)
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+*credentials*.json
+secrets.yaml
+secrets.yml
+secrets.json
+.auth/
+.tokens/
+
 # OS junk
 .DS_Store
 Thumbs.db
@@ -29,18 +42,19 @@ dist/
 framework/bin/.build/
 .build/
 
-# Generated embedded template pack blobs (rebuilt by script/pack-workspace-template.ts)
+# Generated embedded template pack blobs (rebuilt by scripts/pack-workspace-template.ts)
 /packages/spinosa-kernel/src/generated/template-blobs/
 /packages/spinosa-kernel/src/generated/template-files/
 /packages/spinosa-kernel/src/generated/template-pack-meta.json
-# template-pack.gen.ts / onnx-native.gen.ts / canvas-native.gen.ts keep tracked stubs; builds overwrite on disk then restore stubs
-# onnx companion libs for Bun --compile (template-blobs pattern; also mirrored under .build/onnx-native/)
-/packages/spinosa-kernel/src/generated/onnx-libs/
+# template-pack.gen.ts / canvas-native.gen.ts keep tracked stubs; builds overwrite on disk then restore stubs
 # canvas skia .node for Bun --compile (NAPI_RS_NATIVE_LIBRARY_PATH staging)
 /packages/spinosa-kernel/src/generated/canvas-libs/
 
 # Local checkout launcher symlink (use `bun run spinosa` / `bun run dev`)
 /spinosa
+/spinosa-local
+/scripts/local-spinosa.sh
+/.spinosa-local-branch
 
 # Framework (generated per-workspace)
 framework/spinosa/manifest.tsv
@@ -77,6 +91,9 @@ framework/bin/lib/vendor/
 /.spinosa/
 /.trash/
 /agent_reports/
+.quality/
+.stryker-tmp/
+/reports/mutation/
 .tui-agent/
 .spinosa-migration-report.json
 /packages/spinosa-kernel/.spinosa/
@@ -117,3 +134,8 @@ workspace-template/raw/*.jsonl
 
 # Compiled JS output alongside TS sources
 *.js
+
+# Local real-file test corpus (built by scripts/anonymize-fixtures.ts from
+# personal files; contains redacted-but-real data — NEVER commit)
+packages/spinosa-core/test/fixtures-real/
+packages/spinosa-core/test/fixtures-real-staging/

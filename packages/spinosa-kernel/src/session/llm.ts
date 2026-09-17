@@ -141,8 +141,8 @@ const live: Layer.Layer<
               metadata: typeof result === "object" ? result?.metadata : undefined,
               title: typeof result === "object" ? result?.title : undefined,
             }
-          } catch (e: any) {
-            return { result: "", error: e.message ?? String(e) }
+      } catch (error: unknown) {
+        return { result: "", error: error instanceof Error ? error.message : String(error) }
           }
         }
 

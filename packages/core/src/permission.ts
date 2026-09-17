@@ -141,7 +141,9 @@ const layer = Layer.effect(
       const session = yield* sessions.get(sessionID)
       if (!session) return yield* new SessionV2.NotFoundError({ sessionID })
       const agent = yield* agents.resolve(agentID ?? session.agent)
-      return agent?.permissions ?? missingAgentPermissions
+      const agentRules = agent?.permissions ?? missingAgentPermissions
+      const sessionRules = (session as SessionV2.Info & { permission?: Permission.Ruleset }).permission ?? []
+      return merge(agentRules, sessionRules)
     })
 
     function denied(input: AssertInput, rules: Permission.Ruleset) {

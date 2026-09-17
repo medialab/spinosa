@@ -15,15 +15,13 @@
 // The tick counter prevents stale idle events from resolving the wrong turn.
 // We also re-check live session status before resolving an idle event so a
 // delayed idle from an older turn cannot complete a newer busy turn.
-import type { Event, GlobalEvent, OpencodeClient } from "@spinosa/sdk/v2"
+import type { Event, OpencodeClient } from "@spinosa/sdk/v2"
 import { Context, Deferred, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { makeRuntime } from "@/effect/run-service"
 import {
-  blockerStatus,
   bootstrapSessionData,
   createSessionData,
   flushInterrupted,
-  pickBlockerView,
   reduceSessionData,
   type SessionData,
 } from "./session-data"
@@ -36,7 +34,6 @@ import {
   listSubagentQuestions,
   listSubagentTabs,
   reduceSubagentData,
-  sameSubagentTab,
   snapshotSelectedSubagentData,
   SUBAGENT_BOOTSTRAP_LIMIT,
   SUBAGENT_CALL_BOOTSTRAP_LIMIT,
@@ -45,7 +42,6 @@ import {
 import { traceFooterOutput, writeSessionOutput } from "./stream"
 import type {
   FooterApi,
-  FooterOutput,
   FooterPatch,
   FooterSubagentState,
   FooterSubagentTab,
@@ -55,10 +51,23 @@ import type {
   RunFilePart,
   RunInput,
   RunPrompt,
-  RunPromptPart,
   RunProvider,
   StreamCommit,
 } from "./types"
+import {
+  active,
+  buildCommandRequest,
+  buildPromptRequest,
+  composeFooter,
+  formatUnknownError,
+  globalPayloadEvent,
+  isMatchingDisposeEvent,
+  pickView,
+  sid,
+  traceTabs,
+  waitTurn,
+} from "./stream.transport.helpers"
+export { formatUnknownError }
 
 type Trace = {
   write(type: string, data?: unknown): void
@@ -132,261 +141,381 @@ type TransportService = {
 
 class Service extends Context.Service<Service, TransportService>()("@spinosa/RunStreamTransport") {}
 
-function sid(event: Event): string | undefined {
-  if (event.type === "message.updated") {
-    return event.properties.sessionID
-  }
-
-  if (event.type === "message.part.delta") {
-    return event.properties.sessionID
-  }
-
-  if (event.type === "message.part.updated") {
-    return event.properties.part.sessionID
-  }
-
-  if (
-    event.type === "session.next.shell.started" ||
-    event.type === "session.next.shell.ended" ||
-    event.type === "permission.asked" ||
-    event.type === "permission.replied" ||
-    event.type === "question.asked" ||
-    event.type === "question.replied" ||
-    event.type === "question.rejected" ||
-    event.type === "session.error" ||
-    event.type === "session.status"
-  ) {
-    return event.properties.sessionID
-  }
-
-  return undefined
+type TurnContext = {
+  input: StreamInput
+  state: State
+  scope: Scope.Scope
+  abort: AbortController
+  isClosed: () => boolean
+  poll: (next: Wait, signal: AbortSignal) => Effect.Effect<void>
+  resolveShellAgent: (agent: string | undefined) => Effect.Effect<string, unknown>
+  flush: (type: "turn.abort" | "turn.cancel") => void
 }
 
-function isEvent(value: unknown): value is Event {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false
-  }
+const runPromptTurnEffect = Effect.fn("RunStreamTransport.runPromptTurn")(
+  function* (context: TurnContext, next: SessionTurnInput) {
+    const { input, state, scope, abort, isClosed, poll, resolveShellAgent, flush } = context
 
-  const type = Reflect.get(value, "type")
-  const properties = Reflect.get(value, "properties")
-  return typeof type === "string" && !!properties && typeof properties === "object"
-}
-
-function isGlobalEvent(value: unknown): value is GlobalEvent {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false
-  }
-
-  const payload = Reflect.get(value, "payload")
-  return !!payload && typeof payload === "object"
-}
-
-function globalPayloadEvent(value: unknown): Event | undefined {
-  if (!isGlobalEvent(value)) {
-    return undefined
-  }
-
-  const payload = value.payload
-  if (payload.type === "sync") {
-    return undefined
-  }
-
-  return isEvent(payload) ? payload : undefined
-}
-
-function isMatchingDisposeEvent(value: unknown, directory: string | undefined): boolean {
-  if (!directory || !isGlobalEvent(value)) {
-    return false
-  }
-
-  if (value.directory !== directory) {
-    return false
-  }
-
-  return value.payload.type === "server.instance.disposed"
-}
-
-function active(event: Event, sessionID: string): boolean {
-  if (sid(event) !== sessionID) {
-    return false
-  }
-
-  if (event.type === "message.updated") {
-    return event.properties.info.role === "assistant"
-  }
-
-  if (event.type === "message.part.delta" || event.type === "message.part.updated") {
-    return false
-  }
-
-  if (event.type !== "session.status") {
-    return true
-  }
-
-  return event.properties.status.type !== "idle"
-}
-
-// Races the turn's deferred completion against an abort signal.
-function waitTurn(done: Wait["done"], signal: AbortSignal) {
-  return Effect.raceAll([
-    Deferred.await(done).pipe(Effect.as("idle" as const), Effect.exit),
-    Effect.callback<"abort">((resume) => {
-      if (signal.aborted) {
-        resume(Effect.succeed("abort"))
-        return Effect.void
-      }
-
-      const onAbort = () => {
-        signal.removeEventListener("abort", onAbort)
-        resume(Effect.succeed("abort"))
-      }
-
-      signal.addEventListener("abort", onAbort, { once: true })
-      return Effect.sync(() => signal.removeEventListener("abort", onAbort))
-    }).pipe(Effect.exit),
-  ]).pipe(Effect.flatMap((exit) => (Exit.isFailure(exit) ? Effect.failCause(exit.cause) : Effect.succeed(exit.value))))
-}
-
-export function formatUnknownError(error: unknown): string {
-  if (typeof error === "string") {
-    return error
-  }
-
-  if (error instanceof Error) {
-    return error.message || error.name
-  }
-
-  if (error && typeof error === "object") {
-    const value = error as { message?: unknown; name?: unknown }
-    if (typeof value.message === "string" && value.message.trim()) {
-      return value.message
+    if (isClosed() || next.signal?.aborted || input.footer.isClosed) {
+      return
     }
 
-    if (typeof value.name === "string" && value.name.trim()) {
-      return value.name
-    }
-  }
-
-  return "unknown error"
-}
-
-function sameView(a: FooterView, b: FooterView) {
-  if (a.type !== b.type) {
-    return false
-  }
-
-  if (a.type === "prompt" && b.type === "prompt") {
-    return true
-  }
-
-  if (a.type === "prompt" || b.type === "prompt") {
-    return false
-  }
-
-  return a.request === b.request
-}
-
-function blockerOrder(order: Map<string, number>, id: string) {
-  return order.get(id) ?? Number.MAX_SAFE_INTEGER
-}
-
-function firstByOrder<T extends { id: string }>(left: T[], right: T[], order: Map<string, number>) {
-  return [...left, ...right].sort((a, b) => {
-    const next = blockerOrder(order, a.id) - blockerOrder(order, b.id)
-    if (next !== 0) {
-      return next
+    if (state.fault) {
+      yield* Effect.fail(state.fault)
+      return
     }
 
-    return a.id.localeCompare(b.id)
-  })[0]
+    if (state.wait) {
+      yield* Effect.fail(new Error("prompt already running"))
+      return
+    }
+
+    const item: Wait = {
+      tick: state.tick,
+      armed: false,
+      live: false,
+      onVisibleOutput: next.onVisibleOutput,
+      done: yield* Deferred.make<void, unknown>(),
+    }
+    state.wait = item
+    state.data.announced = false
+
+    const turn = new AbortController()
+    const stop = () => {
+      turn.abort()
+    }
+    next.signal?.addEventListener("abort", stop, { once: true })
+    abort.signal.addEventListener("abort", stop, { once: true })
+    yield* poll(item, turn.signal).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
+
+    const requestInput = {
+      sessionID: input.sessionID,
+      prompt: next.prompt,
+      agent: next.agent,
+      model: next.model,
+      variant: next.variant,
+      files: next.files,
+      includeFiles: next.includeFiles,
+    }
+    const req = buildPromptRequest(requestInput)
+    const command = next.prompt.command
+    const send =
+      next.prompt.mode === "shell"
+        ? Effect.sync(() => {
+            input.trace?.write("send.shell", {
+              sessionID: input.sessionID,
+              command: next.prompt.text,
+            })
+          }).pipe(
+            Effect.andThen(
+              resolveShellAgent(next.agent).pipe(
+                Effect.flatMap((agent) =>
+                  Effect.promise(() =>
+                    input.sdk.session.shell(
+                      {
+                        sessionID: input.sessionID,
+                        agent,
+                        model: next.model,
+                        command: next.prompt.text,
+                      },
+                      { signal: turn.signal, throwOnError: true },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Effect.tap(() =>
+              Effect.sync(() => {
+                input.trace?.write("send.shell.ok", {
+                  sessionID: input.sessionID,
+                })
+                item.armed = true
+                item.live = true
+              }),
+            ),
+            Effect.flatMap(() => Deferred.succeed(item.done, undefined).pipe(Effect.ignore)),
+            Effect.catch((error) => Deferred.fail(item.done, error).pipe(Effect.ignore)),
+            Effect.forkIn(scope, { startImmediately: true }),
+            Effect.asVoid,
+          )
+        : command
+          ? Effect.sync(() => {
+              input.trace?.write("send.command", { sessionID: input.sessionID, command: command.name })
+            }).pipe(
+              Effect.andThen(
+                Effect.promise(() =>
+                  input.sdk.session.command(
+                    buildCommandRequest({ ...requestInput, command }),
+                    { signal: turn.signal },
+                  ),
+                ),
+              ),
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  input.trace?.write("send.command.ok", {
+                    sessionID: input.sessionID,
+                    command: command.name,
+                  })
+                  item.armed = true
+                  item.live = true
+                }),
+              ),
+              Effect.flatMap(() => Deferred.succeed(item.done, undefined).pipe(Effect.ignore)),
+              Effect.catch((error) => Deferred.fail(item.done, error).pipe(Effect.ignore)),
+              Effect.forkIn(scope, { startImmediately: true }),
+              Effect.asVoid,
+            )
+          : Effect.sync(() => {
+              input.trace?.write("send.prompt", req)
+            }).pipe(
+              Effect.andThen(
+                Effect.promise(() =>
+                  input.sdk.session.promptAsync(req, {
+                    signal: turn.signal,
+                  }),
+                ),
+              ),
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  input.trace?.write("send.prompt.ok", {
+                    sessionID: input.sessionID,
+                  })
+                  item.armed = true
+                }),
+              ),
+            )
+
+    yield* send.pipe(
+      Effect.flatMap(() => {
+        if (turn.signal.aborted || next.signal?.aborted || input.footer.isClosed || isClosed()) {
+          if (state.wait === item) {
+            state.wait = undefined
+          }
+          flush("turn.abort")
+          return Effect.void
+        }
+
+        if (!input.footer.isClosed && !state.data.announced) {
+          input.trace?.write("ui.patch", {
+            phase: "running",
+            status: "waiting for assistant",
+          })
+          input.footer.event({
+            type: "turn.wait",
+          })
+        }
+
+        if (state.tick > item.tick) {
+          if (state.wait === item) {
+            state.wait = undefined
+          }
+          return Effect.void
+        }
+
+        return waitTurn(item.done, turn.signal).pipe(
+          Effect.flatMap((status) =>
+            Effect.sync(() => {
+              if (state.wait === item) {
+                state.wait = undefined
+              }
+
+              if (status === "abort") {
+                flush("turn.abort")
+              }
+            }),
+          ),
+        )
+      }),
+      Effect.catch((error) => {
+        if (state.wait === item) {
+          state.wait = undefined
+        }
+
+        const canceled = turn.signal.aborted || next.signal?.aborted === true || input.footer.isClosed || isClosed()
+        if (canceled) {
+          flush("turn.cancel")
+          return Effect.void
+        }
+
+        if (error === state.fault) {
+          return Effect.fail(error)
+        }
+
+        input.trace?.write("send.prompt.error", {
+          sessionID: input.sessionID,
+          error: formatUnknownError(error),
+        })
+        return Effect.fail(error)
+      }),
+      Effect.ensuring(
+        Effect.sync(() => {
+          input.trace?.write("turn.end", {
+            sessionID: input.sessionID,
+          })
+          next.signal?.removeEventListener("abort", stop)
+          abort.signal.removeEventListener("abort", stop)
+        }),
+      ),
+    )
+  },
+)
+
+type BootstrapContext = {
+  input: StreamInput
+  state: State
+  scope: Scope.Scope
+  replayedParts: Set<string>
+  messages: (
+    sessionID: string,
+    limit?: number,
+  ) => Effect.Effect<NonNullable<Awaited<ReturnType<OpencodeClient["session"]["messages"]>>["data"]>, unknown>
+  bootstrapSubagentHistory: (sessions: string[]) => Effect.Effect<void, unknown>
+  markReplayedParts: (data: SessionData) => void
+  currentSubagentState: () => FooterSubagentState
+  seedBlocker: (id: string) => void
+  traceTabs: (trace: Trace | undefined, prev: FooterSubagentTab[], next: FooterSubagentTab[]) => void
+  syncFooter: (commits: StreamCommit[], patch?: FooterPatch, nextSubagent?: FooterSubagentState) => void
+  drainBuffered: () => Effect.Effect<void, unknown>
+  setBooting: (value: boolean) => void
 }
 
-function pickView(data: SessionData, subagent: SubagentData, order: Map<string, number>): FooterView {
-  return pickBlockerView({
-    permission: firstByOrder(data.permissions, listSubagentPermissions(subagent), order),
-    question: firstByOrder(data.questions, listSubagentQuestions(subagent), order),
+const bootstrapEffect = Effect.fn("RunStreamTransport.bootstrap")(function* (context: BootstrapContext) {
+  const {
+    input,
+    state,
+    scope,
+    messages,
+    bootstrapSubagentHistory,
+    markReplayedParts,
+    currentSubagentState,
+    seedBlocker,
+    traceTabs,
+    syncFooter,
+    drainBuffered,
+    setBooting,
+  } = context
+  const [messagesList, children, permissions, questions] = yield* Effect.all(
+    [
+      messages(
+        input.sessionID,
+        input.replay
+          ? input.replayLimit === undefined
+            ? undefined
+            : Math.max(input.replayLimit, SUBAGENT_BOOTSTRAP_LIMIT)
+          : SUBAGENT_BOOTSTRAP_LIMIT,
+      ),
+      Effect.promise(() =>
+        input.sdk.session.children({
+          sessionID: input.sessionID,
+        }),
+      ).pipe(
+        Effect.map((item) => item.data ?? []),
+        Effect.orElseSucceed(() => []),
+      ),
+      Effect.promise(() => input.sdk.permission.list()).pipe(
+        Effect.map((item) => item.data ?? []),
+        Effect.orElseSucceed(() => []),
+      ),
+      Effect.promise(() => input.sdk.question.list()).pipe(
+        Effect.map((item) => item.data ?? []),
+        Effect.orElseSucceed(() => []),
+      ),
+    ],
+    { concurrency: "unbounded" },
+  )
+
+  const sessionPermissions = permissions.filter((item) => item.sessionID === input.sessionID)
+  const sessionQuestions = questions.filter((item) => item.sessionID === input.sessionID)
+  const history = input.replay
+    ? replaySession({
+        messages: messagesList,
+        permissions: sessionPermissions,
+        questions: sessionQuestions,
+        thinking: input.thinking,
+        limits: input.limits(),
+        providers: input.providers?.(),
+      })
+    : undefined
+  const replay =
+    history && input.replayLimit !== undefined && messagesList.length > input.replayLimit
+      ? replaySession({
+          messages: messagesList.slice(-input.replayLimit),
+          permissions: sessionPermissions,
+          questions: sessionQuestions,
+          thinking: input.thinking,
+          limits: input.limits(),
+          providers: input.providers?.(),
+        })
+      : history
+
+  if (history) {
+    state.data = history.data
+  }
+
+  if (!history) {
+    bootstrapSessionData({
+      data: state.data,
+      messages: messagesList,
+      permissions: sessionPermissions,
+      questions: sessionQuestions,
+    })
+  }
+
+  if (history) {
+    markReplayedParts(history.data)
+  }
+
+  bootstrapSubagentData({
+    data: state.subagent,
+    messages: messagesList,
+    children,
+    permissions,
+    questions,
   })
-}
 
-function composeFooter(input: {
-  patch?: FooterPatch
-  subagent?: FooterSubagentState
-  current: FooterView
-  previous: FooterView
-}) {
-  let footer: FooterOutput | undefined
+  for (const request of [
+    ...state.data.permissions,
+    ...listSubagentPermissions(state.subagent),
+    ...state.data.questions,
+    ...listSubagentQuestions(state.subagent),
+  ].sort((a, b) => a.id.localeCompare(b.id))) {
+    seedBlocker(request.id)
+  }
 
-  if (input.subagent) {
-    footer = {
-      ...footer,
-      subagent: input.subagent,
+  if (replay) {
+    const activeCommitIDs = new Set([...state.data.part.keys(), ...state.data.tools])
+    for (const commit of replay.commits) {
+      input.trace?.write("ui.commit", commit)
+      input.footer.append(commit)
+
+      if (commit.partID && activeCommitIDs.has(commit.partID)) {
+        continue
+      }
+
+      yield* Effect.promise(() => input.footer.idle()).pipe(Effect.orElseSucceed(() => undefined))
     }
   }
 
-  if (!sameView(input.previous, input.current)) {
-    footer = {
-      ...footer,
-      view: input.current,
-    }
+  const snapshot = currentSubagentState()
+  traceTabs(input.trace, [], snapshot.tabs)
+  syncFooter([], replay?.patch, snapshot)
+  if (replay) {
+    yield* Effect.promise(() => input.footer.idle()).pipe(Effect.orElseSucceed(() => undefined))
   }
 
-  if (input.current.type !== "prompt") {
-    footer = {
-      ...footer,
-      patch: {
-        ...input.patch,
-        status: blockerStatus(input.current),
-      },
-    }
-    return footer
+  setBooting(false)
+  yield* drainBuffered()
+
+  const sessions = [...state.subagent.tabs.keys()]
+  if (sessions.length === 0) {
+    return
   }
 
-  if (input.patch) {
-    footer = {
-      ...footer,
-      patch: input.patch,
-    }
-    return footer
-  }
-
-  if (input.previous.type !== "prompt") {
-    footer = {
-      ...footer,
-      patch: {
-        status: "",
-      },
-    }
-  }
-
-  return footer
-}
-
-function traceTabs(trace: Trace | undefined, prev: FooterSubagentTab[], next: FooterSubagentTab[]) {
-  const before = new Map(prev.map((item) => [item.sessionID, item]))
-  const after = new Map(next.map((item) => [item.sessionID, item]))
-
-  for (const [sessionID, tab] of after) {
-    if (sameSubagentTab(before.get(sessionID), tab)) {
-      continue
-    }
-
-    trace?.write("subagent.tab", {
-      sessionID,
-      tab,
-    })
-  }
-
-  for (const sessionID of before.keys()) {
-    if (after.has(sessionID)) {
-      continue
-    }
-
-    trace?.write("subagent.tab", {
-      sessionID,
-      cleared: true,
-    })
-  }
-}
+  yield* bootstrapSubagentHistory(sessions).pipe(
+    Effect.forkIn(scope, { startImmediately: true }),
+    Effect.asVoid,
+  )
+})
 
 function createLayer(input: StreamInput) {
   return Layer.fresh(
@@ -673,132 +802,24 @@ function createLayer(input: StreamInput) {
           )
         })
 
-        const bootstrap = Effect.fn("RunStreamTransport.bootstrap")(function* () {
-          const [messagesList, children, permissions, questions] = yield* Effect.all(
-            [
-              messages(
-                input.sessionID,
-                input.replay
-                  ? input.replayLimit === undefined
-                    ? undefined
-                    : Math.max(input.replayLimit, SUBAGENT_BOOTSTRAP_LIMIT)
-                  : SUBAGENT_BOOTSTRAP_LIMIT,
-              ),
-              Effect.promise(() =>
-                input.sdk.session.children({
-                  sessionID: input.sessionID,
-                }),
-              ).pipe(
-                Effect.map((item) => item.data ?? []),
-                Effect.orElseSucceed(() => []),
-              ),
-              Effect.promise(() => input.sdk.permission.list()).pipe(
-                Effect.map((item) => item.data ?? []),
-                Effect.orElseSucceed(() => []),
-              ),
-              Effect.promise(() => input.sdk.question.list()).pipe(
-                Effect.map((item) => item.data ?? []),
-                Effect.orElseSucceed(() => []),
-              ),
-            ],
-            {
-              concurrency: "unbounded",
+        const bootstrap = () =>
+          bootstrapEffect({
+            input,
+            state,
+            scope,
+            replayedParts,
+            messages,
+            bootstrapSubagentHistory,
+            markReplayedParts,
+            currentSubagentState,
+            seedBlocker,
+            traceTabs,
+            syncFooter,
+            drainBuffered,
+            setBooting: (value) => {
+              booting = value
             },
-          )
-
-          const sessionPermissions = permissions.filter((item) => item.sessionID === input.sessionID)
-          const sessionQuestions = questions.filter((item) => item.sessionID === input.sessionID)
-          const history = input.replay
-            ? replaySession({
-                messages: messagesList,
-                permissions: sessionPermissions,
-                questions: sessionQuestions,
-                thinking: input.thinking,
-                limits: input.limits(),
-                providers: input.providers?.(),
-              })
-            : undefined
-          const replay =
-            history && input.replayLimit !== undefined && messagesList.length > input.replayLimit
-              ? replaySession({
-                  messages: messagesList.slice(-input.replayLimit),
-                  permissions: sessionPermissions,
-                  questions: sessionQuestions,
-                  thinking: input.thinking,
-                  limits: input.limits(),
-                  providers: input.providers?.(),
-                })
-              : history
-
-          if (history) {
-            state.data = history.data
-          }
-
-          if (!history) {
-            bootstrapSessionData({
-              data: state.data,
-              messages: messagesList,
-              permissions: sessionPermissions,
-              questions: sessionQuestions,
-            })
-          }
-
-          if (history) {
-            markReplayedParts(history.data)
-          }
-
-          bootstrapSubagentData({
-            data: state.subagent,
-            messages: messagesList,
-            children,
-            permissions,
-            questions,
           })
-
-          for (const request of [
-            ...state.data.permissions,
-            ...listSubagentPermissions(state.subagent),
-            ...state.data.questions,
-            ...listSubagentQuestions(state.subagent),
-          ].sort((a, b) => a.id.localeCompare(b.id))) {
-            seedBlocker(request.id)
-          }
-
-          if (replay) {
-            const activeCommitIDs = new Set([...state.data.part.keys(), ...state.data.tools])
-            for (const commit of replay.commits) {
-              input.trace?.write("ui.commit", commit)
-              input.footer.append(commit)
-
-              if (commit.partID && activeCommitIDs.has(commit.partID)) {
-                continue
-              }
-
-              yield* Effect.promise(() => input.footer.idle()).pipe(Effect.orElseSucceed(() => undefined))
-            }
-          }
-
-          const snapshot = currentSubagentState()
-          traceTabs(input.trace, [], snapshot.tabs)
-          syncFooter([], replay?.patch, snapshot)
-          if (replay) {
-            yield* Effect.promise(() => input.footer.idle()).pipe(Effect.orElseSucceed(() => undefined))
-          }
-
-          booting = false
-          yield* drainBuffered()
-
-          const sessions = [...state.subagent.tabs.keys()]
-          if (sessions.length === 0) {
-            return
-          }
-
-          yield* bootstrapSubagentHistory(sessions).pipe(
-            Effect.forkIn(scope, { startImmediately: true }),
-            Effect.asVoid,
-          )
-        })
-
         const idle = Effect.fn("RunStreamTransport.idle")((fallback: boolean) =>
           Effect.promise(() => input.sdk.session.status()).pipe(
             Effect.map((out) => {
@@ -1184,230 +1205,20 @@ function createLayer(input: StreamInput) {
         yield* Scope.provide(scope)(watch().pipe(Effect.forkScoped))
         yield* bootstrap()
 
-        const runPromptTurn = Effect.fn("RunStreamTransport.runPromptTurn")(function* (next: SessionTurnInput) {
-          if (closed || next.signal?.aborted || input.footer.isClosed) {
-            return
-          }
-
-          if (state.fault) {
-            yield* Effect.fail(state.fault)
-            return
-          }
-
-          if (state.wait) {
-            yield* Effect.fail(new Error("prompt already running"))
-            return
-          }
-
-          const item: Wait = {
-            tick: state.tick,
-            armed: false,
-            live: false,
-            onVisibleOutput: next.onVisibleOutput,
-            done: yield* Deferred.make<void, unknown>(),
-          }
-          state.wait = item
-          state.data.announced = false
-
-          const turn = new AbortController()
-          const stop = () => {
-            turn.abort()
-          }
-          next.signal?.addEventListener("abort", stop, { once: true })
-          abort.signal.addEventListener("abort", stop, { once: true })
-          yield* poll(item, turn.signal).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
-
-          const req = {
-            sessionID: input.sessionID,
-            messageID: next.prompt.messageID,
-            agent: next.agent,
-            model: next.model,
-            variant: next.variant,
-            parts: [
-              ...(next.includeFiles ? next.files : []),
-              { type: "text" as const, text: next.prompt.text },
-              ...next.prompt.parts,
-            ],
-          }
-          const command = next.prompt.command
-          const send =
-            next.prompt.mode === "shell"
-              ? Effect.sync(() => {
-                  input.trace?.write("send.shell", {
-                    sessionID: input.sessionID,
-                    command: next.prompt.text,
-                  })
-                }).pipe(
-                  Effect.andThen(
-                    resolveShellAgent(next.agent)
-                      .pipe(
-                        Effect.flatMap((agent) =>
-                          Effect.promise(() =>
-                            input.sdk.session.shell(
-                              {
-                                sessionID: input.sessionID,
-                                agent,
-                                model: next.model,
-                                command: next.prompt.text,
-                              },
-                              { signal: turn.signal, throwOnError: true },
-                            ),
-                          ),
-                        ),
-                      )
-                      .pipe(
-                        Effect.tap(() =>
-                          Effect.sync(() => {
-                            input.trace?.write("send.shell.ok", {
-                              sessionID: input.sessionID,
-                            })
-                            item.armed = true
-                            item.live = true
-                          }),
-                        ),
-                        Effect.flatMap(() => Deferred.succeed(item.done, undefined).pipe(Effect.ignore)),
-                        Effect.catch((error) => Deferred.fail(item.done, error).pipe(Effect.ignore)),
-                        Effect.forkIn(scope, { startImmediately: true }),
-                        Effect.asVoid,
-                      ),
-                  ),
-                )
-              : command
-                ? Effect.sync(() => {
-                    input.trace?.write("send.command", { sessionID: input.sessionID, command: command.name })
-                  }).pipe(
-                    Effect.andThen(
-                      Effect.promise(() =>
-                        input.sdk.session.command(
-                          {
-                            sessionID: input.sessionID,
-                            messageID: next.prompt.messageID,
-                            agent: next.agent,
-                            model: next.model ? `${next.model.providerID}/${next.model.modelID}` : undefined,
-                            variant: next.variant,
-                            command: command.name,
-                            arguments: command.arguments,
-                            parts: [
-                              ...(next.includeFiles ? next.files : []),
-                              ...next.prompt.parts.filter(
-                                (item): item is Extract<RunPromptPart, { type: "file" }> => item.type === "file",
-                              ),
-                            ],
-                          },
-                          { signal: turn.signal },
-                        ),
-                      ).pipe(
-                        Effect.tap(() =>
-                          Effect.sync(() => {
-                            input.trace?.write("send.command.ok", {
-                              sessionID: input.sessionID,
-                              command: command.name,
-                            })
-                            item.armed = true
-                            item.live = true
-                          }),
-                        ),
-                        Effect.flatMap(() => Deferred.succeed(item.done, undefined).pipe(Effect.ignore)),
-                        Effect.catch((error) => Deferred.fail(item.done, error).pipe(Effect.ignore)),
-                        Effect.forkIn(scope, { startImmediately: true }),
-                        Effect.asVoid,
-                      ),
-                    ),
-                  )
-                : Effect.sync(() => {
-                    input.trace?.write("send.prompt", req)
-                  }).pipe(
-                    Effect.andThen(
-                      Effect.promise(() =>
-                        input.sdk.session.promptAsync(req, {
-                          signal: turn.signal,
-                        }),
-                      ),
-                    ),
-                    Effect.tap(() =>
-                      Effect.sync(() => {
-                        input.trace?.write("send.prompt.ok", {
-                          sessionID: input.sessionID,
-                        })
-                        item.armed = true
-                      }),
-                    ),
-                  )
-
-          yield* send.pipe(
-            Effect.flatMap(() => {
-              if (turn.signal.aborted || next.signal?.aborted || input.footer.isClosed || closed) {
-                if (state.wait === item) {
-                  state.wait = undefined
-                }
-                flush("turn.abort")
-                return Effect.void
-              }
-
-              if (!input.footer.isClosed && !state.data.announced) {
-                input.trace?.write("ui.patch", {
-                  phase: "running",
-                  status: "waiting for assistant",
-                })
-                input.footer.event({
-                  type: "turn.wait",
-                })
-              }
-
-              if (state.tick > item.tick) {
-                if (state.wait === item) {
-                  state.wait = undefined
-                }
-                return Effect.void
-              }
-
-              return waitTurn(item.done, turn.signal).pipe(
-                Effect.flatMap((status) =>
-                  Effect.sync(() => {
-                    if (state.wait === item) {
-                      state.wait = undefined
-                    }
-
-                    if (status === "abort") {
-                      flush("turn.abort")
-                    }
-                  }),
-                ),
-              )
-            }),
-            Effect.catch((error) => {
-              if (state.wait === item) {
-                state.wait = undefined
-              }
-
-              const canceled = turn.signal.aborted || next.signal?.aborted === true || input.footer.isClosed || closed
-              if (canceled) {
-                flush("turn.cancel")
-                return Effect.void
-              }
-
-              if (error === state.fault) {
-                return Effect.fail(error)
-              }
-
-              input.trace?.write("send.prompt.error", {
-                sessionID: input.sessionID,
-                error: formatUnknownError(error),
-              })
-              return Effect.fail(error)
-            }),
-            Effect.ensuring(
-              Effect.sync(() => {
-                input.trace?.write("turn.end", {
-                  sessionID: input.sessionID,
-                })
-                next.signal?.removeEventListener("abort", stop)
-                abort.signal.removeEventListener("abort", stop)
-              }),
-            ),
+        const runPromptTurn = (next: SessionTurnInput) =>
+          runPromptTurnEffect(
+            {
+              input,
+              state,
+              scope,
+              abort,
+              isClosed: () => closed,
+              poll,
+              resolveShellAgent,
+              flush,
+            },
+            next,
           )
-          return
-        })
 
         const selectSubagent = Effect.fn("RunStreamTransport.selectSubagent")((sessionID: string | undefined) =>
           Effect.sync(() => {

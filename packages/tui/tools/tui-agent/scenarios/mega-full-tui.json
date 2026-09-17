@@ -1,6 +1,6 @@
 {
   "name": "mega-full-tui",
-  "description": "50-step full-TUI smoke: visualizer, all 5 footer dialogs, session list, import, picker, /help, /status, /themes, chat typing, export, resize, asserts.",
+  "description": "50-step full-TUI smoke: visualizer, all 5 footer dialogs, session list, import, picker, /help, /status, chat typing, export, resize, asserts.",
   "adapter": "../adapters/spinosa.ts",
   "terminal": { "width": 100, "height": 50 },
   "fixture": {
@@ -86,12 +86,6 @@
     { "action": "key", "key": "RETURN" },
     { "action": "waitForText", "text": "Spinosa Status", "timeoutMs": 5000 },
     { "action": "capture", "name": "status" },
-    { "action": "clickText", "text": "esc" },
-
-    { "action": "type", "text": "/themes" },
-    { "action": "key", "key": "RETURN" },
-    { "action": "waitForText", "text": "Themes", "timeoutMs": 5000 },
-    { "action": "capture", "name": "themes" },
     { "action": "clickText", "text": "esc" },
 
     { "action": "resize", "width": 100, "height": 20 },

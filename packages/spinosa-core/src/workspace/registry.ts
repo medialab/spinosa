@@ -1,10 +1,10 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, openSync, closeSync, fsyncSync } from "node:fs"
 import { chmod, mkdir, rename, rm, stat, readFile, writeFile } from "node:fs/promises"
-import { homedir } from "node:os"
 import path from "node:path"
 import { spinosaLogWarn } from "../utils/log"
 import { writeYamlConfig } from "../utils/yaml-config"
 import { resolveWorkspaceDisplayName } from "../workspace-name"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 import type { SpinosaRegisteredWorkspace, SpinosaSetupStatus, SpinosaWorkspacePresence } from "../types"
 import { ensureWorkspaceID, parseWorkspaceID, readWorkspaceID, type SpinosaWorkspaceID } from "./identity"
 import { readWorkspaceMeta } from "./meta"
@@ -39,7 +39,7 @@ function withRegistryLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  return productHomeDir()
 }
 
 function metadataPath(...segments: string[]): string {
@@ -465,7 +465,7 @@ export async function registerWorkspace(
   await readRegistryDocument(registry, metadataPath(LEGACY_WORKSPACE_REGISTRY_FILENAME))
   const markerID = workspaceIDFromMarker(workspacePath)
   if (workspaceID && markerID !== workspaceID) {
-    spinosaLogWarn("registry", `ID mismatch at ${workspacePath}: expected ${workspaceID}, marker has ${markerID} — skipping`)
+    spinosaLogWarn("registry", `ID mismatch: expected ${workspaceID}, marker has ${markerID} — skipping`)
     return
   }
   const canonicalID = workspaceID ?? (validateWorkspace(workspacePath) ? ensureWorkspaceID(workspacePath) : undefined)
@@ -757,7 +757,6 @@ description:
   - Agents read this to understand scope, active corpus, evidence rules, and researcher preferences.
 created: ${date}
 updated: ${date}
-setup_status: cli_started
 connects_to:
   - AGENTS.md
   - system/configuration.md
@@ -843,7 +842,7 @@ preferred_llm_cli: "${preferredCli}"
 
 ## Notes
 - This file was initialized by \`spinosa new\`.
-- The CLI collected: source folder and preferred LLM CLI. It seeded the initial workspace label from the source folder name. It imported accepted files into raw/. Office documents, structured data, and text-based PDFs were converted to Markdown. Scanned PDFs and images were processed via PPU PaddleOCR. Selected audio and video files were copied unchanged. AGENTS.md control files were skipped.
+- The CLI collected: source folder and preferred LLM CLI. It seeded the initial workspace label from the source folder name. It imported accepted files into raw/. Office documents, structured data, and text-based PDFs were converted to Markdown. Scanned PDFs were kept with a transcription placeholder (local OCR removed) or transcribed via the selected vision model; images via vision LLM when selected, otherwise copied. Selected audio and video files were copied unchanged. AGENTS.md control files were skipped.
 - After onboarding, normal source-grounded work starts from raw/.
 - During startup, project description and helpful artifact URLs are optional. If absent, the LLM CLI agent records them as not provided, keeps external_sources_allowed at its default \`no\`, and infers working scope from the raw corpus.
 - When setup_status reaches workspace_started, the startup workflow has built the master dictionary, generated YAML headers, created multi-level navigation maps in maps/, and passed validation.

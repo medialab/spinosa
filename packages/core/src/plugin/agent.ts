@@ -1,7 +1,7 @@
 export * as AgentPlugin from "./agent"
 
 import path from "path"
-import { define } from "./internal"
+import { define } from "./define"
 import { Effect } from "effect"
 import { AgentV2 } from "../agent"
 import { Global } from "../global"

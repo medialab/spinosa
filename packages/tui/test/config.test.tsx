@@ -49,7 +49,7 @@ test("resolves host-neutral defaults", () => {
     notifications: true,
     sound: true,
     volume: 0.4,
-    sound_pack: "opencode.default",
+    sound_pack: "spinosa.default",
     sounds: {},
   })
   expect(config.leader_timeout).toBe(LeaderTimeoutDefault)

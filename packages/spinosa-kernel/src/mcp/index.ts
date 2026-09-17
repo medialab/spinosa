@@ -35,6 +35,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { CrossSpawnSpawner } from "@spinosa/kernel-core/cross-spawn-spawner"
 import { McpCatalog } from "./catalog"
 import { McpEvent } from "@spinosa/schema/mcp-event"
+import { builtinMcpConfigs } from "./partners"
 
 const DEFAULT_TIMEOUT = 30_000
 const CLIENT_OPTIONS = {
@@ -119,6 +120,20 @@ type McpEntry = NonNullable<ConfigV1.Info["mcp"]>[string]
 
 function isMcpConfigured(entry: McpEntry): entry is ConfigMCPV1.Info {
   return typeof entry === "object" && entry !== null && "type" in entry
+}
+
+/**
+ * Effective MCP table: gallery built-ins (disabled, curated partners like
+ * Zotero/Readwise) UNDER the user config, so built-ins always list in the
+ * MCP dialog and toggle on without a prior `spinosa mcp add`. User entries
+ * win on id collision (custom credentials/commands overlay the default).
+ */
+export function effectiveMcpTable(userConfig: Record<string, McpEntry>): Record<string, ConfigMCPV1.Info> {  const out: Record<string, ConfigMCPV1.Info> = {}
+  for (const [key, mcp] of Object.entries(builtinMcpConfigs())) out[key] = mcp
+  for (const [key, mcp] of Object.entries(userConfig)) {
+    if (isMcpConfigured(mcp)) out[key] = mcp
+  }
+  return out
 }
 
 function remoteURL(value: string) {
@@ -336,6 +351,11 @@ const layer = Layer.effect(
       const [cmd, ...args] = mcp.command
       const baseDir = yield* InstanceState.directory
       const cwd = mcp.cwd ? path.resolve(baseDir, mcp.cwd) : baseDir
+      // Empty-string values are unfilled placeholders (gallery built-ins,
+      // `mcp add` fragments) — never let them shadow host-exported credentials.
+      const environment = mcp.environment
+        ? Object.fromEntries(Object.entries(mcp.environment).filter(([, v]) => v !== ""))
+        : undefined
       const transport = new StdioClientTransport({
         stderr: "pipe",
         command: cmd,
@@ -344,7 +364,7 @@ const layer = Layer.effect(
         env: {
           ...process.env,
           ...(cmd === "opencode" ? { BUN_BE_BUN: "1" } : {}),
-          ...mcp.environment,
+          ...environment,
         },
       })
 
@@ -485,7 +505,7 @@ const layer = Layer.effect(
       Effect.fn("MCP.state")(function* () {
         const cfg = yield* cfgSvc.get()
         const bridge = yield* EffectBridge.make()
-        const config = cfg.mcp ?? {}
+        const config = effectiveMcpTable(cfg.mcp ?? {})
         const s: State = {
           config: {},
           status: {},
@@ -584,7 +604,7 @@ const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
 
       const cfg = yield* cfgSvc.get()
-      const config = cfg.mcp ?? {}
+      const config = effectiveMcpTable(cfg.mcp ?? {})
       const result: Record<string, Status> = {}
 
       for (const [key, mcp] of Object.entries(config)) {
@@ -786,7 +806,11 @@ const layer = Layer.effect(
 
       const cfg = yield* cfgSvc.get()
       const mcpConfig = cfg.mcp?.[mcpName]
-      if (!mcpConfig || !isMcpConfigured(mcpConfig)) return undefined
+      if (!mcpConfig || !isMcpConfigured(mcpConfig)) {
+        // Built-in gallery partners resolve without user config so the
+        // dialog toggle (connect/disconnect) works out of the box.
+        return builtinMcpConfigs()[mcpName]
+      }
       return mcpConfig
     })
 

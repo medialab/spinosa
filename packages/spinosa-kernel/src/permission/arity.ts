@@ -8,19 +8,7 @@ export function prefix(tokens: string[]) {
   return tokens.slice(0, 1)
 }
 
-/* Generated with following prompt:
-You are generating a dictionary of command-prefix arities for bash-style commands.
-This dictionary is used to identify the "human-understandable command" from an input shell command.### **RULES (follow strictly)**1. Each entry maps a **command prefix string → number**, representing how many **tokens** define the command.
-2. **Flags NEVER count as tokens**. Only subcommands count.
-3. **Longest matching prefix wins**.
-4. **Only include a longer prefix if its arity is different from what the shorter prefix already implies**.   * Example: If `git` is 2, then do **not** include `git checkout`, `git commit`, etc. unless they require *different* arity.
-5. The output must be a **single JSON object**. Each entry should have a comment with an example real world matching command. DO NOT MAKE ANY OTHER COMMENTS. Should be alphabetical
-6. Include the **most commonly used commands** across many stacks and languages. More is better.### **Semantics examples*** `touch foo.txt` → `touch` (arity 1, explicitly listed)
-* `git checkout main` → `git checkout` (because `git` has arity 2)
-* `npm install` → `npm install` (because `npm` has arity 2)
-* `npm run dev` → `npm run dev` (because `npm run` has arity 3)
-* `python script.py` → `python script.py` (default: whole input, not in dictionary)### **Now generate the dictionary.**
-*/
+// @generated-data version=2026-09-01; source=reviewed command-prefix arity catalog
 const ARITY: Record<string, number> = {
   cat: 1, // cat file.txt
   cd: 1, // cd /path/to/dir

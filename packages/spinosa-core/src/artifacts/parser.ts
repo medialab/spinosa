@@ -135,24 +135,36 @@ export function inferPhasesFromGoal(
 export function parseGoalArtifact(text: string, goalPath: string): GoalArtifactSummary {
   const filename = goalPath.split("/").pop() ?? goalPath
   const yaml = parseYamlFrontmatter(text)
-  const sessionId = yaml.session_id ?? sessionIdFromGoalFilename(filename) ?? "unknown"
+  // V2 workflow goals carry run_id/workflow_id; legacy carries session_id/route.
+  const sessionId = yaml.run_id ?? yaml.session_id ?? sessionIdFromGoalFilename(filename) ?? "unknown"
   const routeDecisions = parseRouteDecisions(text)
   const subagents = parseSubagentBlocks(text)
+  // V2: derive a phases-compatible view from the Workflow Plan table so TUI
+  // route views keep working; sectionBody("Step Decisions") feeds decisions.
+  const stepDecisions = sectionBody(text, "Step Decisions")
+  const decisions = stepDecisions ? [...routeDecisions, ...stepDecisions.split("\n").map((l) => l.replace(/^-\s*/, "").trim()).filter(Boolean)] : routeDecisions
 
   return {
     sessionId,
     goalPath,
     filename,
     status: yaml.status,
-    route: yaml.route,
+    route: yaml.route ?? (yaml.workflow_id ? `workflow:${yaml.workflow_id}` : undefined),
+    workflowID: yaml.workflow_id,
+    workflowVersion: yaml.workflow_version ? Number(yaml.workflow_version) : undefined,
+    operation: yaml.operation,
+    strategy: yaml.strategy,
+    scope: yaml.scope,
+    coverage: yaml.coverage,
+    verification: yaml.verification,
     cleanedPrompt: sectionBody(text, "Cleaned Prompt"),
-    goalStatement: sectionBody(text, "Goal Statement"),
-    plannedChain: sectionBody(text, "Planned Chain"),
+    goalStatement: sectionBody(text, "Goal Statement") ?? sectionBody(text, "Research Objective"),
+    plannedChain: sectionBody(text, "Planned Chain") ?? sectionBody(text, "Workflow Plan"),
     firstAgent: sectionBody(text, "First Agent")?.replace(/`/g, ""),
     routeDecisions,
     subagents,
     artifactPaths: parseArtifactTable(text),
-    phases: inferPhasesFromGoal(subagents, routeDecisions),
+    phases: inferPhasesFromGoal(subagents, decisions),
   }
 }
 

@@ -2,7 +2,7 @@ export * as BashTool from "./bash"
 
 import path from "path"
 import { ToolFailure } from "@spinosa/llm"
-import { Duration, Effect, Layer, Schema } from "effect"
+import { Cause, Duration, Effect, Layer, Schema } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Config } from "../config"
 import { makeLocationNode } from "../effect/app-node"
@@ -58,6 +58,9 @@ const modelOutput = (output: Output) => {
 
 const isTimeout = (error: AppProcess.AppProcessError) =>
   error.cause instanceof Error && error.cause.message === "Timed out"
+
+const isAbort = (error: AppProcess.AppProcessError) =>
+  error.cause instanceof Error && error.cause.name === "AbortError"
 
 /**
  * Minimal V2 core shell boundary. Keep parity debt visible without pulling the
@@ -147,6 +150,14 @@ const layer = Layer.effectDiscard(
               if ((yield* fs.stat(target.canonical)).type !== "Directory")
                 return yield* Effect.fail(new Error(`Working directory is not a directory: ${target.canonical}`))
 
+              if (context.abort?.aborted) {
+                return {
+                  output: "Command aborted by user.",
+                  truncated: false,
+                  ...(warnings.length ? { warnings } : {}),
+                }
+              }
+
               const entries = yield* config.entries()
               const shell =
                 Object.assign({}, ...entries.flatMap((entry) => (entry.type === "document" ? [entry.info] : [])))
@@ -164,10 +175,19 @@ const layer = Layer.effectDiscard(
                   combineOutput: true,
                   timeout: Duration.millis(timeout),
                   maxOutputBytes: MAX_CAPTURE_BYTES,
+                  signal: context.abort,
                 })
                 .pipe(
-                  Effect.catchTag("AppProcessError", (error) =>
-                    isTimeout(error) ? Effect.succeed(undefined) : Effect.fail(error),
+                  Effect.catchTag("AppProcessError", (error) => {
+                    if (isTimeout(error)) return Effect.succeed(undefined)
+                    if (isAbort(error))
+                      return Effect.succeed({ aborted: true } as unknown as AppProcess.RunResult)
+                    return Effect.fail(error)
+                  }),
+                  Effect.catchCause((cause) =>
+                    Cause.hasInterruptsOnly(cause) && context.abort?.aborted
+                      ? Effect.succeed({ aborted: true } as unknown as AppProcess.RunResult)
+                      : Effect.failCause(cause),
                   ),
                 )
               if (!result) {
@@ -175,6 +195,13 @@ const layer = Layer.effectDiscard(
                   output: `Command exceeded timeout of ${timeout} ms. Retry with a larger timeout if the command is expected to take longer.`,
                   truncated: false,
                   timeout: true,
+                  ...(warnings.length ? { warnings } : {}),
+                }
+              }
+              if ((result as unknown as { aborted?: boolean }).aborted) {
+                return {
+                  output: "Command aborted by user.",
+                  truncated: false,
                   ...(warnings.length ? { warnings } : {}),
                 }
               }

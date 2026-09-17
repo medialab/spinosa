@@ -40,6 +40,16 @@ export class ApiVcsApplyError extends Schema.ErrorClass<ApiVcsApplyError>("VcsAp
   { httpApiStatus: 400 },
 ) {}
 
+export class ApiVcsDiffUnavailableError extends Schema.ErrorClass<ApiVcsDiffUnavailableError>(
+  "VcsDiffUnavailableError",
+)(
+  {
+    name: Schema.Literal("VcsDiffUnavailableError"),
+    data: Schema.Struct({ reason: Schema.Literal("non-git") }),
+  },
+  { httpApiStatus: 400 },
+) {}
+
 export const InstancePaths = {
   dispose: "/instance/dispose",
   path: "/path",
@@ -91,10 +101,10 @@ export const InstanceApi = HttpApi.make("instance")
               "Retrieve version control system (VCS) information for the current project, such as git branch.",
           }),
         ),
-        HttpApiEndpoint.get("vcsStatus", InstancePaths.vcsStatus, {
-          query: WorkspaceRoutingQuery,
-          success: described(Schema.Array(Vcs.FileStatus), "VCS status"),
-        }).annotateMerge(
+  HttpApiEndpoint.get("vcsStatus", InstancePaths.vcsStatus, {
+    query: WorkspaceRoutingQuery,
+    success: described(Vcs.Status, "VCS status"),
+  }).annotateMerge(
           OpenApi.annotations({
             identifier: "vcs.status",
             summary: "Get VCS status",
@@ -103,21 +113,22 @@ export const InstanceApi = HttpApi.make("instance")
         ),
         HttpApiEndpoint.get("vcsDiff", InstancePaths.vcsDiff, {
           query: VcsDiffQuery,
-          success: described(Schema.Array(Vcs.FileDiff), "VCS diff"),
+          success: described(Vcs.Diff, "VCS diff"),
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "vcs.diff",
             summary: "Get VCS diff",
-            description: "Retrieve the current git diff for the working tree or against the default branch.",
+            description: "Retrieve the current git diff for the working tree or against the default branch. Unavailable comparisons include a reason.",
           }),
         ),
-        HttpApiEndpoint.get("vcsDiffRaw", InstancePaths.vcsDiffRaw, {
-          query: WorkspaceRoutingQuery,
-          success: described(
-            Schema.String.pipe(HttpApiSchema.asText({ contentType: "text/x-diff; charset=utf-8" })),
-            "Raw VCS diff",
-          ),
-        }).annotateMerge(
+  HttpApiEndpoint.get("vcsDiffRaw", InstancePaths.vcsDiffRaw, {
+    query: WorkspaceRoutingQuery,
+    success: described(
+      Schema.String.pipe(HttpApiSchema.asText({ contentType: "text/x-diff; charset=utf-8" })),
+      "Raw VCS diff",
+    ),
+    error: ApiVcsDiffUnavailableError,
+  }).annotateMerge(
           OpenApi.annotations({
             identifier: "vcs.diff.raw",
             summary: "Get raw VCS diff",

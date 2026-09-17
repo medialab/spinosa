@@ -124,6 +124,7 @@ type SessionWarpError =
   | SessionEventsNotFoundError
   | SessionWarpHttpError
   | Vcs.PatchApplyError
+  | Vcs.DiffUnavailableError
   | HttpClientError.HttpClientError
 type WaitForSyncError = SyncTimeoutError | SyncAbortedError
 type SyncLoopError = SyncHttpError | HttpClientError.HttpClientError

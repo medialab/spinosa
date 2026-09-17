@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { pathToFileURL } from "url"
-import { define } from "../internal"
+import { define } from "../define"
 import { Npm } from "../../npm"
 
 export const DynamicProviderPlugin = define({
@@ -17,14 +17,16 @@ export const DynamicProviderPlugin = define({
         if (!installedPath) throw new Error(`Package ${evt.package} has no import entrypoint`)
 
         const mod = yield* Effect.promise(async () => {
-          return (await import(
-            installedPath.startsWith("file://") ? installedPath : pathToFileURL(installedPath).href
-          )) as Record<string, (options: any) => any>
+        return (await import(
+          installedPath.startsWith("file://") ? installedPath : pathToFileURL(installedPath).href
+        )) as Record<string, unknown>
         }).pipe(Effect.orDie)
         const match = Object.keys(mod).find((name) => name.startsWith("create"))
         if (!match) throw new Error(`Package ${evt.package} has no provider factory export`)
 
-        evt.sdk = mod[match](evt.options)
+      const factory = mod[match]
+      if (typeof factory !== "function") throw new Error(`Package ${evt.package} export ${match} is not a provider factory`)
+      evt.sdk = factory(evt.options)
       }),
     )
   }),

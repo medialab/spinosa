@@ -92,6 +92,14 @@ export type GoalArtifactSummary = {
   filename: string
   status?: string
   route?: string
+  // WP3: V2 workflow mirrors (optional; legacy goals omit them).
+  workflowID?: string
+  workflowVersion?: number
+  operation?: string
+  strategy?: string
+  scope?: string
+  coverage?: string
+  verification?: string
   cleanedPrompt?: string
   goalStatement?: string
   plannedChain?: string

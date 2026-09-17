@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "scope": {
+    "basis": "git-tracked-files",
+    "root": ".",
+    "excluded": [
+      "docs/review/workpackages_quality_remediation_01092026/quality-baseline.json",
+      "quality-report.json"
+    ],
+    "includedAdditionalPaths": [
+      ".github/workflows/quality.yml",
+      "script/quality-report.ts"
+    ],
+    "locDefinition": "UTF-8 text files counted by logical lines; trailing newline does not add an empty line; binary files have null per-file LOC.",
+    "tokenDefinition": "Lexical word matches in TypeScript-family files; comments and strings are included and counts are inventory signals, not type-check results."
+  },
+  "guardrails": {
+    "production": {
+      "maxFileLoc": 14972,
+      "filesAtOrAbove500Loc": 94,
+      "anyTokens": 266,
+      "unknownTokens": 1405,
+      "files": 1626
+    },
+    "test": {
+      "maxFileLoc": 4777,
+      "filesAtOrAbove500Loc": 67,
+      "anyTokens": 409,
+      "unknownTokens": 592,
+      "files": 639
+    },
+    "generated": {
+      "maxFileLoc": 13648,
+      "filesAtOrAbove500Loc": 5,
+      "anyTokens": 35,
+      "unknownTokens": 434,
+      "files": 36
+    },
+    "fixture": {
+      "maxFileLoc": 117299,
+      "filesAtOrAbove500Loc": 1,
+      "anyTokens": 0,
+      "unknownTokens": 13,
+      "files": 123
+    },
+    "script": {
+      "maxFileLoc": 1899,
+      "filesAtOrAbove500Loc": 6,
+      "anyTokens": 7,
+      "unknownTokens": 68,
+      "files": 88
+    },
+    "unknown": {
+      "maxFileLoc": 3710,
+      "filesAtOrAbove500Loc": 4,
+      "anyTokens": 1,
+      "unknownTokens": 6,
+      "files": 209
+    }
+  }
+}

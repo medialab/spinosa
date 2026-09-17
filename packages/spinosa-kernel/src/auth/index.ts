@@ -72,11 +72,22 @@ const layer = Layer.effect(
 
     const set = Effect.fn("Auth.set")(function* (key: string, info: Info) {
       const norm = key.replace(/\/+$/, "")
+      // Pasted secrets routinely carry trailing newlines/spaces (terminal +
+      // browser copy), or a `Bearer ` prefix lifted from docs. Whitespace is
+      // never valid inside a bearer secret, so normalize once here — the
+      // single funnel for TUI, CLI, OAuth and MCP writes.
+      const cleanSecret = (secret: string): string => secret.trim().replace(/^Bearer\s+/i, "")
+      const stored =
+        info.type === "api"
+          ? { ...info, key: cleanSecret(info.key) }
+          : info.type === "wellknown"
+            ? { ...info, token: cleanSecret(info.token) }
+            : info
       const data = yield* all()
       if (norm !== key) delete data[key]
       delete data[norm + "/"]
       yield* fsys
-        .writeJson(file, { ...data, [norm]: info }, 0o600)
+        .writeJson(file, { ...data, [norm]: stored }, 0o600)
         .pipe(Effect.mapError(fail("Failed to write auth data")))
     })
 

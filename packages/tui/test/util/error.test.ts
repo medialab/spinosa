@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { errorData, errorFormat, errorMessage } from "../../src/util/error"
+import { dumpErrorChain, errorData, errorFormat, errorMessage } from "../../src/util/error"
 
 describe("util.error", () => {
   test("formats native Error instances", () => {
@@ -45,5 +45,22 @@ describe("util.error", () => {
     const data = errorData(err)
     expect(data.message).toBe("ResolveMessage: Cannot resolve module")
     expect(String(data.formatted)).toContain("ResolveMessage")
+  })
+
+  test("never dumps Effect Cause objects", () => {
+    const cause = { _id: "Cause", failures: [{ message: "secret" }] }
+    expect(errorFormat(cause)).toBe("Internal failure")
+    expect(dumpErrorChain(cause)).toContain("Internal failure")
+    expect(dumpErrorChain(cause)).not.toContain("failures")
+  })
+
+  test("unwraps Effect.tryPromise UnknownError cause", () => {
+    const inner = new Error("ENOENT: no such file ./src/cli/tui/worker.ts")
+    const wrapped = new Error("An error occurred in Effect.tryPromise")
+    wrapped.name = "UnknownError"
+    wrapped.cause = inner
+    expect(errorMessage(wrapped)).toBe("ENOENT: no such file ./src/cli/tui/worker.ts")
+    expect(dumpErrorChain(wrapped)).toContain("ENOENT")
+    expect(dumpErrorChain(wrapped)).toContain("cause:")
   })
 })

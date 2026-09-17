@@ -23,8 +23,13 @@ import { InstanceStore } from "@/project/instance-store"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@spinosa/kernel-core/provider"
 import { ModelV2 } from "@spinosa/kernel-core/model"
+import { VISION_PROVIDER_TIMEOUT_MS } from "@/server/routes/instance/httpapi/handlers/provider"
 
 const originalEnv = new Map<string, string | undefined>()
+
+test("vision provider requests allow two minutes for a response", () => {
+  expect(VISION_PROVIDER_TIMEOUT_MS).toBe(120_000)
+})
 
 const rememberEnv = (k: string) => {
   if (!originalEnv.has(k)) originalEnv.set(k, process.env[k])

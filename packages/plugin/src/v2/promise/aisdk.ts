@@ -6,13 +6,13 @@ export type AISDKHooks = Hooks<{
   sdk: {
     readonly model: ModelV2Info
     readonly package: string
-    readonly options: Record<string, any>
-    sdk?: any
+  readonly options: Record<string, unknown>
+  sdk?: unknown
   }
   language: {
     readonly model: ModelV2Info
-    readonly sdk: any
-    readonly options: Record<string, any>
+  readonly sdk: unknown
+  readonly options: Record<string, unknown>
     language?: LanguageModelV3
   }
 }>

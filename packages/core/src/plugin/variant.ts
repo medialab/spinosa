@@ -2,7 +2,7 @@ export * as VariantPlugin from "./variant"
 
 import type { ModelV2Info } from "@spinosa/sdk/v2/types"
 import { Effect } from "effect"
-import { define } from "./internal"
+import { define } from "./define"
 
 export const Plugin = define({
   id: "variant",

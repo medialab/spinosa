@@ -23,6 +23,11 @@ import {
   classifyWorkspaceLauncher,
   migrateWorkspaceLaunchers,
 } from "../src/distribution/workspace-launcher"
+import {
+  readDoctorUnverifiedReason,
+  clearDoctorUnverifiedReason,
+  readInstalledBinaryVersion,
+} from "../src/distribution/bootstrap"
 
 const repoRoot = join(import.meta.dir, "../../..")
 const templateRoot = join(repoRoot, "workspace-template")
@@ -144,5 +149,41 @@ describe("workspace launcher migration", () => {
     expect(readFileSync(join(managed, ".bin", "spinosa"), "utf-8")).toBe(BINARY_WORKSPACE_LAUNCHER)
     expect(readFileSync(join(modified, ".bin", "spinosa"), "utf-8")).toContain("custom")
     rmSync(root, { recursive: true, force: true })
+  })
+})
+
+describe("install health metadata", () => {
+  test("reads doctor_unverified flag from install metadata", () => {
+    const home = join(tmpdir(), `spinosa-doctor-flag-${Date.now()}`)
+    try {
+      expect(readDoctorUnverifiedReason(home)).toBe("")
+      mkdirSync(join(home, "metadata"), { recursive: true })
+      writeFileSync(
+        join(home, "metadata", "config.yaml"),
+        'spinosa: true\ndoctor_unverified: "timeout"\nlast_installed_version: "1.1.0-beta.29"\n',
+      )
+      expect(readDoctorUnverifiedReason(home)).toBe("timeout")
+      expect(readInstalledBinaryVersion(home)).toBe("1.1.0-beta.29")
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  test("clears a stale doctor_unverified flag without touching other keys", () => {
+    const home = join(tmpdir(), `spinosa-doctor-clear-${Date.now()}`)
+    try {
+      expect(clearDoctorUnverifiedReason(home)).toBe(false)
+      mkdirSync(join(home, "metadata"), { recursive: true })
+      writeFileSync(
+        join(home, "metadata", "config.yaml"),
+        'spinosa: true\ndoctor_unverified: "timeout"\nlast_installed_version: "1.1.0-beta.29"\n',
+      )
+      expect(clearDoctorUnverifiedReason(home)).toBe(true)
+      expect(readDoctorUnverifiedReason(home)).toBe("")
+      expect(readInstalledBinaryVersion(home)).toBe("1.1.0-beta.29")
+      expect(clearDoctorUnverifiedReason(home)).toBe(false)
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 })

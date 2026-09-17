@@ -77,7 +77,7 @@ export interface BunShellPromise extends Promise<BunShellOutput> {
    * Read from stdout as a JSON object
    * Automatically calls quiet()
    */
-  json(): Promise<any>
+  json<T = unknown>(): Promise<T>
 
   /**
    * Read from stdout as an ArrayBuffer
@@ -115,7 +115,7 @@ export interface BunShellOutput {
   /**
    * Read from stdout as a JSON object
    */
-  json(): any
+  json<T = unknown>(): T
 
   /**
    * Read from stdout as an ArrayBuffer

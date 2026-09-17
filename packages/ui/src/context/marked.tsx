@@ -421,6 +421,7 @@ async function highlightCodeBlocks(html: string): Promise<string> {
   let result = html
   for (const match of matches) {
     const [fullMatch, lang, escapedCode] = match
+    if (escapedCode === undefined) continue
     const code = escapedCode
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")

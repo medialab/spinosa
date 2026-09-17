@@ -11,20 +11,21 @@ export interface Context {
   readonly agent: AgentV2.ID
   readonly assistantMessageID: SessionMessage.ID
   readonly toolCallID: string
+  readonly abort?: AbortSignal
 }
 
-export type SchemaType<A> = Schema.Codec<A, any, never, never>
+export type SchemaType<A> = Schema.Codec<A, unknown, never, never>
 
 declare const TypeId: unique symbol
 
-export interface Definition<Input extends SchemaType<any>, Output extends SchemaType<any>> {
+export interface Definition<Input extends SchemaType<unknown>, Output extends SchemaType<unknown>> {
   readonly [TypeId]: {
     readonly _Input: Input
     readonly _Output: Output
   }
 }
 
-export type AnyTool = Definition<any, any>
+export type AnyTool = Definition<SchemaType<unknown>, SchemaType<unknown>>
 export const Failure = ToolFailure
 export type Failure = ToolFailure
 
@@ -38,9 +39,9 @@ export type Content =
   | { readonly type: "file"; readonly data: string; readonly mime: string; readonly name?: string }
 
 type Config<
-  Input extends SchemaType<any>,
-  Output extends SchemaType<any>,
-  Structured extends SchemaType<any> = Output,
+  Input extends SchemaType<unknown>,
+  Output extends SchemaType<unknown>,
+  Structured extends SchemaType<unknown> = Output,
 > = {
   readonly description: string
   readonly input: Input
@@ -69,9 +70,9 @@ type Runtime = {
 const runtimes = new WeakMap<AnyTool, Runtime>()
 
 export function make<
-  Input extends SchemaType<any>,
-  Output extends SchemaType<any>,
-  Structured extends SchemaType<any> = Output,
+  Input extends SchemaType<unknown>,
+  Output extends SchemaType<unknown>,
+  Structured extends SchemaType<unknown> = Output,
 >(config: Config<Input, Output, Structured>): Definition<Input, Structured> {
   const tool = Object.freeze({}) as Definition<Input, Structured>
   const definitions = new Map<string, ToolDefinition>()
@@ -91,14 +92,14 @@ export function make<
     settle: (call, context) =>
       Schema.decodeUnknownEffect(config.input)(call.input).pipe(
         Effect.mapError((error) => new ToolFailure({ message: `Invalid tool input: ${error.message}` })),
-        Effect.flatMap((input) =>
-          config.execute(input, context).pipe(
+      Effect.flatMap((input) =>
+        config.execute(input as Schema.Schema.Type<Input>, context).pipe(
             Effect.flatMap((output) =>
               Schema.encodeEffect(config.output)(output).pipe(
                 Effect.flatMap((output) => {
                   if (!config.structured || !config.toStructuredOutput)
                     return Effect.succeed({ output, structured: output })
-                  return Schema.encodeEffect(config.structured)(config.toStructuredOutput({ input, output })).pipe(
+              return Schema.encodeEffect(config.structured)(config.toStructuredOutput({ input: input as Schema.Schema.Type<Input>, output })).pipe(
                     Effect.map((structured) => ({ output, structured })),
                   )
                 }),
@@ -113,7 +114,7 @@ export function make<
             Effect.map(({ output, structured }) => ({
               structured,
               content:
-                config.toModelOutput?.({ input, output }).map((part) =>
+                config.toModelOutput?.({ input: input as Schema.Schema.Type<Input>, output }).map((part) =>
                   part.type === "text"
                     ? { type: "text" as const, text: part.text }
                     : {
@@ -136,7 +137,7 @@ export const validateName = (name: string) =>
     ? Effect.void
     : Effect.fail(new RegistrationError({ name, message: `Invalid tool name: ${name}` }))
 
-export const withPermission = <Input extends SchemaType<any>, Output extends SchemaType<any>>(
+export const withPermission = <Input extends SchemaType<unknown>, Output extends SchemaType<unknown>>(
   tool: Definition<Input, Output>,
   permission: string,
 ) => {

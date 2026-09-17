@@ -12,12 +12,12 @@ test("uses spinosa brand when in spinosa mode", () => {
   expect(epilogue).toContain("spinosa -s ses_123")
 })
 
-test("appends --project when a directory is provided", () => {
+test("never suggests --project (-s auto-routes to the session directory)", () => {
   const epilogue = sessionEpilogue({
     title: "A session",
     sessionID: "ses_123",
     spinosa: true,
-    projectDir: "/abs/workspace",
   })
-  expect(epilogue).toContain("spinosa -s ses_123 --project /abs/workspace")
+  expect(epilogue).toContain("spinosa -s ses_123")
+  expect(epilogue).not.toContain("--project")
 })

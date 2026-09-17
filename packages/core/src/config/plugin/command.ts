@@ -1,6 +1,6 @@
 export * as ConfigCommandPlugin from "./command"
 
-import { define } from "../../plugin/internal"
+import { define } from "../../plugin/define"
 import path from "path"
 import { Effect, Option, Schema } from "effect"
 import { CommandV2 } from "../../command"

@@ -7,17 +7,26 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { HttpRecorder } from "../src"
-import { HttpRecorderInternal } from "../src/internal"
+import * as Cassette from "../src/cassette"
+import {
+  cassetteLayer,
+  hasCassetteSync,
+  redactHeaders,
+  redactUrl,
+  secretFindings,
+  socketLayer,
+} from "../src/internal"
+import * as Redactor from "../src/redactor"
 import { redactedErrorRequest } from "../src/internal-effect"
 import type { Interaction } from "../src/schema"
 
 const seedCassetteDirectory = (directory: string, name: string, interactions: ReadonlyArray<Interaction>) =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const cassette = yield* HttpRecorderInternal.Cassette.Service
+      const cassette = yield* Cassette.Service
       yield* Effect.forEach(interactions, (interaction) => cassette.append(name, interaction))
     }).pipe(
-      Effect.provide(HttpRecorderInternal.Cassette.fileSystem({ directory })),
+      Effect.provide(Cassette.fileSystem({ directory })),
       Effect.provide(NodeFileSystem.layer),
     ),
   )
@@ -42,12 +51,12 @@ const runWith = <A, E>(
   effect: Effect.Effect<A, E, HttpClient.HttpClient>,
 ) => Effect.runPromise(effect.pipe(Effect.provide(HttpRecorder.http(name, options))))
 
-const runRecorder = <A, E>(effect: Effect.Effect<A, E, HttpRecorderInternal.Cassette.Service | Scope.Scope>) =>
+const runRecorder = <A, E>(effect: Effect.Effect<A, E, Cassette.Service | Scope.Scope>) =>
   Effect.runPromise(
     Effect.scoped(
       effect.pipe(
         Effect.provide(
-          HttpRecorderInternal.Cassette.fileSystem({
+          Cassette.fileSystem({
             directory: fs.mkdtempSync(path.join(os.tmpdir(), "http-recorder-")),
           }),
         ),
@@ -64,7 +73,7 @@ const failureText = (exit: Exit.Exit<unknown, unknown>) => {
 describe("http-recorder", () => {
   test("redacts sensitive URL query parameters", () => {
     expect(
-      HttpRecorderInternal.redactUrl(
+      redactUrl(
         "https://example.test/path?key=secret-google-key&api_key=secret-openai-key&safe=value&X-Amz-Signature=secret-signature",
       ),
     ).toBe(
@@ -73,14 +82,14 @@ describe("http-recorder", () => {
   })
 
   test("redacts URL credentials", () => {
-    expect(HttpRecorderInternal.redactUrl("https://user:password@example.test/path?safe=value")).toBe(
+    expect(redactUrl("https://user:password@example.test/path?safe=value")).toBe(
       "https://%5BREDACTED%5D:%5BREDACTED%5D@example.test/path?safe=value",
     )
   })
 
   test("applies custom URL redaction after built-in redaction", () => {
     expect(
-      HttpRecorderInternal.redactUrl(
+      redactUrl(
         "https://example.test/accounts/real-account/path?key=secret-key",
         undefined,
         (url) => url.replace("/accounts/real-account/", "/accounts/{account}/"),
@@ -90,7 +99,7 @@ describe("http-recorder", () => {
 
   test("redacts sensitive headers when allow-listed", () => {
     expect(
-      HttpRecorderInternal.redactHeaders(
+      redactHeaders(
         {
           authorization: "Bearer secret-token",
           "content-type": "application/json",
@@ -126,7 +135,7 @@ describe("http-recorder", () => {
 
   test("detects secret-looking values without returning the secret", () => {
     expect(
-      HttpRecorderInternal.secretFindings({
+      secretFindings({
         version: 1,
         interactions: [
           {
@@ -154,7 +163,7 @@ describe("http-recorder", () => {
 
   test("detects secret-looking values inside metadata", () => {
     expect(
-      HttpRecorderInternal.secretFindings({
+      secretFindings({
         version: 1,
         metadata: { token: "sk-123456789012345678901234" },
         interactions: [],
@@ -163,7 +172,7 @@ describe("http-recorder", () => {
   })
 
   test("redacts configured and common sensitive JSON fields", () => {
-    const redactor = HttpRecorderInternal.Redactor.make({ jsonFields: ["account_id"] })
+    const redactor = Redactor.make({ jsonFields: ["account_id"] })
     const request = redactor.request({
       method: "POST",
       url: "https://example.test/path",
@@ -183,7 +192,7 @@ describe("http-recorder", () => {
   })
 
   test("extends default header redaction and allow lists", () => {
-    const redactor = HttpRecorderInternal.Redactor.make({
+    const redactor = Redactor.make({
       headers: ["x-custom-token"],
       allowRequestHeaders: ["anthropic-version", "x-custom-token"],
     })
@@ -236,7 +245,7 @@ describe("http-recorder", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          HttpRecorderInternal.socketLayer(
+          socketLayer(
             "websocket/record",
             { url: "wss://example.test/realtime", headers: { "content-type": "application/json" } },
             { directory, metadata: { provider: "test" }, mode: "record" },
@@ -287,7 +296,7 @@ describe("http-recorder", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          HttpRecorderInternal.socketLayer(
+          socketLayer(
             "websocket/replay",
             { url: "wss://example.test/realtime" },
             { directory, compareClientMessagesAsJson: true, mode: "replay" },
@@ -379,7 +388,7 @@ describe("http-recorder", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          HttpRecorderInternal.socketLayer(
+          socketLayer(
             "websocket/concurrent-handlers",
             { url: "wss://example.test/realtime" },
             { directory, mode: "replay" },
@@ -417,7 +426,7 @@ describe("http-recorder", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          HttpRecorderInternal.socketLayer(
+          socketLayer(
             "websocket/early-close",
             { url: "wss://example.test/realtime" },
             { directory, mode: "replay" },
@@ -448,7 +457,7 @@ describe("http-recorder", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          HttpRecorderInternal.socketLayer(
+          socketLayer(
             "websocket/failed-run",
             { url: "wss://example.test/realtime" },
             { directory, mode: "record" },
@@ -510,7 +519,7 @@ describe("http-recorder", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          HttpRecorderInternal.socketLayer(
+          socketLayer(
             "websocket/binary",
             { url: "wss://example.test/binary" },
             { directory, mode: "replay" },
@@ -785,7 +794,7 @@ describe("http-recorder", () => {
     const exit = await Effect.runPromise(
       Effect.exit(
         post(url, { ok: true }).pipe(
-          Effect.provide(HttpRecorderInternal.cassetteLayer("unsafe-record", { directory, mode: "record" })),
+          Effect.provide(cassetteLayer("unsafe-record", { directory, mode: "record" })),
         ),
       ),
     )
@@ -797,7 +806,7 @@ describe("http-recorder", () => {
   test("failed memory appends leave cassette state unchanged", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const cassette = yield* HttpRecorderInternal.Cassette.Service
+        const cassette = yield* Cassette.Service
         const interaction: Interaction = {
           transport: "http",
           request: { method: "GET", url: "https://example.test", headers: {}, body: "" },
@@ -812,7 +821,7 @@ describe("http-recorder", () => {
           .pipe(Effect.flip)
 
         expect(yield* cassette.read("transactional")).toEqual([interaction])
-      }).pipe(Effect.provide(HttpRecorderInternal.Cassette.memory())),
+      }).pipe(Effect.provide(Cassette.memory())),
     )
   })
 
@@ -820,7 +829,7 @@ describe("http-recorder", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "http-recorder-concurrent-"))
     await Effect.runPromise(
       Effect.gen(function* () {
-        const cassette = yield* HttpRecorderInternal.Cassette.Service
+        const cassette = yield* Cassette.Service
         yield* Effect.forEach(
           Array.from({ length: 20 }, (_, index) => index),
           (index) =>
@@ -832,7 +841,7 @@ describe("http-recorder", () => {
           { concurrency: "unbounded" },
         )
       }).pipe(
-        Effect.provide(HttpRecorderInternal.Cassette.fileSystem({ directory })),
+        Effect.provide(Cassette.fileSystem({ directory })),
         Effect.provide(NodeFileSystem.layer),
       ),
     )
@@ -844,8 +853,8 @@ describe("http-recorder", () => {
 
   test("rejects cassette paths outside the recordings directory", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "http-recorder-path-"))
-    expect(() => HttpRecorderInternal.hasCassetteSync("../outside", { directory })).toThrow("Invalid cassette name")
-    expect(() => HttpRecorderInternal.hasCassetteSync("C:\\outside", { directory })).toThrow("Invalid cassette name")
+    expect(() => hasCassetteSync("../outside", { directory })).toThrow("Invalid cassette name")
+    expect(() => hasCassetteSync("C:\\outside", { directory })).toThrow("Invalid cassette name")
   })
 
   test("Cassette.list enumerates recorded cassette names", async () => {
@@ -867,10 +876,10 @@ describe("http-recorder", () => {
 
     const names = await Effect.runPromise(
       Effect.gen(function* () {
-        const cassette = yield* HttpRecorderInternal.Cassette.Service
+        const cassette = yield* Cassette.Service
         return yield* cassette.list()
       }).pipe(
-        Effect.provide(HttpRecorderInternal.Cassette.fileSystem({ directory })),
+        Effect.provide(Cassette.fileSystem({ directory })),
         Effect.provide(NodeFileSystem.layer),
       ),
     )

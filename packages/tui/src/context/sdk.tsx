@@ -96,20 +96,27 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         while (true) {
           if (abort.signal.aborted || ctrl.signal.aborted) break
 
-          const events = await sdk.global.event({
-            signal: ctrl.signal,
-            sseMaxRetryAttempts: 0,
-          })
+          try {
+            const events = await sdk.global.event({
+              signal: ctrl.signal,
+              sseMaxRetryAttempts: 0,
+            })
 
-          if (Flag.SPINOSA_EXPERIMENTAL_WORKSPACES) {
-            // Start syncing workspaces, it's important to do this after
-            // we've started listening to events
-            await sdk.sync.start().catch(() => {})
-          }
+            if (Flag.SPINOSA_EXPERIMENTAL_WORKSPACES) {
+              // Start syncing workspaces, it's important to do this after
+              // we've started listening to events
+              await sdk.sync.start().catch(() => {})
+            }
 
-          for await (const event of events.stream) {
-            if (ctrl.signal.aborted) break
-            handleEvent(event)
+            for await (const event of events.stream) {
+              if (ctrl.signal.aborted) break
+              handleEvent(event)
+            }
+          } catch {
+            // Transport failure (connect, stream, or iterator): back off and
+            // retry below. The loop must never die on a dropped connection —
+            // a dead loop stops all server events with no recovery.
+            if (abort.signal.aborted || ctrl.signal.aborted) break
           }
 
           if (timer) clearTimeout(timer)
@@ -131,19 +138,35 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       })().catch(() => {})
     }
 
-    onMount(async () => {
-      if (props.events) {
-        const unsub = await props.events.subscribe(handleEvent)
-        onCleanup(unsub)
+    onMount(() => {
+      // Disposal registers synchronously: if the owner dies while the
+      // injected subscription is still resolving, the late disposer releases
+      // immediately instead of leaking (onCleanup after an await may have no
+      // live owner left to attach to).
+      let disposed = false
+      let unsub: (() => void) | undefined
+      onCleanup(() => {
+        disposed = true
+        unsub?.()
+      })
+      ;(async () => {
+        if (props.events) {
+          const release = await props.events.subscribe(handleEvent)
+          if (disposed) {
+            release()
+            return
+          }
+          unsub = release
 
-        if (Flag.SPINOSA_EXPERIMENTAL_WORKSPACES) {
-          // Start syncing workspaces, it's important to do this after
-          // we've started listening to events
-          await sdk.sync.start().catch(() => {})
+          if (Flag.SPINOSA_EXPERIMENTAL_WORKSPACES) {
+            // Start syncing workspaces, it's important to do this after
+            // we've started listening to events
+            await sdk.sync.start().catch(() => {})
+          }
+        } else {
+          startSSE()
         }
-      } else {
-        startSSE()
-      }
+      })()
     })
 
     onCleanup(() => {

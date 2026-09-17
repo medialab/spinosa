@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { define } from "../internal"
+import { define } from "../define"
 
 export const AlibabaPlugin = define({
   id: "alibaba",

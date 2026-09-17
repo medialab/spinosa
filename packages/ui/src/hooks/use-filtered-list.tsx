@@ -67,8 +67,8 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
     if (props.current) return props.key(props.current)
 
     const items = flat()
-    if (items.length === 0) return ""
-    return props.key(items[0])
+    const first = items[0]
+    return first ? props.key(first) : ""
   }
 
   const list = createList({
@@ -83,8 +83,9 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
       return
     }
     const all = flat()
-    if (all.length === 0) return
-    list.setActive(props.key(all[0]))
+    const first = all[0]
+    if (!first) return
+    list.setActive(props.key(first))
   }
 
   const onKeyDown = (event: KeyboardEvent) => {

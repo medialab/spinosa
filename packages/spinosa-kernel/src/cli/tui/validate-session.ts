@@ -10,8 +10,17 @@ export async function validateSession(input: {
   directory?: string
   fetch?: typeof fetch
   headers?: RequestInit["headers"]
-}) {
-  if (!input.sessionID) return
+  /** Injectable client for tests; defaults to a real SDK client. */
+  client?: {
+    session: {
+      get(
+        args: { sessionID: string },
+        opts?: { throwOnError: boolean },
+      ): Promise<{ data?: { directory?: unknown } | null; error?: unknown }>
+    }
+  }
+}): Promise<{ directory?: string }> {
+  if (!input.sessionID) return {}
 
   let sessionID: SessionID
   try {
@@ -20,10 +29,14 @@ export async function validateSession(input: {
     throw new Error(`Invalid session ID: ${error instanceof Error ? error.message : "unknown error"}`, { cause: error })
   }
 
-  await createSpinosaClient({
-    baseUrl: input.url,
-    directory: input.directory,
-    fetch: input.fetch,
-    headers: input.headers,
-  }).session.get({ sessionID }, { throwOnError: true })
+  const client = input.client ??
+    createSpinosaClient({
+      baseUrl: input.url,
+      directory: input.directory,
+      fetch: input.fetch,
+      headers: input.headers,
+    })
+  const result = await client.session.get({ sessionID }, { throwOnError: true })
+  const directory = result?.data && typeof result.data === "object" ? result.data.directory : undefined
+  return typeof directory === "string" && directory.length > 0 ? { directory } : {}
 }

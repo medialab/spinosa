@@ -97,7 +97,7 @@ describe("skill", () => {
         Effect.gen(function* () {
           yield* Effect.promise(() =>
             Bun.write(
-              path.join(dir, ".opencode", "skill", "test-skill", "SKILL.md"),
+              path.join(dir, ".spinosa", "skill", "test-skill", "SKILL.md"),
               `---
 name: test-skill
 description: A test skill for verification.
@@ -122,18 +122,27 @@ Instructions here.
     ),
   )
 
-  it.live("discovers legacy skills when .opencode and .spinosa coexist", () =>
+  it.live("does not discover skills from legacy .opencode directory", () =>
     provideTmpdirInstance(
       (dir) =>
         Effect.gen(function* () {
           yield* Effect.promise(() =>
             Promise.all([
-              Bun.write(path.join(dir, ".spinosa", "workspace"), "workspace_started\n"),
+              Bun.write(
+                path.join(dir, ".spinosa", "skill", "spinosa-skill", "SKILL.md"),
+                `---
+name: spinosa-skill
+description: Project skill.
+---
+
+# Spinosa Skill
+`,
+              ),
               Bun.write(
                 path.join(dir, ".opencode", "skill", "legacy-skill", "SKILL.md"),
                 `---
 name: legacy-skill
-description: A legacy skill preserved during coexistence.
+description: Must not load.
 ---
 
 # Legacy Skill
@@ -143,7 +152,9 @@ description: A legacy skill preserved during coexistence.
           )
 
           const skill = yield* Skill.Service
-          expect((yield* skill.all()).map((item) => item.name)).toContain("legacy-skill")
+          const names = (yield* skill.all()).map((item) => item.name)
+          expect(names).toContain("spinosa-skill")
+          expect(names).not.toContain("legacy-skill")
         }),
       { git: true },
     ),
@@ -185,7 +196,7 @@ description: Skill for dirs test.
           yield* Effect.promise(() =>
             Promise.all([
               Bun.write(
-                path.join(dir, ".opencode", "skill", "skill-one", "SKILL.md"),
+                path.join(dir, ".spinosa", "skill", "skill-one", "SKILL.md"),
                 `---
 name: skill-one
 description: First test skill.
@@ -195,7 +206,7 @@ description: First test skill.
 `,
               ),
               Bun.write(
-                path.join(dir, ".opencode", "skill", "skill-two", "SKILL.md"),
+                path.join(dir, ".spinosa", "skill", "skill-two", "SKILL.md"),
                 `---
 name: skill-two
 description: Second test skill.
@@ -223,7 +234,7 @@ description: Second test skill.
         Effect.gen(function* () {
           yield* Effect.promise(() =>
             Bun.write(
-              path.join(dir, ".opencode", "skill", "no-frontmatter", "SKILL.md"),
+              path.join(dir, ".spinosa", "skill", "no-frontmatter", "SKILL.md"),
               `# No Frontmatter
 
 Just some content without YAML frontmatter.
@@ -244,7 +255,7 @@ Just some content without YAML frontmatter.
         Effect.gen(function* () {
           yield* Effect.promise(() =>
             Bun.write(
-              path.join(dir, ".opencode", "skill", "manual-skill", "SKILL.md"),
+              path.join(dir, ".spinosa", "skill", "manual-skill", "SKILL.md"),
               `---
 name: manual-skill
 ---
@@ -534,7 +545,7 @@ description: A skill in the .agents/skills directory.
 `,
               ),
               Bun.write(
-                path.join(dir, ".opencode", "skill", "opencode-skill", "SKILL.md"),
+                path.join(dir, ".spinosa", "skill", "opencode-skill", "SKILL.md"),
                 `---
 name: opencode-skill
 description: A skill in the .opencode/skill directory.
@@ -581,7 +592,7 @@ description: A skill in the .agents/skills directory.
 `,
               ),
               Bun.write(
-                path.join(dir, ".opencode", "skill", "agent-skill", "SKILL.md"),
+                path.join(dir, ".spinosa", "skill", "agent-skill", "SKILL.md"),
                 `---
 name: opencode-skill
 description: A skill in the .opencode/skill directory.
@@ -591,7 +602,7 @@ description: A skill in the .opencode/skill directory.
 `,
               ),
               Bun.write(
-                path.join(dir, ".opencode", "skills", "agent-skill", "SKILL.md"),
+                path.join(dir, ".spinosa", "skills", "agent-skill", "SKILL.md"),
                 `---
 name: opencode-skill
 description: A skill in the .opencode/skills directory.

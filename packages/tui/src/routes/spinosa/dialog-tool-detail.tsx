@@ -5,8 +5,18 @@ import { useDialog } from "../../ui/dialog"
 import { useBindings } from "../../keymap"
 import { useClipboard } from "../../context/clipboard"
 import { buttonBackground, buttonText } from "../../util/button"
+type ToolDetailPart = {
+  tool?: string
+  callID?: string
+  state?: {
+    status?: string
+    input?: Record<string, unknown>
+    error?: unknown
+    time?: { start?: number; end?: number }
+  }
+}
 
-export function DialogToolDetail(props: { part: any; workdir?: string }) {
+export function DialogToolDetail(props: { part: ToolDetailPart; workdir?: string }) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const clipboard = useClipboard()

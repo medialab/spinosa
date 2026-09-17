@@ -5,66 +5,15 @@ import { createClient } from "./gen/client/client.gen.js"
 import { type Config } from "./gen/client/types.gen.js"
 import { OpencodeClient } from "./gen/sdk.gen.js"
 import { wrapClientError } from "../error-interceptor.js"
+import { rewriteLocationRequest } from "../location.js"
 export { type Config as OpencodeClientConfig, OpencodeClient }
-
-function pick(value: string | null, fallback?: string, encode?: (value: string) => string) {
-  if (!value) return
-  if (!fallback) return value
-  if (value === fallback) return fallback
-  if (encode && value === encode(fallback)) return fallback
-  return value
-}
-
-function decode(value: string) {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
-function rewrite(request: Request, values: { directory?: string; workspace?: string }) {
-  if (request.method !== "GET" && request.method !== "HEAD") return request
-
-  const url = new URL(request.url)
-  let changed = false
-
-  for (const [names, key] of [
-    [["x-spinosa-directory", "x-opencode-directory"], "directory"],
-    [["x-spinosa-workspace", "x-opencode-workspace"], "workspace"],
-  ] as const) {
-    const value = pick(
-      request.headers.get(names[0]) ?? request.headers.get(names[1]),
-      key === "directory" ? values.directory : values.workspace,
-      key === "directory" ? encodeURIComponent : undefined,
-    )
-    if (!value) continue
-    const queryValue = key === "directory" ? decode(value) : value
-    for (const query of url.pathname.startsWith("/api/") ? [key, `location[${key}]`] : [key]) {
-      if (!url.searchParams.has(query)) {
-        url.searchParams.set(query, queryValue)
-      }
-    }
-    changed = true
-  }
-
-  if (!changed) return request
-
-  const next = new Request(url, request)
-  next.headers.delete("x-spinosa-directory")
-  next.headers.delete("x-spinosa-workspace")
-  next.headers.delete("x-opencode-directory")
-  next.headers.delete("x-opencode-workspace")
-  return next
-}
 
 export function createSpinosaClient(config?: Config & { directory?: string; experimental_workspaceID?: string }) {
   if (!config?.fetch) {
-    const customFetch: any = (req: any) => {
-      // @ts-ignore
-      req.timeout = false
-      return fetch(req)
-    }
+    const customFetch = ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      if (input instanceof Request) Object.assign(input, { timeout: false })
+      return fetch(input, init)
+    }) as unknown as typeof fetch
     config = {
       ...config,
       fetch: customFetch,
@@ -87,10 +36,14 @@ export function createSpinosaClient(config?: Config & { directory?: string; expe
 
   const client = createClient(config)
   client.interceptors.request.use((request) =>
-    rewrite(request, {
-      directory: config?.directory,
-      workspace: config?.experimental_workspaceID,
-    }),
+    rewriteLocationRequest(
+      request,
+      {
+        directory: config?.directory,
+        workspace: config?.experimental_workspaceID,
+      },
+      { includeWorkspace: true, includeApiLocationQueries: true },
+    ),
   )
   client.interceptors.response.use((response) => {
     const contentType = response.headers.get("content-type")

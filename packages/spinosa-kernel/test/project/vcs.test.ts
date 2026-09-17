@@ -52,6 +52,12 @@ const init = Effect.fn("VcsTest.init")(function* () {
   return vcs
 })
 
+const available = (result: Vcs.Diff) => {
+  expect(result._tag).toBe("available")
+  if (result._tag !== "available") throw new Error(`Expected available diff, got ${result.reason}`)
+  return result.files
+}
+
 const nextBranchUpdate = Effect.fn("VcsTest.nextBranchUpdate")(function* () {
   const events = yield* EventV2Bridge.Service
   const updated = yield* Deferred.make<string | undefined>()
@@ -221,7 +227,7 @@ describe("Vcs diff", () => {
         yield* write(path.join(test.directory, "file.txt"), "changed\n")
 
         const vcs = yield* init()
-        const diff = yield* vcs.diff("git")
+        const diff = available(yield* vcs.diff("git"))
 
         expect(diff).toEqual(
           expect.arrayContaining([
@@ -244,7 +250,7 @@ describe("Vcs diff", () => {
         yield* write(path.join(test.directory, weird), "hello\n")
 
         const vcs = yield* init()
-        const diff = yield* vcs.diff("git")
+        const diff = available(yield* vcs.diff("git"))
 
         expect(diff).toEqual(
           expect.arrayContaining([
@@ -274,7 +280,7 @@ describe("Vcs diff", () => {
         yield* write(path.join(test.directory, "b.txt"), "new\n")
 
         const vcs = yield* init()
-        const diff = yield* vcs.diff("git")
+        const diff = available(yield* vcs.diff("git"))
         const a = diff.find((item) => item.file === "a.txt")
         const b = diff.find((item) => item.file === "b.txt")
 
@@ -296,7 +302,7 @@ describe("Vcs diff", () => {
         yield* write(path.join(test.directory, "file.txt"), "keep\nadd\nsame\rdiff --git inside\n")
 
         const vcs = yield* init()
-        const diff = yield* vcs.diff("git")
+        const diff = available(yield* vcs.diff("git"))
         const file = diff.find((item) => item.file === "file.txt")
 
         expect(file?.patch).toContain(" same\rdiff --git inside")
@@ -319,7 +325,7 @@ describe("Vcs diff", () => {
         yield* git(test.directory, ["commit", "--no-gpg-sign", "-m", "branch file"])
 
         const vcs = yield* init()
-        const diff = yield* vcs.diff("branch")
+        const diff = available(yield* vcs.diff("branch"))
 
         expect(diff).toEqual(
           expect.arrayContaining([
@@ -329,6 +335,36 @@ describe("Vcs diff", () => {
             }),
           ]),
         )
+      }),
+    { git: true },
+  )
+
+  it.instance("diff('git') reports non-git projects as unavailable", () =>
+    Effect.gen(function* () {
+      const vcs = yield* init()
+
+      expect(yield* vcs.diff("git")).toEqual({
+        _tag: "unavailable",
+        reason: "non-git",
+      })
+      expect(yield* vcs.status()).toEqual({ _tag: "unavailable", reason: "non-git" })
+      expect(yield* Effect.flip(vcs.diffRaw())).toMatchObject({ reason: "non-git" })
+    }),
+  )
+
+  it.instance(
+    "diff('branch') reports a missing default branch as unavailable",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        yield* git(test.directory, ["branch", "-M", "feature-only"])
+
+        const vcs = yield* init()
+
+        expect(yield* vcs.diff("branch")).toEqual({
+          _tag: "unavailable",
+          reason: "default-branch-unavailable",
+        })
       }),
     { git: true },
   )

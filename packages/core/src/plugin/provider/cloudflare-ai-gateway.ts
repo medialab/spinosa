@@ -1,7 +1,23 @@
 import os from "os"
 import { InstallationVersion } from "../../installation/version"
 import { Effect, Option, Schema } from "effect"
-import { define } from "../internal"
+import { define } from "../define"
+
+type GatewayMetadata = Record<string, string | number | boolean | null | bigint>
+type GatewayOptions = {
+  readonly cacheKey?: string
+  readonly cacheTtl?: number
+  readonly skipCache?: boolean
+  readonly metadata?: GatewayMetadata
+  readonly collectLog?: boolean
+  readonly headers?: Record<string, string>
+}
+type GatewayAPISettings = {
+  readonly gateway: string
+  readonly accountId: string
+  readonly apiKey?: string
+  readonly options?: GatewayOptions
+}
 
 export const CloudflareAIGatewayPlugin = define({
   id: "cloudflare-ai-gateway",
@@ -23,7 +39,7 @@ export const CloudflareAIGatewayPlugin = define({
           gateway: config.gatewayId,
           apiKey: config.apiKey,
           options: gatewayOptions(evt.options, metadata),
-        } as any)
+        } satisfies GatewayAPISettings)
         const unified = createUnified({ apiKey: config.apiKey })
         evt.sdk = {
           languageModel(modelID: string) {
@@ -55,21 +71,22 @@ function gatewayConfig(options: Record<string, unknown>): GatewayConfig | undefi
   return { accountId, gatewayId, apiKey }
 }
 
-function gatewayMetadata(options: Record<string, unknown>) {
+function gatewayMetadata(options: Record<string, unknown>): GatewayMetadata | undefined {
   // Preserve the legacy cf-aig-metadata header escape hatch for gateway logging
   // metadata, but prefer the typed metadata option when present.
-  if (options.metadata !== undefined) return options.metadata
-  const raw = (options.headers as Record<string, string> | undefined)?.["cf-aig-metadata"]
-  return raw ? Option.getOrUndefined(decodeJson(raw)) : undefined
+  if (isGatewayMetadata(options.metadata)) return options.metadata
+  const raw = stringRecord(options.headers)["cf-aig-metadata"]
+  const parsed = raw ? Option.getOrUndefined(decodeJson(raw)) : undefined
+  return isGatewayMetadata(parsed) ? parsed : undefined
 }
 
-function gatewayOptions(options: Record<string, unknown>, metadata: unknown) {
+function gatewayOptions(options: Record<string, unknown>, metadata: GatewayMetadata | undefined): GatewayOptions {
   return {
     metadata,
-    cacheTtl: options.cacheTtl,
-    cacheKey: options.cacheKey,
-    skipCache: options.skipCache,
-    collectLog: options.collectLog,
+    cacheTtl: numberOption(options, "cacheTtl"),
+    cacheKey: stringOption(options, "cacheKey"),
+    skipCache: booleanOption(options, "skipCache"),
+    collectLog: booleanOption(options, "collectLog"),
     headers: {
       "User-Agent": `spinosa/${InstallationVersion} cloudflare-ai-gateway (${os.platform()} ${os.release()}; ${os.arch()})`,
     },
@@ -78,4 +95,32 @@ function gatewayOptions(options: Record<string, unknown>, metadata: unknown) {
 
 function stringOption(options: Record<string, unknown>, key: string) {
   return typeof options[key] === "string" ? options[key] : undefined
+}
+
+function numberOption(options: Record<string, unknown>, key: string) {
+  return typeof options[key] === "number" ? options[key] : undefined
+}
+
+function booleanOption(options: Record<string, unknown>, key: string) {
+  return typeof options[key] === "boolean" ? options[key] : undefined
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null) return {}
+  const entries = Object.entries(value)
+  return entries.every(([key, item]) => typeof key === "string" && typeof item === "string")
+    ? Object.fromEntries(entries)
+    : {}
+}
+
+function isGatewayMetadata(value: unknown): value is GatewayMetadata {
+  if (typeof value !== "object" || value === null) return false
+  return Object.values(value).every(
+    (item) =>
+      item === null ||
+      typeof item === "string" ||
+      typeof item === "number" ||
+      typeof item === "boolean" ||
+      typeof item === "bigint",
+  )
 }

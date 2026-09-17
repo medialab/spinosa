@@ -21,6 +21,13 @@ export const QuestionTool = Tool.define<typeof Parameters, Metadata, Question.Se
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context<Metadata>) =>
         Effect.gen(function* () {
+          yield* ctx.ask({
+            permission: "question",
+            patterns: ["*"],
+            always: ["*"],
+            metadata: {},
+          })
+
           const answers = yield* question.ask({
             sessionID: ctx.sessionID,
             questions: params.questions,

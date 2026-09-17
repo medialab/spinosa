@@ -15,7 +15,7 @@ function View(props: { api: TuiPluginApi; hidden: boolean; show: boolean; connec
         category: "System",
         namespace: "palette",
         run() {
-          props.api.kv.set("tips_hidden", !props.api.kv.get("tips_hidden", false))
+      props.api.kv.set("tips_hidden", !(props.api.kv.get("tips_hidden", false) ?? false))
           props.api.ui.dialog.clear()
         },
       },
@@ -37,7 +37,7 @@ const tui: TuiPlugin = async (api) => {
     order: 100,
     slots: {
       home_bottom() {
-        const hidden = createMemo(() => api.kv.get("tips_hidden", false))
+    const hidden = createMemo(() => api.kv.get("tips_hidden", false) ?? false)
         const first = createMemo(() => api.state.session.count() === 0)
         const connected = createMemo(() =>
           api.state.provider.some(

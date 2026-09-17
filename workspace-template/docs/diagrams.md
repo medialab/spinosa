@@ -23,10 +23,10 @@ flowchart TB
         CLI --> SRC[Source scan + classify]
         SRC --> MD[Markdown-native\n.txt .csv .json .ts]
         SRC --> MKD[MarkItDown\n.docx .xlsx .html]
-        SRC --> OCR[PaddleOCR Python\nscanned PDF .jpg .png]
+        SRC --> OCR[Vision model / copy-as-is\nscanned PDF .jpg .png]
         SRC --> SKIP[Audio/video skipped]
         MD & MKD & OCR --> RAW[raw/ corpus .md]
-        CLI --> CFG[system/context.md\nsetup_status: cli_started]
+        CLI --> CFG[system/configuration.md\nsetup_status: cli_started]
     end
 
     subgraph Indexing ["Phase B: Workspace Indexing"]
@@ -49,7 +49,7 @@ flowchart TB
         SEREN --> VAL[2.7 Validate]
         VAL --> VER[spinosa-verifier\nclaim check]
         VER --> EVAL[spinosa-evaluator\nroute audit]
-        EVAL --> DONE[setup_status:\nworkspace_started]
+        EVAL --> DONE[system/configuration.md\nsetup_status: workspace_started]
     end
 
     RAW --> ORCH_0
@@ -248,7 +248,7 @@ flowchart LR
     CLASS -->|.md| NATIVE[Native markdown\ncopy + YAML header]
     CLASS -->|.txt .csv .json .ts .py .yaml| MD_CONV[Markdown-convertible\nrenamed to .md]
     CLASS -->|.docx .xlsx .html .epub| MKD2[MarkItDown\n→ .md]
-    CLASS -->|scanned PDF .jpg .png| OCR2[PaddleOCR Python\n→ .md]
+    CLASS -->|scanned PDF .jpg .png| OCR2[Vision model / copy-as-is\n→ .md]
     CLASS -->|.mp4 .mov .mp3 .wav| SKIP2[Skipped\nby default]
     CLASS -->|.DS_Store ._*| IGNORE[Ignored]
 

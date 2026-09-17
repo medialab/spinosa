@@ -26,7 +26,11 @@ import { convertToOpenAICompatibleChatMessages } from "./convert-to-openai-compa
 import { getResponseMetadata } from "./get-response-metadata"
 import { mapOpenAICompatibleFinishReason } from "./map-openai-compatible-finish-reason"
 import { type OpenAICompatibleChatModelId, openaiCompatibleProviderOptions } from "./openai-compatible-chat-options"
-import { defaultOpenAICompatibleErrorStructure, type ProviderErrorStructure } from "../openai-compatible-error"
+import {
+  defaultOpenAICompatibleErrorStructure,
+  type OpenAICompatibleErrorData,
+  type ProviderErrorStructure,
+} from "../openai-compatible-error"
 import type { MetadataExtractor } from "./openai-compatible-metadata-extractor"
 import { prepareTools } from "./openai-compatible-prepare-tools"
 
@@ -36,7 +40,7 @@ export type OpenAICompatibleChatConfig = {
   url: (options: { modelId: string; path: string }) => string
   fetch?: FetchFunction
   includeUsage?: boolean
-  errorStructure?: ProviderErrorStructure<any>
+  errorStructure?: ProviderErrorStructure<OpenAICompatibleErrorData>
   metadataExtractor?: MetadataExtractor
 
   /**
@@ -383,7 +387,6 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV3 {
             controller.enqueue({ type: "stream-start", warnings })
           },
 
-          // TODO we lost type safety on Chunk, most likely due to the error schema. MUST FIX
           transform(chunk, controller) {
             // Emit raw chunk if requested (before anything else)
             if (options.includeRawChunks) {

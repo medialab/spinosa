@@ -81,15 +81,17 @@ describe("v2 pty HttpApi", () => {
     expect(body.data.title).toBe("v2")
 
     // The canonical surface keeps exited sessions observable with their exit code.
-    const deadline = Date.now() + 5_000
-    let info: { status: string; exitCode?: number } | undefined
-    while (Date.now() < deadline) {
-      const found = await request(`/api/pty/${body.data.id}`, tmp.path)
-      expect(found.status).toBe(200)
-      info = Schema.decodeUnknownSync(Location.response(Pty.Info))(await found.json()).data
-      if (info.status === "exited") break
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
+    const info = await Effect.runPromise(
+      pollWithTimeout(
+        Effect.promise(async () => {
+          const found = await request(`/api/pty/${body.data.id}`, tmp.path)
+          expect(found.status).toBe(200)
+          const info = Schema.decodeUnknownSync(Location.response(Pty.Info))(await found.json()).data
+          return info.status === "exited" ? info : undefined
+        }),
+        "PTY process did not exit",
+      ),
+    )
     expect(info).toMatchObject({ status: "exited", exitCode: 4 })
 
     const removed = await request(`/api/pty/${body.data.id}`, tmp.path, { method: "DELETE" })

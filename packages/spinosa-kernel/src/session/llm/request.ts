@@ -9,13 +9,14 @@ import type { MessageV2 } from "../message-v2"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
 import { SystemPrompt } from "../system"
-import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
+import { InstallationVersion, OpenCodeCompatVersion } from "@spinosa/kernel-core/installation/version"
 import { Effect, Record } from "effect"
 import { jsonSchema, tool as aiTool, type ModelMessage, type Tool } from "ai"
 import type { Plugin } from "@/plugin"
 import { mergeDeep } from "remeda"
 
-const USER_AGENT = `spinosa/${InstallationVersion}`
+export const SPINOSA_USER_AGENT = `spinosa/${InstallationVersion}`
+export const OPENCODE_USER_AGENT = `opencode/${OpenCodeCompatVersion}`
 
 type PrepareInput = {
   readonly user: SessionV1.User
@@ -44,14 +45,14 @@ export type Prepared = {
     readonly topP?: number
     readonly topK?: number
     readonly maxOutputTokens?: number
-    readonly options: Record<string, any>
+    readonly options: Record<string, unknown>
   }
-  readonly messageTransformOptions: Record<string, any>
+  readonly messageTransformOptions: Record<string, unknown>
   readonly headers: Record<string, string>
 }
 
-const mergeOptions = (target: Record<string, any>, source: Record<string, any> | undefined): Record<string, any> =>
-  mergeDeep(target, source ?? {}) as Record<string, any>
+const mergeOptions = (target: Record<string, unknown>, source: Record<string, unknown> | undefined): Record<string, unknown> =>
+  mergeDeep(target, source ?? {}) as Record<string, unknown>
 
 export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: PrepareInput) {
   const isOpenaiOauth = input.provider.id === "openai" && input.auth?.type === "oauth"
@@ -174,7 +175,8 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     })
   }
 
-  const opencodeProjectID = input.model.providerID.startsWith("opencode")
+  const isOpenCodeProvider = input.model.providerID.startsWith("opencode")
+  const opencodeProjectID = isOpenCodeProvider
     ? (yield* InstanceState.context).project.id
     : undefined
 
@@ -185,19 +187,19 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     params,
     messageTransformOptions: options,
     headers: {
-      ...(input.model.providerID.startsWith("opencode")
+      ...(isOpenCodeProvider
         ? {
-            ...(opencodeProjectID ? { "x-spinosa-project": opencodeProjectID } : {}),
-            "x-spinosa-session": input.sessionID,
-            "x-spinosa-request": input.user.id,
-            "x-spinosa-client": input.flags.client,
-            "User-Agent": USER_AGENT,
+            ...(opencodeProjectID ? { "x-opencode-project": opencodeProjectID } : {}),
+            "x-opencode-session": input.sessionID,
+            "x-opencode-request": input.user.id,
+            "x-opencode-client": input.flags.client,
+            "User-Agent": OPENCODE_USER_AGENT,
           }
         : {
             "x-session-affinity": input.sessionID,
             "X-Session-Id": input.sessionID,
             ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
-            "User-Agent": USER_AGENT,
+            "User-Agent": SPINOSA_USER_AGENT,
           }),
       ...input.model.headers,
       ...headers,

@@ -7,8 +7,8 @@ import {
   getFrameworkHealth,
   readFrameworkVersionFromRoot,
   resolveFrameworkRoot,
-  detectDocumentTools,
 } from "@spinosa/core"
+import { detectDocumentTools } from "@spinosa/core/scan/scanner"
 
 export async function runStatus(workspacePath: string | undefined, io: SpinosaCliIo): Promise<number> {
   const frameworkRoot = resolveFrameworkRoot()
@@ -28,6 +28,12 @@ export async function runStatus(workspacePath: string | undefined, io: SpinosaCl
   else checks.push(`Framework: ok`)
 
   for (const [name, available] of Object.entries(tools)) {
+    // Local OCR was removed: ocr:false + ocrUnsupportedReason are the
+    // contract, not a health failure. Report without failing status.
+    if (name === "ocr" || name === "ocrUnsupportedReason") {
+      checks.push(name === "ocr" ? `${name}: unavailable (removed)` : `${name}: ok`)
+      continue
+    }
     if (!available) { allOk = false; checks.push(`${name}: missing`) }
     else checks.push(`${name}: ok`)
   }

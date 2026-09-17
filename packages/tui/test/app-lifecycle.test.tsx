@@ -7,6 +7,14 @@ import { Global } from "@spinosa/kernel-core/global"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
 import { createEventSource, createFetch, directory, json } from "./fixture/tui-sdk"
 
+test("TUI app lazy-loads onboarding and add-files", async () => {
+  const source = await Bun.file(new URL("../src/app.tsx", import.meta.url)).text()
+  expect(source).not.toMatch(/^import \{ Onboarding \} from ["'].*onboarding["']/m)
+  expect(source).not.toMatch(/^import \{ AddFiles \} from ["'].*add-files["']/m)
+  expect(source).toContain('await import("./routes/spinosa/onboarding")')
+  expect(source).toContain('await import("./routes/spinosa/add-files")')
+})
+
 async function expectProcessSignalShutdown(signal: "SIGHUP" | "SIGINT") {
   const setup = await createTestRenderer({ width: 80, height: 24, useThread: false })
   const core = await import("@opentui/core")
@@ -69,6 +77,10 @@ test("SIGINT clears title and disposes scoped resources once", async () => {
 })
 
 test("app.exit prints the session epilogue after scoped cleanup", async () => {
+  // Fast boot: skip the real workspace boot gate so the session tree mounts
+  // in test time. Without it tuiReady() never flips and no epilogue is set.
+  const originalFastBoot = process.env.SPINOSA_FAST_BOOT
+  process.env.SPINOSA_FAST_BOOT = "1"
   const setup = await createTestRenderer({ width: 80, height: 24, useThread: false })
   const core = await import("@opentui/core")
   mock.module("@opentui/core", () => ({ ...core, createCliRenderer: async () => setup.renderer }))
@@ -130,6 +142,8 @@ test("app.exit prints the session epilogue after scoped cleanup", async () => {
     expect(stdout).toContain("opencode -s dummy")
   } finally {
     process.stdout.write = originalWrite
+    if (originalFastBoot === undefined) delete process.env.SPINOSA_FAST_BOOT
+    else process.env.SPINOSA_FAST_BOOT = originalFastBoot
     if (!setup.renderer.isDestroyed) setup.renderer.destroy()
     mock.restore()
   }

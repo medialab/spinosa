@@ -1,34 +1,54 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": [
-    "packages/spinosa-cli/src/index.ts",
-    "packages/spinosa-kernel/src/index.ts",
-    "packages/tui/src/spinosa-cli.ts",
-    "script/compare-versions.ts",
-    "script/patch-local-install-metadata.ts",
-    "script/set-version.ts",
-    "script/typecheck-all.ts",
-    "script/release/index.ts",
-    "script/release/stages.ts",
-    "script/release/state.ts",
-    "script/release/bump.ts",
-    "script/release/github.ts",
-    "script/release/lib.ts",
-    "script/release/reporter.ts",
-    "script/generate-patches-md.ts",
-    "workspace-template/.bin/spinosa"
-  ],
-  "project": [
-    "packages/**/*.{ts,tsx}",
-    "script/**/*.ts"
-  ],
+  "workspaces": {
+    ".": {
+      "entry": [
+        "packages/spinosa-cli/src/index.ts",
+        "packages/spinosa-kernel/src/index.ts",
+        "packages/tui/src/spinosa-cli.ts",
+        "scripts/compare-versions.ts",
+        "scripts/pack-workspace-template.ts",
+        "scripts/patch-local-install-metadata.ts",
+        "scripts/set-version.ts",
+        "scripts/typecheck-all.ts",
+        "scripts/release/index.ts",
+        "scripts/release/stages.ts",
+        "scripts/release/state.ts",
+        "scripts/release/bump.ts",
+        "scripts/release/github.ts",
+        "scripts/release/lib.ts",
+        "scripts/release/reporter.ts",
+        "scripts/check-generated.ts",
+        "scripts/generate-patches-md.ts",
+        "workspace-template/.bin/spinosa"
+      ],
+      "project": [
+        "packages/**/*.{ts,tsx}",
+        "scripts/**/*.ts"
+      ]
+    },
+    "packages/llm": {
+      "entry": ["scripts/recording-cost-report.ts"]
+    },
+    "packages/spinosa-kernel": {
+      "entry": [
+        "scripts/bench-search.ts",
+        "scripts/postinstall.mjs",
+        "scripts/schema.ts",
+        "scripts/time.ts",
+        "scripts/trace-imports.ts"
+      ]
+    },
+    "packages/ui": {
+      "entry": ["scripts/pack.ts"]
+    }
+  },
   "ignore": [
     "packages/**/test/**",
     "packages/**/dist/**",
     "packages/**/examples/**",
     "packages/**/example/**",
-    "packages/**/script/**",
-    "script/orphan/**",
+    "scripts/orphan/**",
     "packages/spinosa-web-svelte/**",
     "packages/tui/tools/**",
     "packages/tui/scripts/**",
@@ -40,17 +60,13 @@
     "packages/spinosa-kernel/parsers-config.ts",
     "packages/spinosa-kernel/specs/**",
     "packages/tui/src/component/dialog-placeholder.tsx",
-    "packages/tui/src/component/dialog-tag.tsx",
     "packages/tui/src/component/prompt/cwd.ts",
-    "packages/tui/src/context/directory.ts",
     "packages/tui/src/feature-plugins/home/tips-view.tsx",
     "packages/tui/src/feature-plugins/home/tips.tsx",
-    "packages/tui/src/routes/session/dialog-subagent.tsx",
-    "packages/tui/src/routes/session/sidebar.tsx",
     "packages/tui/src/routes/spinosa/visualizer-sessions.tsx",
     "packages/tui/src/routes/spinosa/visualizer-types-view.tsx",
     "packages/tui/src/spinosa/workspace-bind.tsx",
-    "script/**/*.test.ts"
+    "scripts/**/*.test.ts"
   ],
   "ignoreDependencies": [
     "@cloudflare/workers-types",
@@ -101,7 +117,6 @@
     "msw",
     "partial-json",
     "pdfjs-dist",
-    "ppu-paddle-ocr",
     "remend",
     "semver",
     "sst",
@@ -123,6 +138,7 @@
     "exports": "off",
     "files": "error",
     "types": "off",
-    "unlisted": "off"
+    "unlisted": "off",
+    "unresolved": "off"
   }
 }

@@ -1,12 +1,13 @@
 import { Formatter, Logger, type LogLevel } from "effect"
+import { mkdirSync } from "node:fs"
 import path from "path"
-import { Global } from "../global"
+import { productLogDir, sanitizeLogText } from "./sanitize-log"
 import { runID } from "./shared"
 
 function formatter(id: string = runID) {
   return Logger.map(Logger.formatStructured, (output) => {
     const messages = Array.isArray(output.message) ? output.message : [output.message]
-    return [
+    const line = [
       ["timestamp", output.timestamp],
       ["level", output.level],
       ["run", id],
@@ -17,6 +18,7 @@ function formatter(id: string = runID) {
     ]
       .map(([key, value]) => `${key}=${format(value)}`)
       .join(" ")
+    return sanitizeLogText(line)
   })
 }
 
@@ -46,8 +48,13 @@ function format(input: unknown) {
   return /^[^\s="\\]+$/.test(value) ? value : JSON.stringify(value)
 }
 
-export function fileLogger(file = path.join(Global.Path.log, "spinosa.log"), id: string = runID) {
+export function fileLogger(file = path.join(productLogDir(), "effect.log"), id: string = runID) {
   // Do not set batchWindow to 0; it causes high idle CPU usage.
+  try {
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  } catch {
+    // Logger.toFile still attempts the write.
+  }
   return Logger.toFile(formatter(id), file, { flag: "a" })
 }
 

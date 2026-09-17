@@ -1,9 +1,7 @@
 import type { TuiPluginApi } from "@spinosa/plugin/tui"
 import { createMemo, For, type Accessor } from "solid-js"
-import { DEFAULT_THEMES, useTheme } from "../../context/theme"
+import { useTheme } from "../../context/theme"
 import { useCommandShortcut } from "../../keymap"
-
-const themeCount = Object.keys(DEFAULT_THEMES).length
 
 type TipPart = { text: string; highlight: boolean }
 type TipShortcut = Accessor<string>
@@ -20,7 +18,6 @@ type Shortcuts = {
   inputPaste: TipShortcut
   inputUndo: TipShortcut
   leader: TipShortcut
-  messagesCopy: TipShortcut
   messagesFirst: TipShortcut
   messagesLast: TipShortcut
   messagesPageDown: TipShortcut
@@ -39,7 +36,6 @@ type Shortcuts = {
   sessionTimeline: TipShortcut
   statusView: TipShortcut
   terminalSuspend: TipShortcut
-  themeList: TipShortcut
 }
 type Tip = string | ((shortcuts: Shortcuts) => string | undefined)
 
@@ -109,7 +105,6 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
     inputPaste: useCommandShortcut("prompt.paste"),
     inputUndo: useCommandShortcut("input.undo"),
     leader: configShortcut(props.api, "leader"),
-    messagesCopy: configShortcut(props.api, "messages.copy"),
     messagesFirst: configShortcut(props.api, "session.first"),
     messagesLast: configShortcut(props.api, "session.last"),
     messagesPageDown: configShortcut(props.api, "session.page.down"),
@@ -128,7 +123,6 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
     sessionTimeline: configShortcut(props.api, "session.timeline"),
     statusView: useCommandShortcut("opencode.status"),
     terminalSuspend: useCommandShortcut("terminal.suspend"),
-    themeList: useCommandShortcut("theme.switch"),
   }
   const tip = createMemo(() => {
     if (props.connected === false) return NO_MODELS_TIP
@@ -165,13 +159,11 @@ const TIPS: Tip[] = [
   (shortcuts) => press(shortcuts.agentCycle(), "to cycle between Build and Plan agents"),
   "Use {highlight}/undo{/highlight} to revert the last message and file changes",
   "Use {highlight}/redo{/highlight} to restore previously undone messages and file changes",
-  "Run {highlight}/share{/highlight} to create a public link to your conversation",
   "Drag and drop images or PDFs into the terminal to add them as context",
   (shortcuts) => press(shortcuts.inputPaste(), "to paste images from your clipboard into the prompt"),
   (shortcuts) => `Use ${commandText("/editor", shortcuts.editorOpen())} to compose messages in your external editor`,
   "Run {highlight}/init{/highlight} to auto-generate project rules based on your codebase",
   (shortcuts) => `Use ${commandText("/models", shortcuts.modelList())} to see and switch between available AI models`,
-  (shortcuts) => `Use ${commandText("/themes", shortcuts.themeList())} to switch between ${themeCount} built-in themes`,
   (shortcuts) => `Use ${commandText("/new", shortcuts.sessionNew())} to start a fresh conversation session`,
   (shortcuts) => `Use ${commandText("/sessions", shortcuts.sessionList())} to list, pin, and continue sessions`,
   (shortcuts) => press(shortcuts.sessionPinToggle(), "in the session list to pin a session so it stays at the top"),
@@ -180,8 +172,7 @@ const TIPS: Tip[] = [
       ? `Pinned sessions are assigned quick slots; use ${shortcutText(shortcuts.sessionQuickSwitch1())} through ${shortcutText(shortcuts.sessionQuickSwitch9())} to switch`
       : undefined,
   "Run {highlight}/compact{/highlight} to summarize long sessions near context limits",
-  (shortcuts) => `Use ${commandText("/export", shortcuts.sessionExport())} to save the conversation as Markdown`,
-  (shortcuts) => press(shortcuts.messagesCopy(), "to copy the assistant's last message to clipboard"),
+  (shortcuts) => `Use ${commandText("/export", shortcuts.sessionExport())} to save the conversation as .md/.txt/.json`,
   (shortcuts) => press(shortcuts.commandList(), "to see all available actions and commands"),
   "Run {highlight}/connect{/highlight} to add API keys for 75+ supported LLM providers",
   (shortcuts) => `The leader key is ${shortcutText(shortcuts.leader())}; combine with other keys for quick actions`,
@@ -240,10 +231,6 @@ const TIPS: Tip[] = [
   "Run {highlight}spinosa upgrade{/highlight} to update to the latest version",
   "Run {highlight}spinosa auth list{/highlight} to see all configured providers",
   "Run {highlight}spinosa agent create{/highlight} for guided agent creation",
-  'Use {highlight}"theme": "system"{/highlight} to match your terminal\'s colors',
-  "Create JSON theme files in {highlight}.spinosa/themes/{/highlight} directory",
-  "Themes support dark/light variants for both modes",
-  "Use numeric xterm color codes 0-255 in custom theme JSON",
   "Use {highlight}{env:VAR_NAME}{/highlight} syntax to reference environment variables in config",
   "Use {highlight}{file:path}{/highlight} to include file contents in config values",
   "Use {highlight}instructions{/highlight} in config to load additional rules files",
@@ -252,9 +239,6 @@ const TIPS: Tip[] = [
   'Set {highlight}"tools": {"bash": false}{/highlight} to disable specific tools',
   'Set {highlight}"mcp_*": false{/highlight} to disable all tools from an MCP server',
   "Override global tool settings per agent configuration",
-  'Set {highlight}"share": "auto"{/highlight} to automatically share all sessions',
-  'Set {highlight}"share": "disabled"{/highlight} to prevent any session sharing',
-  "Run {highlight}/unshare{/highlight} to remove a session from public access",
   "Permission {highlight}doom_loop{/highlight} prevents infinite tool call loops",
   "Permission {highlight}external_directory{/highlight} protects files outside project",
   "Run {highlight}spinosa debug config{/highlight} to troubleshoot configuration",

@@ -1,6 +1,6 @@
 export * as CommandPlugin from "./command"
 
-import { define } from "./internal"
+import { define } from "./define"
 import { Effect } from "effect"
 import { Location } from "../location"
 import PROMPT_INITIALIZE from "./command/initialize.txt"

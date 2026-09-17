@@ -4,7 +4,8 @@ import fs from "fs/promises"
 import path from "path"
 import yargs from "yargs"
 import { tmpdir } from "../../fixture/fixture"
-import { TuiThreadCommand, resolveThreadDirectory } from "../../../src/cli/cmd/tui"
+import { TuiThreadCommand, resolveSessionDirectory, resolveThreadDirectory } from "../../../src/cli/cmd/tui"
+import { validateSession } from "../../../src/cli/tui/validate-session"
 import { cliIt } from "../../lib/cli-process"
 
 describe("tui thread", () => {
@@ -54,6 +55,43 @@ describe("tui thread", () => {
     expect(resolveThreadDirectory(undefined, pwd.path, framework.path)).toBe(pwd.path)
     // Still use real cwd when PWD is only a symlink to the same project tree.
     expect(resolveThreadDirectory(undefined, pwd.path, pwd.path)).toBe(pwd.path)
+  })
+
+  test("resolveSessionDirectory routes to the session dir unless project is explicit", async () => {
+    await using sessionDir = await tmpdir({})
+    await using cwd = await tmpdir({})
+    expect(resolveSessionDirectory({ currentDirectory: cwd.path, sessionDirectory: sessionDir.path })).toBe(
+      sessionDir.path,
+    )
+    expect(
+      resolveSessionDirectory({
+        explicitProject: "/other",
+        currentDirectory: cwd.path,
+        sessionDirectory: sessionDir.path,
+      }),
+    ).toBe(cwd.path)
+    expect(resolveSessionDirectory({ currentDirectory: cwd.path })).toBe(cwd.path)
+    expect(resolveSessionDirectory({ currentDirectory: cwd.path, sessionDirectory: "  " })).toBe(cwd.path)
+    expect(resolveSessionDirectory({ currentDirectory: cwd.path, sessionDirectory: "sub/dir" })).toBe(
+      path.join(cwd.path, "sub/dir"),
+    )
+  })
+
+  test("validateSession returns the session directory without a network client", async () => {
+    const validated = await validateSession({
+      url: "http://127.0.0.1:1",
+      sessionID: "ses_12345678901234567890123456",
+      client: {
+        session: {
+          get: async () => ({ data: { directory: "/tmp/project" } }),
+        },
+      },
+    })
+    expect(validated).toEqual({ directory: "/tmp/project" })
+    await expect(validateSession({ url: "http://127.0.0.1:1" })).resolves.toEqual({})
+    await expect(
+      validateSession({ url: "http://127.0.0.1:1", sessionID: "not-a-session-id" }),
+    ).rejects.toThrow("Invalid session ID")
   })
 
   test("parses supported --no-replay forms", async () => {

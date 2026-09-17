@@ -50,19 +50,18 @@ const decodeAndExecute = (
                   message: `Tool returned an invalid value for its success schema: ${error.message}`,
                 }),
             ),
+            Effect.map((encoded) => {
+              if (tool._legacyResult && ToolResultValue.is(encoded))
+                return { result: encoded, output: ToolOutput.fromResultValue(encoded) }
+
+              const output = tool._project(decoded, call.id, encoded)
+              return { result: ToolOutput.toResultValue(output), output }
+            }),
           ),
         ),
-        Effect.map((encoded) => {
-          if (tool._legacyResult && ToolResultValue.is(encoded))
-            return { result: encoded, output: ToolOutput.fromResultValue(encoded) }
-          if (ToolResultValue.is(encoded))
-            return { result: encoded, output: ToolOutput.fromResultValue(encoded), ...(encoded as Record<string, unknown>) }
-          return { result: ToolResultValue.make(encoded) }
-        }),
       ),
     ),
   )
-
 const result = (call: ToolCallPart, value: ToolResultValueType | ToolSettlement, error?: unknown): DispatchResult => {
   const settlement = ToolResultValue.is(value) ? { result: value } : value
   return {

@@ -156,10 +156,13 @@ export function generateScale(seed: HexColor, isDark: boolean): HexColor[] {
     : [0.12, 0.24, 0.46, 0.68, 0.84, 0.98, 1.08, 1.16, 1.22, 1.26, 1.18, 0.98]
 
   for (let i = 0; i < 12; i++) {
+    const light = lightSteps[i]
+    const chroma = chromaMultipliers[i]
+    if (light === undefined || chroma === undefined) continue
     scale.push(
       oklchToHex({
-        l: lightSteps[i],
-        c: base.c * chromaMultipliers[i],
+        l: light,
+        c: base.c * chroma,
         h: base.h,
       }),
     )
@@ -203,9 +206,11 @@ export function generateNeutralScale(seed: HexColor, isDark: boolean, ink?: HexC
     : [0.991, 0.979, 0.964, 0.946, 0.931, 0.913, 0.891, 0.83, base.l, 0.617, 0.542, 0.205]
 
   for (let i = 0; i < 12; i++) {
+    const light = lightSteps[i]
+    if (light === undefined) continue
     scale.push(
       oklchToHex({
-        l: lightSteps[i],
+        l: light,
         c: neutralChroma,
         h: base.h,
       }),
@@ -223,6 +228,7 @@ export function generateAlphaScale(scale: HexColor[], isDark: boolean): HexColor
   return scale.map((hex, i) => {
     const { r, g, b } = hexToRgb(hex)
     const a = alphas[i]
+    if (a === undefined) return hex
 
     const bg = isDark ? 0 : 1
     const blendedR = r * a + bg * (1 - a)

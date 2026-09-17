@@ -1,6 +1,6 @@
 export * as ConfigAgentPlugin from "./agent"
 
-import { define } from "../../plugin/internal"
+import { define } from "../../plugin/define"
 import path from "path"
 import { Effect, Option, Schema } from "effect"
 import { AgentV2 } from "../../agent"

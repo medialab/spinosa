@@ -1,8 +1,14 @@
 import { Effect } from "effect"
 import { pathToFileURL } from "url"
-import { define } from "../internal"
+import { define } from "../define"
 import { Npm } from "../../npm"
 import { ProviderV2 } from "../../provider"
+import type { LanguageModelV3 } from "@ai-sdk/provider"
+
+type SapProvider = ((modelID: string) => LanguageModelV3) & {
+  readonly languageModel?: (modelID: string) => LanguageModelV3
+}
+type SapProviderFactory = (options: Record<string, string | undefined>) => SapProvider
 
 export const SapAICorePlugin = define({
   id: "sap-ai-core",
@@ -24,7 +30,7 @@ export const SapAICorePlugin = define({
         const mod = yield* Effect.promise(async () => {
           return (await import(
             installedPath.startsWith("file://") ? installedPath : pathToFileURL(installedPath).href
-          )) as Record<string, (options: any) => any>
+          )) as Record<string, SapProviderFactory>
         }).pipe(Effect.orDie)
         const match = Object.keys(mod).find((name) => name.startsWith("create"))
         if (!match) throw new Error(`Package ${evt.package} has no provider factory export`)
@@ -39,7 +45,8 @@ export const SapAICorePlugin = define({
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== ProviderV2.ID.make("sap-ai-core")) return
-        evt.language = (evt.sdk as any)(evt.model.api.id)
+        const sdk = evt.sdk as SapProvider
+        evt.language = sdk(evt.model.api.id)
       }),
     )
   }),

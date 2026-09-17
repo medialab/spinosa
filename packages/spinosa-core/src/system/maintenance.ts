@@ -1,17 +1,24 @@
 import { type Dirent } from "node:fs"
 import { readdir, rm, stat } from "node:fs/promises"
-import { homedir, tmpdir as osTmpdir } from "node:os"
+import { tmpdir as osTmpdir } from "node:os"
 import path from "node:path"
 import { resolveFrameworkRoot } from "../framework/discovery"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 const STALE_INSTALL_DIRECTORY = /^\.\d[\w.+-]*\.(?:staging|backup)\.(\d+)$/
-/** Temp dirs Spinosa creates and may abandon on crash/kill. */
+/** Temp entries Spinosa creates and may abandon on crash/kill. */
 const STALE_TEMP_DIR_PREFIXES = [
   "spinosa-launch-",
   "spinosa-upgrade-",
   "spinosa-upgrade-err-",
   "spinosa-install.",
   "spinosa-pack-",
+  // Import-pipeline and update leftovers (each OCR/vision run owns one dir;
+  // worker payloads are single files). Age gate + live-PID guard apply.
+  "spinosa-tess-",
+  "spinosa-vision-pdf-",
+  "spinosa-update-backup-",
+  "spinosa-worker-payload-",
 ] as const
 
 export const MIN_STALE_INSTALL_AGE_MS = 60 * 60 * 1000
@@ -33,7 +40,7 @@ export type SpinosaCleanupResult = SpinosaMaintenanceStatus & {
 }
 
 function spinosaHome(): string {
-  return process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
+  return productHomeDir()
 }
 
 async function exists(target: string): Promise<boolean> {

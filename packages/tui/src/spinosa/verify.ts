@@ -38,7 +38,7 @@ export async function runSpinosaMaturityChecks(fixturePath = fixtureWorkspacePat
     checks.push({ id, ok, detail, optional })
   }
 
-  push("layout.main_max_width", MAIN_CONTENT_MAX_WIDTH === 92, `MAIN_CONTENT_MAX_WIDTH=${MAIN_CONTENT_MAX_WIDTH}`)
+  push("layout.main_max_width", MAIN_CONTENT_MAX_WIDTH === 100, `MAIN_CONTENT_MAX_WIDTH=${MAIN_CONTENT_MAX_WIDTH}`)
   push("layout.sidebar_width", SIDEBAR_WIDTH === 42, `SIDEBAR_WIDTH=${SIDEBAR_WIDTH}`)
 
   const framework = resolveFrameworkRoot()
@@ -84,7 +84,7 @@ export async function runSpinosaMaturityChecks(fixturePath = fixtureWorkspacePat
     )
   }
 
-  const modules = ["orchestrator.ts", "route-recovery.ts", "workspace-bind.tsx"]
+  const modules = ["route-recovery.ts", "workspace-bind.tsx"]
   for (const file of modules) {
     const full = path.resolve(path.dirname(fileURLToPath(import.meta.url)), file)
     push(`module.${file}`, existsSync(full), full)

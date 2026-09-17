@@ -75,31 +75,35 @@ test("maintenance cleans stale OS temp dirs and failed template extracts", async
   const launch = path.join(tempRoot, "spinosa-launch-dead")
   const upgrade = path.join(tempRoot, "spinosa-upgrade-dead")
   const extracting = path.join(templates, "1.0.3-beta.11-abc.extracting-999999-1")
+  const tess = path.join(tempRoot, "spinosa-tess-dead")
+  const vision = path.join(tempRoot, "spinosa-vision-pdf-dead")
+  const backup = path.join(tempRoot, "spinosa-update-backup-1-dead")
+  const payload = path.join(tempRoot, "spinosa-worker-payload-1-2-abc.json")
   const freshLaunch = path.join(tempRoot, "spinosa-launch-fresh")
   const keepUnrelated = path.join(tempRoot, "not-spinosa")
 
-  for (const dir of [launch, upgrade, extracting, freshLaunch, keepUnrelated]) {
+  for (const dir of [launch, upgrade, extracting, tess, vision, backup, freshLaunch, keepUnrelated]) {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, "marker"), "x")
   }
+  await writeFile(payload, "{}")
+  const dead = [launch, upgrade, extracting, tess, vision, backup, payload]
 
   const old = new Date(Date.now() - MIN_STALE_TEMP_AGE_MS - 1)
-  for (const dir of [launch, upgrade, extracting]) await utimes(dir, old, old)
+  for (const dir of dead) await utimes(dir, old, old)
 
   const status = await inspectSpinosaMaintenance({
     home: tmp.path,
     tempRoots: [tempRoot],
   })
-  expect(status.staleTempDirectories.sort()).toEqual([launch, upgrade, extracting].sort())
+  expect(status.staleTempDirectories.sort()).toEqual(dead.sort())
 
   const result = await cleanupStaleInstallDirectories({
     home: tmp.path,
     tempRoots: [tempRoot],
   })
-  expect(result.removedDirectories.sort()).toEqual([launch, upgrade, extracting].sort())
-  expect(existsSync(launch)).toBe(false)
-  expect(existsSync(upgrade)).toBe(false)
-  expect(existsSync(extracting)).toBe(false)
+  expect(result.removedDirectories.sort()).toEqual(dead.sort())
+  for (const dir of dead) expect(existsSync(dir)).toBe(false)
   expect(existsSync(freshLaunch)).toBe(true)
   expect(existsSync(keepUnrelated)).toBe(true)
 })

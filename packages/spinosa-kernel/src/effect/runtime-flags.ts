@@ -27,7 +27,6 @@ export class Service extends ConfigService.Service<Service>()("@spinosa/RuntimeF
   autoShare: bool("SPINOSA_AUTO_SHARE"),
   pure: bool("SPINOSA_PURE"),
   disableDefaultPlugins: bool("SPINOSA_DISABLE_DEFAULT_PLUGINS"),
-  disableEmbeddedWebUi: bool("SPINOSA_DISABLE_EMBEDDED_WEB_UI"),
   disableExternalSkills: bool("SPINOSA_DISABLE_EXTERNAL_SKILLS"),
   disableLspDownload: bool("SPINOSA_DISABLE_LSP_DOWNLOAD"),
   disableClaudeCodePrompt: Config.all({

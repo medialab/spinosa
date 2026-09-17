@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { define } from "../internal"
+import { define } from "../define"
 import { ProviderV2 } from "../../provider"
 
 type FetchLike = (url: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -78,11 +78,15 @@ export const SnowflakeCortexPlugin = define({
         const upstream = typeof evt.options.fetch === "function" ? (evt.options.fetch as FetchLike) : undefined
         if (evt.options.includeUsage !== false) evt.options.includeUsage = true
         const mod = yield* Effect.promise(() => import("@ai-sdk/openai-compatible"))
+        const baseURL = typeof evt.options.baseURL === "string" ? evt.options.baseURL : undefined
+        if (!baseURL) throw new Error("Snowflake Cortex baseURL is required")
         evt.sdk = mod.createOpenAICompatible({
           ...evt.options,
+          baseURL,
+          name: typeof evt.options.name === "string" ? evt.options.name : "snowflake-cortex",
           ...(token ? { apiKey: token } : {}),
           fetch: cortexFetch(upstream) as typeof fetch,
-        } as any)
+        })
       }),
     )
   }),

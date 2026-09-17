@@ -1,4 +1,4 @@
-import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
+import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { Deferred, Effect } from "effect"
@@ -6,6 +6,7 @@ import { Global } from "@spinosa/kernel-core/global"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
+import { BackgroundImportProvider } from "./spinosa/import-background"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
@@ -20,12 +21,14 @@ import {
   onCleanup,
   batch,
   Show,
+  Suspense,
+  lazy,
   on,
   type ParentProps,
 } from "solid-js"
 import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, useTuiStartup } from "./context/runtime"
 import { DialogProvider, useDialog } from "./ui/dialog"
-import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
+import { DialogProvider as DialogProviderList, findFreeSpinosaDefault } from "./component/dialog-provider"
 import { ErrorComponent } from "./component/error-component"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { ProjectProvider, useProject } from "./context/project"
@@ -43,7 +46,6 @@ import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
-import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
@@ -92,9 +94,18 @@ import { createTuiAttention } from "./attention"
 import * as TuiAudio from "./audio"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
-import { AddFiles } from "./routes/spinosa/add-files"
-import { Onboarding } from "./routes/spinosa/onboarding"
-import { Visualizer } from "./routes/spinosa/visualizer"
+import { registerTuiExitHook, runTuiExitHooks } from "./util/tui-exit-hooks"
+import { listBusySessionIDs, stopBusySessions } from "./util/stop-sessions"
+
+const Onboarding = lazy(async () => ({
+  default: (await import("./routes/spinosa/onboarding")).Onboarding,
+}))
+const AddFiles = lazy(async () => ({
+  default: (await import("./routes/spinosa/add-files")).AddFiles,
+}))
+const Visualizer = lazy(async () => ({
+  default: (await import("./routes/spinosa/visualizer")).Visualizer,
+}))
 
 const appGlobalBindingCommands = [
   "session.list",
@@ -126,9 +137,6 @@ const appBindingCommands = [
   "provider.connect",
   "console.org.switch",
   "opencode.status",
-  "theme.switch",
-  "theme.switch_mode",
-  "theme.mode.lock",
   "help.show",
   "docs.open",
   "diff.open",
@@ -226,7 +234,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   const t0 = Date.now()
   bootLog("tui.effect.run", "Effect.fn Tui.run entered")
   const global = yield* Global.Service
-  const exit = { epilogue: undefined as string | undefined, reason: undefined as unknown }
+  const exit = { epilogue: undefined as string | undefined, reason: undefined as unknown, exiting: false }
   const result = yield* Effect.scoped(
     Effect.gen(function* () {
       bootLog("tui.renderer", "creating CLI renderer")
@@ -269,14 +277,15 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           try {
             await input.pluginHost.dispose()
           } catch (error) {
-            console.error("Failed to dispose TUI plugins", error)
+            bootLogError("tui.plugin.dispose", error)
+            console.error("Failed to dispose TUI plugins", error instanceof Error ? error.message : String(error))
           }
         }),
       )
       yield* Effect.addFinalizer(() => Effect.sync(TuiAudio.dispose))
       const shutdown = yield* Deferred.make<unknown>()
       const onProcessSignal = () => {
-        destroyRenderer(renderer)
+        void runTuiExitHooks().finally(() => destroyRenderer(renderer))
       }
       for (const signal of ["SIGHUP", "SIGINT"] as const) {
         yield* Effect.acquireRelease(
@@ -287,7 +296,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       renderer.once("destroy", () => Deferred.doneUnsafe(shutdown, Effect.void))
       const pluginRuntime = createPluginRuntime()
 
-      yield* Effect.tryPromise(async () => {
+      yield* Effect.tryPromise({
+        try: async () => {
         // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         const t1 = Date.now()
         bootLog("tui.render.start", "calling render()", { elapsedMs: t1 - t0 })
@@ -301,10 +311,17 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
               exit={(reason) => {
                 if (renderer.isDestroyed) return
                 exit.reason = reason
-                destroyRenderer(renderer)
+                exit.exiting = true
+                void runTuiExitHooks().finally(() => destroyRenderer(renderer))
               }}
             >
-              <EpilogueProvider set={(value) => (exit.epilogue = value)}>
+              {/* Once exit begins, teardown unmounts wipe their epilogue via
+                  onCleanup — ignore those late clears so the last-set value
+                  survives until shutdown reads it. */}
+              <EpilogueProvider set={(value) => {
+                if (value === undefined && exit.exiting) return
+                exit.epilogue = value
+              }}>
                 <>
                   <TuiPathsProvider
                     value={{
@@ -371,6 +388,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                   <ThemeProvider mode={mode}>
                                                     <LocalProvider>
                                                       <PromptStashProvider>
+                                                        <BackgroundImportProvider>
                                                         <DialogProvider>
                                                           <FrecencyProvider>
                                                             <PromptHistoryProvider>
@@ -393,6 +411,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                             </PromptHistoryProvider>
                                                           </FrecencyProvider>
                                                         </DialogProvider>
+                                                        </BackgroundImportProvider>
                                                       </PromptStashProvider>
                                                     </LocalProvider>
                                                   </ThemeProvider>
@@ -418,6 +437,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             </ExitProvider>
           )
         }, renderer)
+        },
+        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
       })
       bootLog("tui.render.done", "render() call returned, awaiting shutdown")
       yield* Deferred.await(shutdown)
@@ -452,7 +473,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const toast = useToast()
   setToastError((err) => toast.error(err))
   const themeState = useTheme()
-  const { theme, mode, setMode, locked, lock, unlock } = themeState
+  const { theme } = themeState
   const sync = useSync()
   const project = useProject()
   const exit = useExit()
@@ -464,6 +485,50 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const [startupLoadingComplete, setStartupLoadingComplete] = createSignal(startup.skipInitialLoading)
   const appReady = () => ready() && (startup.skipInitialLoading || spinosa.bootReady)
   const tuiReady = () => appReady() && (startup.skipInitialLoading || startupLoadingComplete())
+
+  // Auto-retry if TUI hasn't rendered after 3-5s normal startup + buffer.
+  // Whitescreen after `checking for updates...` leaves `tuiReady()` false.
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retried = false
+  onMount(() => {
+    retryTimer = setTimeout(() => {
+      if (tuiReady() || retried) return
+      retried = true
+      tuiLog("tui auto-retry: tuiReady still false after 8s, forcing reload")
+      // Force boot ready and hide startup loading to unblock render.
+      // If still not ready, the next effect will trigger a full reload.
+      setStartupLoadingComplete(true)
+      setTimeout(() => {
+        if (!tuiReady()) {
+          tuiLog("tui auto-retry: still not ready, reloading renderer")
+          // Destroy and recreate is handled by Effect scope; here we just
+          // force a hard reload via location (works in dev) or exit.
+          try {
+            globalThis.location?.reload?.()
+          } catch {}
+        }
+      }, 1000)
+    }, 8000)
+  })
+  onCleanup(() => {
+    if (retryTimer) clearTimeout(retryTimer)
+  })
+
+  onMount(() => {
+    const unregister = registerTuiExitHook(async () => {
+      const current = route.data
+      const extra = current.type === "workspace" && current.sessionID ? [current.sessionID] : []
+      const sessionIDs = listBusySessionIDs({
+        sessionStatus: sync.data.session_status,
+        extraIDs: extra,
+      })
+      await stopBusySessions({
+        sessionIDs,
+        abort: (sessionID) => sdk.client.session.abort({ sessionID }),
+      })
+    })
+    onCleanup(unregister)
+  })
 
   const api = createTuiApi(
     createTuiApiAdapters({
@@ -493,7 +558,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       dispose: () => attention.dispose(),
     })
     .catch((error) => {
-      console.error("Failed to load TUI plugins", error)
+      bootLogError("tui.plugin.load", error)
+      console.error("Failed to load TUI plugins", error instanceof Error ? error.message : String(error))
     })
     .finally(() => {
       setReady(true)
@@ -652,12 +718,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       sync.status === "complete" &&
       !connected()
     ) {
-      const provider = sync.data.provider.find((item) => item.id === "opencode")
-      const model = Object.values(provider?.models ?? {}).find(
-        (item) => item.cost?.input === 0 && item.status !== "deprecated",
-      )
-      if (provider && model) {
-        local.model.set({ providerID: provider.id, modelID: model.id }, { recent: true })
+      const picked = findFreeSpinosaDefault({
+        connected: sync.data.provider,
+        catalog: sync.data.provider_next.all,
+      })
+      if (picked) {
+        local.model.set({ providerID: picked.providerID, modelID: picked.modelID }, { recent: true })
       }
     }
   })
@@ -727,7 +793,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           const leave = await DialogConfirm.show(
             dialog,
             "Switch workspace?",
-            "A session is still running. Open the workspace picker anyway? The run continues in the background until you abort it.",
+            "A session is still running. Open the workspace picker anyway? This stops the running session.",
             {
               confirmLabel: "Open picker",
               cancelLabel: "Stay",
@@ -738,6 +804,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             spinosa.restorePickerRoute()
             return
           }
+          const sessionID = current.sessionID
+          await sdk.client.session.abort({ sessionID }).catch(() => {})
         }
       }
       const restore = () => spinosa.restorePickerRoute()
@@ -975,34 +1043,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "status",
         run: () => {
           dialog.replace(() => <DialogStatus />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch",
-        title: "Switch theme",
-        slashName: "themes",
-        run: () => {
-          dialog.replace(() => <DialogThemeList />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch_mode",
-        title: mode() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-        run: () => {
-          setMode(mode() === "dark" ? "light" : "dark")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.mode.lock",
-        title: locked() ? "Unlock theme mode" : "Lock theme mode",
-        run: () => {
-          if (locked()) unlock()
-          else lock()
-          dialog.clear()
         },
         category: "System",
       },
@@ -1267,15 +1307,17 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           <Show when={route.data.type === "global"}>
             <Home />
           </Show>
-          <Show when={route.data.type === "onboarding"}>
-            <Onboarding />
-          </Show>
-          <Show when={route.data.type === "add-files"}>
-            <AddFiles />
-          </Show>
-          <Show when={route.data.type === "visualizer"}>
-            <Visualizer />
-          </Show>
+          <Suspense fallback={<box />}>
+            <Show when={route.data.type === "onboarding"}>
+              <Onboarding />
+            </Show>
+            <Show when={route.data.type === "add-files"}>
+              <AddFiles />
+            </Show>
+            <Show when={route.data.type === "visualizer"}>
+              <Visualizer />
+            </Show>
+          </Suspense>
           {plugin()}
         </box>
         <pluginRuntime.Slot name="app_bottom" />

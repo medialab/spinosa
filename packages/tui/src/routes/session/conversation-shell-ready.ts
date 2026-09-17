@@ -26,3 +26,18 @@ export function shouldBounceMissingSession(input: {
 export function shouldConfirmLeaveBusySession(busy: boolean): boolean {
   return busy
 }
+
+export type BackNavigation = { type: "workspace"; sessionID: string } | { type: "global" }
+
+/**
+ * Top-left Back destination: a sub-agent (child) view returns straight to
+ * its parent conversation — identical to the Parent button. The child keeps
+ * running in background, so the stop-confirm gate must not apply. Anything
+ * else leaves to Home, where the busy-session gate decides about aborting.
+ */
+export function resolveBackNavigation(
+  viewed: { parentID?: string | null } | undefined | null,
+): BackNavigation {
+  if (viewed?.parentID) return { type: "workspace", sessionID: viewed.parentID }
+  return { type: "global" }
+}

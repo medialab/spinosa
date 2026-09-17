@@ -65,7 +65,7 @@ describe("plugin.snowflake-cortex", () => {
     }) as typeof fetch
 
     try {
-      await options.fetch("https://example.test/v1/chat", {
+      await options.fetch!("https://example.test/v1/chat", {
         headers: { Authorization: `Bearer ${OAUTH_DUMMY_KEY}`, "x-keep": "yes" },
       })
     } finally {
@@ -118,8 +118,8 @@ describe("plugin.snowflake-cortex", () => {
       )
 
       await Promise.all([
-        options.fetch("https://example.test/v1/chat", { headers: {} }),
-        options.fetch("https://example.test/v1/chat", { headers: {} }),
+        options.fetch!("https://example.test/v1/chat", { headers: {} }),
+        options.fetch!("https://example.test/v1/chat", { headers: {} }),
       ])
     } finally {
       globalThis.fetch = originalFetch
@@ -169,7 +169,7 @@ describe("plugin.snowflake-cortex", () => {
     }) as typeof fetch
 
     try {
-      const response = await options.fetch("https://example.test/v1/chat", { headers: {} })
+      const response = await options.fetch!("https://example.test/v1/chat", { headers: {} })
       expect(response.status).toBe(200)
     } finally {
       globalThis.fetch = originalFetch
@@ -199,7 +199,7 @@ describe("plugin.snowflake-cortex", () => {
     }) as typeof fetch
 
     try {
-      await options.fetch("https://example.test/v1/chat", {
+      await options.fetch!("https://example.test/v1/chat", {
         method: "POST",
         body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 4096, messages: [] }),
       })
@@ -228,7 +228,7 @@ describe("plugin.snowflake-cortex", () => {
     }) as unknown as typeof fetch
 
     try {
-      const response = await options.fetch("https://example.test/v1/chat", {
+      const response = await options.fetch!("https://example.test/v1/chat", {
         method: "POST",
         body: JSON.stringify({ model: "test", messages: [] }),
       })
@@ -261,7 +261,7 @@ describe("plugin.snowflake-cortex", () => {
     }) as unknown as typeof fetch
 
     try {
-      const response = await options.fetch("https://example.test/v1/chat", {
+      const response = await options.fetch!("https://example.test/v1/chat", {
         method: "POST",
         body: JSON.stringify({ model: "test", messages: [], stream: true }),
       })

@@ -189,6 +189,14 @@ Evolver runs only if an edit is recommended
 
 The orchestrator maintains session notes in `.spinosa/memory/orchestrator-notes.md`. This includes session summaries, key findings, blockers, and anything useful for future work. No structured event logging — the orchestrator writes what it needs based on the user request.
 
+## Document conversion (OCR)
+
+- **Text-layer PDFs** → internal PDF engine extracts embedded text with pdf.js → keep text layer, no OCR, frontmatter + `page-*.md` split.
+- **Scanned PDFs** → pages without usable text keep the original + an honest placeholder (`ocr_status: local_ocr_removed`). To transcribe: re-run import with a vision model selected. Digital PDFs always extract via pdf.js with no model needed. No local OCR engine ships.
+- **Images** (`jpg`/`jpeg`/`png`/`gif`/`webp`/`heic`/`tif`/`bmp`/`svg`) → by default copy as binary to `raw/` (no OCR), tagged `images_pending_network_ocr`. When a vision model is selected in the onboarding pop-up (see `packages/spinosa-core/src/import/vision-models.ts` `OCR_MODEL_OPTIONS`), images are instead handled by `MarkItDown` with `llmModel` (Vercel AI SDK) — e.g. `openrouter/qwen2.5-vl:free` via `OPENROUTER_API_KEY` — transcribed with `OCR_VISION_PROMPT` into `__jpg.md`. Vision handles images (and scanned PDF pages when selected); no offline OCR engine ships.
+- **Office docs** (`docx`/`xlsx`/`csv`/`html`/`epub`/`json`/`xml`/`zip`) → MarkItDown unchanged.
+- OCR: no local engine ships (pdf.js + Canvas renderer, no Poppler, no system package managers).
+
 ## Sub-agent gateway
 
 Three dispatch paths (see `docs/diagrams.md` §9):

@@ -2,7 +2,7 @@ import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
 import { PermissionV1 } from "@spinosa/kernel-core/v1/permission"
 import { Image } from "@/image/image"
 import { SessionV1 } from "@spinosa/kernel-core/v1/session"
-import { Cause, Deferred, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Layer, Context, Scope } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
@@ -22,11 +22,11 @@ import type { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
+import { isDoomLoop, toolResultOutput } from "./processor-helpers"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@spinosa/kernel-core/database/database"
 import { Usage, type LLMEvent } from "@spinosa/llm"
 
-const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
 
 export interface Handle {
@@ -39,7 +39,7 @@ export interface Handle {
     toolCallID: string,
     output: {
       title: string
-      metadata: Record<string, any>
+      metadata: Record<string, unknown>
       output: string
       attachments?: SessionV1.FilePart[]
     },
@@ -161,7 +161,7 @@ const layer = Layer.effect(
         toolCallID: string,
         output: {
           title: string
-          metadata: Record<string, any>
+          metadata: Record<string, unknown>
           output: string
           attachments?: SessionV1.FilePart[]
         },
@@ -250,29 +250,6 @@ const layer = Layer.effect(
         return { call: ctx.toolcalls[input.id], part }
       })
 
-      const isFilePart = (value: unknown): value is SessionV1.FilePart => Schema.is(SessionV1.FilePart)(value)
-
-      const toolResultOutput = (
-        value: Extract<StreamEvent, { type: "tool-result" }>,
-      ): { title: string; metadata: Record<string, any>; output: string; attachments?: SessionV1.FilePart[] } => {
-        if (isRecord(value.result.value) && typeof value.result.value.output === "string") {
-          return {
-            title: typeof value.result.value.title === "string" ? value.result.value.title : value.name,
-            metadata: isRecord(value.result.value.metadata) ? value.result.value.metadata : {},
-            output: value.result.value.output,
-            attachments: Array.isArray(value.result.value.attachments)
-              ? value.result.value.attachments.filter(isFilePart)
-              : undefined,
-          }
-        }
-        return {
-          title: value.name,
-          metadata: value.result.type === "json" && isRecord(value.result.value) ? value.result.value : {},
-          output:
-            typeof value.result.value === "string" ? value.result.value : (JSON.stringify(value.result.value) ?? ""),
-        }
-      }
-
       const handleEvent = Effect.fnUntraced(function* (value: StreamEvent) {
         switch (value.type) {
           case "reasoning-start":
@@ -351,21 +328,9 @@ const layer = Layer.effect(
             const parts = yield* MessageV2.parts(ctx.assistantMessage.id).pipe(
               Effect.provideService(Database.Service, database),
             )
-            const recentParts = parts.slice(-DOOM_LOOP_THRESHOLD)
-
-            if (
-              recentParts.length !== DOOM_LOOP_THRESHOLD ||
-              !recentParts.every(
-                (part) =>
-                  part.type === "tool" &&
-                  part.tool === value.name &&
-                  part.state.status !== "pending" &&
-                  JSON.stringify(part.state.input) === JSON.stringify(input),
-              )
-            ) {
+            if (!isDoomLoop(parts, value.name, input)) {
               return
             }
-
             const agent = yield* agents.get(ctx.assistantMessage.agent)
             yield* permission.ask({
               permission: "doom_loop",

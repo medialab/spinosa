@@ -71,7 +71,6 @@ import { SessionExecutionStatusBridge } from "@/session/execution-status-bridge"
 import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedRequestOrigin, type CorsOptions } from "@spinosa/server/cors"
 import { ServerAuth as SharedServerAuth } from "@spinosa/server/auth"
-import { serveUIEffect } from "@/server/shared/ui"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
 import { Api } from "@spinosa/server/api"
@@ -128,9 +127,6 @@ const cors = (corsOptions?: CorsOptions) =>
         const request = yield* HttpServerRequest.HttpServerRequest
         const host = request.headers.host
         return yield* HttpMiddleware.cors({
-          // Same-origin requests (origin host === Host header) are reflected so
-          // the bundled web UI keeps working; every other origin must pass the
-          // narrowed allowlist (oc://renderer, tauri, explicit opts.cors).
           allowedOrigins: (origin) => isAllowedRequestOrigin(origin, host, corsOptions),
           maxAge: 86_400,
         })(httpApp)
@@ -143,7 +139,6 @@ const cors = (corsOptions?: CorsOptions) =>
 // - eventApiRoutes: typed SSE route with instance routing context and its existing API contract.
 // - ptyConnectApiRoutes: typed WebSocket upgrade route with ticket-aware auth.
 // - instanceApiRoutes: remaining typed instance routes.
-// - uiRoute: raw catch-all fallback; auth is router middleware so public static assets can bypass it.
 const authOnlyRouterLayer = authorizationRouterMiddleware.layer.pipe(Layer.provide(ServerAuth.Config.layer))
 const httpApiAuthLayer = authorizationLayer.pipe(Layer.provide(ServerAuth.Config.layer))
 const ptyConnectHttpApiAuthLayer = ptyConnectAuthorizationLayer.pipe(Layer.provide(ServerAuth.Config.layer))
@@ -201,16 +196,6 @@ const docResponse = lazy(() => HttpServerResponse.jsonUnsafe(OpenApi.fromApi(Pub
 const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effect.succeed(docResponse()))).pipe(
   Layer.provide(authOnlyRouterLayer),
 )
-
-const uiRoute = HttpRouter.use((router) =>
-  Effect.gen(function* () {
-    const fs = yield* FSUtil.Service
-    const flags = yield* RuntimeFlags.Service
-    yield* router.add("*", "/*", (request) =>
-      serveUIEffect(request, { fs, disableEmbeddedWebUi: flags.disableEmbeddedWebUi }),
-    )
-  }),
-).pipe(Layer.provide(authOnlyRouterLayer))
 
 type RouteRequirements =
   | HttpRouter.HttpRouter
@@ -290,7 +275,6 @@ export function createRoutes(
     instanceRoutes,
     serverRoutes,
     docRoute,
-    uiRoute,
   ).pipe(
     Layer.provide([
       errorLayer,

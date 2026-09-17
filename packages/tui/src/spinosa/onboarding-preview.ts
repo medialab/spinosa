@@ -88,12 +88,12 @@ async function scanByExtension(
       if (shouldAbort?.()) break
       if (entry.startsWith(".") && entry !== "." && entry !== "..") continue
       const fullPath = path.join(dir, entry)
-      if (onFile) onFile(path.relative(sourcePath, fullPath) || entry, false, discovered)
       let st
       try { st = await withFsTimeout(lstat(fullPath), `lstat ${fullPath}`) } catch { continue }
       if (st.isSymbolicLink()) continue
       if (st.isDirectory()) {
         if (shouldSkipScanDir(entry)) continue
+        if (onFile) onFile(path.relative(sourcePath, fullPath) || entry, false, discovered)
         stack.push(fullPath)
         continue
       }
@@ -135,10 +135,10 @@ function buildScanRows(totals: { markdown: number; markitdown: number; native: n
   const push = (count: number, label: string) => {
     if (count > 0) rows.push({ label, status: `${count} file${count === 1 ? "" : "s"}` })
   }
-  push(totals.markdown, "Text-based files to rename")
-  push(totals.markitdown, "Office docs / HTML / EPUB / text PDFs")
+  push(totals.markdown, "Text-based files to copy")
+  push(totals.markitdown, "Office docs / HTML / EPUB")
   push(totals.native, "Native Markdown to copy")
-  push(totals.ocr, "Scanned PDFs and images for OCR")
+  push(totals.ocr, "Scanned PDFs + images (engine selected later)")
   push(totals.video, "Videos")
   push(totals.audio, "Audio")
   if (totals.unknown > 0) rows.push({ label: "Unknown files", status: `${pluralCount(totals.unknown, "file")} unsupported`, tone: "muted" })
@@ -170,16 +170,11 @@ function extToImportOptions(extMap: Map<string, ExtEntry>): OnboardingImportOpti
 function buildPreflightRows(workspacePath: string, toolStatus: ToolStatus): OnboardingPreviewRow[] {
   const rows: OnboardingPreviewRow[] = []
   rows.push({ label: "Workspace", status: "writable", detail: path.basename(workspacePath), tone: "success" })
-  const ocrStatus = toolStatus.ocr ? "available" : toolStatus.ocrUnsupportedReason ? "unsupported" : "missing"
-  const ocrTone = toolStatus.ocr ? "success" : toolStatus.ocrUnsupportedReason ? "muted" : "error"
-  rows.push({
-    label: "PPU PaddleOCR",
-    status: ocrStatus,
-    detail: toolStatus.ocrUnsupportedReason,
-    tone: ocrTone,
-  })
+  // No local OCR engine ships — no row. Scans transcribe via a
+  // vision model or copy as-is; digital PDFs extract via pdf.js.
   rows.push({ label: "MarkItDown", status: toolStatus.markitdown ? "available" : "missing", tone: toolStatus.markitdown ? "success" : "error" })
   rows.push({ label: "PDF.js", status: toolStatus.pdfjs ? "available" : "missing", tone: toolStatus.pdfjs ? "success" : "error" })
+  rows.push({ label: "Canvas", status: toolStatus.canvas ? "available" : "missing", tone: toolStatus.canvas ? "success" : "error" })
   return rows
 }
 

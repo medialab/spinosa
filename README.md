@@ -42,10 +42,16 @@ The design is local-first. Workspace files and indexes remain on your machine. W
 # 1. Install (macOS / Linux) — downloads a platform binary (no Bun required)
 
 # Current channel — beta (stable lands after the first stable cut)
-curl -fsSL https://github.com/medialab/spinosa/releases/download/beta/install.sh | bash
+# Download first, then execute — ensures the full script is fetched before any
+# installation runs and lets curl enforce connection/transfer deadlines.
+curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 2 \
+  https://github.com/medialab/spinosa/releases/download/beta/install.sh \
+  -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh
 
 # Pin an immutable version when you need reproducibility (e.g. v1.0.3-beta.13):
-# curl -fsSL https://github.com/medialab/spinosa/releases/download/v1.0.3-beta.13/install.sh | bash
+# curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 2 \
+#   https://github.com/medialab/spinosa/releases/download/v1.0.3-beta.13/install.sh \
+#   -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh
 
 # 2. Launch the dashboard
 spinosa
@@ -60,6 +66,8 @@ Developers working from a git checkout still use `bun run dev` (see [DEVELOPMENT
 The first time you run `spinosa`, you'll see the workspace picker. Click **+ New workspace** and follow the 11-step wizard: choose your document folder, name the workspace, verify the document converters are installed, review what was found, and select your AI coding tool (Claude Code, OpenCode, Gemini, Ollama, etc.).
 
 When the wizard finishes, a chat prompt appears. Type your first question.
+
+While a prompt is running, press **Esc twice** to stop it. Its text remains in the conversation as interrupted. Other queued prompts continue; **Steer** makes a queued prompt go next.
 
 ---
 

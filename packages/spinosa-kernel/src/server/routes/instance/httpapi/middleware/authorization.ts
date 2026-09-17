@@ -3,7 +3,6 @@ import { Effect, Encoding, Layer, Redacted } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
 import { hasPtyConnectTicketURL } from "@/server/shared/pty-ticket"
-import { isPublicUIPath } from "@/server/shared/public-ui"
 export {
   Authorization as ServerAuthorization,
   authorizationLayer as serverAuthorizationLayer,
@@ -99,8 +98,6 @@ export const authorizationRouterMiddleware = HttpRouter.middleware()(
     return (effect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
-        const url = new URL(request.url, "http://localhost")
-        if (isPublicUIPath(request.method, url.pathname)) return yield* effect
         return yield* credentialFromRequest(request).pipe(
           Effect.flatMap((credential) => validateRawCredential(effect, credential, config)),
         )

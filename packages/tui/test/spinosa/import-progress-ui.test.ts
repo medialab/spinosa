@@ -6,11 +6,14 @@ import {
   formatImportDetailLogHint,
   formatImportPhaseRecap,
   formatImportPhaseRecapFromCounters,
+  formatPageMarker,
   importOutcomeAccentKey,
   importOutcomeHeading,
   importPhaseVerb,
   isImportPhaseComplete,
   isTerminalImportFileStatus,
+  progressCountLabel,
+  progressPercentLabel,
   resolveSpinosaLogsDir,
   seedImportQueue,
   selectImportFailedItems,
@@ -19,9 +22,14 @@ import {
   selectImportSucceededItems,
   shortImportFileName,
   shouldShowImportDetailLogHint,
+  splitPageSuffix,
   statusGlyph,
 } from "../../src/spinosa/import-progress-ui"
-import { importResultsListMaxHeight } from "../../src/routes/spinosa/wizard-ui"
+import {
+  importResultsListMaxHeight,
+  scanOptionListMaxHeight,
+  wizardPanelHeight,
+} from "../../src/routes/spinosa/wizard-ui"
 
 describe("import progress UI helpers", () => {
   test("shortImportFileName keeps basename and ellipsizes long names", () => {
@@ -127,8 +135,8 @@ describe("import progress UI helpers", () => {
     expect(importOutcomeAccentKey({ stillMissing: 2 })).toBe("warning")
     expect(importOutcomeAccentKey({ failedCount: 1, stillMissing: 3 })).toBe("error")
     expect(importOutcomeHeading({ failedCount: 0, stillMissing: 0 })).toBe("● Import complete")
-    expect(importOutcomeHeading({ stillMissing: 1 })).toBe("● Import finished with gaps")
-    expect(importOutcomeHeading({ failedCount: 2 })).toBe("● Import finished with failures")
+    expect(importOutcomeHeading({ stillMissing: 1 })).toBe("● Import complete with missing files")
+    expect(importOutcomeHeading({ failedCount: 2 })).toBe("● Import complete with failures")
   })
 
   test("failure detail hint points at ~/.spinosa/logs without dumping the log body", () => {
@@ -136,16 +144,38 @@ describe("import progress UI helpers", () => {
     expect(shouldShowImportDetailLogHint({ failedCount: 0, stillMissing: 0 })).toBe(false)
     expect(shouldShowImportDetailLogHint({ failedCount: 1 })).toBe(true)
     expect(shouldShowImportDetailLogHint({ stillMissing: 2 })).toBe(true)
-    expect(formatImportDetailLogHint("~/.spinosa/logs")).toBe("Details saved in ~/.spinosa/logs/")
-    expect(formatImportDetailLogHint()).toBe(`Details saved in ${displaySpinosaLogsDir()}/`)
+    expect(formatImportDetailLogHint("~/.spinosa/logs")).toBe("Spinosa saved details in ~/.spinosa/logs/")
+    expect(formatImportDetailLogHint()).toBe(`Spinosa saved details in ${displaySpinosaLogsDir()}/`)
     expect(displaySpinosaLogsDir(resolveSpinosaLogsDir())).toMatch(/\/logs$/)
     expect(resolveSpinosaLogsDir().replace(/\\/g, "/")).toMatch(/\/logs$/)
   })
 
-  test("results ScrollBox max height is generous but capped (~12 rows)", () => {
-    expect(importResultsListMaxHeight(20)).toBe(8)
-    expect(importResultsListMaxHeight(40)).toBe(12)
-    expect(importResultsListMaxHeight(8)).toBe(6)
+  test("page suffix splits to file base and page number", () => {
+    expect(splitPageSuffix("memo.pdf (page 2)")).toEqual({ base: "memo.pdf", page: 2 })
+    expect(splitPageSuffix("memo.pdf (page 3/12)")).toEqual({ base: "memo.pdf", page: 3, total: 12 })
+    expect(splitPageSuffix("memo.pdf")).toEqual({ base: "memo.pdf" })
+    expect(splitPageSuffix("dir/my (old) file.pdf")).toEqual({ base: "dir/my (old) file.pdf" })
+    expect(formatPageMarker(2)).toBe(" (PG: 2)")
+    expect(formatPageMarker(3, 12)).toBe(" (PG: 3/12)")
+  })
+
+  test("results ScrollBox max height stays inside the fixed wizard panel (~9 rows)", () => {
+    expect(importResultsListMaxHeight(20)).toBe(6)
+    expect(importResultsListMaxHeight(40)).toBe(9)
+    expect(importResultsListMaxHeight(8)).toBe(5)
+  })
+
+  test("wizard panel height is fixed per terminal height with room for header and actions", () => {
+    expect(wizardPanelHeight(40)).toBe(23)
+    expect(wizardPanelHeight(30)).toBe(19)
+    expect(wizardPanelHeight(24)).toBe(13)
+    expect(wizardPanelHeight(16)).toBe(13)
+  })
+
+  test("option list height stays inside the fixed wizard panel (~12 rows)", () => {
+    expect(scanOptionListMaxHeight(40)).toBe(12)
+    expect(scanOptionListMaxHeight(24)).toBe(8)
+    expect(scanOptionListMaxHeight(10)).toBe(4)
   })
 
   test("status updates match rows exactly, never by suffix substring", () => {
@@ -163,5 +193,23 @@ describe("import progress UI helpers", () => {
     const items = seedImportQueue(["memo.pdf"])
     const updated = applyImportProgressStatus(items, "memo.pdf (page 2)", "processing")
     expect(updated.find((i) => i.rel === "memo.pdf")?.status).toBe("processing")
+  })
+})
+
+describe("progressCounterLabels", () => {
+  test("known totals print count and percentage", () => {
+    expect(progressCountLabel(3, 10)).toBe("3 of 10")
+    expect(progressPercentLabel(3, 10)).toBe("30%")
+  })
+
+  test("unknown totals never print a substituted total", () => {
+    expect(progressCountLabel(4, 0)).toBe("4 processed")
+    expect(progressCountLabel(4, -1)).toBe("4 processed")
+    expect(progressPercentLabel(4, 0)).toBeUndefined()
+  })
+
+  test("overshoot clamps the percentage but keeps honest counts", () => {
+    expect(progressCountLabel(7, 5)).toBe("7 of 5")
+    expect(progressPercentLabel(7, 5)).toBe("100%")
   })
 })

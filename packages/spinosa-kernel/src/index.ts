@@ -1,33 +1,27 @@
 /**
- * Product entry — stage onnxruntime companion libs and canvas skia .node before
- * the rest of the CLI graph loads (Bun --compile extracts natives without
- * reliable optional-dep require on Linux). On Linux, re-exec once after staging
- * so glibc inherits `LD_LIBRARY_PATH` (in-process mutation is ignored by dlopen).
- *
- * linux-x64: OCR/onnx are unsupported — skip onnx staging and do not force-import
- * ppu-paddle-ocr (avoids ERR_DLOPEN_FAILED on cold start). Canvas still stages.
+ * Product entry — canvas/pdf stay out of TUI boot.
+ * Doctor and pdf-runtime smokes still stage at start; everything else waits
+ * for `ensureDocumentConverters` (onboarding tools green-dot, first PDF).
+ * No OCR engine ships; no companion-lib staging needed.
  */
-import { tmpdir } from "node:os"
-import { isOcrPlatformSupported } from "@spinosa/core/tools/ocr-support"
-import { ONNX_SHARED_LIB_FILES } from "./generated/onnx-native.gen"
-import {
-  ensureOnnxRuntimeSharedLibs,
-  reexecLinuxForNativeLibsIfNeeded,
-} from "./native/onnx-runtime-libs"
+import { installSpinosaBootNoiseSuppression } from "./native/boot-noise"
 import { ensureCanvasNativeBinding } from "./native/canvas-native"
 import { installDomMatrixPolyfill } from "./native/dom-matrix-polyfill"
+import { commandNeedsCanvas } from "./native/canvas-boot"
+import { registerDocumentConverterLoader, ensureDocumentConverters } from "@spinosa/core/tools/detection"
+import { installProcessFailureLogs } from "@spinosa/kernel-core/observability/boot-log"
 
-const ocrSupported = isOcrPlatformSupported()
-const onnx = ocrSupported
-  ? ensureOnnxRuntimeSharedLibs()
-  : { staged: [] as string[], skipped: [] as string[], stageDir: tmpdir() }
-ensureCanvasNativeBinding()
-reexecLinuxForNativeLibsIfNeeded({
-  stageDir: onnx.stageDir,
-  hasEmbeddedLibs: ocrSupported && ONNX_SHARED_LIB_FILES.length > 0,
+installProcessFailureLogs()
+installSpinosaBootNoiseSuppression()
+
+registerDocumentConverterLoader(async () => {
+  ensureCanvasNativeBinding()
+  const { loadNapiCanvas } = await import("./generated/napi-canvas-force.gen.ts")
+  await loadNapiCanvas()
 })
+
+if (commandNeedsCanvas(process.argv.slice(1))) {
+  await ensureDocumentConverters()
+}
 installDomMatrixPolyfill()
-// Force the per-target `@napi-rs/canvas-*` package into the compile graph (stub in dev).
-// OCR force-import is omitted from the gen module on linux-x64 builds.
-await import("./generated/napi-canvas-force.gen.ts")
 await import("./cli-main.ts")

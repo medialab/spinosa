@@ -18,8 +18,14 @@ import { Parameters as Lsp } from "../../src/tool/lsp"
 import { Parameters as Plan } from "../../src/tool/plan"
 import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
+import { Parameters as Report } from "../../src/tool/report"
 import { Parameters as Shell } from "../../src/tool/shell"
 import { Parameters as Skill } from "../../src/tool/skill"
+import { Parameters as SpinosaFrame } from "../../src/tool/spinosa-frame"
+import { Parameters as SpinosaGate } from "../../src/tool/spinosa-gate"
+import { Parameters as SpinosaMintPaths } from "../../src/tool/spinosa-mint-paths"
+import { Parameters as SpinosaRoute } from "../../src/tool/spinosa-route"
+import { Parameters as SpinosaVerify } from "../../src/tool/spinosa-verify"
 import { Parameters as Task } from "../../src/tool/task"
 import { Parameters as Todo } from "../../src/tool/todo"
 import { Parameters as WebFetch } from "../../src/tool/webfetch"
@@ -46,7 +52,13 @@ describe("tool parameters", () => {
     test("plan", () => expect(toJsonSchema(Plan)).toMatchSnapshot())
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
+    test("write_report", () => expect(toJsonSchema(Report)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
+    test("spinosa_frame", () => expect(toJsonSchema(SpinosaFrame)).toMatchSnapshot())
+    test("spinosa_gate", () => expect(toJsonSchema(SpinosaGate)).toMatchSnapshot())
+    test("spinosa_mint_paths", () => expect(toJsonSchema(SpinosaMintPaths)).toMatchSnapshot())
+    test("spinosa_route", () => expect(toJsonSchema(SpinosaRoute)).toMatchSnapshot())
+    test("spinosa_verify", () => expect(toJsonSchema(SpinosaVerify)).toMatchSnapshot())
     test("task", () => expect(toJsonSchema(Task)).toMatchSnapshot())
     test("todo", () => expect(toJsonSchema(Todo)).toMatchSnapshot())
     test("webfetch", () => expect(toJsonSchema(WebFetch)).toMatchSnapshot())
@@ -231,6 +243,63 @@ describe("tool parameters", () => {
     })
     test("rejects missing name", () => {
       expect(accepts(Skill, {})).toBe(false)
+    })
+  })
+
+  describe("spinosa_route", () => {
+    test("accepts text + setupStatus", () => {
+      const parsed = parse(SpinosaRoute, { text: "hi", setupStatus: "workspace_started" })
+      expect(parsed.setupStatus).toBe("workspace_started")
+    })
+    test("rejects unknown setupStatus", () => {
+      expect(accepts(SpinosaRoute, { text: "hi", setupStatus: "bogus" })).toBe(false)
+    })
+    test("rejects missing text", () => {
+      expect(accepts(SpinosaRoute, { setupStatus: "unknown" })).toBe(false)
+    })
+  })
+
+  describe("spinosa_frame", () => {
+    const decision = {
+      mode: "orchestrated", operation: "research", strategy: "targeted_evidence",
+      scope: "subset", coverage: "sufficient", outputs: ["report"],
+      mutation: "none", verification: "normal", evaluation: "always",
+      reason: "test", confidence: 0.8,
+    }
+    test("accepts cleanedPrompt + orchestrated decision", () => {
+      expect(parse(SpinosaFrame, { cleanedPrompt: "p", decision }).cleanedPrompt).toBe("p")
+    })
+    test("rejects general-mode decision", () => {
+      expect(accepts(SpinosaFrame, { cleanedPrompt: "p", decision: { mode: "general" } })).toBe(false)
+    })
+  })
+
+  describe("spinosa_mint_paths", () => {
+    test("accepts runID + kinds", () => {
+      const parsed = parse(SpinosaMintPaths, { runID: "20260915-abc", kinds: ["goal", "evidence"] })
+      expect(parsed.kinds).toEqual(["goal", "evidence"])
+    })
+    test("rejects unknown kind", () => {
+      expect(accepts(SpinosaMintPaths, { runID: "20260915-abc", kinds: ["nope"] })).toBe(false)
+    })
+  })
+
+  describe("spinosa_gate", () => {
+    test("accepts coverage + sourceCount", () => {
+      expect(parse(SpinosaGate, { coverage: "sufficient", sourceCount: 2 }).sourceCount).toBe(2)
+    })
+    test("rejects unknown coverage", () => {
+      expect(accepts(SpinosaGate, { coverage: "total", sourceCount: 1 })).toBe(false)
+    })
+  })
+
+  describe("spinosa_verify", () => {
+    test("accepts relativePath + validator", () => {
+      const parsed = parse(SpinosaVerify, { relativePath: "agent_reports/01_x.md", validator: "report" })
+      expect(parsed.validator).toBe("report")
+    })
+    test("rejects unknown validator", () => {
+      expect(accepts(SpinosaVerify, { relativePath: "x.md", validator: "nope" })).toBe(false)
     })
   })
 

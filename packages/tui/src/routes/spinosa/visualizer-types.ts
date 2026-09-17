@@ -1,4 +1,6 @@
 import type { ToolPart } from "@spinosa/sdk/v2"
+import type { DialogContext } from "../../ui/dialog"
+import type { Theme } from "../../theme"
 
 export type VisualizerMode = "timeline" | "types" | "sessions"
 
@@ -23,6 +25,6 @@ export type ToolCallRecord = {
 
 export type CanvasViewProps = {
   toolCalls: ToolCallRecord[]
-  theme: any
-  dialog: any
+  theme: Theme
+  dialog: Pick<DialogContext, "replace">
 }

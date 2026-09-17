@@ -274,7 +274,8 @@ const layer = Layer.effect(
     const full = Effect.fn("ShareNext.full")(function* (sessionID: SessionID) {
       yield* Effect.logInfo("full sync", { sessionID: sessionID })
       const info = yield* session.get(sessionID)
-      const diffs = yield* session.diff(sessionID)
+      const diffOption = yield* session.diff(sessionID)
+      const diffs = Option.getOrElse(diffOption, () => [] as SDK.SnapshotFileDiff[])
       const messages = yield* session.messages({ sessionID })
       const models = yield* Effect.forEach(
         Array.from(

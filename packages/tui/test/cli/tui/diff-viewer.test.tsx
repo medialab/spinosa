@@ -122,7 +122,7 @@ async function renderDiffViewer(vcsDiff: unknown[], height = 20, initialRoute?: 
         vcs: {
           diff: async (input: unknown) => {
             vcsDiffInput = input
-            return { data: vcsDiff }
+            return { data: { _tag: "available", files: vcsDiff } }
           },
         },
         session: {

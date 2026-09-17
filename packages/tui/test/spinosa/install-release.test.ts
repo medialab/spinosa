@@ -10,6 +10,7 @@ const repoRoot = path.resolve(import.meta.dir, "../../../..")
 describe("install and release flow", () => {
   test("installer dry-run uses immutable platform binary assets", async () => {
     await using tmp = await tmpdir()
+    const { SPINOSA_RELEASE_BASE_URL: _releaseBase, ...baseEnv } = process.env
     const result = Bun.spawnSync({
       cmd: [
         "bash",
@@ -23,7 +24,7 @@ describe("install and release flow", () => {
       ],
       cwd: repoRoot,
       env: {
-        ...process.env,
+        ...baseEnv,
         SPINOSA_HOME: path.join(tmp.path, "home"),
         SPINOSA_BIN_DIR: path.join(tmp.path, "bin"),
         NO_COLOR: "1",
@@ -113,7 +114,7 @@ describe("install and release flow", () => {
     })
     const output = `${result.stdout.toString()}${result.stderr.toString()}`
     expect(result.exitCode).toBe(124)
-    expect(output).toContain("START Hung step (timeout 1s)")
+    expect(output).toContain("Hung step (timeout 1s)")
     expect(output).toContain("timed out after 1s")
     expect(output).not.toContain("\u001b[")
   })
@@ -201,8 +202,8 @@ describe("install and release flow", () => {
   })
 
   test("local release pipeline builds product binaries and rolling channel assets", async () => {
-    const stages = await Bun.file(path.join(repoRoot, "script", "release", "stages.ts")).text()
-    const github = await Bun.file(path.join(repoRoot, "script", "release", "github.ts")).text()
+    const stages = await Bun.file(path.join(repoRoot, "scripts", "release", "stages.ts")).text()
+    const github = await Bun.file(path.join(repoRoot, "scripts", "release", "github.ts")).text()
     expect(stages).toContain("publishRollingChannelRelease")
     expect(stages).toContain("build-release-binaries")
     expect(stages).toContain("build-manifest.json")
@@ -228,14 +229,21 @@ describe("install and release flow", () => {
     // Activation gates fail closed (binary-distribution-contract).
     expect(installer).toContain('die "Template verify failed — refusing to activate staged binary"')
     expect(installer).toContain('die "Template ensure failed — refusing to activate staged binary"')
-    expect(installer).toContain('die "Doctor reported issues — refusing to activate staged binary"')
+    expect(installer).toContain('die "Binary smokes reported issues — refusing to activate staged binary"')
+    expect(installer).toContain("run_staged_smoke_checks")
+    expect(installer).toContain('run_timed_step "Smoke ${smoke}" "$DEFAULT_SMOKE_TIMEOUT_SECONDS"')
+    expect(installer).not.toContain('run_timed_step "Checking binary smokes"')
+    expect(installer).toContain('run_timed_step "Installing" "$DEFAULT_ACTIVATE_TIMEOUT_SECONDS"')
+    expect(installer).not.toMatch(/run_timed_step "Installing" \d+/)
+    expect(installer).toContain('run_timed_step "Configure shell PATH" "$DEFAULT_PATH_TIMEOUT_SECONDS"')
+    expect(installer).not.toMatch(/run_timed_step "Configure shell PATH" \d+/)
     expect(installer).not.toContain("continuing; doctor will soft-check")
     expect(installer).not.toContain("non-fatal during template soft-check")
     expect(installer).not.toContain("non-fatal if templates are still warming")
   })
 
   test("patch-local-install refuses binary product installs", async () => {
-    const script = await Bun.file(path.join(repoRoot, "script", "patch-local-install.sh")).text()
+    const script = await Bun.file(path.join(repoRoot, "scripts", "patch-local-install.sh")).text()
     expect(script).toContain("is_binary_product_install")
     expect(script).toContain("refusing to patch a binary Spinosa install")
     expect(script).toContain("distribution:[[:space:]]*binary")
@@ -253,7 +261,7 @@ describe("install and release flow", () => {
     await chmod(path.join(home, "bin", "spinosa"), 0o755)
 
     const refused = Bun.spawnSync({
-      cmd: ["bash", path.join(repoRoot, "script", "patch-local-install.sh")],
+      cmd: ["bash", path.join(repoRoot, "scripts", "patch-local-install.sh")],
       cwd: repoRoot,
       env: {
         ...process.env,

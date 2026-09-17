@@ -26,8 +26,9 @@ describe("Spinosa logging", () => {
       const coreText = await Bun.file(path.join(process.env.SPINOSA_HOME, "logs", "spinosa.log")).text()
       const debugPath = path.join(process.env.SPINOSA_HOME, "logs", "debug.ndjson")
       const debugText = await Bun.file(debugPath).text()
-      expect(tuiText).toContain('"ws":"workspace-name"')
+      expect(tuiText).toContain('"$WORKSPACE"')
       expect(tuiText).not.toContain(workspace)
+      expect(tuiText).not.toContain('"ws":"workspace-name"')
       expect(coreText).toContain("component=test")
       expect(coreText).not.toContain(workspace)
       expect(coreText).not.toContain("private-value")
@@ -53,13 +54,22 @@ describe("Spinosa logging", () => {
     try {
       const { persistImportWizardLogLines } = await import("../../src/spinosa/log")
       persistImportWizardLogLines(
-        ["[diag] direct=1 markitdown=0 ocr=1", "PPU PaddleOCR: Processing 1 files", ""],
+        [
+          "[diag] direct=1 markitdown=0 ocr=1",
+          "OCR: Processing 1 files",
+          "Scanning: /Users/me/secret-corpus/notes.md",
+          "  invoices/acme.pdf → copied",
+        ],
         "import-wizard-test",
       )
       const tuiText = await Bun.file(path.join(process.env.SPINOSA_HOME, "logs", "tui.ndjson")).text()
       expect(tuiText).toContain("import-wizard-test")
       expect(tuiText).toContain("[diag] direct=1 markitdown=0 ocr=1")
-      expect(tuiText).toContain("PPU PaddleOCR: Processing 1 files")
+      expect(tuiText).toContain("OCR: Processing 1 files")
+      expect(tuiText).not.toContain("secret-corpus")
+      expect(tuiText).toContain("$PATH.md")
+      expect(tuiText).toContain("$PATH.pdf")
+      expect(tuiText).not.toContain("invoices/acme")
     } finally {
       if (originalHome === undefined) delete process.env.SPINOSA_HOME
       else process.env.SPINOSA_HOME = originalHome

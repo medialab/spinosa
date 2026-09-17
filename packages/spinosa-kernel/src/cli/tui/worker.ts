@@ -1,126 +1,26 @@
-import { Server } from "@/server/server"
-import { InstanceRuntime } from "@/project/instance-runtime"
-import { Rpc } from "@/util/rpc"
-import { Config } from "@/config/config"
-import { GlobalBus } from "@/bus/global"
-import { publishJobEvent } from "@/job/bus"
-import type { JobEvent } from "@spinosa/core/progress/job-event"
-import { ServerAuth } from "@/server/auth"
-import { writeHeapSnapshot } from "node:v8"
-import { Heap } from "@/cli/heap"
-import { AppRuntime } from "@/effect/app-runtime"
-import { Effect } from "effect"
-import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
-import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
-
-Heap.start()
-bootLog("worker.init", "TUI background worker started", { pid: process.pid })
-
-// Heartbeat to prove event loop is alive
-setInterval(() => {
-  bootLog("worker.alive", "worker event loop running", { rss: process.memoryUsage().rss })
-}, 2000)
-
-let fatal = false
-
-function reportWorkerError(kind: "unhandledRejection" | "uncaughtException", error: unknown): string {
-  const detail = error instanceof Error ? error.stack ?? error.message : String(error)
-  process.stderr.write(`TUI worker ${kind}: ${detail}\n`)
-  bootLog("worker.error", `TUI worker ${kind}`, { error: String(error) })
-  return detail
-}
-
 /**
- * Soften unhandledRejection: Spinosa long ops (import/OCR) run in the parent
- * with killable JobRunner children, so a stray rejection must not tear down the
- * session server. Uncaught exceptions still hard-exit — process integrity may
- * already be compromised.
+ * Compiled TUI worker entry. Do not import `@napi-rs/canvas` or pdf.js here.
+ *
+ * Bun --compile + splitting puts pdfjs-dist in a shared chunk whose
+ * createRequire("@napi-rs/canvas") cannot resolve from
+ * `/$bunfs/root/chunk-*.js`. Importing napi-canvas-force in this extra
+ * isolate loads that chunk, prints ImageData/Path2D polyfill warnings, and
+ * can stall the first `/provider` fetch on GNU x64. PDF render stays in the
+ * parent isolate (`internal smoke pdf-runtime`).
+ *
+ * Stub ImageData/Path2D/DOMMatrix before worker-main so a later pdfjs
+ * evaluation does not throw ReferenceError. Swallow leftover createRequire
+ * noise if a shared chunk still loads.
  */
-const onUnhandledRejection = (error: unknown) => {
-  reportWorkerError("unhandledRejection", error)
+import { installSpinosaBootNoiseCapture, installSpinosaBootNoiseSuppression } from "../../native/boot-noise"
+import { installDomMatrixPolyfill } from "../../native/dom-matrix-polyfill"
+
+if (process.env.SPINOSA_FAIL_ON_BOOT_NOISE === "1") {
+  installSpinosaBootNoiseCapture()
+} else {
+  installSpinosaBootNoiseSuppression()
 }
+installDomMatrixPolyfill()
+await import("./worker-main.ts")
 
-const onUncaughtException = (error: Error) => {
-  reportWorkerError("uncaughtException", error)
-  if (fatal) return
-  fatal = true
-  process.exitCode = 1
-  queueMicrotask(() => process.exit(1))
-}
-
-process.on("unhandledRejection", onUnhandledRejection)
-process.on("uncaughtException", onUncaughtException)
-
-// Subscribe to global events and forward them via RPC
-GlobalBus.on("event", (event) => {
-  Rpc.emit("global.event", event)
-})
-
-let server: Awaited<ReturnType<typeof Server.listen>> | undefined
-
-export const rpc = {
-  async fetch(input: { url: string; method: string; headers: Record<string, string>; body?: string }) {
-    const headers = { ...input.headers }
-    const auth = ServerAuth.header()
-    if (auth && !headers["authorization"] && !headers["Authorization"]) {
-      headers["Authorization"] = auth
-    }
-    const request = new Request(input.url, {
-      method: input.method,
-      headers,
-      body: input.body,
-    })
-    bootLog("worker.fetch", "proxying fetch", { url: input.url, method: input.method })
-    const response = await Server.Default().app.fetch(request)
-    const body = await response.text()
-    return {
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body,
-    }
-  },
-  snapshot() {
-    const result = writeHeapSnapshot("server.heapsnapshot")
-    return result
-  },
-  async server(input: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
-    if (server) await server.stop(true)
-    bootLog("worker.server", "starting server", { port: input.port, hostname: input.hostname })
-    server = await Server.listen(input)
-    const url = server.url.toString()
-    bootLog("worker.server.running", "server is listening", { url })
-    return { url }
-  },
-  async checkUpgrade(input: { directory: string }) {
-    // Legacy RPC name. Launch preflight in cmd/tui.ts handles framework upgrades.
-    bootLog("worker.checkUpgrade", "loading instance", { directory: input.directory })
-    try {
-      await InstanceRuntime.load({ directory: input.directory })
-    } catch (e) {
-      bootLog("worker.checkUpgrade.load.error", "InstanceRuntime.load failed", { error: String(e) })
-    }
-  },
-  /** Parent-process import progress → worker GlobalBus (SSE + global.event RPC). */
-  async emitJobEvent(input: { directory?: string; workspace?: string; event: JobEvent }) {
-    publishJobEvent(input)
-  },
-  async reload() {
-    await AppRuntime.runPromise(
-      Effect.gen(function* () {
-        const cfg = yield* Config.Service
-        yield* cfg.invalidate()
-        yield* disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true })
-      }),
-    )
-  },
-  async shutdown() {
-    bootLog("worker.shutdown", "shutting down worker")
-    await InstanceRuntime.disposeAllInstances()
-    if (server) await server.stop(true)
-    process.off("unhandledRejection", onUnhandledRejection)
-    process.off("uncaughtException", onUncaughtException)
-    bootLog("worker.shutdown.done", "worker shutdown complete")
-  },
-}
-
-Rpc.listen(rpc)
+export type { rpc } from "./worker-main"

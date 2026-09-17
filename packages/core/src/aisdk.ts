@@ -6,6 +6,7 @@ import { Cause, Context, Effect, Layer, Schema, Scope } from "effect"
 import { ModelV2 } from "./model"
 import { ProviderV2 } from "./provider"
 import { State } from "./state"
+import { wrapSSE } from "./sse"
 
 type SDK = any
 
@@ -23,72 +24,25 @@ export interface LanguageEvent {
   language?: LanguageModelV3
 }
 
-function wrapSSE(res: Response, ms: number, ctl: AbortController) {
-  if (typeof ms !== "number" || ms <= 0) return res
-  if (!res.body) return res
-  if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
-
-  const reader = res.body.getReader()
-  const body = new ReadableStream<Uint8Array>({
-    async pull(ctrl) {
-      const part = await new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
-        const id = setTimeout(() => {
-          const err = new Error("SSE read timed out")
-          ctl.abort(err)
-          void reader.cancel(err)
-          reject(err)
-        }, ms)
-
-        reader.read().then(
-          (part) => {
-            clearTimeout(id)
-            resolve(part)
-          },
-          (err) => {
-            clearTimeout(id)
-            reject(err)
-          },
-        )
-      })
-
-      if (part.done) {
-        ctrl.close()
-        return
-      }
-
-      ctrl.enqueue(part.value)
-    },
-    async cancel(reason) {
-      ctl.abort(reason)
-      await reader.cancel(reason)
-    },
-  })
-
-  return new Response(body, {
-    headers: new Headers(res.headers),
-    status: res.status,
-    statusText: res.statusText,
-  })
-}
-
 function prepareOptions(model: ModelV2.Info, pkg: string) {
-  const options: Record<string, any> = {
+  const options: Record<string, unknown> = {
     name: model.providerID,
     ...(model.api.type === "aisdk" ? (model.api.settings ?? {}) : {}),
     ...model.request.body,
   }
   if (model.api.type === "aisdk" && model.api.url) options.baseURL = model.api.url
 
-  const customFetch = options.fetch
-  const chunkTimeout = options.chunkTimeout
+  const customFetch = typeof options.fetch === "function" ? options.fetch : undefined
+  const chunkTimeout = typeof options.chunkTimeout === "number" ? options.chunkTimeout : undefined
+  const timeout = typeof options.timeout === "number" ? options.timeout : undefined
   delete options.chunkTimeout
   options.fetch = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const opts = { ...(init ?? {}) }
     const signals = [
       opts.signal,
       typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined,
-      options.timeout !== undefined && options.timeout !== null && options.timeout !== false
-        ? AbortSignal.timeout(options.timeout)
+      timeout !== undefined
+        ? AbortSignal.timeout(timeout)
         : undefined,
     ].filter((item): item is AbortSignal | AbortController => Boolean(item))
     const chunkAbortCtl = signals.find((item): item is AbortController => item instanceof AbortController)
@@ -113,7 +67,7 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
     const res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
       ...opts,
       timeout: false,
-    })
+    } as RequestInit)
     if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
     return wrapSSE(res, chunkTimeout, chunkAbortCtl)
   }

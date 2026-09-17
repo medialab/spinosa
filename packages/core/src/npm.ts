@@ -40,6 +40,12 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@spinosa/Npm") {}
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
 const illegal = process.platform === "win32" ? new Set(["<", ">", ":", '"', "|", "?", "*"]) : undefined
 
 export function sanitize(pkg: string) {
@@ -160,22 +166,22 @@ const layer = Layer.effect(
         const pkg = yield* afs.readJson(path.join(dir, "package.json")).pipe(Effect.orElseSucceed(() => ({})))
         const lock = yield* afs.readJson(path.join(dir, "package-lock.json")).pipe(Effect.orElseSucceed(() => ({})))
 
-        const pkgAny = pkg as any
-        const lockAny = lock as any
+const packageJson = asRecord(pkg)
+const lockfile = asRecord(lock)
         const declared = new Set([
-          ...Object.keys(pkgAny?.dependencies || {}),
-          ...Object.keys(pkgAny?.devDependencies || {}),
-          ...Object.keys(pkgAny?.peerDependencies || {}),
-          ...Object.keys(pkgAny?.optionalDependencies || {}),
+...Object.keys(asRecord(packageJson.dependencies)),
+...Object.keys(asRecord(packageJson.devDependencies)),
+...Object.keys(asRecord(packageJson.peerDependencies)),
+...Object.keys(asRecord(packageJson.optionalDependencies)),
           ...(input?.add || []).map((pkg) => pkg.name),
         ])
 
-        const root = lockAny?.packages?.[""] || {}
+const root = asRecord(asRecord(lockfile.packages)[""])
         const locked = new Set([
-          ...Object.keys(root?.dependencies || {}),
-          ...Object.keys(root?.devDependencies || {}),
-          ...Object.keys(root?.peerDependencies || {}),
-          ...Object.keys(root?.optionalDependencies || {}),
+...Object.keys(asRecord(root.dependencies)),
+...Object.keys(asRecord(root.devDependencies)),
+...Object.keys(asRecord(root.peerDependencies)),
+...Object.keys(asRecord(root.optionalDependencies)),
         ])
 
         for (const name of declared) {

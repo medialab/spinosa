@@ -38,7 +38,7 @@ type StreamInput = {
   readonly topP?: number
   readonly topK?: number
   readonly maxOutputTokens?: number
-  readonly providerOptions?: Record<string, any>
+  readonly providerOptions?: Record<string, unknown>
   readonly headers: Record<string, string>
   readonly abort: AbortSignal
 }

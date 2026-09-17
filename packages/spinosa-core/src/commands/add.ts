@@ -9,7 +9,7 @@ import {
 } from "node:fs"
 import * as path from "node:path"
 import type { ChildProcess } from "node:child_process"
-import { safeCopy, writeTextAtomic } from "../utils/fs"
+import { safeCopy, safeCopyAsync, writeTextAtomic, writeTextAtomicSafe } from "../utils/fs"
 import {
   findSourceFiles,
   classifySourceFile,
@@ -18,14 +18,50 @@ import {
   ocrOutputRelPath,
 } from "../extension/classifier"
 import { ImportBatchManager } from "../import/batch"
-import { injectColdFrontmatter, convertedOutputExists, removeConvertedOutput } from "../import/frontmatter"
+import { injectColdFrontmatter, convertedOutputExists } from "../import/frontmatter"
 import { scanSource } from "../scan/scanner"
-import { fileExt } from "../constants"
-import type { PpuOcrFile } from "../import/ppu-ocr"
+import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
 import { spinosaLogInfo } from "../utils/log"
-import { MarkItDown } from "markitdown-ts"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled } from "../import/cancellation"
-import { markitdownConvertFile } from "../import/markitdown-convert"
+import { markitdownConvertFile, createMarkItDown } from "../import/markitdown-convert"
+import { preserveFailedImportFiles, convertTextPdf, type ClassifiedEntry, type ImportProgressCallback } from "../import/pipeline"
+
+function backupConvertedOutput(outputPath: string): string[] {
+  const paths = [outputPath]
+  if (outputPath.endsWith(".md")) paths.push(`${outputPath.slice(0, -3)}_pages`)
+  const backups: string[] = []
+  for (const source of paths) {
+    if (!existsSync(source)) continue
+    const backup = `${source}.spinosa-backup-${process.pid}-${crypto.randomUUID()}`
+    try {
+      renameSync(source, backup)
+      backups.push(backup)
+    } catch (error) {
+      for (const previous of backups) {
+        const original = previous.replace(/\.spinosa-backup-\d+-[^/]+$/, "")
+        try { renameSync(previous, original) } catch { /* preserve original error */ }
+      }
+      throw error
+    }
+  }
+  return backups
+}
+
+function restoreConvertedOutput(outputPath: string, backups: string[]): boolean {
+  try { rmSync(outputPath, { force: true, recursive: true }) } catch { /* cleanup */ }
+  const pageDir = outputPath.endsWith(".md") ? `${outputPath.slice(0, -3)}_pages` : undefined
+  if (pageDir) try { rmSync(pageDir, { force: true, recursive: true }) } catch { /* cleanup */ }
+  let restored = true
+  for (const backup of backups) {
+    const original = backup.replace(/\.spinosa-backup-\d+-[^/]+$/, "")
+    try { renameSync(backup, original) } catch { restored = false }
+  }
+  return restored
+}
+
+function removeConvertedBackups(backups: string[]): void {
+  for (const backup of backups) try { rmSync(backup, { force: true, recursive: true }) } catch { /* cleanup */ }
+}
 
 export interface AddFilesOptions {
   workspacePath: string
@@ -35,6 +71,7 @@ export interface AddFilesOptions {
   extensions?: string
   overwrite?: boolean
   onProgress?: (message: string) => void
+  onFileProgress?: ImportProgressCallback
   shouldAbort?: () => boolean
   /** AbortSignal for immediate MarkItDown/OCR child cancel. */
   signal?: AbortSignal
@@ -54,22 +91,23 @@ export interface AddFilesResult {
   ocrConverted: number
   ocrSkipped: number
   ocrFailed: number
+  failedFilePaths: string[]
 }
 
 export async function addFiles(options: AddFilesOptions): Promise<AddFilesResult> {
-  const { workspacePath, sourcePath, sourceIsDir, subfolder, extensions, overwrite, onProgress, shouldAbort, signal, onChild } = options
+  const { workspacePath, sourcePath, sourceIsDir, subfolder, extensions, overwrite, onProgress, onFileProgress, shouldAbort, signal, onChild } = options
   throwIfSpinosaCancelled(shouldAbort)
   const rawDir = path.join(workspacePath, "raw")
-  spinosaLogInfo("add", `sourcePath=${sourcePath} workspacePath=${workspacePath} sourceIsDir=${sourceIsDir}`)
+  spinosaLogInfo("add", `add sourceIsDir=${sourceIsDir}`)
 
   if (!existsSync(rawDir)) {
     mkdirSync(rawDir, { recursive: true })
   }
 
   if (sourceIsDir) {
-    return addFilesFromDir(sourcePath, rawDir, subfolder, extensions, overwrite, onProgress, shouldAbort, signal, onChild)
+    return addFilesFromDir(sourcePath, rawDir, subfolder, extensions, overwrite, onProgress, onFileProgress, shouldAbort, signal, onChild)
   }
-  return addSingleFile(sourcePath, rawDir, overwrite, onProgress, shouldAbort)
+  return addSingleFile(sourcePath, rawDir, overwrite, onProgress, onFileProgress, shouldAbort)
 }
 
 async function addFilesFromDir(
@@ -79,6 +117,7 @@ async function addFilesFromDir(
   extensions?: string,
   overwrite?: boolean,
   onProgress?: (msg: string) => void,
+  onFileProgress?: ImportProgressCallback,
   shouldAbort?: () => boolean,
   signal?: AbortSignal,
   onChild?: (child: ChildProcess) => void,
@@ -92,18 +131,18 @@ async function addFilesFromDir(
 
   onProgress?.("Scanning source directory...")
 
-  const { detectDocumentTools } = await import("../scan/scanner")
-  const toolStatus = await detectDocumentTools()
-
   const { copySource } = await import("../import/pipeline")
   const result = await copySource(sourcePath, rawDir, {
     batchManager: importBatches,
     markitdownChoice: true,
-    ocrChoice: toolStatus.ocr,
+    // Keep selected OCR files in the attempt set so unavailable OCR is
+    // reported and preserved as a failure instead of being silently omitted.
+    ocrChoice: true,
     overwrite,
     subfolder,
     verifyAfter: false,
     shouldAbort,
+    onProgress: onFileProgress,
     signal,
     onChild,
     onPhaseChange: (phase) => {
@@ -144,6 +183,7 @@ async function addFilesFromDir(
     ocrConverted: result.ocrConverted,
     ocrSkipped: result.ocrSkipped,
     ocrFailed: result.ocrFailed,
+    failedFilePaths: result.failedFilePaths,
   }
 }
 
@@ -152,13 +192,25 @@ async function addSingleFile(
   rawDir: string,
   overwrite?: boolean,
   onProgress?: (msg: string) => void,
+  onFileProgress?: ImportProgressCallback,
   shouldAbort?: () => boolean,
 ): Promise<AddFilesResult> {
+  const relPath = path.basename(srcFile)
+  const emitFileStatus = (current: number, status: "queued" | "processing" | "done" | "failed") =>
+    onFileProgress?.("single", current, 1, relPath, status)
+
   throwIfSpinosaCancelled(shouldAbort)
+  emitFileStatus(0, "queued")
+  emitFileStatus(0, "processing")
   const klass = await classifySourceFile(srcFile)
   throwIfSpinosaCancelled(shouldAbort)
 
   if (klass === "ignored") {
+    emitFileStatus(1, "failed")
+    const preserved = await preserveFailedImportFiles(
+      [{ src: srcFile, rel: relPath, dest: path.join(rawDir, "__unimported__", relPath) }],
+      rawDir,
+    )
     return {
       success: false,
       totalTargeted: 1,
@@ -171,10 +223,16 @@ async function addSingleFile(
       ocrConverted: 0,
       ocrSkipped: 0,
       ocrFailed: 0,
+      failedFilePaths: preserved.failedFilePaths,
     }
   }
 
   if (klass === "unknown") {
+    emitFileStatus(1, "failed")
+    const preserved = await preserveFailedImportFiles(
+      [{ src: srcFile, rel: relPath, dest: path.join(rawDir, "__unimported__", relPath) }],
+      rawDir,
+    )
     return {
       success: false,
       totalTargeted: 1,
@@ -187,6 +245,7 @@ async function addSingleFile(
       ocrConverted: 0,
       ocrSkipped: 0,
       ocrFailed: 0,
+      failedFilePaths: preserved.failedFilePaths,
     }
   }
 
@@ -202,6 +261,7 @@ async function addSingleFile(
   let ocrConverted = 0
   let ocrSkipped = 0
   let ocrFailed = 0
+  let failedDest = path.join(rawDir, relPath)
 
   switch (klass) {
     case "markdown":
@@ -209,6 +269,7 @@ async function addSingleFile(
       const fileName = path.basename(srcFile)
       const destName = klass === "markdown" ? markdownRawRelPath(fileName) : fileName
       const destFile = path.join(rawDir, destName)
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -238,6 +299,7 @@ async function addSingleFile(
       const ext = fileExt(fileName)
       const destName = `${stem}__${ext}.md`
       const destFile = path.join(rawDir, destName)
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -248,10 +310,11 @@ async function addSingleFile(
         }
       }
 
-      removeConvertedOutput(destFile)
+      const backups = backupConvertedOutput(destFile)
+      let restored = true
 
       try {
-        const converter = new MarkItDown()
+        const converter = await createMarkItDown()
         const result = await markitdownConvertFile(converter, srcFile)
         throwIfSpinosaCancelled(shouldAbort)
         const text = result?.markdown ?? ""
@@ -259,7 +322,9 @@ async function addSingleFile(
         writeTextAtomic(destFile, text)
         mdConverted = 1
         injectColdFrontmatter(destFile)
+        removeConvertedBackups(backups)
       } catch (error) {
+        restored = restoreConvertedOutput(destFile, backups)
         if (isSpinosaCancellationError(error)) throw error
         mdFailed = 1
       }
@@ -267,10 +332,29 @@ async function addSingleFile(
     }
 
     case "ocr_convertible": {
+      const ext = fileExt(srcFile).toLowerCase()
+      // Images: copy-only, kept as-is (no OCR engine in single-file CLI path)
+      if (extInList(ext, IMAGE_EXTENSIONS)) {
+        const destFile = path.join(rawDir, path.basename(srcFile))
+        failedDest = destFile
+        mkdirSync(path.dirname(destFile), { recursive: true })
+        if (existsSync(destFile)) {
+          if (!overwrite) { skipped = 1; break }
+          rmSync(destFile, { force: true })
+        }
+        if (safeCopy(srcFile, destFile)) {
+          copied = 1
+        } else {
+          failed = 1
+        }
+        break
+      }
+      // PDFs: pdf.js census for digital, vision/copy for scanned (no local OCR engine)
       const fileName = path.basename(srcFile)
       const stem = fileName.replace(/\.[^.]+$/, "")
       const destName = `${stem}__${fileExt(fileName)}.md`
-      const destFile = path.join(rawDir, destName)
+      let destFile = path.join(rawDir, destName)
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -281,23 +365,75 @@ async function addSingleFile(
         }
       }
 
-      removeConvertedOutput(destFile)
-
+      const backups = backupConvertedOutput(destFile)
+      let restored = true
       const tmpDest = destFile + `.spinosa-part-${process.pid}-${crypto.randomUUID()}`
+
+      // PDFs: pdf.js census for digital; scanned/mixed have no local engine —
+      // keep the original + an honest placeholder (pick a vision model to
+      // transcribe, or keep the copy). MarkItDown never handles PDFs.
       try {
-        const { runPpuOcrBatch } = await import("../import/ppu-ocr")
-        await runPpuOcrBatch([{ src: srcFile, rel: fileName, dest: tmpDest }], { shouldAbort })
-        if (convertedOutputExists(tmpDest)) {
+        const { classifyPdfPages, isDigitalPdfPages } = await import("../import/pdf-pages")
+        const classes = await classifyPdfPages(srcFile)
+        throwIfSpinosaCancelled(shouldAbort)
+        if (isDigitalPdfPages(classes)) {
+          destFile = await convertTextPdf(srcFile, destFile, relPath, shouldAbort)
+          failedDest = destFile
+          throwIfSpinosaCancelled(shouldAbort)
+          if (convertedOutputExists(destFile)) {
+            injectColdFrontmatter(destFile)
+            removeConvertedBackups(backups)
+            ocrConverted = 1
+            onProgress?.(`${fileName} → digital PDF, text extracted via pdf.js (no OCR)`)
+            break
+          }
+        }
+      } catch (err) {
+        if (isSpinosaCancellationError(err)) throw err
+        try { rmSync(destFile, { force: true }) } catch { /* cleanup */ }
+        try { rmSync(destFile.slice(0, -3) + "_pages", { recursive: true, force: true }) } catch { /* cleanup */ }
+      }
+
+      try {
+        // No local OCR engine: keep the original bytes + placeholder md.
+        const binaryDest = path.join(path.dirname(destFile), fileName)
+        mkdirSync(path.dirname(binaryDest), { recursive: true })
+        const kept = await safeCopyAsync(srcFile, binaryDest)
+        const placeholder = [
+          "---",
+          `source_document: "${fileName.replace(/"/g, '\\"')}"`,
+          `ocr_status: local_ocr_removed`,
+          "---",
+          "",
+          `# ${stem} — transcription pending`,
+          "",
+          `Local OCR was removed. Original file kept as \`${path.basename(binaryDest)}\`.`,
+          "",
+          `To transcribe: re-run import with a vision model selected.`,
+          `Digital PDFs always extract via pdf.js with no model needed.`,
+          "",
+        ].join("\n")
+        try {
+          mkdirSync(path.dirname(tmpDest), { recursive: true })
+          writeTextAtomicSafe(tmpDest, placeholder)
+          injectColdFrontmatter(tmpDest)
+        } catch {}
+        if (kept && convertedOutputExists(tmpDest)) {
           renameSync(tmpDest, destFile)
           ocrConverted = 1
           injectColdFrontmatter(destFile)
+          onProgress?.(`${fileName} → scanned PDF, no local OCR — original kept, placeholder written (pick a vision model to transcribe)`)
         } else {
+          restored = restoreConvertedOutput(destFile, backups)
           ocrFailed = 1
         }
-      } catch {
+      } catch (error) {
+        restored = restoreConvertedOutput(destFile, backups)
+        if (isSpinosaCancellationError(error)) throw error
         ocrFailed = 1
       } finally {
         try { rmSync(tmpDest, { force: true }) } catch { /* cleanup */ }
+        if (restored) removeConvertedBackups(backups)
       }
 
       break
@@ -306,6 +442,7 @@ async function addSingleFile(
     case "video":
     case "audio": {
       const destFile = path.join(rawDir, path.basename(srcFile))
+      failedDest = destFile
 
       mkdirSync(path.dirname(destFile), { recursive: true })
 
@@ -329,6 +466,14 @@ async function addSingleFile(
 
   onProgress?.("Single file import complete.")
 
+  const failedFilePaths = failed + mdFailed + ocrFailed > 0
+    ? (await preserveFailedImportFiles(
+      [{ src: srcFile, rel: relPath, dest: failedDest }],
+      rawDir,
+    )).failedFilePaths
+    : []
+  emitFileStatus(1, failedFilePaths.length > 0 ? "failed" : "done")
+
   return {
     success: failed + mdFailed + ocrFailed === 0,
     totalTargeted,
@@ -341,5 +486,6 @@ async function addSingleFile(
     ocrConverted,
     ocrSkipped,
     ocrFailed,
+    failedFilePaths,
   }
 }

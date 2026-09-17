@@ -2,12 +2,27 @@ import { ProviderAuth } from "@/provider/auth"
 import { Provider } from "@/provider/provider"
 
 import { Schema } from "effect"
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 import { ProviderV2 } from "@spinosa/kernel-core/provider"
+import { ModelV2 } from "@spinosa/kernel-core/model"
+
+export const VisionTranscribeInput = Schema.Struct({
+  prompt: Schema.String,
+  image: Schema.Struct({
+    mime: Schema.String,
+    data: Schema.String,
+  }),
+})
+export type VisionTranscribeInput = Schema.Schema.Type<typeof VisionTranscribeInput>
+
+export const VisionTranscribeOutput = Schema.Struct({
+  text: Schema.String,
+})
+export type VisionTranscribeOutput = Schema.Schema.Type<typeof VisionTranscribeOutput>
 
 const root = "/provider"
 
@@ -79,6 +94,19 @@ export const ProviderApi = HttpApi.make("provider")
             identifier: "provider.oauth.callback",
             summary: "Handle OAuth callback",
             description: "Handle the OAuth callback from a provider after user authorization.",
+          }),
+        ),
+        HttpApiEndpoint.post("visionTranscribe", `${root}/:providerID/models/:modelID/vision/transcribe`, {
+          params: { providerID: ProviderV2.ID, modelID: ModelV2.ID },
+          query: WorkspaceRoutingQuery,
+          payload: VisionTranscribeInput,
+          success: described(VisionTranscribeOutput, "Vision transcription result"),
+          error: [HttpApiError.BadRequest, HttpApiError.NotFound, HttpApiError.Unauthorized, ProviderAuthApiError] as const,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "provider.vision.transcribe",
+            summary: "Transcribe image via vision model",
+            description: "Transcribe an image to text using a vision-capable model. Uses the same provider SDK/auth as chat. Credentials never leave the kernel.",
           }),
         ),
       )

@@ -1,23 +1,20 @@
-import path from "node:path"
-import { existsSync } from "node:fs"
-import { spawnSync } from "node:child_process"
-import { homedir } from "node:os"
 import type { Argv } from "yargs"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { upgradeFramework, readEffectiveInstalledVersion } from "@spinosa/core/commands/upgrade"
-import { offerWorkspaceUpgrades } from "@spinosa/core/commands/preflight"
-import { updateWorkspace } from "@spinosa/core/commands/update"
 import { isUpgrade } from "@spinosa/core/utils/version"
-import { installUrlForChannel, type ReleaseChannel } from "@spinosa/core/system/channels"
-
-const REINSTALL_URL = installUrlForChannel("beta")
+import {
+  installUrlForChannel,
+  spinosaReleaseChannel,
+  type ReleaseChannel,
+} from "@spinosa/core/system/channels"
 
 export const UpgradeCommand = {
   command: "upgrade [target]",
   describe: "check for and install Spinosa updates",
   builder: (yargs: Argv) =>
     yargs
+      .version(false)
       .positional("target", {
         describe: "target version (alias: --version)",
         type: "string",
@@ -56,7 +53,6 @@ export const UpgradeCommand = {
     allowDowngrade?: boolean
     check?: boolean
   }) => {
-    UI.empty()
     UI.println(UI.logo(" "))
     UI.empty()
     prompts.intro("Spinosa updates")
@@ -65,7 +61,7 @@ export const UpgradeCommand = {
     prompts.log.info(`Current: v${currentVersion}`)
 
     if (args.check) {
-      prompts.log.step("Checking for updates...")
+      prompts.log.info("Checking for updates…")
     }
 
     const result = await upgradeFramework({
@@ -75,7 +71,13 @@ export const UpgradeCommand = {
       reinstall: args.reinstall,
       allowDowngrade: args.allowDowngrade,
       check: args.check,
-      onPhase: (_phase, detail) => prompts.log.step(detail),
+      onPhase: (_phase, detail) => prompts.log.info(detail),
+      confirm: async (question) => {
+        if (args.yes) return true
+        const answer = await prompts.confirm({ message: question, initialValue: true })
+        if (prompts.isCancel(answer)) return false
+        return answer === true
+      },
     })
 
     if (args.check) {
@@ -100,7 +102,11 @@ export const UpgradeCommand = {
     if (!result.success) {
       prompts.log.error("Upgrade failed.")
       if (result.error) prompts.log.error(result.error)
-      prompts.log.error(`Try reinstalling from ${REINSTALL_URL}`)
+      const effectiveChannel = (args.channel as ReleaseChannel | undefined) ?? (await spinosaReleaseChannel())
+      const reinstallUrl = installUrlForChannel(effectiveChannel)
+      const bootstrap = `curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 2 ${reinstallUrl} -o /tmp/spinosa-install.sh && bash /tmp/spinosa-install.sh`
+      prompts.log.error(`Try reinstalling from ${reinstallUrl}`)
+      prompts.log.error(`Or run: ${bootstrap}`)
       prompts.outro("Upgrade failed.")
       return
     }
@@ -118,40 +124,6 @@ export const UpgradeCommand = {
     }
 
     prompts.log.success(`Upgraded to v${result.newVersion}`)
-
-    if (result.newVersion && result.workspaceUpgradesNeeded.length > 0) {
-      await offerWorkspaceUpgrades(result.workspaceUpgradesNeeded, result.newVersion, {
-        confirm: async (question, defaultYes = false) => {
-          if (args.yes) return true
-          const answer = await prompts.confirm({ message: question, initialValue: defaultYes })
-          return answer === true
-        },
-        frameworkRoot: (version) => {
-          const home = process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa")
-          const binary = path.join(home, "bin", "spinosa")
-          if (existsSync(binary)) {
-            const probe = spawnSync(binary, ["internal", "template", "ensure", "--json"], {
-              encoding: "utf-8",
-              env: process.env,
-            })
-            if (probe.status === 0) {
-              try {
-                const parsed = JSON.parse(probe.stdout) as { ok?: boolean; templateRoot?: string }
-                if (parsed.ok && parsed.templateRoot) return parsed.templateRoot
-              } catch {
-                /* fall through */
-              }
-            }
-          }
-          if (process.env.SPINOSA_TEMPLATE_ROOT) return process.env.SPINOSA_TEMPLATE_ROOT
-          return path.join(home, "versions", version)
-        },
-        updateWorkspace: (workspacePath, frameworkRoot) =>
-          updateWorkspace({ workspacePath, frameworkRoot }),
-        out: (message) => prompts.log.info(message),
-      })
-    }
-
     prompts.outro("Restart Spinosa to use the new version.")
   },
 }

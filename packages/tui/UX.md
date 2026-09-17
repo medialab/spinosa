@@ -28,4 +28,4 @@ Pane keys `1`–`4` are ignored while the chat prompt is focused.
 3. **Startup hub** → index corpus in Chat when status is "Ready to index"
 4. **Workspace** → Chat default when "Ready"
 
-Non-fast-path submits frame a goal artifact; toast shows route class and session.
+Orchestrated submits frame a goal artifact; general answers enter the conversation normally.

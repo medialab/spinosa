@@ -293,7 +293,7 @@ describe("HttpApi Server.listen", () => {
       return true
     }) as typeof process.stderr.write
     try {
-      const response = await Server.Default().app.request("/status")
+      const response = await Server.Default().app.request("/global/health")
       expect(response.status).toBe(200)
     } finally {
       process.stderr.write = original
@@ -388,13 +388,12 @@ describe("HttpApi Server.listen", () => {
       expect((await requestTicket(listener, info.id, tmp.path, { ticketHeader: false })).status).toBe(403)
       expect((await requestTicket(listener, info.id, tmp.path, { origin: "https://evil.example" })).status).toBe(403)
 
-      // Regression for #25698: minting without a directory uses the server cwd
-      // and cannot find a PTY registered in a project directory.
+      // Directory is required by workspace routing before PTY lookup.
       const ambiguous = await fetch(new URL(PtyPaths.connectToken.replace(":ptyID", info.id), listener.url), {
         method: "POST",
         headers: { authorization: authorization(), "x-opencode-ticket": "1" },
       })
-      expect(ambiguous.status).toBe(404)
+      expect(ambiguous.status).toBe(400)
 
       const directoryScoped = await fetch(
         new URL(

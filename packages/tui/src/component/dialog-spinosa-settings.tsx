@@ -3,6 +3,7 @@ import { useDialog } from "../ui/dialog"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useToast } from "../ui/toast"
 import { useTheme } from "../context/theme"
+import { DialogMcp } from "./dialog-mcp"
 import {
   spinosaReleaseChannel,
   setReleaseChannel,
@@ -11,7 +12,7 @@ import {
   type ReleaseChannel,
 } from "@spinosa/core/system/channels"
 
-type SettingsValue = "auto-on" | "auto-off" | "channel-beta" | "channel-stable"
+type SettingsValue = "auto-on" | "auto-off" | "channel-beta" | "channel-stable" | "mcp"
 
 export function DialogSpinosaSettings() {
   const dialog = useDialog()
@@ -59,6 +60,13 @@ export function DialogSpinosaSettings() {
   }
 
   const options = createMemo<DialogSelectOption<SettingsValue>[]>(() => [
+    {
+      title: "MCP servers",
+      value: "mcp",
+      description: "Enable or disable installed MCP servers.",
+      category: "Integrations",
+      onSelect: () => dialog.replace(() => <DialogMcp />),
+    },
     {
       title: "Enable auto-upgrade",
       value: "auto-on",

@@ -3,7 +3,7 @@ import { LocationServiceMap } from "../location-service-map"
 import { LayerNode } from "./layer-node"
 import { makeGlobalNode } from "./app-node"
 
-export function build<A, E>(root: LayerNode.Node<A, E, any>, replacements: LayerNode.Replacements = []) {
+export function build<A, E>(root: LayerNode.Node<A, E, LayerNode.Tag | undefined>, replacements: LayerNode.Replacements = []) {
   let allReplacements = replacements
 
   // Only build the location service map if it's actually needed
@@ -16,7 +16,7 @@ export function build<A, E>(root: LayerNode.Node<A, E, any>, replacements: Layer
   return LayerNode.compile(root, allReplacements)
 }
 
-function hasReplacement(replacements: LayerNode.Replacements, node: LayerNode.Node<unknown, unknown, any>) {
+function hasReplacement(replacements: LayerNode.Replacements, node: LayerNode.Node<unknown, unknown, LayerNode.Tag | undefined>) {
   return replacements.some(([source]) => source.name === node.name)
 }
 

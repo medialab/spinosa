@@ -1753,7 +1753,7 @@ const openaiResponsesProviderOptionsSchema = z.object({
    */
   maxToolCalls: z.number().nullish(),
 
-  metadata: z.any().nullish(),
+    metadata: z.unknown().nullish(),
   parallelToolCalls: z.boolean().nullish(),
   previousResponseId: z.string().nullish(),
   promptCacheKey: z.string().nullish(),

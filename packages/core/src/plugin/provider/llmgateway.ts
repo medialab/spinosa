@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { define } from "../internal"
+import { define } from "../define"
 import { Integration } from "../../integration"
 
 export const LLMGatewayPlugin = define({

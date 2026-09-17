@@ -244,6 +244,21 @@ export function resolvePluginProviders(input: {
   return result
 }
 
+export const POPULAR_CATALOG_PROVIDER_IDS = ["opencode", "opencode-go"] as const
+
+export function availableCatalogProviders(input: {
+  catalog: Record<string, { name?: string }>
+  credentialIDs: readonly string[]
+  ids?: readonly string[]
+}): Array<{ id: string; name: string }> {
+  const have = new Set(input.credentialIDs)
+  return (input.ids ?? POPULAR_CATALOG_PROVIDER_IDS).flatMap((id) => {
+    const provider = input.catalog[id]
+    if (!provider || have.has(id)) return []
+    return [{ id, name: provider.name || id }]
+  })
+}
+
 export const ProvidersCommand = cmd({
   command: "providers",
   aliases: ["auth"],
@@ -277,6 +292,19 @@ export const ProvidersListCommand = effectCmd({
     }
 
     yield* Prompt.outro(`${results.length} credentials`)
+
+    const available = availableCatalogProviders({
+      catalog: database,
+      credentialIDs: results.map(([id]) => id),
+    })
+    if (available.length > 0) {
+      UI.empty()
+      yield* Prompt.intro("Available")
+      for (const provider of available) {
+        yield* Prompt.log.info(`${provider.name} ${UI.Style.TEXT_DIM}${provider.id}`)
+      }
+      yield* Prompt.outro(`${available.length} provider` + (available.length === 1 ? "" : "s"))
+    }
 
     const activeEnvVars: Array<{ provider: string; envVar: string }> = []
 

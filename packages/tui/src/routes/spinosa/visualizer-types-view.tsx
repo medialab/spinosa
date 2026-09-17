@@ -49,7 +49,7 @@ export function TypesView(props: CanvasViewProps) {
           const bar = "█".repeat(full) + (partial > 0 ? PARTIAL[partial] : "")
           const avgDur = s.durations.length > 0 ? Math.round(s.durations.reduce((a, b) => a + b, 0) / s.durations.length) : 0
           const durText = avgDur > 0 ? `${avgDur >= 1000 ? (avgDur / 1000).toFixed(1) + "s" : avgDur + "ms"}` : ""
-          const typeColor = toolCalloutColor(tool, theme as any)
+          const typeColor = toolCalloutColor(tool, theme)
           const hov = () => hovered() === idx()
 
           return (

@@ -1,5 +1,6 @@
 import { Effect } from "effect"
-import { define } from "../internal"
+import type { LanguageModelV3 } from "@ai-sdk/provider"
+import { define } from "../define"
 import { ProviderV2 } from "../../provider"
 
 export const XAIPlugin = define({
@@ -15,7 +16,7 @@ export const XAIPlugin = define({
     yield* ctx.aisdk.language(
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== ProviderV2.ID.make("xai")) return
-        evt.language = (evt.sdk as any).responses(evt.model.api.id)
+        evt.language = (evt.sdk as { responses: (modelID: string) => LanguageModelV3 }).responses(evt.model.api.id)
       }),
     )
   }),

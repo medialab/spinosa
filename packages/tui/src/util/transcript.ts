@@ -3,6 +3,8 @@ import { Locale } from "./locale"
 import * as Model from "./model"
 import { agentDisplayName } from "./agent"
 
+export type ExportFormat = "md" | "txt" | "json"
+
 export type TranscriptOptions = {
   thinking: boolean
   toolDetails: boolean
@@ -110,4 +112,77 @@ export function formatPart(part: Part, options: TranscriptOptions): string {
   }
 
   return ""
+}
+
+export function formatTranscriptTxt(
+  session: SessionInfo,
+  messages: MessageWithParts[],
+  options: TranscriptOptions,
+): string {
+  const providers = Model.index(options.providers)
+  let out = `${session.title}\n`
+  out += `Session ID: ${session.id}\n`
+  out += `Created: ${new Date(session.time.created).toLocaleString()}\n`
+  out += `Updated: ${new Date(session.time.updated).toLocaleString()}\n`
+  out += `${"-".repeat(40)}\n\n`
+  for (const msg of messages) {
+    out += formatMessageTxt(msg.info, msg.parts, options, providers)
+    out += `${"-".repeat(40)}\n\n`
+  }
+  return out
+}
+
+export function formatMessageTxt(
+  msg: UserMessage | AssistantMessage,
+  parts: Part[],
+  options: TranscriptOptions,
+  providers?: Provider[] | ReadonlyMap<string, Provider>,
+): string {
+  let result = ""
+  if (msg.role === "user") {
+    result += `User:\n`
+  } else {
+    if (!options.assistantMetadata) result += `Assistant:\n`
+    else {
+      const duration =
+        msg.time.completed && msg.time.created ? ((msg.time.completed - msg.time.created) / 1000).toFixed(1) + "s" : ""
+      const modelName = Model.name(providers, msg.providerID, msg.modelID)
+      result += `Assistant (${agentDisplayName(msg.agent)} · ${modelName}${duration ? ` · ${duration}` : ""}):\n`
+    }
+  }
+  for (const part of parts) result += formatPartTxt(part, options)
+  result += `\n`
+  return result
+}
+
+export function formatPartTxt(part: Part, options: TranscriptOptions): string {
+  if (part.type === "text" && !part.synthetic) return `${part.text}\n\n`
+  if (part.type === "reasoning") {
+    if (options.thinking) return `Thinking: ${part.text}\n\n`
+    return ""
+  }
+  if (part.type === "tool") {
+    let result = `Tool: ${part.tool}\n`
+    if (options.toolDetails && part.state.input) result += `Input: ${JSON.stringify(part.state.input, null, 2)}\n`
+    if (options.toolDetails && part.state.status === "completed" && part.state.output) result += `Output: ${part.state.output}\n`
+    if (options.toolDetails && part.state.status === "error" && part.state.error) result += `Error: ${part.state.error}\n`
+    result += `\n`
+    return result
+  }
+  return ""
+}
+
+export function formatExportJson(session: SessionInfo, messages: MessageWithParts[]): string {
+  return JSON.stringify({ info: session, messages }, null, 2)
+}
+
+export function formatExportContent(
+  format: ExportFormat,
+  session: SessionInfo,
+  messages: MessageWithParts[],
+  options: TranscriptOptions,
+): string {
+  if (format === "json") return formatExportJson(session, messages)
+  if (format === "txt") return formatTranscriptTxt(session, messages, options)
+  return formatTranscript(session, messages, options)
 }

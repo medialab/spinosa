@@ -15,7 +15,7 @@ export type ToolContext = {
    */
   worktree: string
   abort: AbortSignal
-  metadata(input: { title?: string; metadata?: { [key: string]: any } }): void
+  metadata(input: { title?: string; metadata?: Record<string, unknown> }): void
   ask(input: AskInput): Promise<void>
 }
 
@@ -23,7 +23,7 @@ type AskInput = {
   permission: string
   patterns: string[]
   always: string[]
-  metadata: { [key: string]: any }
+  metadata: Record<string, unknown>
 }
 
 export type ToolAttachment = {
@@ -38,7 +38,7 @@ export type ToolResult =
   | {
       title?: string
       output: string
-      metadata?: { [key: string]: any }
+  metadata?: Record<string, unknown>
       attachments?: ToolAttachment[]
     }
 

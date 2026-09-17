@@ -9,7 +9,7 @@
     "db": "bun drizzle-kit",
     "migration": "bun run script/migration.ts",
     "fix-node-pty": "bun run script/fix-node-pty.ts",
-    "test": "bun test --only-failures",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "exports": {
@@ -110,7 +110,6 @@
     "gitlab-ai-provider": "6.9.3",
     "glob": "13.0.5",
     "google-auth-library": "10.5.0",
-    "gray-matter": "4.0.3",
     "htmlparser2": "8.0.2",
     "immer": "11.1.4",
     "ignore": "7.0.5",
@@ -123,6 +122,7 @@
     "venice-ai-sdk-provider": "2.1.1",
     "which": "6.0.1",
     "xdg-basedir": "5.1.0",
+    "yaml": "2.9.0",
     "zod": "catalog:"
   },
   "overrides": {

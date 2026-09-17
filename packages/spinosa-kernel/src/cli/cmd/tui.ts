@@ -5,7 +5,8 @@ import { existsSync } from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { UI } from "@/cli/ui"
-import { errorMessage } from "@spinosa/tui/util/error"
+import { dumpErrorChain, errorMessage } from "@spinosa/tui/util/error"
+import { isCompiledBinaryDistribution } from "@spinosa/core/distribution/bootstrap"
 import { withTimeout } from "@/util/timeout"
 import { withNetworkOptions, resolveNetworkOptionsNoConfig, hasArg } from "@/cli/network"
 import { Filesystem } from "@/util/filesystem"
@@ -15,10 +16,11 @@ import { writeHeapSnapshot } from "v8"
 import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@spinosa/tui/terminal-win32"
-import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
+import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
+import { describeWorkerCallError, TUI_WORKER_FETCH_MS, waitForWorkerReady, formatWorkerFailureForParent, parentActionForWorkerFailure, shouldWriteWorkerFailureToStderr, isRecoverableWorkerFailure, type TuiWorkerPhase } from "../tui/worker-boot"
 import {
-  printLaunchingTui,
+  printLaunchingTuiWithDelay,
   runLaunchPreflight,
 } from "@spinosa/core/commands/preflight"
 import { isSpinosaWorkspace } from "@spinosa/core/workspace/meta"
@@ -33,12 +35,21 @@ function createWorkerFetch(client: RpcClient): typeof fetch {
   const fn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init)
     const body = request.body ? await request.text() : undefined
-    const result = await client.call("fetch", {
-      url: request.url,
-      method: request.method,
-      headers: Object.fromEntries(request.headers.entries()),
-      body,
-    })
+    let result: { status: number; headers: Record<string, string>; body: string }
+    try {
+      result = await withTimeout(
+        client.call("fetch", {
+          url: request.url,
+          method: request.method,
+          headers: Object.fromEntries(request.headers.entries()),
+          body,
+        }),
+        TUI_WORKER_FETCH_MS,
+        "TUI worker request timed out",
+      )
+    } catch (error) {
+      throw describeWorkerCallError(error)
+    }
     return new Response(result.body, {
       status: result.status,
       headers: result.headers,
@@ -108,6 +119,28 @@ export function resolveThreadDirectory(project?: string, envPWD = process.env.PW
   return resolvedCwd
 }
 
+/**
+ * Auto-route a `--session` continue to the session's own directory.
+ * Sessions are stored globally, but file tools, editors, and workspace
+ * scoping all root at the process directory — so continuing `ses_X` from an
+ * unrelated cwd silently operates on the wrong tree. An explicit `--project`
+ * always wins; otherwise the session record's directory is authoritative.
+ * Missing/blank/relative values fall back to the current directory (relative
+ * paths resolve against it — session directories are absolute in practice).
+ */
+export function resolveSessionDirectory(input: {
+  explicitProject?: string
+  currentDirectory: string
+  sessionDirectory?: string
+}): string {
+  if (input.explicitProject) return input.currentDirectory
+  const dir = input.sessionDirectory?.trim()
+  if (!dir) return input.currentDirectory
+  return path.isAbsolute(dir)
+    ? Filesystem.resolve(dir)
+    : Filesystem.resolve(path.join(input.currentDirectory, dir))
+}
+
 export const TuiThreadCommand = cmd({
   command: "$0 [project]",
   describe: "start the Spinosa TUI",
@@ -130,7 +163,7 @@ export const TuiThreadCommand = cmd({
       .option("session", {
         alias: ["s"],
         type: "string",
-        describe: "session id to continue",
+        describe: "session id to continue (project auto-detected when omitted)",
       })
       .option("fork", {
         type: "boolean",
@@ -240,17 +273,25 @@ export const TuiThreadCommand = cmd({
       // chdir so the thread and worker share the same directory key.
       const next = resolveThreadDirectory(args.project)
       const file = await target()
+      const workerPath = typeof file === "string" ? file : file.href
+      const workerOnDisk = typeof file === "string" ? existsSync(file) : existsSync(fileURLToPath(file))
       bootLog("tui.worker.target", "resolved worker target", {
-        path: typeof file === "string" ? file : file.href,
+        path: workerPath,
         cwd: next,
+        compiled: isCompiledBinaryDistribution(),
+        defined: typeof SPINOSA_WORKER_PATH !== "undefined",
+        onDisk: workerOnDisk,
+        importMeta: import.meta.url,
+        bunfs: typeof file === "string" && file.includes("bunfs"),
       })
       try {
         process.chdir(next)
-      } catch {
-        UI.error("Failed to change directory to " + next)
+      } catch (error) {
+        bootLogError("tui.chdir", error)
+        UI.error("Failed to change directory")
         return
       }
-      const cwd = Filesystem.resolve(process.cwd())
+      let cwd = Filesystem.resolve(process.cwd())
 
       // Launch preflight before spawning the worker so an accepted upgrade does not
       // start background infrastructure from the previous installation. Also offers
@@ -263,14 +304,31 @@ export const TuiThreadCommand = cmd({
             process.exit(0)
           }
         } catch (error) {
+          bootLogError("tui.preflight", error)
           process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
           process.exit(1)
         }
       }
 
       const worker = new Worker(file)
-      bootLog("tui.worker.created", "background worker spawned", { pid: process.pid })
       const client = Rpc.client<typeof rpc>(worker)
+      let workerPhase: TuiWorkerPhase = "boot"
+      const isolateWorkerFailure = (error: unknown) => {
+        const message = formatWorkerFailureForParent(error)
+        bootLog("tui.worker.error", "worker error event", { message, phase: workerPhase })
+        if (shouldWriteWorkerFailureToStderr(workerPhase)) {
+          process.stderr.write(`TUI worker error event: ${message}\n`)
+        }
+        client.failAll(new Error(message))
+        return parentActionForWorkerFailure(workerPhase)
+      }
+      worker.addEventListener("error", (event) => {
+        isolateWorkerFailure(event.error ?? event.message)
+      })
+      worker.addEventListener("messageerror", (event) => {
+        bootLog("tui.worker.messageerror", "worker message deserialize failed", { data: String(event.data) })
+      })
+      bootLog("tui.worker.created", "background worker spawned", { pid: process.pid })
       const reload = () => {
         client.call("reload", undefined).catch(() => {})
       }
@@ -285,14 +343,42 @@ export const TuiThreadCommand = cmd({
         worker.terminate()
       }
 
+      try {
+        await waitForWorkerReady({
+          ping: () => client.call("ping", undefined),
+          attachError: (handler) => {
+            const listener = (event: ErrorEvent) => handler(event.error ?? event.message)
+            worker.addEventListener("error", listener)
+            return () => worker.removeEventListener("error", listener)
+          },
+        })
+        bootLog("tui.worker.ready", "worker ping succeeded")
+        workerPhase = "running"
+      } catch (error) {
+        bootLog("tui.worker.ready.error", "worker failed to start", { detail: dumpErrorChain(error) })
+        UI.error(errorMessage(error))
+        await stop()
+        process.exitCode = 1
+        return
+      }
+
       const prompt = await input(args.prompt)
 
-      printLaunchingTui()
+      await printLaunchingTuiWithDelay()
 
-      const config = await TuiConfig.get()
+      bootLog("tui.config.start", "loading TuiConfig.get()", { cwd })
+      let config: Awaited<ReturnType<typeof TuiConfig.get>>
+      try {
+        config = await TuiConfig.get()
+        bootLog("tui.config.done", "TuiConfig.get() returned")
+      } catch (error) {
+        bootLog("tui.config.error", "TuiConfig.get() failed", { detail: dumpErrorChain(error) })
+        throw error
+      }
 
       const network = resolveNetworkOptionsNoConfig(args)
       const external = hasArg("--port") || hasArg("--hostname") || network.mdns === true
+      bootLog("tui.network", "network options resolved", { external, mdns: network.mdns, port: network.port })
 
       const headers = external ? ServerAuth.headers() : undefined
 
@@ -314,20 +400,44 @@ export const TuiThreadCommand = cmd({
         url: transport.url,
       })
 
+      let validatedSessionDirectory: string | undefined
       try {
-        await validateSession({
+        const validated = await validateSession({
           url: transport.url,
           sessionID: args.session,
           directory: cwd,
           fetch: transport.fetch,
           headers,
         })
+        validatedSessionDirectory = validated.directory
         bootLog("tui.session", "session validated", { sessionID: args.session ?? undefined })
       } catch (error) {
         bootLog("tui.session.error", "session validation failed", { error: String(error) })
         UI.error(errorMessage(error))
         process.exitCode = 1
         return
+      }
+
+      // Auto-route: `spinosa -s ses_X` with no explicit project continues in
+      // the session's own directory instead of the invocation cwd. A deleted
+      // session directory falls back to cwd (never fatal — the TUI still
+      // bounces unknown sessions Home as before).
+      if (args.session && !args.project && validatedSessionDirectory) {
+        const routed = resolveSessionDirectory({ currentDirectory: cwd, sessionDirectory: validatedSessionDirectory })
+        if (routed !== cwd) {
+          try {
+            process.chdir(routed)
+            cwd = Filesystem.resolve(process.cwd())
+            bootLog("tui.session.routed", "session auto-routed to its directory", {
+              sessionID: args.session,
+              directory: cwd,
+            })
+          } catch (error) {
+            bootLog("tui.session.route.error", "session auto-route failed, staying in cwd", {
+              error: String(error),
+            })
+          }
+        }
       }
 
       try {
@@ -369,6 +479,13 @@ export const TuiThreadCommand = cmd({
         bootLog("tui.run.done", "Tui.run completed", {
           totalMs: Date.now() - t0,
         })
+      } catch (error) {
+        bootLog("tui.run.error", "Tui.run failed", { detail: errorMessage(error) })
+        if (workerPhase === "running" && isRecoverableWorkerFailure(error)) {
+          UI.error(errorMessage(describeWorkerCallError(error)))
+          return
+        }
+        throw error
       } finally {
         await stop()
       }
@@ -380,4 +497,3 @@ export const TuiThreadCommand = cmd({
     process.exit(0)
   },
 })
-// scratch

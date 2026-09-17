@@ -1,0 +1,3 @@
+Mechanically verify a Spinosa workspace artifact: existence, non-emptiness, kind-specific structure, and (for verification artifacts) status mapping to complete / retry / block.
+
+Use to truth-check report structure before delivery. This covers the mechanical half of verification only — quote-level truth against original sources remains the calling agent's judgment.

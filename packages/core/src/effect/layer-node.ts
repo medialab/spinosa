@@ -1,10 +1,10 @@
 import { Brand, Context, Layer } from "effect"
 
-type AnyNode = Node<unknown, unknown, any>
+type AnyNode = Node<unknown, unknown, Tag | undefined>
 type RuntimeLayer = Layer.Layer<never, unknown, unknown>
 type NodeList<Item extends AnyNode = AnyNode> = readonly [] | readonly [Item, ...Item[]]
-export type Output<Item> = [Item] extends [never] ? never : Item extends Node<infer A, unknown, any> ? A : never
-export type Error<Item> = [Item] extends [never] ? never : Item extends Node<unknown, infer E, any> ? E : never
+export type Output<Item> = [Item] extends [never] ? never : Item extends Node<infer A, unknown, Tag | undefined> ? A : never
+export type Error<Item> = [Item] extends [never] ? never : Item extends Node<unknown, infer E, Tag | undefined> ? E : never
 type NodeTag<Item> = [Item] extends [never] ? undefined : Item extends Node<unknown, unknown, infer T> ? T : never
 type Missing<Required, Dependencies extends NodeList> = Exclude<Required, Output<Dependencies[number]>>
 type CheckDependencies<Implementation extends Layer.Any, Dependencies extends NodeList> = [
@@ -209,7 +209,7 @@ function walk<Result>(
 }
 
 export function hoist<A, E, T extends Tag, const Items extends Replacements = readonly []>(
-  root: Node<A, E, any>,
+  root: Node<A, E, Tag | undefined>,
   tag: T,
   replacements?: ValidReplacements<Items>,
 ): {
@@ -248,7 +248,7 @@ export function hoist<A, E, T extends Tag, const Items extends Replacements = re
 }
 
 export function compile<A, E, const Items extends Replacements = readonly []>(
-  root: Node<A, E, any>,
+  root: Node<A, E, Tag | undefined>,
   replacements?: ValidReplacements<Items>,
 ): Layer.Layer<A, E> {
   const replacementMap = replacementMapFrom(replacements)
@@ -318,7 +318,7 @@ function rewriteReplacementDependencies(root: AnyNode, replacements: ReadonlyMap
   return recur(root, true)
 }
 
-export function hasUnbound(root: Node<unknown, unknown, any>, source: AnyNode): boolean {
+export function hasUnbound(root: Node<unknown, unknown, Tag | undefined>, source: AnyNode): boolean {
   if (source.kind !== "unbound") throw new Error(`Cannot check non-unbound layer node: ${source.name}`)
   return walk<boolean>(root, (node, context) => {
     if (node === source) return true

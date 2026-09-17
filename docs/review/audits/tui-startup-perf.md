@@ -75,7 +75,7 @@
 No significant cold/warm difference — bun's module cache is persistent across runs (bun install/cache is already populated from install).
 
 **Lazy loading in opencode/TUI:**
-- Static imports at entry (31 `import` statements): loads **all** command class definitions (AcpCommand, AgentCommand, RunCommand, ServeCommand, WebCommand, DbCommand, etc.), yargs, UI, Heap, error utilities, and `@opencode-ai/core/installation/version`
+- Static imports at entry (31 `import` statements): loads **all** command class definitions (AcpCommand, AgentCommand, RunCommand, ServeCommand, DbCommand, etc.), yargs, UI, Heap, error utilities, and `@opencode-ai/core/installation/version`
 - Heavy modules are **dynamically imported only when a command is actually invoked**:
   - `Server` from `@/server/server` — only for `serve`, `generate`, `web`, `acp`, `run`
   - `Agent` from `@/agent/agent` — only for `run`, `agent`
