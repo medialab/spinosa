@@ -10,6 +10,50 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.5] — 2026-09-18
+
+### Changed
+
+- `--version` exits before the TUI preload and command modules load.
+- CLI commands load only when yargs runs that command.
+- The TUI worker answers ping before it loads the session server.
+- Launch starts the worker during the update check.
+- Launch does not wait 300 ms after the worker is ready.
+- Launch upgrade check times out after 2.5 s on a cache miss.
+- Import resume trusts size and mtime. It does not re-hash unchanged files.
+- Import records store size and mtime. They do not hash the source again.
+- The session loop reuses tools, system prompts, and converted history.
+- Streaming assistant text skips markdown parse and `.md` exists checks.
+- The diff viewer opens one patch file by default.
+- Autocomplete position poll waits 250 ms.
+- PDF classification opens each page once.
+- MarkItDown and image copy run with a small worker pool.
+- The session transcript scopes parts to the active session.
+- File `@` search waits 80 ms after the last keystroke.
+- Global path migration does not block module load. The CLI awaits it before parse.
+- The TUI paints Home and Session after a lazy load. Plugin chrome does not gate first paint.
+- Workspace discovery skips `node_modules`, `dist`, and similar heavy directories.
+- Destination walks skip the same heavy directories.
+- Preflight probes stale template packs in parallel.
+- Checksum compare hashes each file once.
+- Plugin load and visualizer BFS cap concurrency at 8.
+- Home recent-workspace rows load in parallel.
+- CWD workspace poll waits 15 s.
+- Reconnect hydrates known sessions with a pool of 4.
+- Transcript render keeps the last 120 rows.
+- Tool-input deltas reuse the in-memory part. Doom-loop checks do not reload SQL.
+- Durable part publish shallow-copies text and reasoning.
+- Provider transform reuses the last prompt when the SDK repeats it.
+- Compaction estimates tokens from character counts.
+- Session summarize reads a recent window first.
+- PDF classify caches page text by size and mtime. Digital convert reuses it.
+- PDF import runs two files at a time.
+- PDF page files write cold frontmatter once.
+- Import records completed and pending PDF pages.
+- Onboarding reuses the scan file list for classify and verify.
+- Import diagnostic NDJSON writes in batches.
+- Session import inserts messages and parts in chunks.
+
 ## [1.2.0-beta.4] — 2026-09-17
 
 ### Changed
