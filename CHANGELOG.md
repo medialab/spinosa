@@ -10,6 +10,14 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.6] — 2026-09-18
+
+### Fixed
+
+- The TUI paints Home and Session after plugins load. Instant boot no longer skips `onComplete`.
+- Assistant text stays on one markdown widget. Streaming no longer swaps `<text>` for `<markdown>`.
+- Console free-tier User-Agent is at least OpenCode 1.18.0. Launch probes npm. A Console version error raises the User-Agent and retries.
+
 ## [1.2.0-beta.5] — 2026-09-18
 
 ### Changed
