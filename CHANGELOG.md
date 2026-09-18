@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.9] — 2026-09-18
+
+### Changed
+
+- If Spinosa is older than a workspace, Update workspace can align the workspace down to that install. User files still follow the same keep-or-replace rules.
+
 ## [1.2.0-beta.8] — 2026-09-18
 
 ### Changed

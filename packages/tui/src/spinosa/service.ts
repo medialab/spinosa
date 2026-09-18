@@ -40,6 +40,7 @@ import { moveToTrash } from "@spinosa/core/utils/trash"
 import { readFrameworkVersionFromRoot, resolveFrameworkRoot, resolveTemplateRootFromFrameworkRoot } from "@spinosa/core/framework/discovery"
 import {
   inspectTemplatePackFreshness,
+  workspaceVersionAheadOfBundled,
   workspaceVersionBehindBundled,
   type TemplatePackFreshness,
 } from "@spinosa/core/framework/template-pack-freshness"
@@ -135,7 +136,10 @@ export function workspaceNeedsFrameworkUpdate(
   const targetStream = bundledFrameworkStream(bundled) ?? installStream
   if (workspaceStream && targetStream && workspaceStream !== targetStream) return false
 
-  return workspaceVersionBehindBundled(workspaceVersion, bundledVersion)
+  return (
+    workspaceVersionBehindBundled(workspaceVersion, bundledVersion) ||
+    workspaceVersionAheadOfBundled(workspaceVersion, bundledVersion)
+  )
 }
 
 /** Version-or-protocol stale pack check against the current template root. */

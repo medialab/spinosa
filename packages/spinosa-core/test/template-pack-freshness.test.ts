@@ -8,6 +8,7 @@ import {
   inspectTemplatePackFreshness,
   mergeStartupPromptTemplate,
   stripStartupPromptWorkspaceSuffix,
+  workspaceVersionAheadOfBundled,
   workspaceVersionBehindBundled,
 } from "../src/framework/template-pack-freshness"
 
@@ -30,6 +31,25 @@ describe("template pack freshness", () => {
     expect(workspaceVersionBehindBundled("1.0.3-beta.11", "1.0.3-beta.12")).toBe(true)
     expect(workspaceVersionBehindBundled("1.0.3-beta.12", "1.0.3-beta.12")).toBe(false)
     expect(workspaceVersionBehindBundled("dev", "1.0.3-beta.12")).toBe(true)
+  })
+
+  test("version ahead detection", () => {
+    expect(workspaceVersionAheadOfBundled("1.0.3-beta.13", "1.0.3-beta.12")).toBe(true)
+    expect(workspaceVersionAheadOfBundled("1.0.3-beta.12", "1.0.3-beta.12")).toBe(false)
+    expect(workspaceVersionAheadOfBundled("dev", "1.0.3-beta.12")).toBe(false)
+  })
+
+  test("marks a newer workspace as stale so Update workspace can align down", () => {
+    const freshness = inspectTemplatePackFreshness({
+      workspacePath: repoRoot,
+      workspaceVersion: "1.2.0-beta.9",
+      bundledVersion: "1.2.0-beta.8",
+    })
+    expect(freshness.versionAhead).toBe(true)
+    expect(freshness.versionBehind).toBe(false)
+    expect(freshness.stale).toBe(true)
+    expect(freshness.refreshRecommended).toBe(true)
+    expect(freshness.message).toContain("newer than this Spinosa install")
   })
 
   test("detects stale protocol even when framework versions match", () => {

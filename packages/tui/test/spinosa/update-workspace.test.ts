@@ -367,7 +367,7 @@ describe("workspace update flow", () => {
     expect(await Bun.file(path.join(workspace, "excluded.md")).text()).toBe("user\n")
   })
 
-  test("rejects framework downgrades without changing the workspace", async () => {
+  test("aligns a newer workspace down to the installed framework", async () => {
     await using tmp = await tmpdir()
     const frameworkRoot = path.join(tmp.path, "install")
     const templateRoot = path.join(frameworkRoot, "workspace-template")
@@ -381,9 +381,11 @@ describe("workspace update flow", () => {
     await Bun.write(path.join(workspace, "AGENTS.md"), "current\n")
     await Bun.write(path.join(workspace, ".spinosa", "workspace"), "framework_version: 2.0.0\n")
 
-    expect((await updateWorkspace({ workspacePath: workspace, frameworkRoot })).success).toBe(false)
-    expect((await updateWorkspace({ workspacePath: workspace, frameworkRoot })).error).toContain("older than this workspace")
-    expect(await Bun.file(path.join(workspace, "AGENTS.md")).text()).toBe("current\n")
+    const result = await updateWorkspace({ workspacePath: workspace, frameworkRoot })
+    expect(result.success).toBe(true)
+    expect(result.error).toBeUndefined()
+    expect(await Bun.file(path.join(workspace, "AGENTS.md")).text()).toBe("old framework\n")
+    expect(await Bun.file(path.join(workspace, ".spinosa", "workspace")).text()).toContain("framework_version: 1.0.0")
   })
 
   test("managed directory copies exclude macOS metadata and Python caches", async () => {

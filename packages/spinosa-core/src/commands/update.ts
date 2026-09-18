@@ -255,15 +255,10 @@ async function updateWorkspaceUnlocked(options: UpdateOptions): Promise<UpdateRe
   ) {
     const cmp = compareFrameworkVersions(installedVersion, workspaceVersion)
     if (cmp !== undefined && cmp < 0) {
-      return {
-        success: false,
-        added: 0,
-        updated: 0,
-        removed: 0,
-        skipped: 0,
-        changes: false,
-        error: `Installed framework (${installedVersion}) is older than this workspace (${workspaceVersion})`,
-      }
+      spinosaLogInfo(
+        "update",
+        `aligning workspace ${workspaceVersion} down to installed ${installedVersion}`,
+      )
     }
   }
 

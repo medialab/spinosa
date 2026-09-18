@@ -16,6 +16,7 @@ function freshness(overrides: Partial<TemplatePackFreshness> = {}): TemplatePack
     stale: true,
     refreshRecommended: true,
     versionBehind: false,
+    versionAhead: false,
     protocolBehind: true,
     stalePaths: ["AGENTS.md", "startup-prompt.md"],
     missingPaths: [],

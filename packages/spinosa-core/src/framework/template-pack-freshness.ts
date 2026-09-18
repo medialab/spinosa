@@ -19,6 +19,7 @@ export type TemplatePackFreshness = {
   stale: boolean
   refreshRecommended: boolean
   versionBehind: boolean
+  versionAhead: boolean
   protocolBehind: boolean
   workspaceVersion?: string
   bundledVersion?: string
@@ -105,6 +106,17 @@ export function workspaceVersionBehindBundled(
   return compareFrameworkVersions(bundled, workspaceVersion) === 1
 }
 
+/** True when the workspace records a newer framework than this install. */
+export function workspaceVersionAheadOfBundled(
+  workspaceVersion: string | undefined,
+  bundledVersion: string | undefined,
+): boolean {
+  const bundled = normalizeFrameworkVersion(bundledVersion)
+  if (!bundled || isLegacyDevWorkspaceVersion(bundledVersion)) return false
+  if (isLegacyDevWorkspaceVersion(workspaceVersion)) return false
+  return compareFrameworkVersions(bundled, workspaceVersion) === -1
+}
+
 export function inspectTemplatePackFreshness(input: {
   workspacePath: string
   frameworkRoot?: string
@@ -123,6 +135,7 @@ export function inspectTemplatePackFreshness(input: {
   const probes = input.probes ?? TEMPLATE_PACK_PROTOCOL_PROBES
 
   const versionBehind = workspaceVersionBehindBundled(workspaceVersion, bundledVersion)
+  const versionAhead = workspaceVersionAheadOfBundled(workspaceVersion, bundledVersion)
   const stalePaths: string[] = []
   const missingPaths: string[] = []
 
@@ -154,12 +167,14 @@ export function inspectTemplatePackFreshness(input: {
   }
 
   const protocolBehind = stalePaths.length > 0 || missingPaths.length > 0
-  const stale = versionBehind || protocolBehind
+  const stale = versionBehind || versionAhead || protocolBehind
   const refreshRecommended = stale
 
   let message = "Workspace template pack is current"
   if (stale) {
-    if (versionBehind && protocolBehind) {
+    if (versionAhead) {
+      message = "Workspace template pack is newer than this Spinosa install; run Update workspace to match"
+    } else if (versionBehind && protocolBehind) {
       message = "Workspace template pack is stale — framework version and protocol files are behind; run Update workspace"
     } else if (versionBehind) {
       message = "Workspace template pack is stale — framework version is behind; run Update workspace"
@@ -172,6 +187,7 @@ export function inspectTemplatePackFreshness(input: {
     stale,
     refreshRecommended,
     versionBehind,
+    versionAhead,
     protocolBehind,
     workspaceVersion,
     bundledVersion,
