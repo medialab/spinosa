@@ -41,7 +41,14 @@ import type {
 } from "@spinosa/sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
-import { ellipsisToolLine, toolFilePath, webSearchProviderLabel } from "../../util/tool-display"
+import {
+  ellipsisToolLine,
+  formatSpinosaToolLine,
+  isSpinosaTool,
+  spinosaToolOutcome,
+  toolFilePath,
+  webSearchProviderLabel,
+} from "../../util/tool-display"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -51,6 +58,7 @@ import { DialogAlert } from "../../ui/dialog-alert"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import { isConversationShellReady, shouldBounceMissingSession, shouldConfirmLeaveBusySession, resolveBackNavigation } from "./conversation-shell-ready"
+import { sessionBackLabel, sessionBackWidth } from "./subagent-chrome"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
@@ -79,6 +87,7 @@ import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
+import { HoverLabel } from "../../ui/hover-press"
 import * as Model from "../../util/model"
 import { formatExportContent, type ExportFormat } from "../../util/transcript"
 import { sessionEpilogue } from "../../util/presentation"
@@ -100,10 +109,12 @@ import { isSilentResearchAssistant } from "../../spinosa/visibility"
 import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
 import {
   dispatchPositions,
+  findOutboundEcho,
   internTranscriptRows,
   kickPump,
   mergeTranscriptRows,
   outboundForSession,
+  removeOutbound,
   steerOutbound,
   type OutboundEntry,
 } from "../../spinosa/outbound-queue"
@@ -412,7 +423,7 @@ const resolveExportPath = (filename: string): string => {
   type SessionMessage = ReturnType<typeof messages>[number]
   let internedTranscriptRows: import("../../spinosa/outbound-queue").MergedTranscriptRow<SessionMessage>[] | undefined
   const transcriptRows = createMemo(() => {
-    const next = mergeTranscriptRows(messages(), outboundEntries())
+    const next = mergeTranscriptRows(messages(), outboundEntries(), sessionParts())
     internedTranscriptRows = internTranscriptRows(internedTranscriptRows, next)
     return internedTranscriptRows
   })
@@ -428,6 +439,17 @@ const resolveExportPath = (filename: string): string => {
       if (message.role === "user" && message.time) map.set(message.id, message.time.created)
     }
     return map
+  })
+
+  createEffect(() => {
+    const sid = route.sessionID
+    if (!sid) return
+    const msgs = messages()
+    const parts = sessionParts()
+    for (const entry of outboundForSession(sid)) {
+      if (entry.state !== "sent") continue
+      if (findOutboundEcho(msgs, parts, entry)) removeOutbound(sid, entry.key)
+    }
   })
   // Dispatch-order position per live entry key (first to send = #1). Rows
   // render chronologically; the counter visualizes queue position.
@@ -499,6 +521,7 @@ const resolveExportPath = (filename: string): string => {
         first.state.input ?? {},
         first.state.status === "pending" ? {} : (first.state.metadata ?? {}),
         (value) => pathFormatter.format(value),
+        spinosaToolOutcome(first.state),
       )
       const tag = count > 1 ? `${summary.tag} x${count}` : summary.tag
       const commands = count > 1 ? group.parts.map((p) => buildCopyCommand(p.tool, p.state.input ?? {}, { tag: summary.tag, command: summary.command })) : undefined
@@ -1321,9 +1344,9 @@ const resolveExportPath = (filename: string): string => {
               backgroundColor={buttonBackground(theme, backHover())}
               flexDirection="row"
               alignItems="center"
-              width={11}
+              width={sessionBackWidth(sessionBackLabel(session()))}
             >
-              <text fg={buttonText(theme, backHover())}>{"< Back"}</text>
+              <text fg={buttonText(theme, backHover())}>{sessionBackLabel(session())}</text>
             </box>
             <box
               position="absolute"
@@ -1668,6 +1691,7 @@ function ToolRailCallout(props: {
   })
   const railWidth = createMemo(() => layout()?.railWidth ?? 1)
   const [copied, setCopied] = createSignal(false)
+  const [copyHover, setCopyHover] = createSignal(false)
 
   const lines = createMemo(() => Math.max(1, estimateToolCalloutHeight(
     props.callout.summary ?? { tag: "", command: "" },
@@ -1710,10 +1734,14 @@ function ToolRailCallout(props: {
           <text width={3} fg={color()}>├──</text>
         </Show>
         <Show when={props.side === "right"} fallback={
-          <box onMouseUp={handleCopy}>
+          <box
+            onMouseOver={() => setCopyHover(true)}
+            onMouseOut={() => setCopyHover(false)}
+            onMouseUp={handleCopy}
+          >
             <text fg={theme.textMuted} wrapMode="none">
               <span style={{ bg: color(), fg: selectedForeground(theme, color()), bold: true }}> {props.callout.summary!.tag} </span>
-              <span style={{ bg: theme.backgroundElement, fg: theme.textMuted }}>{copied() ? " ✓ " : " copy "}</span>
+              <span style={{ bg: buttonBackground(theme, copied() || copyHover()), fg: buttonText(theme, copied() || copyHover()) }}>{copied() ? " ✓ " : " copy "}</span>
             </text>
           </box>
         }>
@@ -2241,6 +2269,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
   // Collapsed by default in hide mode: a single line throughout, so the
   // layout never shifts. Click to open the full markdown block, click to close.
   const [expanded, setExpanded] = createSignal(false)
+  const [hover, setHover] = createSignal(false)
 
   const content = createMemo(() => {
     // OpenRouter encrypts some reasoning blocks; drop the placeholder.
@@ -2272,7 +2301,12 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
           flexDirection="column"
           flexShrink={0}
         >
-          <box onMouseUp={toggle}>
+          <box
+            onMouseOver={() => inMinimal() && setHover(true)}
+            onMouseOut={() => setHover(false)}
+            onMouseUp={toggle}
+            backgroundColor={hover() ? theme.backgroundElement : undefined}
+          >
             <ReasoningHeader
               toggleable={inMinimal()}
               open={!inMinimal() || expanded()}
@@ -2374,13 +2408,16 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
               <text fg={theme.textMuted}>📄</text>
               <For each={mdFiles()}>
                 {(f) => (
-                  <text fg={theme.markdownLink} attributes={TextAttributes.UNDERLINE}
-                    onMouseUp={() => {
+                  <HoverLabel
+                    attributes={TextAttributes.UNDERLINE}
+                    restFg={theme.markdownLink}
+                    onPress={() => {
                       const absPath = path.join(sessionDir() ?? "", f)
                       dialog.replace(() => <DialogMdViewer filePath={absPath} workspaceRoot={sessionDir()} />)
-                    }}>
+                    }}
+                  >
                     {f}
-                  </text>
+                  </HoverLabel>
                 )}
               </For>
             </box>
@@ -2438,8 +2475,12 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
       side: info.side,
       continuation: info.continuation,
       summary: info.summary ?? (
-        info.continuation ? undefined : buildToolCalloutSummary(props.part.tool, toolprops.input, toolprops.metadata, (value) =>
-          pathFormatter.format(value),
+        info.continuation ? undefined : buildToolCalloutSummary(
+          props.part.tool,
+          toolprops.input,
+          toolprops.metadata,
+          (value) => pathFormatter.format(value),
+          spinosaToolOutcome(props.part.state),
         )
       ),
       part: props.part,
@@ -2521,6 +2562,7 @@ export function buildToolCalloutSummary(
   inputValue: Record<string, unknown>,
   metadata: Record<string, unknown>,
   formatPath: (value: string | undefined) => string,
+  title?: string,
 ): ToolCalloutSummary {
   const display = toolDisplay(tool)
 
@@ -2572,6 +2614,13 @@ export function buildToolCalloutSummary(
   }
   if (display === "skill") {
     return { tag: "SKILL", command: stringValue(inputValue.name) ?? "Load skill" }
+  }
+
+  if (isSpinosaTool(tool)) {
+    return {
+      tag: "SPINOSA",
+      command: formatSpinosaToolLine(tool, title ?? stringValue(metadata.title)),
+    }
   }
 
   return {
@@ -2673,18 +2722,24 @@ function GenericTool(props: ToolProps) {
     if (expanded() || !collapsed().overflow) return output()
     return collapsed().output
   })
+  const headline = createMemo(() => {
+    if (isSpinosaTool(props.tool)) {
+      return formatSpinosaToolLine(props.tool, spinosaToolOutcome(props.part.state))
+    }
+    return `${props.tool} ${input(props.input)}`.trim()
+  })
 
   return (
     <Show
       when={props.output && ctx.showGenericToolOutput()}
       fallback={
         <InlineTool icon="⚙" pending="Writing command..." complete={true} part={props.part}>
-          {props.tool} {input(props.input)}
+          {headline()}
         </InlineTool>
       }
     >
       <BlockTool
-        title={`# ${props.tool} ${input(props.input)}`}
+        title={`# ${headline()}`}
         part={props.part}
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
@@ -3158,9 +3213,11 @@ function Task(props: ToolProps) {
       content.push(`↳ ${formatSubagentRetry(retrying.attempt, Locale.truncate(retrying.message, 80))}`)
     } else if (isRunning() && tools().length > 0) {
       if (current()) {
-        const state = current()!.state
-        const title = state.status === "running" || state.status === "completed" ? state.title : undefined
-        content.push(`↳ ${Locale.titlecase(current()!.tool)} ${title}`)
+        const tool = current()!.tool
+        const title = spinosaToolOutcome(current()!.state)
+        content.push(
+          `↳ ${isSpinosaTool(tool) ? formatSpinosaToolLine(tool, title) : `${Locale.titlecase(tool)} ${title}`}`,
+        )
       } else content.push(`↳ ${formatSubagentToolcalls(tools().length)}`)
     }
 

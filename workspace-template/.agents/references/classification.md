@@ -1,43 +1,28 @@
-# Prompt Routing Split (generated — do not hand-edit)
+# How to pick a plan (generated — do not hand-edit)
 
 Source of truth: `packages/spinosa-runtime/src/workflows/`.
-Regenerate with `renderWorkflowTable()` in `packages/spinosa-runtime/src/documentation.ts`.
 
-## Fast vs orchestrated
+Pass `strategy` as one short name. Copy it from `spinosa_route`.
+Do not write a sentence. Do not write a chain like `search -> write`.
 
-A request is **fast** when it completes correctly as one bounded operation:
-explain a term, summarize one selected document, retrieve one quoted passage,
-convert a supplied table, plot a few values.
-
-A request is **orchestrated** when correctness depends on corpus-wide coverage,
-multiple partitions, cohort balance, completeness claims, comparative synthesis,
-hypothesis testing, hidden-pattern discovery, persistent artifacts, multiple
-cognitive operations, mutation or approval, strict source verification, or
-indexing/remapping. Response length does not determine the mode.
-
-## Workflow registry
-
-| Workflow | Version |
-| -------- | ------- |
-| `research.targeted_evidence` | v1 |
-| `research.contextual_synthesis` | v1 |
-| `research.corpus_census` | v1 |
-| `research.comparative_synthesis` | v1 |
-| `research.hypothesis_test` | v1 |
-| `research.exploratory_discovery` | v1 |
-| `corpus.startup_index` | v1 |
-| `corpus.add_sources` | v1 |
-| `maintenance.cleanup_proposal` | v1 |
-| `maintenance.cleanup_apply` | v1 |
-| `meta.coverage_audit` | v1 |
-| `meta.framework_evolution` | v1 |
+| If they want | strategy | Plan |
+| ------------- | -------- | ---- |
+| Quotes and sources for one question | `targeted_evidence` | Find evidence (`research.targeted_evidence` v1) |
+| A synthesis or cohort reading | `contextual_synthesis` | Put it in context (`research.contextual_synthesis` v1) |
+| A complete count or census | `corpus_census` | Count across the corpus (`research.corpus_census` v1) |
+| A comparison across sources | `comparative_synthesis` | Compare sources (`research.comparative_synthesis` v1) |
+| To test a claim against the corpus | `hypothesis_test` | Test a hypothesis (`research.hypothesis_test` v1) |
+| Patterns nobody asked for by name | `exploratory_discovery` | Look for hidden connections (`research.exploratory_discovery` v1) |
+| First-time indexing | `startup_index` | Index the workspace (`corpus.startup_index` v1) |
+| To bring in new files | `add_sources` | Add sources (`corpus.add_sources` v1) |
+| A cleanup proposal | `cleanup_proposal` | Propose cleanup (`maintenance.cleanup_proposal` v1) |
+| To apply an approved cleanup | `cleanup_apply` | Apply cleanup (`maintenance.cleanup_apply` v1) |
+| A coverage check | `coverage_audit` | Check coverage (`meta.coverage_audit` v1) |
+| A tightly scoped framework edit | `framework_evolution` | Update the framework (`meta.framework_evolution` v1) |
 
 ## Notes
 
-- **Startup indexing** (`corpus.startup_index`) runs while `setup_status` is
-  `cli_started` or on explicit startup handoff. Never `spinosa-overseer`.
-- **Coverage audit** (`meta.coverage_audit`) runs only after
-  `workspace_started`, on user request or coverage triggers.
-- **Cleanup** never mutates without an explicit approval transition.
-- **Serendippo vs Analyst:** Analyst organizes evidence the Searcher already
-  found. Serendippo roams `raw/` for connections Searcher did not surface.
+- Index the workspace (`startup_index`) while setup is `cli_started`, or when the user asks to index. Never dispatch `spinosa-overseer` then.
+- Check coverage (`coverage_audit`) only after `workspace_started`.
+- Cleanup never moves files until the user approves.
+- Analyst organizes evidence the Searcher already found. Serendippo looks in `raw/` for links Searcher missed.

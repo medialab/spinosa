@@ -6,13 +6,21 @@ const id = "internal:sidebar-lsp"
 
 function View(props: { api: TuiPluginApi }) {
   const [open, setOpen] = createSignal(true)
+  const [hover, setHover] = createSignal(false)
   const theme = () => props.api.theme.current
   const list = createMemo(() => props.api.state.lsp())
   const off = createMemo(() => !props.api.state.config.lsp)
 
   return (
     <box>
-      <box flexDirection="row" gap={1} onMouseDown={() => list().length > 2 && setOpen((x) => !x)}>
+      <box
+        flexDirection="row"
+        gap={1}
+        backgroundColor={hover() ? theme().backgroundElement : undefined}
+        onMouseOver={() => list().length > 2 && setHover(true)}
+        onMouseOut={() => setHover(false)}
+        onMouseDown={() => list().length > 2 && setOpen((x) => !x)}
+      >
         <Show when={list().length > 2}>
           <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
         </Show>

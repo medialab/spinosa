@@ -2,7 +2,7 @@ import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { useBindings } from "../keymap"
-import { buttonBackground, buttonText } from "../util/button"
+import { HoverChip, HoverLabel } from "./hover-press"
 
 export type DialogAlertProps = {
   title: string
@@ -33,25 +33,21 @@ export function DialogAlert(props: DialogAlertProps) {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <box paddingBottom={1}>
         <text fg={theme.textMuted}>{props.message}</text>
       </box>
       <box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
-        <box
+        <HoverChip
           paddingLeft={3}
           paddingRight={3}
-          backgroundColor={buttonBackground(theme, true)}
-          onMouseUp={() => {
+          label="ok"
+          onPress={() => {
             props.onConfirm?.()
             dialog.clear()
           }}
-        >
-          <text fg={buttonText(theme, true)}>ok</text>
-        </box>
+        />
       </box>
     </box>
   )

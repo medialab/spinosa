@@ -1,0 +1,12 @@
+Format extraction packets and navigation maps for spinosa-mapper.
+
+Use this instead of free-form Write for mapping artifacts. You still Read sources and invent summaries, quotes, and prose. This tool mints the canonical path, writes the required markdown shape, and checks wikilinks.
+
+Actions:
+- begin: given batchId + raw/ files, return the extraction path and a packet scaffold. Skips when a non-empty extraction already exists.
+- write_extraction: write agent_reports/extraction_{batchId}.md from structured packets (summary, passages, concepts, tags, connections). Marks unreadable files without blocking the batch.
+- write_map: write or enrich maps/*.md with tags after the H1 and guaranteed wikilinks. Group maps get a [[corpus_overview]] link when missing. mode=create refuses an existing file; enrich appends; replace overwrites.
+- check: validate an extraction or map path.
+- cover: given an extraction path or batchId, list extracted files that no map wikilinks yet.
+
+batchId must be a descriptive kebab slug (normandy-interviews-batch-001), never bare batch_001 or temp. File paths stay under raw/. Map paths stay under maps/.

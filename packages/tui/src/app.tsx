@@ -56,6 +56,7 @@ import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
+import { pickSubagentAccent, siblingSubagentIDs } from "./routes/session/subagent-chrome"
 
 import { SpinosaWorkspaceProvider, useSpinosaWorkspace } from "./context/spinosa-workspace"
 import { PromptHistoryProvider } from "./component/prompt/history"
@@ -66,6 +67,11 @@ import { DialogConfirm } from "./ui/dialog-confirm"
 import { formatOpenWorkspaceFailureMessage } from "./spinosa/home-visibility"
 import { isDefaultTitle, sessionIsBusy } from "./util/session"
 import { setToastError, tuiLog } from "./spinosa/log"
+import {
+  BUG_REPORT_CONFIRM_MESSAGE,
+  BUG_REPORT_CONFIRM_TITLE,
+  reportBugFromTui,
+} from "./spinosa/bug-report"
 import { KVProvider, useKV } from "./context/kv"
 import { KV } from "./constants/kv-keys"
 import { readWrkWorkspaceID, writeMarkerWrkID } from "@spinosa/core/workspace/identity"
@@ -139,6 +145,7 @@ const appBindingCommands = [
   "opencode.status",
   "help.show",
   "docs.open",
+  "bug.report",
   "diff.open",
   "workspace.list",
   "app.debug",
@@ -483,36 +490,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const clipboard = useClipboard()
   const spinosa = useSpinosaWorkspace()
   const [startupLoadingComplete, setStartupLoadingComplete] = createSignal(startup.skipInitialLoading)
-  const appReady = () => ready() && (startup.skipInitialLoading || spinosa.bootReady)
-  const tuiReady = () => appReady() && (startup.skipInitialLoading || startupLoadingComplete())
-
-  // Auto-retry if TUI hasn't rendered after 3-5s normal startup + buffer.
-  // Whitescreen after `checking for updates...` leaves `tuiReady()` false.
-  let retryTimer: ReturnType<typeof setTimeout> | undefined
-  let retried = false
-  onMount(() => {
-    retryTimer = setTimeout(() => {
-      if (tuiReady() || retried) return
-      retried = true
-      tuiLog("tui auto-retry: tuiReady still false after 8s, forcing reload")
-      // Force boot ready and hide startup loading to unblock render.
-      // If still not ready, the next effect will trigger a full reload.
-      setStartupLoadingComplete(true)
-      setTimeout(() => {
-        if (!tuiReady()) {
-          tuiLog("tui auto-retry: still not ready, reloading renderer")
-          // Destroy and recreate is handled by Effect scope; here we just
-          // force a hard reload via location (works in dev) or exit.
-          try {
-            globalThis.location?.reload?.()
-          } catch {}
-        }
-      }, 1000)
-    }, 8000)
-  })
-  onCleanup(() => {
-    if (retryTimer) clearTimeout(retryTimer)
-  })
 
   onMount(() => {
     const unregister = registerTuiExitHook(async () => {
@@ -550,6 +527,32 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }),
   )
   const [ready, setReady] = createSignal(false)
+  const appReady = () => ready() && (startup.skipInitialLoading || spinosa.bootReady)
+  const tuiReady = () => appReady() && (startup.skipInitialLoading || startupLoadingComplete())
+
+  // Auto-retry if TUI hasn't rendered after 3-5s normal startup + buffer.
+  // Whitescreen after `checking for updates...` leaves `tuiReady()` false.
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retried = false
+  onMount(() => {
+    retryTimer = setTimeout(() => {
+      if (tuiReady() || retried) return
+      retried = true
+      tuiLog("tui auto-retry: tuiReady still false after 8s, forcing reload")
+      setStartupLoadingComplete(true)
+      setTimeout(() => {
+        if (!tuiReady()) {
+          tuiLog("tui auto-retry: still not ready, reloading renderer")
+          try {
+            globalThis.location?.reload?.()
+          } catch {}
+        }
+      }, 1000)
+    }, 8000)
+  })
+  onCleanup(() => {
+    if (retryTimer) clearTimeout(retryTimer)
+  })
   props.pluginHost
     .start({
       api,
@@ -1065,6 +1068,26 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
       },
       {
+        name: "bug.report",
+        title: "Report bug",
+        slashName: "report",
+        slashAliases: ["bug"],
+        run: () => {
+          void reportBugFromTui({
+            confirm: () =>
+              DialogConfirm.show(dialog, BUG_REPORT_CONFIRM_TITLE, BUG_REPORT_CONFIRM_MESSAGE, {
+                confirmLabel: "Open GitHub",
+                cancelLabel: "Cancel",
+                defaultChoice: "cancel",
+              }),
+            showToast: toast.show,
+            writeClipboard: clipboard.write,
+            openUrl: (href) => open(href),
+          })
+        },
+        category: "System",
+      },
+      {
         name: "app.exit",
         title: "Exit the app",
         slashName: "exit",
@@ -1276,12 +1299,21 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     return render({ params: route.data.data })
   })
 
+  const subagentBorder = createMemo(() => {
+    if (route.data.type !== "workspace") return undefined
+    const current = sync.session.get(route.data.sessionID)
+    if (!current?.parentID) return undefined
+    return pickSubagentAccent(theme, current.id, siblingSubagentIDs(sync.data.session, current))
+  })
+
   return (
     <box
       width={dimensions().width}
       height={dimensions().height}
       flexDirection="column"
       backgroundColor={theme.background}
+      border={Boolean(subagentBorder())}
+      borderColor={subagentBorder()}
       onMouseDown={(evt) => {
         if (!Flag.SPINOSA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
         if (evt.button !== MouseButton.RIGHT) return
@@ -1326,7 +1358,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       <Show when={!startup.skipInitialLoading}>
         <StartupLoading
           ready={appReady}
-          operations={() => spinosa.bootOperations}
           onComplete={() => setStartupLoadingComplete(true)}
         />
       </Show>

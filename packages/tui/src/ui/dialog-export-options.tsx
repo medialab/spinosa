@@ -2,8 +2,9 @@ import { TextareaRenderable, TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { createStore } from "solid-js/store"
-import { onMount, Show } from "solid-js"
+import { createSignal, onMount, Show } from "solid-js"
 import { useBindings } from "../keymap"
+import { HoverLabel } from "./hover-press"
 
 export type ExportFormat = "md" | "txt" | "json"
 
@@ -37,6 +38,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
     format: (props.defaultFormat ?? "md") as ExportFormat,
     active: "filename" as "filename" | "format" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving",
   })
+  const [hoverFormat, setHoverFormat] = createSignal<ExportFormat | undefined>()
 
   useBindings(() => ({
     bindings: [
@@ -120,9 +122,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           Export Options
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <box gap={1}>
         <box>
@@ -158,16 +158,32 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           gap={2}
           paddingLeft={1}
           backgroundColor={store.active === "format" ? theme.backgroundElement : undefined}
+          onMouseOver={() => setStore("active", "format")}
           onMouseUp={() => setStore("active", "format")}
         >
           <text fg={store.active === "format" ? theme.primary : theme.textMuted}>Format:</text>
-          <text fg={store.format === "md" ? theme.primary : theme.textMuted} onMouseUp={cycleFormat}>
+          <text
+            fg={store.format === "md" ? theme.primary : hoverFormat() === "md" ? theme.text : theme.textMuted}
+            onMouseOver={() => setHoverFormat("md")}
+            onMouseOut={() => setHoverFormat(undefined)}
+            onMouseUp={cycleFormat}
+          >
             {store.format === "md" ? "● md" : "○ md"}
           </text>
-          <text fg={store.format === "txt" ? theme.primary : theme.textMuted} onMouseUp={() => setStore("format", "txt")}>
+          <text
+            fg={store.format === "txt" ? theme.primary : hoverFormat() === "txt" ? theme.text : theme.textMuted}
+            onMouseOver={() => setHoverFormat("txt")}
+            onMouseOut={() => setHoverFormat(undefined)}
+            onMouseUp={() => setStore("format", "txt")}
+          >
             {store.format === "txt" ? "● txt" : "○ txt"}
           </text>
-          <text fg={store.format === "json" ? theme.primary : theme.textMuted} onMouseUp={() => setStore("format", "json")}>
+          <text
+            fg={store.format === "json" ? theme.primary : hoverFormat() === "json" ? theme.text : theme.textMuted}
+            onMouseOver={() => setHoverFormat("json")}
+            onMouseOut={() => setHoverFormat(undefined)}
+            onMouseUp={() => setStore("format", "json")}
+          >
             {store.format === "json" ? "● json" : "○ json"}
           </text>
           <text fg={theme.textMuted}> (space/←→)</text>
@@ -177,6 +193,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           gap={2}
           paddingLeft={1}
           backgroundColor={store.active === "thinking" ? theme.backgroundElement : undefined}
+          onMouseOver={() => setStore("active", "thinking")}
           onMouseUp={() => setStore("active", "thinking")}
         >
           <text fg={store.active === "thinking" ? theme.primary : theme.textMuted}>
@@ -189,6 +206,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           gap={2}
           paddingLeft={1}
           backgroundColor={store.active === "toolDetails" ? theme.backgroundElement : undefined}
+          onMouseOver={() => setStore("active", "toolDetails")}
           onMouseUp={() => setStore("active", "toolDetails")}
         >
           <text fg={store.active === "toolDetails" ? theme.primary : theme.textMuted}>
@@ -201,6 +219,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           gap={2}
           paddingLeft={1}
           backgroundColor={store.active === "assistantMetadata" ? theme.backgroundElement : undefined}
+          onMouseOver={() => setStore("active", "assistantMetadata")}
           onMouseUp={() => setStore("active", "assistantMetadata")}
         >
           <text fg={store.active === "assistantMetadata" ? theme.primary : theme.textMuted}>
@@ -213,6 +232,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           gap={2}
           paddingLeft={1}
           backgroundColor={store.active === "openWithoutSaving" ? theme.backgroundElement : undefined}
+          onMouseOver={() => setStore("active", "openWithoutSaving")}
           onMouseUp={() => setStore("active", "openWithoutSaving")}
         >
           <text fg={store.active === "openWithoutSaving" ? theme.primary : theme.textMuted}>

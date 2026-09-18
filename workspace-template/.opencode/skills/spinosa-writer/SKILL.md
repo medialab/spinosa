@@ -108,6 +108,8 @@ When the evidence packet exceeds ~300 lines or ~50 sources:
 ## Formatting Standards
 
 - One H1 per report (the title). H2 for major sections (Goal, TLDR, Report, Conclusions, Serendipity, Reproducibility). The Report section may use H3 freely for sub-topics; other sections stay at H2 only.
+- Write for PDF export: keep the H1 short (under 80 characters, sentence case). Do not use H1 for section names. Do not stack headings.
+- YAML `title` is the document title. Do not repeat it as a second H1.
 - Tables: consistent alignment, no empty cells, always include headers.
 - Lists: use `-` not `*`. No nesting deeper than 2 levels.
 - No filler sentences. No "In this report we will..." — start with the answer.

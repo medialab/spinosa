@@ -199,7 +199,7 @@ exports[`tool parameters JSON Schema (wire shape) question 1`] = `
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "questions": {
-      "description": "Questions to ask",
+      "description": "1 to 3 questions. Use 1 when the task is clear. Use 2 or 3 when goal, scope, or deliverable is ambiguous.",
       "items": {
         "properties": {
           "header": {
@@ -281,6 +281,137 @@ exports[`tool parameters JSON Schema (wire shape) read 1`] = `
 }
 `;
 
+exports[`tool parameters JSON Schema (wire shape) write_report 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "conclusions": {
+      "description": "Critical reflection: what we expected vs what we found, which assumptions held or broke, implications.",
+      "type": "string",
+    },
+    "filename": {
+      "description": "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore.",
+      "type": "string",
+    },
+    "goal": {
+      "description": "What the research aimed to answer",
+      "type": "string",
+    },
+    "pipeline": {
+      "description": "Agent chain, e.g. 'searcher → writer → verifier → evaluator'",
+      "type": "string",
+    },
+    "query": {
+      "description": "Original user query",
+      "type": "string",
+    },
+    "report": {
+      "description": "Main body: evidence, interpretation, analysis, patterns. Structure freely with H2/H3.",
+      "type": "string",
+    },
+    "reproducibility": {
+      "properties": {
+        "agents": {
+          "description": "Agent chain",
+          "type": "string",
+        },
+        "filesRead": {
+          "description": "Files read",
+          "type": "number",
+        },
+        "filesScanned": {
+          "description": "Files scanned",
+          "type": "number",
+        },
+        "gaps": {
+          "description": "Coverage gaps",
+          "type": "string",
+        },
+        "globPatterns": {
+          "description": "Glob patterns used",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "grepPatterns": {
+          "description": "Grep patterns used",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "mapsAccessed": {
+          "description": "Number of maps accessed",
+          "type": "number",
+        },
+        "searchRounds": {
+          "description": "Search rounds",
+          "type": "number",
+        },
+        "sources": {
+          "description": "Source paths referenced",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "tags": {
+          "description": "Keywords/terms used",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+      },
+      "required": [
+        "agents",
+        "sources",
+      ],
+      "type": "object",
+    },
+    "scope": {
+      "description": "One-line description of the report scope",
+      "type": "string",
+    },
+    "serendipity": {
+      "description": "Hidden connections and alternative viewpoints. Omit entirely when serendippo did not run.",
+      "type": "string",
+    },
+    "status": {
+      "description": "Verification status (default: draft)",
+      "enum": [
+        "draft",
+        "pass",
+        "pass_with_corrections",
+      ],
+      "type": "string",
+    },
+    "title": {
+      "description": "H1 headline for the report (mirrors the goal statement)",
+      "type": "string",
+    },
+    "tldr": {
+      "description": "Short natural-language answer, 1–3 sentences",
+      "type": "string",
+    },
+  },
+  "required": [
+    "filename",
+    "title",
+    "scope",
+    "pipeline",
+    "query",
+    "goal",
+    "tldr",
+    "report",
+    "conclusions",
+    "reproducibility",
+  ],
+  "type": "object",
+}
+`;
+
 exports[`tool parameters JSON Schema (wire shape) skill 1`] = `
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -292,6 +423,501 @@ exports[`tool parameters JSON Schema (wire shape) skill 1`] = `
   },
   "required": [
     "name",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_frame 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "cleanedPrompt": {
+      "description": "The request, with extra preamble stripped",
+      "type": "string",
+    },
+    "decision": {
+      "description": "The JSON spinosa_route returned. Pass it through unchanged.",
+      "properties": {
+        "confidence": {
+          "type": "number",
+        },
+        "coverage": {
+          "enum": [
+            "opportunistic",
+            "sufficient",
+            "representative",
+            "exhaustive",
+          ],
+          "type": "string",
+        },
+        "evaluation": {
+          "enum": [
+            "always",
+            "on_failure",
+            "sampled",
+            "never",
+          ],
+          "type": "string",
+        },
+        "mode": {
+          "enum": [
+            "orchestrated",
+          ],
+          "type": "string",
+        },
+        "mutation": {
+          "enum": [
+            "none",
+            "propose",
+            "allowed",
+            "requires_approval",
+          ],
+          "type": "string",
+        },
+        "operation": {
+          "enum": [
+            "research",
+            "corpus",
+            "maintenance",
+            "meta",
+          ],
+          "type": "string",
+        },
+        "outputs": {
+          "items": {
+            "enum": [
+              "chat",
+              "report",
+              "table",
+              "visualization",
+              "map",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "reason": {
+          "type": "string",
+        },
+        "scope": {
+          "enum": [
+            "local",
+            "subset",
+            "corpus_wide",
+          ],
+          "type": "string",
+        },
+        "strategy": {
+          "description": "Short plan name from spinosa_route. One token, not a sentence or a -> chain.",
+          "enum": [
+            "targeted_evidence",
+            "contextual_synthesis",
+            "corpus_census",
+            "comparative_synthesis",
+            "hypothesis_test",
+            "exploratory_discovery",
+            "startup_index",
+            "add_sources",
+            "reindex",
+            "remap",
+            "enrich_metadata",
+            "integrity_check",
+            "cleanup_proposal",
+            "cleanup_apply",
+            "repair",
+            "coverage_audit",
+            "route_audit",
+            "framework_evolution",
+          ],
+          "type": "string",
+        },
+        "verification": {
+          "enum": [
+            "none",
+            "normal",
+            "strict",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "mode",
+        "operation",
+        "strategy",
+        "scope",
+        "coverage",
+        "outputs",
+        "mutation",
+        "verification",
+        "evaluation",
+        "reason",
+        "confidence",
+      ],
+      "type": "object",
+    },
+    "workspacePath": {
+      "description": "Workspace root override (defaults to session directory)",
+      "type": "string",
+    },
+  },
+  "required": [
+    "cleanedPrompt",
+    "decision",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_gate 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "coverage": {
+      "description": "Coverage contract from the route decision",
+      "enum": [
+        "opportunistic",
+        "sufficient",
+        "representative",
+        "exhaustive",
+      ],
+      "type": "string",
+    },
+    "partitionsAccounted": {
+      "description": "Partitions accounted (exhaustive)",
+      "type": "number",
+    },
+    "partitionsTotal": {
+      "description": "Partitions in the denominator (exhaustive)",
+      "type": "number",
+    },
+    "sourceCount": {
+      "description": "Distinct sources evidencing the claim",
+      "type": "number",
+    },
+    "strataCovered": {
+      "description": "Strata covered (representative)",
+      "type": "number",
+    },
+    "strataTotal": {
+      "description": "Strata in the denominator (representative)",
+      "type": "number",
+    },
+  },
+  "required": [
+    "coverage",
+    "sourceCount",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_mint_paths 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "branch": {
+      "description": "Descriptive branch/batch slug for evidence fan-out and extraction",
+      "type": "string",
+    },
+    "kinds": {
+      "description": "Artifact kinds to mint paths for",
+      "items": {
+        "enum": [
+          "goal",
+          "evidence",
+          "evidence_appendix",
+          "extraction",
+          "analysis",
+          "serendipity",
+          "report",
+          "verification",
+          "evaluation",
+          "coverage",
+          "map",
+          "cleanup",
+        ],
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "reportNumber": {
+      "description": "Next free NN for writer reports",
+      "type": "string",
+    },
+    "reportSlug": {
+      "description": "Kebab-case topic slug for writer reports",
+      "type": "string",
+    },
+    "runID": {
+      "description": "Run ID from spinosa_frame (YYYYMMDD-short_hash)",
+      "type": "string",
+    },
+  },
+  "required": [
+    "runID",
+    "kinds",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_map 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "action": {
+      "description": "begin scaffold, write_extraction, write_map, check, or cover",
+      "enum": [
+        "begin",
+        "write_extraction",
+        "write_map",
+        "check",
+        "cover",
+      ],
+      "type": "string",
+    },
+    "batchId": {
+      "description": "Descriptive kebab batch slug for extraction actions",
+      "type": "string",
+    },
+    "body": {
+      "description": "Map prose with wikilinks. No tables.",
+      "type": "string",
+    },
+    "files": {
+      "description": "raw/ paths for begin",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "links": {
+      "description": "Wikilink targets that must appear in the map",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "mapKind": {
+      "description": "Map kind; inferred from path when omitted",
+      "enum": [
+        "hub",
+        "group",
+        "theme",
+      ],
+      "type": "string",
+    },
+    "mapPath": {
+      "description": "maps/... path for write_map",
+      "type": "string",
+    },
+    "mode": {
+      "description": "write_map behavior when the file exists (default replace)",
+      "enum": [
+        "create",
+        "replace",
+        "enrich",
+      ],
+      "type": "string",
+    },
+    "packets": {
+      "description": "Structured packets for write_extraction",
+      "items": {
+        "properties": {
+          "concepts": {
+            "description": "Dictionary canonical terms",
+            "items": {
+              "type": "string",
+            },
+            "type": "array",
+          },
+          "connections": {
+            "description": "Related raw/ paths or none",
+            "items": {
+              "type": "string",
+            },
+            "type": "array",
+          },
+          "filename": {
+            "description": "File basename",
+            "type": "string",
+          },
+          "language": {
+            "description": "en or fr or the file language",
+            "type": "string",
+          },
+          "passages": {
+            "description": "2-5 key passages",
+            "items": {
+              "properties": {
+                "lines": {
+                  "description": "Line range such as L12-L15",
+                  "type": "string",
+                },
+                "path": {
+                  "description": "raw/ path for this quote",
+                  "type": "string",
+                },
+                "quote": {
+                  "description": "Short grounded quote or close paraphrase",
+                  "type": "string",
+                },
+              },
+              "required": [
+                "quote",
+              ],
+              "type": "object",
+            },
+            "type": "array",
+          },
+          "path": {
+            "description": "raw/ relative path",
+            "type": "string",
+          },
+          "sourceType": {
+            "description": "Inferred source type",
+            "type": "string",
+          },
+          "status": {
+            "description": "extracted (default) or unreadable",
+            "enum": [
+              "extracted",
+              "unreadable",
+            ],
+            "type": "string",
+          },
+          "summary": {
+            "description": "3-5 sentence content-grounded summary",
+            "type": "string",
+          },
+          "tags": {
+            "description": "Obsidian tags including #concept/ #type/ #group/",
+            "items": {
+              "type": "string",
+            },
+            "type": "array",
+          },
+        },
+        "required": [
+          "filename",
+          "path",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+    "relativePath": {
+      "description": "Existing extraction or map path for check/cover",
+      "type": "string",
+    },
+    "tags": {
+      "description": "Obsidian tags placed under the H1",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "title": {
+      "description": "Map H1 title",
+      "type": "string",
+    },
+    "workspacePath": {
+      "description": "Workspace root override (defaults to session directory)",
+      "type": "string",
+    },
+  },
+  "required": [
+    "action",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_route 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "description": "Slash command name without leading slash, if any",
+      "type": "string",
+    },
+    "explicitAgent": {
+      "description": "User-selected agent, if any",
+      "type": "string",
+    },
+    "fileCount": {
+      "description": "Attached file count",
+      "type": "number",
+    },
+    "fileNames": {
+      "description": "Attached file names",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "setupStatus": {
+      "description": "Workspace setup status from .spinosa/workspace",
+      "enum": [
+        "not_started",
+        "importing",
+        "cli_started",
+        "workspace_started",
+        "unknown",
+      ],
+      "type": "string",
+    },
+    "text": {
+      "description": "The user request to classify",
+      "type": "string",
+    },
+  },
+  "required": [
+    "text",
+    "setupStatus",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_verify 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "relativePath": {
+      "description": "Artifact path relative to the workspace root",
+      "type": "string",
+    },
+    "runID": {
+      "description": "Run ID for linkage checks",
+      "type": "string",
+    },
+    "validator": {
+      "description": "Artifact kind to check against",
+      "enum": [
+        "goal",
+        "evidence_packet",
+        "analysis",
+        "serendipity",
+        "report",
+        "verification",
+        "evaluation",
+        "extraction",
+        "map",
+        "coverage",
+        "cleanup",
+      ],
+      "type": "string",
+    },
+    "workspacePath": {
+      "description": "Workspace root override (defaults to session directory)",
+      "type": "string",
+    },
+  },
+  "required": [
+    "relativePath",
+    "validator",
   ],
   "type": "object",
 }
@@ -460,439 +1086,6 @@ exports[`tool parameters JSON Schema (wire shape) write 1`] = `
   "required": [
     "content",
     "filePath",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) spinosa_frame 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "cleanedPrompt": {
-      "description": "The request text, stripped of preamble",
-      "type": "string",
-    },
-    "decision": {
-      "description": "Orchestrated intent dimensions from spinosa_route",
-      "properties": {
-        "confidence": {
-          "type": "number",
-        },
-        "coverage": {
-          "enum": [
-            "opportunistic",
-            "sufficient",
-            "representative",
-            "exhaustive",
-          ],
-          "type": "string",
-        },
-        "evaluation": {
-          "enum": [
-            "always",
-            "on_failure",
-            "sampled",
-            "never",
-          ],
-          "type": "string",
-        },
-        "mode": {
-          "enum": [
-            "orchestrated",
-          ],
-          "type": "string",
-        },
-        "mutation": {
-          "enum": [
-            "none",
-            "propose",
-            "allowed",
-            "requires_approval",
-          ],
-          "type": "string",
-        },
-        "operation": {
-          "enum": [
-            "research",
-            "corpus",
-            "maintenance",
-            "meta",
-          ],
-          "type": "string",
-        },
-        "outputs": {
-          "items": {
-            "enum": [
-              "chat",
-              "report",
-              "table",
-              "visualization",
-              "map",
-            ],
-            "type": "string",
-          },
-          "type": "array",
-        },
-        "reason": {
-          "type": "string",
-        },
-        "scope": {
-          "enum": [
-            "local",
-            "subset",
-            "corpus_wide",
-          ],
-          "type": "string",
-        },
-        "strategy": {
-          "type": "string",
-        },
-        "verification": {
-          "enum": [
-            "none",
-            "normal",
-            "strict",
-          ],
-          "type": "string",
-        },
-      },
-      "required": [
-        "mode",
-        "operation",
-        "strategy",
-        "scope",
-        "coverage",
-        "outputs",
-        "mutation",
-        "verification",
-        "evaluation",
-        "reason",
-        "confidence",
-      ],
-      "type": "object",
-    },
-    "workspacePath": {
-      "description": "Workspace root override (defaults to session directory)",
-      "type": "string",
-    },
-  },
-  "required": [
-    "cleanedPrompt",
-    "decision",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) spinosa_gate 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "coverage": {
-      "description": "Coverage contract from the route decision",
-      "enum": [
-        "opportunistic",
-        "sufficient",
-        "representative",
-        "exhaustive",
-      ],
-      "type": "string",
-    },
-    "partitionsAccounted": {
-      "description": "Partitions accounted (exhaustive)",
-      "type": "number",
-    },
-    "partitionsTotal": {
-      "description": "Partitions in the denominator (exhaustive)",
-      "type": "number",
-    },
-    "sourceCount": {
-      "description": "Distinct sources evidencing the claim",
-      "type": "number",
-    },
-    "strataCovered": {
-      "description": "Strata covered (representative)",
-      "type": "number",
-    },
-    "strataTotal": {
-      "description": "Strata in the denominator (representative)",
-      "type": "number",
-    },
-  },
-  "required": [
-    "coverage",
-    "sourceCount",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) spinosa_mint_paths 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "branch": {
-      "description": "Descriptive branch/batch slug for evidence fan-out and extraction",
-      "type": "string",
-    },
-    "kinds": {
-      "description": "Artifact kinds to mint paths for",
-      "items": {
-        "enum": [
-          "goal",
-          "evidence",
-          "evidence_appendix",
-          "extraction",
-          "analysis",
-          "serendipity",
-          "report",
-          "verification",
-          "evaluation",
-          "coverage",
-          "map",
-          "cleanup",
-        ],
-        "type": "string",
-      },
-      "type": "array",
-    },
-    "reportNumber": {
-      "description": "Next free NN for writer reports",
-      "type": "string",
-    },
-    "reportSlug": {
-      "description": "Kebab-case topic slug for writer reports",
-      "type": "string",
-    },
-    "runID": {
-      "description": "Run ID from spinosa_frame (YYYYMMDD-short_hash)",
-      "type": "string",
-    },
-  },
-  "required": [
-    "runID",
-    "kinds",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) spinosa_route 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "command": {
-      "description": "Slash command name without leading slash, if any",
-      "type": "string",
-    },
-    "explicitAgent": {
-      "description": "User-selected agent, if any",
-      "type": "string",
-    },
-    "fileCount": {
-      "description": "Attached file count",
-      "type": "number",
-    },
-    "fileNames": {
-      "description": "Attached file names",
-      "items": {
-        "type": "string",
-      },
-      "type": "array",
-    },
-    "setupStatus": {
-      "description": "Workspace setup status from .spinosa/workspace",
-      "enum": [
-        "not_started",
-        "importing",
-        "cli_started",
-        "workspace_started",
-        "unknown",
-      ],
-      "type": "string",
-    },
-    "text": {
-      "description": "The user request to classify",
-      "type": "string",
-    },
-  },
-  "required": [
-    "text",
-    "setupStatus",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) spinosa_verify 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "relativePath": {
-      "description": "Artifact path relative to the workspace root",
-      "type": "string",
-    },
-    "runID": {
-      "description": "Run ID for linkage checks",
-      "type": "string",
-    },
-    "validator": {
-      "description": "Artifact kind to check against",
-      "enum": [
-        "goal",
-        "evidence_packet",
-        "analysis",
-        "serendipity",
-        "report",
-        "verification",
-        "evaluation",
-        "extraction",
-        "map",
-        "coverage",
-        "cleanup",
-      ],
-      "type": "string",
-    },
-    "workspacePath": {
-      "description": "Workspace root override (defaults to session directory)",
-      "type": "string",
-    },
-  },
-  "required": [
-    "relativePath",
-    "validator",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) write_report 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "conclusions": {
-      "description": "Critical reflection: what we expected vs what we found, which assumptions held or broke, implications.",
-      "type": "string",
-    },
-    "filename": {
-      "description": "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore.",
-      "type": "string",
-    },
-    "goal": {
-      "description": "What the research aimed to answer",
-      "type": "string",
-    },
-    "pipeline": {
-      "description": "Agent chain, e.g. 'searcher → writer → verifier → evaluator'",
-      "type": "string",
-    },
-    "query": {
-      "description": "Original user query",
-      "type": "string",
-    },
-    "report": {
-      "description": "Main body: evidence, interpretation, analysis, patterns. Structure freely with H2/H3.",
-      "type": "string",
-    },
-    "reproducibility": {
-      "properties": {
-        "agents": {
-          "description": "Agent chain",
-          "type": "string",
-        },
-        "filesRead": {
-          "description": "Files read",
-          "type": "number",
-        },
-        "filesScanned": {
-          "description": "Files scanned",
-          "type": "number",
-        },
-        "gaps": {
-          "description": "Coverage gaps",
-          "type": "string",
-        },
-        "globPatterns": {
-          "description": "Glob patterns used",
-          "items": {
-            "type": "string",
-          },
-          "type": "array",
-        },
-        "grepPatterns": {
-          "description": "Grep patterns used",
-          "items": {
-            "type": "string",
-          },
-          "type": "array",
-        },
-        "mapsAccessed": {
-          "description": "Number of maps accessed",
-          "type": "number",
-        },
-        "searchRounds": {
-          "description": "Search rounds",
-          "type": "number",
-        },
-        "sources": {
-          "description": "Source paths referenced",
-          "items": {
-            "type": "string",
-          },
-          "type": "array",
-        },
-        "tags": {
-          "description": "Keywords/terms used",
-          "items": {
-            "type": "string",
-          },
-          "type": "array",
-        },
-      },
-      "required": [
-        "agents",
-        "sources",
-      ],
-      "type": "object",
-    },
-    "scope": {
-      "description": "One-line description of the report scope",
-      "type": "string",
-    },
-    "serendipity": {
-      "description": "Hidden connections and alternative viewpoints. Omit entirely when serendippo did not run.",
-      "type": "string",
-    },
-    "status": {
-      "description": "Verification status (default: draft)",
-      "enum": [
-        "draft",
-        "pass",
-        "pass_with_corrections",
-      ],
-      "type": "string",
-    },
-    "title": {
-      "description": "H1 headline for the report (mirrors the goal statement)",
-      "type": "string",
-    },
-    "tldr": {
-      "description": "Short natural-language answer, 1–3 sentences",
-      "type": "string",
-    },
-  },
-  "required": [
-    "filename",
-    "title",
-    "scope",
-    "pipeline",
-    "query",
-    "goal",
-    "tldr",
-    "report",
-    "conclusions",
-    "reproducibility",
   ],
   "type": "object",
 }

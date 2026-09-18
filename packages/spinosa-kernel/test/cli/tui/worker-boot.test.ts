@@ -13,6 +13,7 @@ import {
   shouldWriteWorkerFailureToStderr,
   TUI_WORKER_FETCH_MS,
   TUI_WORKER_PROVIDER_FETCH_MS,
+  tuiWorkerFetchTimeoutMs,
   remainingDeadlineMs,
   waitForParserWorkerReady,
   waitForWorkerReady,
@@ -225,6 +226,26 @@ describe("live TUI worker fetch", () => {
   test("budget is bounded", async () => {
     expect(TUI_WORKER_FETCH_MS).toBe(120_000)
     const source = await Bun.file(new URL("../../../src/cli/cmd/tui.ts", import.meta.url)).text()
-    expect(source).toContain("TUI_WORKER_FETCH_MS")
+    expect(source).toContain("tuiWorkerFetchTimeoutMs")
+    expect(source).toContain("runLaunchBootHealth")
+  })
+
+  test("skips the wall clock for long-running session POSTs", () => {
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/message", "POST")).toBeUndefined()
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/prompt_async", "POST")).toBeUndefined()
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/command", "POST")).toBeUndefined()
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/shell", "POST")).toBeUndefined()
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/summarize", "POST")).toBeUndefined()
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/api/session/ses_1/prompt", "POST")).toBeUndefined()
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/api/session/ses_1/compact", "POST")).toBeUndefined()
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/message?directory=/tmp", "POST")).toBeUndefined()
+  })
+
+  test("keeps the 120s budget for short worker fetches", () => {
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/message", "GET")).toBe(TUI_WORKER_FETCH_MS)
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/abort", "POST")).toBe(TUI_WORKER_FETCH_MS)
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session/ses_1/message/msg_1", "POST")).toBe(TUI_WORKER_FETCH_MS)
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/provider", "GET")).toBe(TUI_WORKER_FETCH_MS)
+    expect(tuiWorkerFetchTimeoutMs("http://spinosa.internal/session", "POST")).toBe(TUI_WORKER_FETCH_MS)
   })
 })

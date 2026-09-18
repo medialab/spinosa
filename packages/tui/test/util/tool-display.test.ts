@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import {
   ellipsisToolLine,
+  formatSpinosaToolLine,
+  isSpinosaTool,
   normalizeToolInputForDisplay,
   normalizeToolMetadataForDisplay,
+  spinosaToolLabel,
+  spinosaToolOutcome,
   toolDisplayMetadata,
   toolFilePath,
   webSearchProviderLabel,
@@ -112,6 +116,35 @@ describe("normalizeToolMetadataForDisplay", () => {
       { path: "a.ts", content: "x" },
     )
     expect(meta.diagnostics).toEqual({ "a.ts": [] })
+  })
+})
+
+describe("spinosa tool display", () => {
+  test("labels known kernel tools", () => {
+    expect(isSpinosaTool("spinosa_route")).toBe(true)
+    expect(isSpinosaTool("bash")).toBe(false)
+    expect(spinosaToolLabel("spinosa_route")).toBe("Pick a path")
+    expect(spinosaToolLabel("spinosa_frame")).toBe("Start the run")
+    expect(spinosaToolLabel("spinosa_mint_paths")).toBe("Name the files")
+    expect(spinosaToolLabel("spinosa_gate")).toBe("Check coverage")
+    expect(spinosaToolLabel("spinosa_verify")).toBe("Check the file")
+    expect(spinosaToolLabel("spinosa_map")).toBe("Map sources")
+    expect(spinosaToolLabel("spinosa_future_hook")).toBe("Spinosa future hook")
+    expect(spinosaToolLabel("bash")).toBe("bash")
+  })
+
+  test("uses the tool title as the outcome", () => {
+    expect(spinosaToolOutcome({ status: "pending" })).toBeUndefined()
+    expect(spinosaToolOutcome({ status: "running" })).toBeUndefined()
+    expect(spinosaToolOutcome({ status: "completed", title: "Routed fast_path (workspace)" })).toBe(
+      "Routed fast_path (workspace)",
+    )
+    expect(spinosaToolOutcome({ status: "error" })).toBe("Failed")
+    expect(formatSpinosaToolLine("spinosa_route")).toBe("Pick a path")
+    expect(formatSpinosaToolLine("spinosa_route", "Routed fast_path (workspace)")).toBe(
+      "Pick a path: Routed fast_path (workspace)",
+    )
+    expect(formatSpinosaToolLine("spinosa_gate", "Gate passed")).toBe("Check coverage: Gate passed")
   })
 })
 

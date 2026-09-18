@@ -1,4 +1,5 @@
 import { Show } from "solid-js"
+import { workflowLabel } from "@spinosa/core"
 import { useTheme } from "../context/theme"
 
 /**
@@ -91,10 +92,6 @@ export function routeBadgeFromParts(parts: readonly unknown[] | undefined): Rout
   return
 }
 
-function shortWorkflow(id: string): string {
-  return id.replace(/^research\./, "").replace(/_/g, " ")
-}
-
 export function routeBadgeLabel(info: RouteBadgeInfo): string {
   if (info.kind === "general") return "General prompt"
   if (info.kind === "queued") return "○ queued"
@@ -102,7 +99,7 @@ export function routeBadgeLabel(info: RouteBadgeInfo): string {
   if (info.kind === "sent") return "✓ Sent"
   if (info.kind === "interrupted") return "⛔ Interrupted"
   if (info.kind === "failed") return "Failed"
-  return `◈ ${shortWorkflow(info.workflowID)}`
+  return `◈ ${workflowLabel(info.workflowID)}`
 }
 
 /** Small chip rendered under the user message timestamp row. */

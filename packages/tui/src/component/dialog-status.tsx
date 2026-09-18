@@ -5,6 +5,7 @@ import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
 import { For, Match, Switch, Show, createMemo } from "solid-js"
 import { useBindings } from "../keymap"
+import { HoverLabel } from "../ui/hover-press"
 
 export type DialogStatusProps = {}
 
@@ -54,9 +55,7 @@ export function DialogStatus() {
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
           Status
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <Show when={Object.keys(sync.data.mcp).length > 0} fallback={<text fg={theme.text}>No MCP Servers</text>}>
         <box>

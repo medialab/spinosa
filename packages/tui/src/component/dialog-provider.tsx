@@ -6,6 +6,7 @@ import { useDialog } from "../ui/dialog"
 import { useSDK } from "../context/sdk"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { Link } from "../ui/link"
+import { HoverLabel } from "../ui/hover-press"
 import { useTheme } from "../context/theme"
 import { TextAttributes } from "@opentui/core"
 import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@spinosa/sdk/v2"
@@ -427,6 +428,7 @@ function AutoMethod(props: AutoMethodProps) {
   const toast = useToast()
   const clipboard = useClipboard()
   const [copied, setCopied] = createSignal(false)
+  const [copyHover, setCopyHover] = createSignal(false)
 
   async function copyCode() {
     try {
@@ -481,16 +483,19 @@ function AutoMethod(props: AutoMethodProps) {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <box gap={1}>
         <Link href={props.authorization.url} fg={theme.primary} />
         <text fg={theme.textMuted}>{props.authorization.instructions}</text>
       </box>
       <text fg={theme.textMuted}>Waiting for authorization...</text>
-      <text fg={copied() ? theme.success : theme.text} onMouseUp={copyCode}>
+      <text
+        fg={copied() ? theme.success : copyHover() ? theme.primary : theme.text}
+        onMouseOver={() => setCopyHover(true)}
+        onMouseOut={() => setCopyHover(false)}
+        onMouseUp={copyCode}
+      >
         <Show when={copied()} fallback={<>c <span style={{ fg: theme.textMuted }}>copy</span></>}>
           ✓ Copied
         </Show>

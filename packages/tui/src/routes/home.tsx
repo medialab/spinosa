@@ -29,6 +29,7 @@ import { getWorkspaceLaunchDecision } from "../spinosa/workspace-launch"
 import { setupStatusLabel, setupStatusThemeKey } from "../spinosa/status-labels"
 import { HomeFooter } from "../component/home-footer"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { HoverChip } from "../ui/hover-press"
 import { countRawMarkdownFiles, listRegisteredWorkspaces, readBundledFrameworkVersion, isPrereleaseFrameworkVersion, readWorkspaceMeta } from "../spinosa/service"
 import { workspaceAsciiBannerText, resolveWorkspaceDisplayName } from "../spinosa/workspace-name"
 import { upgradeFramework } from "@spinosa/core/commands/upgrade"
@@ -479,22 +480,22 @@ export function Home() {
             <box width="100%" maxWidth={promptMaxWidth()} flexShrink={0} flexDirection="row" alignItems="center" gap={1}>
               <text fg={theme.warning}>{compactMaintenanceCue()}</text>
               <Show when={maintenanceCleanupAvailable()}>
-                <box
-                  paddingX={1}
-                  backgroundColor={theme.backgroundElement}
-                  onMouseDown={() => void cleanStaleInstallerData()}
-                >
-                  <text fg={theme.primary}>{maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}</text>
-                </box>
+                <HoverChip
+                  paddingLeft={1}
+                  paddingRight={1}
+                  label={maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}
+                  inactiveFg={theme.primary}
+                  onPress={() => void cleanStaleInstallerData()}
+                />
               </Show>
               <Show when={maintenanceRepairRequired()}>
-                <box
-                  paddingX={1}
-                  backgroundColor={theme.backgroundElement}
-                  onMouseDown={() => void repairDependencies()}
-                >
-                  <text fg={theme.primary}>{maintenanceAction() === "repairing" ? "Reinstalling…" : "Repair"}</text>
-                </box>
+                <HoverChip
+                  paddingLeft={1}
+                  paddingRight={1}
+                  label={maintenanceAction() === "repairing" ? "Reinstalling…" : "Repair"}
+                  inactiveFg={theme.primary}
+                  onPress={() => void repairDependencies()}
+                />
               </Show>
             </box>
             <box height={1} />
@@ -519,13 +520,13 @@ export function Home() {
                     Spinosa found {maintenanceStaleCount()} leftover install/temp path
                     {maintenanceStaleCount() === 1 ? "" : "s"}.
                   </text>
-                  <box
-                    paddingX={1}
-                    backgroundColor={theme.backgroundElement}
-                    onMouseDown={() => void cleanStaleInstallerData()}
-                  >
-                    <text fg={theme.primary}>{maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}</text>
-                  </box>
+                  <HoverChip
+                    paddingLeft={1}
+                    paddingRight={1}
+                    label={maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}
+                    inactiveFg={theme.primary}
+                    onPress={() => void cleanStaleInstallerData()}
+                  />
                 </box>
                 <For each={[
                   ...(safeResourceValue(maintenance)?.staleInstallDirectories ?? []),
@@ -542,13 +543,13 @@ export function Home() {
             <Show when={maintenanceRepairRequired()}>
               <box flexDirection="row" alignItems="center" gap={1}>
                 <text fg={theme.warning}>Spinosa’s runtime is incomplete or damaged.</text>
-                <box
-                  paddingX={1}
-                  backgroundColor={theme.backgroundElement}
-                  onMouseDown={() => void repairDependencies()}
-                >
-                  <text fg={theme.primary}>{maintenanceAction() === "repairing" ? "Reinstalling…" : "Reinstall runtime"}</text>
-                </box>
+                <HoverChip
+                  paddingLeft={1}
+                  paddingRight={1}
+                  label={maintenanceAction() === "repairing" ? "Reinstalling…" : "Reinstall runtime"}
+                  inactiveFg={theme.primary}
+                  onPress={() => void repairDependencies()}
+                />
               </box>
               <box height={1} />
             </Show>

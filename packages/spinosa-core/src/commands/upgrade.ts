@@ -14,8 +14,7 @@ import {
 } from "../system/channels"
 import { discoverInstalledFramework, installedReleaseVersion, resolveFrameworkRoot } from "../framework/discovery"
 import { compareFrameworkVersions, isDowngrade } from "../utils/version"
-import { ensureGlobalMetadata, discoverRegisteredWorkspaces } from "../workspace/registry"
-import { readWorkspaceMeta } from "../workspace/meta"
+import { ensureGlobalMetadata } from "../workspace/registry"
 import { writeTextAtomic } from "../utils/fs"
 import { spinosaLogInfo } from "../utils/log"
 import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
@@ -456,29 +455,11 @@ export async function upgradeFramework(
     }
   }
 
-  options.onPhase?.("discover", "Checking workspaces for updates...")
-  const workspaces: string[] = []
-  try { workspaces.push(...(await discoverRegisteredWorkspaces())) } catch { /* workspace discovery is best-effort */ }
-  const needsUpdate: string[] = []
-  for (const ws of workspaces) {
-    try {
-      const meta = await readWorkspaceMeta(ws)
-      if (
-        meta &&
-        meta.frameworkVersion &&
-        meta.frameworkVersion !== "unknown" &&
-        meta.frameworkVersion !== resolvedVersion
-      ) {
-        needsUpdate.push(ws)
-      }
-    } catch { /* individual workspace read failure is non-fatal */ }
-  }
-
   return {
     success: true,
     previousVersion: effectiveInstalled || undefined,
     newVersion: resolvedVersion,
-    workspaceUpgradesNeeded: needsUpdate,
+    workspaceUpgradesNeeded: [],
   }
 }
 

@@ -101,6 +101,18 @@ describe("routeBadgeLabel", () => {
     expect(routeBadgeLabel({ kind: "failed" })).toBe("Failed")
   })
 
+  test("workflow badges use a plain plan name", () => {
+    expect(
+      routeBadgeLabel({
+        kind: "workflow",
+        workflowID: "research.targeted_evidence",
+        operation: "research",
+        strategy: "targeted_evidence",
+        runID: "r1",
+      }),
+    ).toBe("◈ Find evidence")
+  })
+
   test("routed general verdicts manifest a General prompt badge (never empty)", () => {
     expect(routeBadgeLabel({ kind: "general" })).toBe("General prompt")
     const info = routeBadgeFromParts([

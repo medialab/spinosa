@@ -29,6 +29,28 @@ export type MaintenanceStrategy =
 
 export type MetaStrategy = "coverage_audit" | "route_audit" | "framework_evolution"
 
+/** Short names `spinosa_route` / `spinosa_frame` may pass. Not a sentence or a chain. */
+export const ROUTE_STRATEGIES = [
+  "targeted_evidence",
+  "contextual_synthesis",
+  "corpus_census",
+  "comparative_synthesis",
+  "hypothesis_test",
+  "exploratory_discovery",
+  "startup_index",
+  "add_sources",
+  "reindex",
+  "remap",
+  "enrich_metadata",
+  "integrity_check",
+  "cleanup_proposal",
+  "cleanup_apply",
+  "repair",
+  "coverage_audit",
+  "route_audit",
+  "framework_evolution",
+] as const satisfies readonly (ResearchStrategy | CorpusStrategy | MaintenanceStrategy | MetaStrategy)[]
+
 export type Scope = "local" | "subset" | "corpus_wide"
 
 export type Coverage = "opportunistic" | "sufficient" | "representative" | "exhaustive"

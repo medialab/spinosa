@@ -64,7 +64,26 @@ describe("spinosaFrame", () => {
     })
     if (!framed.ok) throw new Error(`expected frame: ${framed.reason}`)
     expect(framed.runID).toMatch(/^\d{8}-[0-9a-f]+$/)
+    expect(framed.planLabel).toBe("Find evidence")
     expect(await Bun.file(path.join(root, framed.goalPath)).exists()).toBe(true)
+  })
+
+  test("refuses an unknown operation and strategy mix with a plain hint", async () => {
+    const root = await workspace()
+    const framed = await spinosaFrame({
+      workspacePath: root,
+      cleanedPrompt: "Index this workspace",
+      decision: {
+        mode: "orchestrated", operation: "research", strategy: "startup_index",
+        scope: "corpus_wide", coverage: "exhaustive", outputs: ["map"],
+        mutation: "none", verification: "none", evaluation: "never",
+        reason: "test", confidence: 0.8,
+      },
+    })
+    expect(framed.ok).toBe(false)
+    if (framed.ok) throw new Error("expected refusal")
+    expect(framed.reason).toContain("not a research plan")
+    expect(framed.reason).toContain("targeted_evidence")
   })
 
   test("refuses outside Spinosa workspaces", async () => {

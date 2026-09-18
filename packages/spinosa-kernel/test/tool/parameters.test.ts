@@ -24,6 +24,7 @@ import { Parameters as Skill } from "../../src/tool/skill"
 import { Parameters as SpinosaFrame } from "../../src/tool/spinosa-frame"
 import { Parameters as SpinosaGate } from "../../src/tool/spinosa-gate"
 import { Parameters as SpinosaMintPaths } from "../../src/tool/spinosa-mint-paths"
+import { Parameters as SpinosaMap } from "../../src/tool/spinosa-map"
 import { Parameters as SpinosaRoute } from "../../src/tool/spinosa-route"
 import { Parameters as SpinosaVerify } from "../../src/tool/spinosa-verify"
 import { Parameters as Task } from "../../src/tool/task"
@@ -57,6 +58,7 @@ describe("tool parameters", () => {
     test("spinosa_frame", () => expect(toJsonSchema(SpinosaFrame)).toMatchSnapshot())
     test("spinosa_gate", () => expect(toJsonSchema(SpinosaGate)).toMatchSnapshot())
     test("spinosa_mint_paths", () => expect(toJsonSchema(SpinosaMintPaths)).toMatchSnapshot())
+    test("spinosa_map", () => expect(toJsonSchema(SpinosaMap)).toMatchSnapshot())
     test("spinosa_route", () => expect(toJsonSchema(SpinosaRoute)).toMatchSnapshot())
     test("spinosa_verify", () => expect(toJsonSchema(SpinosaVerify)).toMatchSnapshot())
     test("task", () => expect(toJsonSchema(Task)).toMatchSnapshot())
@@ -269,6 +271,9 @@ describe("tool parameters", () => {
     test("accepts cleanedPrompt + orchestrated decision", () => {
       expect(parse(SpinosaFrame, { cleanedPrompt: "p", decision }).cleanedPrompt).toBe("p")
     })
+    test("rejects a sentence-shaped strategy", () => {
+      expect(accepts(SpinosaFrame, { cleanedPrompt: "p", decision: { ...decision, strategy: "targeted_evidence -> writer" } })).toBe(false)
+    })
     test("rejects general-mode decision", () => {
       expect(accepts(SpinosaFrame, { cleanedPrompt: "p", decision: { mode: "general" } })).toBe(false)
     })
@@ -281,6 +286,20 @@ describe("tool parameters", () => {
     })
     test("rejects unknown kind", () => {
       expect(accepts(SpinosaMintPaths, { runID: "20260915-abc", kinds: ["nope"] })).toBe(false)
+    })
+  })
+
+  describe("spinosa_map", () => {
+    test("accepts begin with batchId and files", () => {
+      const parsed = parse(SpinosaMap, {
+        action: "begin",
+        batchId: "normandy-interviews-batch-001",
+        files: ["raw/a.md"],
+      })
+      expect(parsed.action).toBe("begin")
+    })
+    test("rejects unknown action", () => {
+      expect(accepts(SpinosaMap, { action: "explode" })).toBe(false)
     })
   })
 

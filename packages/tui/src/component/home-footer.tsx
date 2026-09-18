@@ -3,6 +3,7 @@ import { createMemo, createSignal, For, Show } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
+import { useClipboard } from "../context/clipboard"
 import { useSpinosaWorkspace } from "../context/spinosa-workspace"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { DialogSpinosaSettings } from "./dialog-spinosa-settings"
@@ -11,14 +12,35 @@ import { DialogModel } from "./dialog-model"
 import { DialogProvider } from "./dialog-provider"
 import { MAIN_CONTENT_MAX_WIDTH } from "../util/layout"
 import { deleteWorkspace } from "../spinosa/service"
+import {
+  BUG_REPORT_CONFIRM_MESSAGE,
+  BUG_REPORT_CONFIRM_TITLE,
+  reportBugFromTui,
+} from "../spinosa/bug-report"
+import open from "open"
 
 export function HomeFooter() {
   const { theme } = useTheme()
   const dialog = useDialog()
   const toast = useToast()
+  const clipboard = useClipboard()
   const spinosa = useSpinosaWorkspace()
   const [hovered, setHovered] = createSignal<string | undefined>()
   const [deleting, setDeleting] = createSignal(false)
+
+  const reportBug = () => {
+    void reportBugFromTui({
+      confirm: () =>
+        DialogConfirm.show(dialog, BUG_REPORT_CONFIRM_TITLE, BUG_REPORT_CONFIRM_MESSAGE, {
+          confirmLabel: "Open GitHub",
+          cancelLabel: "Cancel",
+          defaultChoice: "cancel",
+        }),
+      showToast: toast.show,
+      writeClipboard: clipboard.write,
+      openUrl: (href) => open(href),
+    })
+  }
 
   const deleteActiveWorkspace = async () => {
     const workspacePath = spinosa.activePath
@@ -58,6 +80,7 @@ export function HomeFooter() {
       { id: "S", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
       { id: "P", label: "Provider", action: () => dialog.replace(() => <DialogProvider />) },
       { id: "M", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
+      { id: "B", label: "Report bug", action: reportBug },
     ]
     if (!spinosa.genericMode) {
       items.splice(2, 0, {
@@ -89,6 +112,7 @@ export function HomeFooter() {
   const chatButtons = createMemo<Shortcut[]>(() => [
     { id: "S", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
     { id: "M", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
+    { id: "B", label: "Report bug", action: reportBug },
   ])
 
   const renderButton = (item: Shortcut) => (

@@ -10,9 +10,9 @@ engine's control plane. Use them — never reimplement their logic by hand.
    General answers need nothing else. Orchestrated work continues below.
    Provisional fallbacks invite your judgment: override when the request
    clearly needs more or less than the fallback claims.
-2. **Frame** orchestrated work with `spinosa_frame` before dispatching
-   research subagents. The goal artifact it writes scopes the whole run.
-   Never frame direct answers.
+2. **Start the run** with `spinosa_frame` before you dispatch research subagents.
+   Pass the `spinosa_route` decision through unchanged. It writes a goal file.
+   Skip this for a normal chat answer.
 3. **Mint** every artifact path with `spinosa_mint_paths` before writing.
    Never invent filenames — parallel runs collide otherwise.
 4. **Work** through subagents, passing artifact paths (not content) between steps.
@@ -28,7 +28,8 @@ engine's control plane. Use them — never reimplement their logic by hand.
 
 | Agent | Must call |
 |-------|-----------|
-| searcher, mapper | `spinosa_mint_paths` before writing packets/batches |
+| searcher | `spinosa_mint_paths` before writing packets |
+| mapper | `spinosa_map` for extraction packets and maps |
 | analyst, writer | `spinosa_mint_paths`, then `spinosa_verify` on the artifact |
 | verifier | `spinosa_verify` on every target; quote-truth stays judgment |
 | overseer, janitor | `spinosa_gate` for coverage claims, `spinosa_verify` on findings |

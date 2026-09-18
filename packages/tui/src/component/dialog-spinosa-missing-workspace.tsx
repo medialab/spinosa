@@ -5,6 +5,7 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { Spinner } from "./spinner"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { HoverChip, HoverLabel } from "../ui/hover-press"
 import { truncatePathTail } from "../spinosa/truncate-path"
 import { unregisterWorkspace } from "@spinosa/core/workspace/registry"
 import {
@@ -358,9 +359,7 @@ export function DialogSpinosaMissingWorkspace(props: {
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>Workspace not found</text>
-        <text fg={theme.textMuted} onMouseUp={() => { handleEscape() }}>
-          esc
-        </text>
+        <HoverLabel onPress={handleEscape}>esc</HoverLabel>
       </box>
       <text fg={theme.error}>✕ {props.workspaceName}</text>
       <text fg={theme.textMuted} wrapMode="word">
@@ -398,26 +397,22 @@ export function DialogSpinosaMissingWorkspace(props: {
             {(root) => <text fg={theme.textMuted}>  · {truncatePathTail(root, 64)}</text>}
           </For>
           <box flexDirection="row" justifyContent="flex-end" gap={2} paddingTop={1}>
-            <box
+            <HoverChip
               paddingLeft={2}
               paddingRight={2}
-              backgroundColor={buttonBackground(theme, false)}
-              border={["left"]}
-              borderColor={buttonBorder(theme, false, theme.borderActive)}
-              onMouseUp={leaveSubphase}
-            >
-              <text fg={buttonText(theme, false, theme.textMuted)}>Cancel</text>
-            </box>
-            <box
+              border
+              label="Cancel"
+              inactiveFg={theme.textMuted}
+              onPress={leaveSubphase}
+            />
+            <HoverChip
               paddingLeft={2}
               paddingRight={2}
-              backgroundColor={buttonBackground(theme, true)}
-              border={["left"]}
-              borderColor={buttonBorder(theme, true, theme.borderActive)}
-              onMouseUp={() => void runScan()}
-            >
-              <text fg={buttonText(theme, true, theme.primary)}>Start scan</text>
-            </box>
+              border
+              label="Start scan"
+              inactiveFg={theme.primary}
+              onPress={() => void runScan()}
+            />
           </box>
         </box>
       </Show>
@@ -446,16 +441,14 @@ export function DialogSpinosaMissingWorkspace(props: {
             }}
           </For>
           <box flexDirection="row" justifyContent="flex-end" gap={2} paddingTop={1}>
-            <box
+            <HoverChip
               paddingLeft={2}
               paddingRight={2}
-              backgroundColor={buttonBackground(theme, false)}
-              border={["left"]}
-              borderColor={buttonBorder(theme, false, theme.borderActive)}
-              onMouseUp={leaveSubphase}
-            >
-              <text fg={buttonText(theme, false, theme.textMuted)}>Back</text>
-            </box>
+              border
+              label="Back"
+              inactiveFg={theme.textMuted}
+              onPress={leaveSubphase}
+            />
           </box>
         </box>
       </Show>
@@ -472,16 +465,14 @@ export function DialogSpinosaMissingWorkspace(props: {
 
       <Show when={store.phase === "scanning"}>
         <box flexDirection="row" justifyContent="flex-end" gap={2} paddingTop={1}>
-          <box
+          <HoverChip
             paddingLeft={2}
             paddingRight={2}
-            backgroundColor={buttonBackground(theme, true)}
-            border={["left"]}
-            borderColor={buttonBorder(theme, true, theme.error)}
-            onMouseUp={cancelScan}
-          >
-            <text fg={buttonText(theme, true, theme.error)}>Cancel scan</text>
-          </box>
+            border
+            danger
+            label="Cancel scan"
+            onPress={cancelScan}
+          />
         </box>
       </Show>
 

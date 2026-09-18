@@ -4,6 +4,7 @@ import { useDialog } from "../ui/dialog"
 import { createStore } from "solid-js/store"
 import { For } from "solid-js"
 import { useBindings } from "../keymap"
+import { HoverLabel } from "../ui/hover-press"
 
 export function DialogSessionDeleteFailed(props: {
   session: string
@@ -56,9 +57,7 @@ export function DialogSessionDeleteFailed(props: {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           Couldn’t delete session
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <text fg={theme.textMuted} wrapMode="word">
         {`The session "${props.session}" could not be deleted because the workspace "${props.workspace}" is not available.`}
@@ -76,6 +75,7 @@ export function DialogSessionDeleteFailed(props: {
               paddingTop={1}
               paddingBottom={1}
               backgroundColor={item.id === store.active ? theme.primary : undefined}
+              onMouseOver={() => setStore("active", item.id)}
               onMouseUp={() => {
                 setStore("active", item.id)
                 void confirm()

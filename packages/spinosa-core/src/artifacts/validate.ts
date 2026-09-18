@@ -86,6 +86,7 @@ export async function validateArtifact(input: {
       }
       return { ok: true }
     }
+    case "map":
     case "maps": {
       if (!/\[\[.+\]\]/.test(text)) return { ok: false, error: "map missing wikilinks", retryable: true }
       return { ok: true }

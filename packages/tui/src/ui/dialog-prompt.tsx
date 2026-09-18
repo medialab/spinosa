@@ -5,6 +5,7 @@ import { Show, createEffect, createSignal, onMount, type JSX } from "solid-js"
 import { Spinner } from "../component/spinner"
 import { useTuiConfig } from "../config"
 import { useBindings, useCommandShortcut } from "../keymap"
+import { HoverLabel } from "./hover-press"
 
 export type DialogPromptProps = {
   title: string
@@ -78,9 +79,7 @@ export function DialogPrompt(props: DialogPromptProps) {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <box gap={1}>
         {props.description}

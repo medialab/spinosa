@@ -5,6 +5,7 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { Spinner } from "./spinner"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { HoverLabel } from "../ui/hover-press"
 import { truncatePathTail } from "../spinosa/truncate-path"
 import { unregisterWorkspace } from "@spinosa/core/workspace/registry"
 import { useBindings } from "../keymap"
@@ -175,9 +176,7 @@ export function DialogSpinosaIncompleteImport(props: {
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>Unfinished import</text>
-        <text fg={theme.textMuted} onMouseUp={() => { handleEscape() }}>
-          esc
-        </text>
+        <HoverLabel onPress={handleEscape}>esc</HoverLabel>
       </box>
       <text fg={theme.warning}>◷ {props.workspaceName}</text>
       <text fg={theme.textMuted} wrapMode="word">

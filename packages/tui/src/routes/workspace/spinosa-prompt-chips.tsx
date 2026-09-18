@@ -48,7 +48,7 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
     () => (workspaceReady() ? "bundled" : undefined),
     () => readBundledFrameworkVersion().catch(() => undefined),
   )
-  const [packFreshness] = createResource(
+  const [packFreshness, { refetch: refetchPackFreshness }] = createResource(
     () => {
       const workspacePath = spinosa.activePath
       if (!workspacePath || spinosa.genericMode) return undefined
@@ -86,6 +86,7 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
       result = await updateWorkspace({
         workspacePath,
         frameworkRoot: resolveFrameworkRoot() ?? "",
+        force: true,
         onPhase: (_phase, detail) => {
           const line = detail.trim()
           if (!line) return
@@ -112,9 +113,16 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
         await writeWorkspaceFrameworkVersion(workspacePath, version)
       }
     }
-    spinosa.refresh()
+    await spinosa.refresh()
+    const afterVersion = bundledVersion() ?? (await readBundledFrameworkVersion())
+    const after = await inspectWorkspaceTemplatePack({
+      workspacePath,
+      workspaceVersion: afterVersion,
+      bundledVersion: afterVersion,
+    }).catch((): TemplatePackFreshness | undefined => undefined)
+    await refetchPackFreshness()
 
-    if (result.success) {
+    if (result.success && after && !after.refreshRecommended) {
       // Protocol/agents are not hot-reloaded — exit so the user restarts Spinosa.
       if (result.changes) {
         setEpilogue(
@@ -144,8 +152,10 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
     setUpdateLabel("Updating workspace…")
 
     const message =
-      result.error?.trim() ||
-      "Nothing was changed. The update failed without a detailed reason."
+      result.success && after?.refreshRecommended
+        ? after.message || "Workspace files still do not match the current pack."
+        : result.error?.trim() ||
+          "Nothing was changed. The update failed without a detailed reason."
     toast.show({
       title: "Couldn’t update this workspace",
       variant: "error",

@@ -69,7 +69,7 @@ script/build-release-binaries.ts ← Product binary build (four platforms)
 - Product install: `~/.spinosa/bin/spinosa` (compiled kernel). Workspace `.bin/spinosa` forwards to it.
 - Dev: `bun run dev` → `packages/spinosa-cli` → kernel TypeScript entry.
 - `packages/spinosa-cli/src/index.ts` — `bun run dev` entry; re-execs on preflight exit `10`.
-- `packages/spinosa-kernel/src/cli/cmd/tui.ts` — runs launch preflight **before** spawning the TUI worker.
+- `packages/spinosa-kernel/src/cli/cmd/tui.ts` — runs launch preflight in parallel with the TUI worker, then boot health in the same terminal. Boot health failures do not exit.
 - `packages/spinosa-core/src/commands/preflight.ts` — upgrade check and workspace updates before TUI render.
 
 ### Onboarding (New Workspace)

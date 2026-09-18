@@ -2,7 +2,7 @@
 import type { ColorInput, RGBA, ScrollBoxRenderable } from "@opentui/core"
 import { Locale } from "../../util/locale"
 import { tint } from "../../context/theme"
-import { createEffect, createMemo, For, Match, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, Switch } from "solid-js"
 import { buildFileTree, flattenFileTree, type FileTreeItem, type FileTreeRow } from "./diff-viewer-file-tree-utils"
 import { Panel } from "./diff-viewer-ui"
 
@@ -37,6 +37,7 @@ export type DiffViewerFileTreeProps = {
 export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
   const tree = createMemo(() => buildFileTree(props.files))
   const rows = createMemo(() => flattenFileTree(tree(), props.expandedNodes))
+  const [hoverId, setHoverId] = createSignal<number | undefined>()
   let scroll: ScrollBoxRenderable | undefined
 
   createEffect(() => {
@@ -68,7 +69,8 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
           <Match when={props.files.length > 0}>
             <For each={rows()}>
               {(row, index) => {
-                const highlighted = () => props.focused && props.highlightedNode === row.id
+                const highlighted = () =>
+                  (Boolean(props.focused) && props.highlightedNode === row.id) || hoverId() === row.id
                 const selected = () => row.fileIndex !== undefined && props.selectedFileIndex === row.fileIndex
                 const reviewed = () => {
                   const file = row.fileIndex === undefined ? undefined : props.files[row.fileIndex]?.file
@@ -83,6 +85,8 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
                     flexDirection="row"
                     width="100%"
                     backgroundColor={highlighted() ? props.theme.primary : undefined}
+                    onMouseOver={() => setHoverId(row.id)}
+                    onMouseOut={() => setHoverId((current) => (current === row.id ? undefined : current))}
                     onMouseUp={() => props.onRowClick?.(row)}
                   >
                     <text fg={highlighted() ? props.theme.background : fadedColor()} wrapMode="none" flexShrink={0}>

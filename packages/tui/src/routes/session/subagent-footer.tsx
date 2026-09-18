@@ -8,6 +8,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 import { agentDisplayName } from "../../util/agent"
 import { buttonBackground, buttonText } from "../../util/button"
+import { pickSubagentAccent, siblingSubagentIDs } from "./subagent-chrome"
 
 export function SubagentFooter() {
   const route = useSessionRoute()
@@ -31,6 +32,11 @@ export function SubagentFooter() {
   })
 
   const { theme } = useTheme()
+  const accent = createMemo(() => {
+    const current = session()
+    if (!current?.parentID) return theme.border
+    return pickSubagentAccent(theme, current.id, siblingSubagentIDs(sync.data.session, current))
+  })
   const keymap = useOpencodeKeymap()
   const parentShortcut = useCommandShortcut("session.parent")
   const previousShortcut = useCommandShortcut("session.child.previous")
@@ -47,7 +53,7 @@ export function SubagentFooter() {
         paddingRight={1}
         {...SplitBorder}
         border={["left"]}
-        borderColor={theme.border}
+        borderColor={accent()}
         flexShrink={0}
         backgroundColor={theme.backgroundPanel}
       >

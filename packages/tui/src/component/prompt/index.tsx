@@ -75,8 +75,7 @@ import {
   admittedUserIDFromResponse,
   ECHO_WAIT_TIMEOUT_MS,
   enqueueOutbound,
-  findEchoByPromptID,
-  hasServerEcho,
+  findOutboundEcho,
   kickPump,
   markOutboundFailed,
   markOutboundSent,
@@ -1240,7 +1239,7 @@ export function Prompt(props: PromptProps) {
               { throwOnError: true },
             )
           })()
-      : sdk.client.session.prompt(
+      : sdk.client.session.promptAsync(
           {
             sessionID: targetSessionID,
             ...selectedModel,
@@ -1274,8 +1273,15 @@ export function Prompt(props: PromptProps) {
   async function watchEchoThenSettle(sessionID: string, key: string, admittedID?: string): Promise<void> {
     const echoed = await waitForEcho(() => {
       const messages = sync.data.message[sessionID] ?? []
-      if (findEchoByPromptID(messages, sync.data.part, key)) return true
-      return admittedID ? hasServerEcho(messages, admittedID) : false
+      const entry = outboundForSession(sessionID).find((candidate) => candidate.key === key)
+      if (!entry) return true
+      return Boolean(
+        findOutboundEcho(messages, sync.data.part, {
+          key,
+          text: entry.text,
+          admittedID: admittedID ?? entry.admittedID,
+        }),
+      )
     }, ECHO_WAIT_TIMEOUT_MS)
     if (!echoed) {
       markOutboundStale(sessionID, key)
@@ -1293,10 +1299,7 @@ export function Prompt(props: PromptProps) {
     const messages = sync.data.message[sessionID] ?? []
     for (const entry of outboundForSession(sessionID)) {
       if (entry.state !== "sent") continue
-      const seen =
-        findEchoByPromptID(messages, sync.data.part, entry.key) ||
-        (entry.admittedID ? hasServerEcho(messages, entry.admittedID) : false)
-      if (seen) removeOutbound(sessionID, entry.key)
+      if (findOutboundEcho(messages, sync.data.part, entry)) removeOutbound(sessionID, entry.key)
     }
   }
 

@@ -18,11 +18,9 @@ import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@spinosa/tui/terminal-win32"
 import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-log"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
-import { describeWorkerCallError, TUI_WORKER_FETCH_MS, waitForWorkerReady, formatWorkerFailureForParent, parentActionForWorkerFailure, shouldWriteWorkerFailureToStderr, isRecoverableWorkerFailure, type TuiWorkerPhase } from "../tui/worker-boot"
-import {
-  printLaunchingTui,
-  runLaunchPreflight,
-} from "@spinosa/core/commands/preflight"
+import { describeWorkerCallError, tuiWorkerFetchTimeoutMs, waitForWorkerReady, formatWorkerFailureForParent, parentActionForWorkerFailure, shouldWriteWorkerFailureToStderr, isRecoverableWorkerFailure, type TuiWorkerPhase } from "../tui/worker-boot"
+import { printLaunchingTui, runLaunchPreflight } from "@spinosa/core/commands/preflight"
+import { runLaunchBootHealth } from "@spinosa/core/system/boot"
 import { isSpinosaWorkspace } from "@spinosa/core/workspace/meta"
 import { advertisedOpenCodeVersion, syncOpenCodeCompatVersion } from "@spinosa/kernel-core/installation/opencode-compat"
 import { runOverlappedLaunch } from "../tui/launch-overlap"
@@ -38,17 +36,18 @@ function createWorkerFetch(client: RpcClient): typeof fetch {
     const request = new Request(input, init)
     const body = request.body ? await request.text() : undefined
     let result: { status: number; headers: Record<string, string>; body: string }
+    const rpc = client.call("fetch", {
+      url: request.url,
+      method: request.method,
+      headers: Object.fromEntries(request.headers.entries()),
+      body,
+    })
+    const timeoutMs = tuiWorkerFetchTimeoutMs(request.url, request.method)
     try {
-      result = await withTimeout(
-        client.call("fetch", {
-          url: request.url,
-          method: request.method,
-          headers: Object.fromEntries(request.headers.entries()),
-          body,
-        }),
-        TUI_WORKER_FETCH_MS,
-        "TUI worker request timed out",
-      )
+      result =
+        timeoutMs === undefined
+          ? await rpc
+          : await withTimeout(rpc, timeoutMs, "TUI worker request timed out")
     } catch (error) {
       throw describeWorkerCallError(error)
     }
@@ -411,6 +410,22 @@ export const TuiThreadCommand = cmd({
         await stop()
         process.exitCode = 1
         return
+      }
+
+      try {
+        const health = await runLaunchBootHealth()
+        bootLog("tui.boot.health", "workspace index complete", {
+          workspaces: health.workspaces.length,
+          missing: health.workspaces.filter((workspace) => workspace.status === "non_existent").length,
+          moved: health.workspaces.filter((workspace) => workspace.status === "moved").length,
+          removed: health.cleanup.removedDirectories.length,
+          installInProgress: health.cleanup.installInProgress,
+          error: health.error,
+          opencodeCompat: advertisedOpenCodeVersion(),
+        })
+      } catch (error) {
+        bootLogError("tui.boot.health", error)
+        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
       }
 
       const prompt = await input(args.prompt)

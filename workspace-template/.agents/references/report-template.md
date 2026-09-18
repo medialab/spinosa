@@ -50,8 +50,8 @@ query: [original user query]
 
 ## Report
 [Main body: evidence, interpretation, analysis, patterns.
-Structure freely with H2/H3 as needed. Inline source citations.
-Unicode charts used where they add clarity.
+Use H3 for sub-topics in this section only. Never add a second H1.
+Inline source citations. Unicode charts used where they add clarity.
 Limitations (gaps, uncertainties, what was not checked) noted inline.
 For large evidence sets (>50 sources), include the top 10-20 here and link to the appendix:]
 

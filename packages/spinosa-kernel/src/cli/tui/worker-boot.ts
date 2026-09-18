@@ -14,8 +14,43 @@ export const COMPILED_TUI_WORKER_RELATIVE = "src/cli/tui/worker.js"
 /** Installer TUI-worker smoke wall clock. Ping, pty, and /provider share it. */
 export const TUI_WORKER_PROVIDER_FETCH_MS = 300_000
 
-/** Live TUI worker RPC. Matches the vision-provider budget; never hang forever. */
+/** Live TUI worker RPC for short requests. Matches the vision-provider budget. */
 export const TUI_WORKER_FETCH_MS = 120_000
+
+/** POST tails whose HTTP round-trip tracks the agent/tool loop, not admission. */
+const LONG_RUNNING_SESSION_TAILS = new Set([
+  "message",
+  "prompt",
+  "prompt_async",
+  "command",
+  "shell",
+  "summarize",
+  "compact",
+])
+
+/**
+ * Wall-clock budget for a parent→worker fetch RPC.
+ * Long-running session POSTs have no deadline: the agent loop can exceed 120s.
+ * Worker death still rejects the pending RPC via failAll.
+ */
+export function tuiWorkerFetchTimeoutMs(url: string, method = "GET"): number | undefined {
+  if (method.toUpperCase() !== "POST") return TUI_WORKER_FETCH_MS
+  let pathname = url
+  try {
+    pathname = new URL(url, "http://spinosa.internal").pathname
+  } catch {
+    const query = url.indexOf("?")
+    pathname = query === -1 ? url : url.slice(0, query)
+  }
+  const parts = pathname.split("/").filter(Boolean)
+  const sessionIdx = parts[0] === "api" ? 1 : 0
+  if (parts[sessionIdx] !== "session") return TUI_WORKER_FETCH_MS
+  const tail = parts[sessionIdx + 2]
+  if (parts.length === sessionIdx + 3 && tail && LONG_RUNNING_SESSION_TAILS.has(tail)) {
+    return undefined
+  }
+  return TUI_WORKER_FETCH_MS
+}
 
 export const PARSER_WORKER_READY_MS = 15_000
 

@@ -7,6 +7,7 @@ import { buildStartupChatPrompt } from "@spinosa/core/commands/startup"
 import { useDialog } from "../ui/dialog"
 import { useBindings } from "../keymap"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { HoverLabel } from "../ui/hover-press"
 import { ORCHESTRATOR_AGENT_ID } from "../util/agent"
 
 export function DialogSpinosaStartupChoice(props: {
@@ -81,9 +82,7 @@ export function DialogSpinosaStartupChoice(props: {
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
           {props.workspaceName}
         </text>
-        <text fg={theme.textMuted} onMouseUp={back}>
-          esc
-        </text>
+        <HoverLabel onPress={back}>esc</HoverLabel>
       </box>
       <text fg={theme.textMuted}>
         Startup the workspace with prompt, or open workspace chat without it.

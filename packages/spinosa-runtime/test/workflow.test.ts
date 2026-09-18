@@ -132,7 +132,9 @@ describe("registry", () => {
   })
 
   test("unknown combinations throw", () => {
-    expect(() => defaultRegistry.resolve(decision({ operation: "research", strategy: "startup_index" as never }))).toThrow()
+    expect(() => defaultRegistry.resolve(decision({ operation: "research", strategy: "startup_index" as never }))).toThrow(
+      /not a research plan/,
+    )
   })
 })
 

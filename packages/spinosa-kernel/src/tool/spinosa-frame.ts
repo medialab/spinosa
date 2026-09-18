@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { spinosaFrame, type OrchestratedDecision } from "@spinosa/core"
+import { ROUTE_STRATEGIES, spinosaFrame, type OrchestratedDecision } from "@spinosa/core"
 import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./spinosa-frame.txt"
@@ -12,7 +12,9 @@ const DecisionSchema = Schema.Struct({
     Schema.Literal("maintenance"),
     Schema.Literal("meta"),
   ]),
-  strategy: Schema.String,
+  strategy: Schema.Literals(ROUTE_STRATEGIES).annotate({
+    description: "Short plan name from spinosa_route. One token, not a sentence or a -> chain.",
+  }),
   scope: Schema.Union([Schema.Literal("local"), Schema.Literal("subset"), Schema.Literal("corpus_wide")]),
   coverage: Schema.Union([
     Schema.Literal("opportunistic"),
@@ -47,8 +49,8 @@ const DecisionSchema = Schema.Struct({
 })
 
 export const Parameters = Schema.Struct({
-  cleanedPrompt: Schema.String.annotate({ description: "The request text, stripped of preamble" }),
-  decision: DecisionSchema.annotate({ description: "Orchestrated intent dimensions from spinosa_route" }),
+  cleanedPrompt: Schema.String.annotate({ description: "The request, with extra preamble stripped" }),
+  decision: DecisionSchema.annotate({ description: "The JSON spinosa_route returned. Pass it through unchanged." }),
   workspacePath: Schema.optional(
     Schema.String.annotate({ description: "Workspace root override (defaults to session directory)" }),
   ),
@@ -82,19 +84,18 @@ export const SpinosaFrameTool = Tool.define(
           )
           if (!framed.ok) {
             return {
-              title: "Framing refused",
-              output: `spinosa_frame refused: ${framed.reason}`,
+              title: "Couldn't start this run",
+              output: framed.reason,
               metadata: {} as Record<string, string>,
             }
           }
           return {
-            title: `Framed run ${framed.runID}`,
+            title: `Started: ${framed.planLabel}`,
             output: [
-              `<framed_run runID="${framed.runID}" workflowID="${framed.workflowID}">`,
-              `Goal artifact: ${framed.goalPath}`,
-              `Decision: ${framed.decision.operation}.${framed.decision.strategy} scope=${framed.decision.scope} coverage=${framed.decision.coverage}`,
-              "Dispatch research subagents with this goal path and the minted artifact paths; record outcomes back into the goal artifact.",
-              "</framed_run>",
+              `Started a research run (${framed.planLabel}).`,
+              `Goal file: ${framed.goalPath}`,
+              `Run id: ${framed.runID}`,
+              "Dispatch subagents with this goal file. Later tools need the run id, not a workflow id.",
             ].join("\n"),
             metadata: { runID: framed.runID, goalPath: framed.goalPath } as Record<string, string>,
           }

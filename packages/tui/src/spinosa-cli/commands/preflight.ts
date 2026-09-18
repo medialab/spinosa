@@ -5,10 +5,8 @@ export {
   LAUNCH_STATUS_NO_UPDATES,
   LAUNCH_STATUS_UPGRADE_DONE,
   offerStaleTemplatePackUpdates,
-  offerWorkspaceUpgrades,
   printLaunchingTui,
   runLaunchPreflight,
   type LaunchPreflightOptions,
   type PreflightDependencies,
-  type WorkspaceUpgradeOfferDeps,
 } from "@spinosa/core/commands/preflight"

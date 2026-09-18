@@ -1,6 +1,6 @@
 {
   "name": "route-session-to-global",
-  "description": "Click < Back from a session view and verify the route returns to global home with Describe the task visible",
+  "description": "Click < Workspace home from a session view and verify the route returns to global home with Describe the task visible",
   "adapter": "../adapters/spinosa.ts",
   "terminal": { "width": 100, "height": 50 },
   "fixture": {
@@ -31,7 +31,7 @@
     { "action": "waitForText", "text": "Export", "timeoutMs": 5000 },
     { "action": "capture", "name": "in-session" },
 
-    { "action": "clickText", "text": "< Back" },
+    { "action": "clickText", "text": "< Workspace home" },
     { "action": "waitForText", "text": "Describe the task", "timeoutMs": 5000 },
     { "action": "assert", "visible": ["Describe the task"] },
     { "action": "capture", "name": "back-home" }

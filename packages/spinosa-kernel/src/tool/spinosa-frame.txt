@@ -1,3 +1,5 @@
-Frame a Spinosa research run: mint a run ID, resolve the workflow plan, and write the goal artifact that scopes all later work.
+Start a research run: write a goal file, pick a plan, and hand back a run id.
 
-Use after routing decides orchestrated and before dispatching any research subagent. General (direct-answer) decisions are never framed. Returns runID, workflowID, and goal path for downstream steps.
+Call this after spinosa_route says the work is orchestrated. Pass that same decision through — especially the short `strategy` name. Do not invent a pipeline sentence. Direct chat answers do not need this tool.
+
+Returns a run id, a plain-language plan name, and the goal file path. Later tools use the run id, not the plan id.

@@ -23,6 +23,7 @@ import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { useTuiConfig } from "../config"
 import { formatKeyBindings, useBindings, useKeymapSelector } from "../keymap"
+import { HoverLabel } from "./hover-press"
 
 export interface DialogSelectProps<T> {
   title: string
@@ -512,6 +513,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         flexDirection="row"
         backgroundColor={active() ? theme.primary : RGBA.fromInts(0, 0, 0, 0)}
         onMouseUp={() => triggerAction(item)}
+        onMouseOver={() => {
+          if (props.locked || disabled()) return
+          const index = actionItems().indexOf(item)
+          if (index >= 0) setFocusedAction(index)
+        }}
       >
         <text
           fg={disabled() ? theme.textMuted : active() ? fg : theme.text}
@@ -533,9 +539,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
               {props.title}
             </text>
           )}
-          <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-            esc
-          </text>
+          <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
         </box>
         <Show when={props.renderFilter !== false}>
           <box paddingTop={1}>

@@ -31,6 +31,21 @@ const RULE = "#999999"
 const CODE_BG = "#f2f2f2"
 const HEAD_FILL = "#e6e6e6"
 
+/** Compact type so agent reports do not shout titles in export. */
+export const PDF_COVER_SIZE = 16
+export const PDF_BODY_SIZE = 10
+export const PDF_CODE_SIZE = 9
+
+export function pdfHeadingSize(level: number): number {
+  if (level <= 1) return 13
+  if (level === 2) return 12
+  return 11
+}
+
+function spansText(spans: Span[]): string {
+  return spans.map((s) => s.text).join("")
+}
+
 const SANS = "sans-serif"
 const MONO = "monospace"
 
@@ -187,7 +202,7 @@ type Measurer = { measureText(text: string): { width: number } }
 function spansToWords(spans: Span[], size: number, fill: string, measurer: Measurer & { font: string }): Word[] {
   const words: Word[] = []
   for (const span of spans) {
-    const font = fontFor(span.code ? 10 : size, span)
+    const font = fontFor(span.code ? PDF_CODE_SIZE : size, span)
     for (const part of span.text.split(/(\s+)/)) {
       if (part.length === 0) continue
       words.push({ text: part, font, fill: span.code ? INK : fill })
@@ -228,8 +243,7 @@ function wrapWords(words: Word[], maxWidth: number, measurer: Measurer & { font:
 }
 
 function cellLines(cell: Span[], colWidth: number, measurer: Measurer & { font: string }): Word[][] {
-  const size = 10
-  return wrapWords(spansToWords(cell, size, INK, measurer), Math.max(20, colWidth - 8), measurer)
+  return wrapWords(spansToWords(cell, PDF_BODY_SIZE, INK, measurer), Math.max(20, colWidth - 8), measurer)
 }
 
 export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOptions): Promise<Buffer> {
@@ -278,40 +292,50 @@ export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOp
     y += gapAfter
   }
 
-  if (title) {
-    ctx.font = fontFor(22, { bold: true })
+  let coverTitle = title?.trim() || undefined
+  if (coverTitle) {
+    ctx.font = fontFor(PDF_COVER_SIZE, { bold: true })
     ctx.fillStyle = INK
     const titleLines = wrapWords(
-      [{ text: title, font: ctx.font, fill: INK }].flatMap((w) =>
+      [{ text: coverTitle, font: ctx.font, fill: INK }].flatMap((w) =>
         w.text.split(/(\s+)/).filter((p) => p.length > 0).map((p) => ({ text: p, font: w.font, fill: w.fill })),
       ),
       CONTENT_W,
       measurer,
     )
     for (const line of titleLines) {
-      ensure(30)
-      drawLine(line, MARGIN, y + 22)
-      y += 30
+      ensure(22)
+      drawLine(line, MARGIN, y + PDF_COVER_SIZE)
+      y += 22
     }
     ctx.fillStyle = RULE
     ctx.fillRect(MARGIN, y + 2, CONTENT_W, 1)
-    y += 16
+    y += 12
   }
+
+  let sawH1 = Boolean(coverTitle)
 
   for (const block of blocks) {
     switch (block.kind) {
       case "heading": {
-        const size = block.level === 1 ? 18 : block.level === 2 ? 15 : 13
-        const lh = size + 8
-        y += block.level === 1 ? 12 : 8
-        drawSpansBlock(block.spans, size, INK, 0, lh, 6)
+        const heading = spansText(block.spans).trim()
+        if (coverTitle && heading.toLowerCase() === coverTitle.toLowerCase()) {
+          coverTitle = undefined
+          break
+        }
+        const level = block.level <= 1 && sawH1 ? 2 : block.level
+        if (level <= 1) sawH1 = true
+        const size = pdfHeadingSize(level)
+        const lh = size + 6
+        y += level === 1 ? 8 : 6
+        drawSpansBlock(block.spans, size, INK, 0, lh, 4)
         break
       }
       case "paragraph":
-        drawSpansBlock(block.spans, 11, INK, 0, 15, 6)
+        drawSpansBlock(block.spans, PDF_BODY_SIZE, INK, 0, 14, 6)
         break
       case "quote": {
-        const lines = wrapWords(spansToWords(block.spans, 11, MUTED, measurer), CONTENT_W - 16, measurer)
+        const lines = wrapWords(spansToWords(block.spans, PDF_BODY_SIZE, MUTED, measurer), CONTENT_W - 16, measurer)
         const h = lines.length * 15
         ensure(h + 6)
         const top = y
@@ -325,7 +349,7 @@ export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOp
         break
       }
       case "code": {
-        ctx.font = fontFor(10, { code: true })
+        ctx.font = fontFor(PDF_CODE_SIZE, { code: true })
         const wrapped: string[] = []
         for (const raw of block.lines) {
           let rest = raw === "" ? " " : raw
@@ -348,7 +372,7 @@ export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOp
           ctx.fillStyle = CODE_BG
           ctx.fillRect(MARGIN, y, CONTENT_W, ch)
           ctx.fillStyle = INK
-          ctx.font = fontFor(10, { code: true })
+          ctx.font = fontFor(PDF_CODE_SIZE, { code: true })
           let cy = y + 6 + 11
           for (const text of chunk) {
             ctx.fillText(text, MARGIN + 8, cy)
@@ -362,14 +386,14 @@ export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOp
       case "list": {
         block.items.forEach((item, idx) => {
           const marker = block.ordered ? `${idx + 1}.` : "•"
-          const words = spansToWords(item, 11, INK, measurer)
-          measurer.font = fontFor(11, {})
+          const words = spansToWords(item, PDF_BODY_SIZE, INK, measurer)
+          measurer.font = fontFor(PDF_BODY_SIZE, {})
           const markerW = measurer.measureText(`${marker} `).width
           const lines = wrapWords(words, CONTENT_W - 20 - markerW, measurer)
           lines.forEach((line, li) => {
             ensure(15)
             if (li === 0) {
-              ctx.font = fontFor(11, {})
+              ctx.font = fontFor(PDF_BODY_SIZE, {})
               ctx.fillStyle = INK
               ctx.fillText(marker, MARGIN + 16, y + 12)
             }
@@ -383,14 +407,14 @@ export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOp
       }
       case "table": {
         // Natural column widths from unwrapped content, scaled to fit.
-        measurer.font = fontFor(10, {})
+        measurer.font = fontFor(PDF_BODY_SIZE, {})
         const colCount = block.headers.length
         const natural: number[] = new Array(colCount).fill(0)
         const allRows = [block.headers, ...block.rows]
         for (const row of allRows) {
           row.forEach((cell, ci) => {
             const flat = cell.map((s) => s.text).join(" ")
-            measurer.font = fontFor(10, { bold: row === block.headers })
+            measurer.font = fontFor(PDF_BODY_SIZE, { bold: row === block.headers })
             natural[ci] = Math.max(natural[ci]!, measurer.measureText(flat).width + 10)
           })
         }
@@ -418,7 +442,7 @@ export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOp
             for (const line of lines) {
               let lx = cx + 5
               for (const word of line) {
-                ctx.font = header ? fontFor(10, { bold: true }) : word.font
+                ctx.font = header ? fontFor(PDF_BODY_SIZE, { bold: true }) : word.font
                 ctx.fillStyle = INK
                 if (!/^\s+$/.test(word.text)) {
                   ctx.fillText(word.text, lx, cy)
@@ -468,7 +492,7 @@ export async function exportMarkdownToPdf(markdown: string, opts?: MarkdownPdfOp
 
   if (y === MARGIN) {
     // Empty input still yields a valid single page.
-    ctx.font = fontFor(11, {})
+    ctx.font = fontFor(PDF_BODY_SIZE, {})
     ctx.fillStyle = MUTED
     ctx.fillText("(empty document)", MARGIN, y + 12)
   }

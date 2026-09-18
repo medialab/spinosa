@@ -10,6 +10,47 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.7] — 2026-09-18
+
+### Added
+
+- The TUI Report bug action opens a GitHub issue form. Nothing is posted until you Submit.
+- Reports go to github.com/medialab/spinosa/issues after Submit.
+- The crash screen Open report action uses the same sanitized GitHub form.
+- The markdown viewer has minus and plus controls for reader size.
+- Mapper agents can call spinosa_map to write extraction packets and maps.
+
+### Changed
+
+- Launch preflight does not update workspaces after a Spinosa binary upgrade. The next start checks template packs.
+- Workspace cleanup and the workspace index run in the terminal after upgrade checks. The TUI does not rerun boot health.
+- The workspace orchestrator asks one to three questions from task ambiguity before it routes work.
+- The TUI shows Spinosa tools as a short name and outcome. It does not dump tool arguments.
+- The TUI lights clickable controls when the pointer is over them.
+- A child session draws a colored frame around the TUI.
+- Each child session keeps one accent color from a palette.
+- The parent Back control shows Workspace home.
+- A child Back control shows back.
+- The markdown viewer is read-only.
+- Export MD uses dark blue. Export PDF uses orange. Both fill on hover.
+- PDF export uses compact headings. It does not repeat a matching cover title.
+- Research plans use everyday names. The TUI says Start the run, not Framing refused.
+- `strategy` is one short name from spinosa_route. It is not a sentence or a chain.
+
+### Removed
+
+- The markdown viewer does not include an Edit action.
+- The session environment prompt does not say whether the folder is a git repository.
+
+### Fixed
+
+- Bug reports redact home paths inside stack parentheses. They attach sanitized boot and TUI lines from the last two hours.
+- Bug reports collapse identical following log lines to xN.
+- Home Update workspace forces a pack refresh. It does not report success when the pack is still stale.
+- Startup cleanup errors log and print one line. They do not stop the TUI.
+- The transcript drops the Sent row once the General prompt echo is visible.
+- A long chat no longer toasts TUI worker request timed out. Prompt send returns at admission.
+
 ## [1.2.0-beta.6] — 2026-09-18
 
 ### Fixed

@@ -5,7 +5,7 @@ import { describe, expect, test, afterAll } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { exportMarkdownToPdf } from "../src/export/markdown-pdf"
+import { exportMarkdownToPdf, pdfHeadingSize, PDF_COVER_SIZE, PDF_BODY_SIZE } from "../src/export/markdown-pdf"
 import { pdfExtractAllText, pdfExtractPageTexts } from "../src/extension/pdf"
 
 const tmp = mkdtempSync(path.join(tmpdir(), "spinosa-pdf-export-"))
@@ -35,6 +35,12 @@ Lead paragraph with **bold** and *italic* plus a [link](https://example.com/x).
 `
 
 describe("exportMarkdownToPdf", () => {
+  test("keeps headings close to body size", () => {
+    expect(PDF_COVER_SIZE).toBeLessThanOrEqual(16)
+    expect(pdfHeadingSize(1)).toBeLessThanOrEqual(13)
+    expect(pdfHeadingSize(2)).toBeLessThanOrEqual(12)
+    expect(pdfHeadingSize(3)).toBe(PDF_BODY_SIZE + 1)
+  })
   test("produces a structurally valid PDF", async () => {
     const buf = await exportMarkdownToPdf(SAMPLE, { title: "Validity Check" })
     expect(buf.length).toBeGreaterThan(1000)
