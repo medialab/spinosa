@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.10] — 2026-09-18
+
+### Fixed
+
+- Upgrade smoke no longer prints /dev/tty Device not configured between steps.
+
 ## [1.2.0-beta.9] — 2026-09-18
 
 ### Changed

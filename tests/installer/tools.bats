@@ -108,3 +108,10 @@ setup() {
   [ "$tools_line" -lt "$verify_line" ]
   [ "$tools_line" -lt "$smoke_line" ]
 }
+
+@test "install path does not mirror smoke gate notes to /dev/tty" {
+  # Smoke gate_note runs in the parent shell. Exporting SPINOSA_GATE_TTY
+  # duplicates lines and prints Device not configured on upgrade PTYs.
+  smoke_line="$(grep -nF 'run_staged_smoke_checks "$staged_binary"' "$INSTALLER")"
+  [[ "$smoke_line" != *"SPINOSA_GATE_TTY="* ]]
+}

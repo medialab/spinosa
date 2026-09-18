@@ -242,3 +242,22 @@ EOF
   [ -z "$STEP_RENDER_PID" ]
   ! kill -0 "$renderer" 2>/dev/null
 }
+
+@test "gate_note prints the marker even when the gate tty cannot be written" {
+  SPINOSA_GATE_TTY="/no/such/spinosa-gate-tty"
+  run gate_note "Running smoke provider-catalog..."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Running smoke provider-catalog..."* ]]
+  [[ "$output" != *"Device not configured"* ]]
+  [[ "$output" != *"No such file"* ]]
+}
+
+@test "gate_note mirrors a live copy when SPINOSA_GATE_TTY is writable" {
+  local ttyfile="$BATS_TEST_TMPDIR/gate-tty"
+  : > "$ttyfile"
+  SPINOSA_GATE_TTY="$ttyfile"
+  run gate_note "Smoke provider-catalog passed (1s)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Smoke provider-catalog passed (1s)"* ]]
+  grep -F "Smoke provider-catalog passed (1s)" "$ttyfile"
+}

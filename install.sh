@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.2.0-beta.9"
+PINNED_VERSION="1.2.0-beta.10"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 # Staged-verify budget for slow hosts (qemu linux-x64 needs 100s+ for template
@@ -245,18 +245,25 @@ vnote() { [[ "$VERBOSE" == "1" ]] || return 0; note "$1"; }
 # only tailed on failure/timeout — without explicit start markers a timeout log
 # cannot tell which gate hung (and verbose-gated vok lines vanish entirely by
 # default). Each marker is always logged and captured; it is additionally
-# mirrored to the controlling terminal when the caller exports
-# SPINOSA_GATE_TTY (interactive installs only — direct function calls in tests
-# leave it unset, so nothing ever writes to a tty from here).
+# mirrored to SPINOSA_GATE_TTY when the caller exports it (core checks inside
+# a timed step). A character device is not enough: a PTY without a controlling
+# terminal fails with "Device not configured". Brace the redirect so a dead
+# tty stays silent. Smoke notes print from the parent and must not set this.
 gate_note() {
   local msg="$1"
   spinosa_log INFO "$msg"
   printf '%s %s\n' "${C}●${RESET}" "$msg"
-  if [ -n "${SPINOSA_GATE_TTY:-}" ] && [ -c "${SPINOSA_GATE_TTY}" ]; then
+  if [ -n "${SPINOSA_GATE_TTY:-}" ]; then
     # Leading newline: the wave renderer leaves its progress line unterminated
     # (\r redraws), so without this the note glues onto it ("…s/400s● …").
-    printf '\n%s %s\n' "${C}●${RESET}" "$msg" >"${SPINOSA_GATE_TTY}" 2>/dev/null || true
+    { printf '\n%s %s\n' "${C}●${RESET}" "$msg" >"${SPINOSA_GATE_TTY}"; } 2>/dev/null || true
   fi
+}
+
+# True when /dev/tty can take a write. [ -c /dev/tty ] is true even when the
+# process has no controlling terminal (upgrade PTY, Cursor, some CI hosts).
+spinosa_tty_is_writable() {
+  { printf '' >/dev/tty; } 2>/dev/null
 }
 die()   { spinosa_log ERROR "$1"; printf '\n%s %s\n\n' "${R}●${RESET}" "$1" >&2; exit 1; }
 divider() { printf '\n'; }
@@ -2812,16 +2819,19 @@ main() {
   # run_timed_step captures the child's output, so without this the console
   # shows only the wave line until the whole verify budget resolves.
   _gate_tty=""
-  if [ -t 2 ] && [ -c /dev/tty ]; then _gate_tty=/dev/tty; fi
+  if [ -t 2 ] && spinosa_tty_is_writable; then _gate_tty=/dev/tty; fi
   SPINOSA_GATE_TTY="$_gate_tty" run_timed_step "Verifying package" "$DEFAULT_VERIFY_TIMEOUT_SECONDS" \
     run_staged_core_checks "$staged_binary" \
     || die "Staged binary failed verification"
   # Each smoke has its own 300s budget. Do not wrap the whole batch in one
   # timer — qemu linux-x64 spends ~30s per earlier smoke and then the TUI
   # worker still needs a full fetch window.
+  # Do not export SPINOSA_GATE_TTY here: smoke gate_note calls run in this
+  # shell (stdout is already live). Mirroring /dev/tty duplicates lines and
+  # errors when the upgrade PTY is not the controlling terminal.
   smoke_gate_status=0
   SMOKE_GATE_TMP=""
-  SPINOSA_GATE_TTY="$_gate_tty" run_staged_smoke_checks "$staged_binary" || smoke_gate_status=$?
+  run_staged_smoke_checks "$staged_binary" || smoke_gate_status=$?
   handle_smoke_gate_result "$smoke_gate_status"
 
   [[ "$VERBOSE" == "1" ]] && section "Activate"
