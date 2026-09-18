@@ -2355,30 +2355,20 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const mdFiles = createMemo(() =>
     streaming() ? [] : extractMdPaths(props.part.text, sessionDir()),
   )
-  const content = () => stripAnsi(props.part.text.trim())
   return (
     <Show when={props.part.text.trim()}>
       <TranscriptRow>
         <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
-          <Show
-            when={!streaming()}
-            fallback={
-              <text fg={theme.markdownText} wrapMode="word">
-                {content()}
-              </text>
-            }
-          >
-            <markdown
-              syntaxStyle={syntax()}
-              streaming={false}
-              internalBlockMode="top-level"
-              content={content()}
-              tableOptions={{ style: "grid" }}
-              conceal={ctx.conceal()}
-              fg={theme.markdownText}
-              bg={theme.background}
-            />
-          </Show>
+          <markdown
+            syntaxStyle={syntax()}
+            streaming={true}
+            internalBlockMode="top-level"
+            content={stripAnsi(props.part.text.trim())}
+            tableOptions={{ style: "grid" }}
+            conceal={ctx.conceal()}
+            fg={theme.markdownText}
+            bg={theme.background}
+          />
           <Show when={mdFiles().length > 0}>
             <box flexDirection="row" gap={1} paddingTop={1} flexWrap="wrap">
               <text fg={theme.textMuted}>📄</text>

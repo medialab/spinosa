@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
 import { SessionV1 } from "@spinosa/kernel-core/v1/session"
 import type { NamedError } from "@spinosa/kernel-core/util/error"
@@ -13,6 +16,11 @@ import { SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@spinosa/kernel-core/provider"
+import {
+  OPENCODE_COMPAT_ENV,
+  advertisedOpenCodeVersion,
+  resetAdvertisedOpenCodeVersionForTests,
+} from "@spinosa/kernel-core/installation/opencode-compat"
 
 const providerID = ProviderV2.ID.make("test")
 const retryProvider = "test"
@@ -436,5 +444,43 @@ describe("session.message-v2.fromError", () => {
     expect(SessionRetry.retryable(result, retryProvider)).toEqual({
       message: "An error occurred while processing your request.",
     })
+  })
+})
+
+describe("session.retry.opencode console floor", () => {
+  let cacheDir = ""
+
+  afterEach(() => {
+    resetAdvertisedOpenCodeVersionForTests()
+    delete process.env[OPENCODE_COMPAT_ENV]
+    if (cacheDir) {
+      rmSync(cacheDir, { recursive: true, force: true })
+      cacheDir = ""
+    }
+    delete process.env.SPINOSA_METADATA_DIR
+  })
+
+  function isolateCache() {
+    cacheDir = mkdtempSync(path.join(tmpdir(), "spinosa-retry-compat-"))
+    process.env.SPINOSA_METADATA_DIR = cacheDir
+    resetAdvertisedOpenCodeVersionForTests()
+    delete process.env[OPENCODE_COMPAT_ENV]
+  }
+
+  test("retries a Console version floor error once after raising the User-Agent", () => {
+    isolateCache()
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Error from provider (Console): OpenCode 1.19.0 or newer is required to use the free tier.",
+        isRetryable: false,
+        statusCode: 400,
+      }).toObject(),
+    )
+
+    expect(SessionRetry.retryable(error, "opencode")).toEqual({
+      message: "OpenCode Console now requires 1.19.0. Retrying with opencode/1.19.0.",
+    })
+    expect(advertisedOpenCodeVersion()).toBe("1.19.0")
+    expect(SessionRetry.retryable(error, "opencode")).toBeUndefined()
   })
 })

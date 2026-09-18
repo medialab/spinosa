@@ -4,7 +4,11 @@ import { Cause, Clock, Duration, Effect, Schedule } from "effect"
 import { MessageV2 } from "./message-v2"
 import { iife } from "@/util/iife"
 import { isRecord } from "@/util/record"
-import { spinosaLogError } from "@spinosa/core/utils/log"
+import { spinosaLogError, spinosaLogInfo } from "@spinosa/core/utils/log"
+import {
+  adoptOpenCodeConsoleRequirement,
+  parseOpenCodeConsoleRequirement,
+} from "@spinosa/kernel-core/installation/opencode-compat"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
@@ -69,6 +73,10 @@ export function delay(attempt: number, error?: SessionV1.APIError) {
 export function retryable(error: Err, provider: string) {
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
+
+  const consoleRetry = retryOpenCodeConsoleRequirement(error)
+  if (consoleRetry) return consoleRetry
+
   if (SessionV1.APIError.isInstance(error)) {
     const status = error.data.statusCode
     // 5xx errors are transient server failures and should always be retried,
@@ -161,6 +169,27 @@ export function retryable(error: Err, provider: string) {
     return { message: "Rate Limited" }
   }
   return undefined
+}
+
+function retryOpenCodeConsoleRequirement(error: Err): Retryable | undefined {
+  const required = parseOpenCodeConsoleRequirement(errorText(error))
+  if (!required) return undefined
+  const result = adoptOpenCodeConsoleRequirement(required)
+  if (!result.adopted) return undefined
+  spinosaLogInfo("provider", `console user-agent raised to opencode/${result.version}`)
+  return { message: `OpenCode Console now requires ${required}. Retrying with opencode/${result.version}.` }
+}
+
+function errorText(error: Err): string {
+  const parts: string[] = []
+  if (SessionV1.APIError.isInstance(error)) {
+    parts.push(error.data.message)
+    if (error.data.responseBody) parts.push(error.data.responseBody)
+  }
+  if (isRecord(error.data) && typeof error.data.message === "string") {
+    parts.push(error.data.message)
+  }
+  return parts.join("\n")
 }
 
 function str(value: unknown) {

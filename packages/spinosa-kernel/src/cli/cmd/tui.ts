@@ -24,6 +24,7 @@ import {
   runLaunchPreflight,
 } from "@spinosa/core/commands/preflight"
 import { isSpinosaWorkspace } from "@spinosa/core/workspace/meta"
+import { advertisedOpenCodeVersion, syncOpenCodeCompatVersion } from "@spinosa/kernel-core/installation/opencode-compat"
 import { runOverlappedLaunch } from "../tui/launch-overlap"
 
 declare global {
@@ -356,6 +357,19 @@ export const TuiThreadCommand = cmd({
           },
           phase: () => workerPhase,
         }
+      }
+
+      // Console reads the worker's User-Agent. Set the floor (and npm latest
+      // when reachable) before spawn so the child inherits it.
+      try {
+        const compat = await syncOpenCodeCompatVersion()
+        bootLog("tui.boot.opencode", "console user-agent ready", {
+          version: compat.version,
+          source: compat.source,
+          advertised: advertisedOpenCodeVersion(),
+        })
+      } catch (error) {
+        bootLogError("tui.boot.opencode", error)
       }
 
       // Spawn the worker during the update check. An accepted upgrade still

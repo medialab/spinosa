@@ -16,11 +16,12 @@ The terminal application lives in `packages/tui`. Do not add full TUI features h
 
 Default command (`spinosa` with no args) runs `cmd/tui.ts`.
 
-1. `runLaunchPreflight()` in `@spinosa/core/commands/preflight` checks for Spinosa updates, then offers a Y/n refresh for stale workspace template packs. A cache-miss network check times out after 2.5 s and continues launch.
-2. The TUI worker spawns in parallel with that check and answers `ping` before it loads the session server. An accepted upgrade stops the worker and exits.
-3. The terminal prints `Launching TUI...`. There is no extra delay after the worker is ready.
-4. `cli/tui/layer.ts` starts `@spinosa/tui`.
-5. `cli/tui/worker.ts` stubs DOM globals (DOMMatrix, ImageData, Path2D) and suppresses pdf.js boot noise, then loads `worker-main.ts`. It must not import `@napi-rs/canvas` — that extra isolate cannot require the native from bunfs chunks and `/provider` stalls. PDF render stays in the parent. The installer smoke captures boot noise and fails if those warnings appear. Compiled binaries load the extra entrypoint from `/$bunfs/root/src/cli/tui/worker.js` — never a cwd-relative `worker.ts`. The parent waits for an RPC `ping` before rendering. Worker fetch times out after 120s.
+1. Launch probes npm `opencode-ai` (5 s, 6 h cache) and sets `SPINOSA_OPENCODE_COMPAT_VERSION` so Console gets `User-Agent: opencode/≥1.18.0` before the worker spawns. If Console later requires a newer floor, the session retries once with that version and persists it.
+2. `runLaunchPreflight()` in `@spinosa/core/commands/preflight` checks for Spinosa updates, then offers a Y/n refresh for stale workspace template packs. A cache-miss network check times out after 2.5 s and continues launch.
+3. The TUI worker spawns in parallel with that check and answers `ping` before it loads the session server. An accepted upgrade stops the worker and exits.
+4. The terminal prints `Launching TUI...`. There is no extra delay after the worker is ready.
+5. `cli/tui/layer.ts` starts `@spinosa/tui`.
+6. `cli/tui/worker.ts` stubs DOM globals (DOMMatrix, ImageData, Path2D) and suppresses pdf.js boot noise, then loads `worker-main.ts`. It must not import `@napi-rs/canvas` — that extra isolate cannot require the native from bunfs chunks and `/provider` stalls. PDF render stays in the parent. The installer smoke captures boot noise and fails if those warnings appear. Compiled binaries load the extra entrypoint from `/$bunfs/root/src/cli/tui/worker.js` — never a cwd-relative `worker.ts`. The parent waits for an RPC `ping` before rendering. Worker fetch times out after 120s.
 
 `--version` / `-v` / `version` exit in `src/index.ts` before OpenTUI or command modules load. Other commands lazy-load from `cli/command-catalog.ts`. The OpenTUI Solid preload lives in `cli/cmd/tui-entry.ts` only. `boot-runtime.ts` awaits `GlobalReady` (legacy-path migration) before `cli-main.ts` parses.
 

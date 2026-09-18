@@ -33,7 +33,7 @@ Route model: `global | workspace | onboarding | add-files | visualizer | plugin`
 
 **Framework source:** `scripts/link-framework.sh` symlinks `../spinosa-main` → `framework/`. CLI bridge resolves `.bin/spinosa` from that tree.
 
-**Layout:** Session transcript follows `transcriptBudget()` (`src/util/layout.ts`): main text first (≥80 center cells), annotation rails only at ≥124 terminal columns; classic single-column below that. Session sidebar (42 cols) sits outside the cap. The transcript renders the last 120 rows. Home and Session load lazily; plugin chrome does not block first paint. CWD discovery polls every 15 s.
+**Layout:** Session transcript follows `transcriptBudget()` (`src/util/layout.ts`): main text first (≥80 center cells), annotation rails only at ≥124 terminal columns; classic single-column below that. Session sidebar (42 cols) sits outside the cap. The transcript renders the last 120 rows. Home and Session stay eager — OpenTUI cannot swap those native trees under `lazy()`/`Suspense`. Plugin chrome waits for `pluginHost.start()` before first paint. CWD discovery polls every 15 s.
 
 CLI flags `--session`, `--continue`, `--prompt` skip the picker.
 

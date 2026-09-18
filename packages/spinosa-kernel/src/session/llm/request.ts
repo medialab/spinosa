@@ -9,14 +9,15 @@ import type { MessageV2 } from "../message-v2"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
 import { SystemPrompt } from "../system"
-import { InstallationVersion, OpenCodeCompatVersion } from "@spinosa/kernel-core/installation/version"
+import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
+import { openCodeUserAgent } from "@spinosa/kernel-core/installation/opencode-compat"
 import { Effect, Record } from "effect"
 import { jsonSchema, tool as aiTool, type ModelMessage, type Tool } from "ai"
 import type { Plugin } from "@/plugin"
 import { mergeDeep } from "remeda"
 
 export const SPINOSA_USER_AGENT = `spinosa/${InstallationVersion}`
-export const OPENCODE_USER_AGENT = `opencode/${OpenCodeCompatVersion}`
+export { openCodeUserAgent }
 
 type PrepareInput = {
   readonly user: SessionV1.User
@@ -193,7 +194,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
             "x-opencode-session": input.sessionID,
             "x-opencode-request": input.user.id,
             "x-opencode-client": input.flags.client,
-            "User-Agent": OPENCODE_USER_AGENT,
+            "User-Agent": openCodeUserAgent(),
           }
         : {
             "x-session-affinity": input.sessionID,

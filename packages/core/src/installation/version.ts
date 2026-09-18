@@ -34,7 +34,7 @@ function readOpenCodeCompatVersion(): string {
   }
 }
 
-/** OpenCode Console reads `opencode/<semver>` and requires >= 1.17.0. Product version is 1.1.0-beta.N. */
+/** OpenCode Console reads `opencode/<semver>`. Floor is OPENCODE_CONSOLE_MIN_VERSION. Product version is 1.x-beta.N. */
 export const OpenCodeCompatVersion =
   typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : readOpenCodeCompatVersion()
 export const InstallationChannel = typeof SPINOSA_CHANNEL === "string" ? SPINOSA_CHANNEL : "local"

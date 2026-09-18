@@ -5,6 +5,20 @@ import { Spinner } from "./spinner"
 
 const MINIMUM_BOOT_DISPLAY_MS = 3_000
 
+export type StartupOverlayAction = "track-boot" | "complete" | "hold" | "defer-show" | "stay"
+
+/** Decide overlay vs first paint. Instant-ready boot must complete without a splash. */
+export function nextStartupOverlayAction(input: {
+  ready: boolean
+  showing: boolean
+  bootInProgress: boolean
+}): StartupOverlayAction {
+  if (input.bootInProgress) return "track-boot"
+  if (input.ready) return input.showing ? "hold" : "complete"
+  if (input.showing) return "stay"
+  return "defer-show"
+}
+
 export function StartupLoading(props: {
   ready: () => boolean
   operations?: () => SpinosaBootOperation[]
@@ -34,7 +48,13 @@ export function StartupLoading(props: {
   }
 
   createEffect(() => {
-    if (bootInProgress()) {
+    const action = nextStartupOverlayAction({
+      ready: props.ready(),
+      showing: show(),
+      bootInProgress: bootInProgress(),
+    })
+
+    if (action === "track-boot") {
       if (wait) {
         clearTimeout(wait)
         wait = undefined
@@ -46,12 +66,20 @@ export function StartupLoading(props: {
       return
     }
 
-    if (props.ready()) {
+    if (action === "complete") {
       if (wait) {
         clearTimeout(wait)
         wait = undefined
       }
-      if (!show()) return
+      finish()
+      return
+    }
+
+    if (action === "hold") {
+      if (wait) {
+        clearTimeout(wait)
+        wait = undefined
+      }
       if (hold) return
 
       const left = MINIMUM_BOOT_DISPLAY_MS - (Date.now() - stamp)
@@ -67,11 +95,18 @@ export function StartupLoading(props: {
       return
     }
 
+    if (action === "stay") {
+      if (hold) {
+        clearTimeout(hold)
+        hold = undefined
+      }
+      return
+    }
+
     if (hold) {
       clearTimeout(hold)
       hold = undefined
     }
-    if (show()) return
     if (wait) return
 
     wait = setTimeout(() => {
