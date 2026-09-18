@@ -136,14 +136,12 @@ describe("spinosa tool display", () => {
   test("uses the tool title as the outcome", () => {
     expect(spinosaToolOutcome({ status: "pending" })).toBeUndefined()
     expect(spinosaToolOutcome({ status: "running" })).toBeUndefined()
-    expect(spinosaToolOutcome({ status: "completed", title: "Routed fast_path (workspace)" })).toBe(
-      "Routed fast_path (workspace)",
+    expect(spinosaToolOutcome({ status: "completed", title: "Index the workspace" })).toBe(
+      "Index the workspace",
     )
     expect(spinosaToolOutcome({ status: "error" })).toBe("Failed")
     expect(formatSpinosaToolLine("spinosa_route")).toBe("Pick a path")
-    expect(formatSpinosaToolLine("spinosa_route", "Routed fast_path (workspace)")).toBe(
-      "Pick a path: Routed fast_path (workspace)",
-    )
+    expect(formatSpinosaToolLine("spinosa_route", "Index the workspace")).toBe("Pick a path: Index the workspace")
     expect(formatSpinosaToolLine("spinosa_gate", "Gate passed")).toBe("Check coverage: Gate passed")
   })
 })

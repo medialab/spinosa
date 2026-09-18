@@ -309,11 +309,11 @@ describe("TUI inline tool wrapping", () => {
         },
         {},
         (value) => value ?? "",
-        "Routed fast_path (workspace)",
+        "Index the workspace",
       ),
     ).toEqual({
       tag: "SPINOSA",
-      command: "Pick a path: Routed fast_path (workspace)",
+      command: "Pick a path: Index the workspace",
     })
 
     expect(

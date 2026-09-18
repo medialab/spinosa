@@ -13,19 +13,21 @@ setup() {
 
 @test "prompt_install_repair accepts --yes without a TTY" {
   YES=1
-  run prompt_install_repair "test detail"
+  run prompt_install_repair "Existing Spinosa setup found." "test detail" "Continue?"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Repairing automatically (--yes)"* ]]
-  [[ "$output" == *"Installation needs repair"* ]]
+  [[ "$output" == *"Continuing automatically (--yes)"* ]]
+  [[ "$output" == *"Existing Spinosa setup found"* ]]
   [[ "$output" == *"test detail"* ]]
+  [[ "$output" != *"Installation needs repair"* ]]
 }
 
 @test "prompt_install_repair accepts SPINOSA_REPAIR=1" {
   YES=0
   SPINOSA_REPAIR=1
-  run prompt_install_repair "deps"
+  run prompt_install_repair "Existing Spinosa setup found." "deps" "Continue?"
   [ "$status" -eq 0 ]
   [[ "$output" == *"SPINOSA_REPAIR=1"* ]]
+  [[ "$output" != *"Installation needs repair"* ]]
 }
 
 @test "is_reclaimable_spinosa_home accepts logs-only debris" {
@@ -99,6 +101,9 @@ setup() {
   [ "$status" -eq 0 ]
   [ -d "$SPINOSA_HOME" ]
   [ ! -e "$SPINOSA_HOME/logs/spinosa.log" ]
+  [[ "$output" == *"Leftover files from an earlier install attempt"* ]]
+  [[ "$output" != *"broken"* ]]
+  [[ "$output" != *"needs repair"* ]]
 }
 
 @test "ensure_spinosa_home is a no-op on empty home" {
@@ -107,5 +112,33 @@ setup() {
   run ensure_spinosa_home
   [ "$status" -eq 0 ]
   [[ "$output" != *"Installation needs repair"* ]]
+  [[ "$output" != *"Existing Spinosa setup found"* ]]
   [ -d "$SPINOSA_HOME" ]
+}
+
+@test "ensure_spinosa_home names an existing setup when config is present and the app is missing" {
+  YES=1
+  mkdir -p "$SPINOSA_HOME/metadata"
+  printf 'spinosa: true\n' >"$SPINOSA_HOME/metadata/config.yaml"
+  run ensure_spinosa_home
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Existing Spinosa setup found"* ]]
+  [[ "$output" == *"settings and workspaces"* ]]
+  [[ "$output" != *"broken"* ]]
+  [[ "$output" != *"needs repair"* ]]
+  [[ "$output" != *"cannot run"* ]]
+}
+
+@test "ensure_spinosa_home says the app cannot run when the file exists but is not executable" {
+  YES=1
+  mkdir -p "$SPINOSA_HOME/metadata" "$SPINOSA_HOME/bin"
+  printf 'spinosa: true\n' >"$SPINOSA_HOME/metadata/config.yaml"
+  : >"$SPINOSA_HOME/bin/spinosa"
+  chmod a-x "$SPINOSA_HOME/bin/spinosa"
+  run ensure_spinosa_home
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"The Spinosa app cannot run"* ]]
+  [[ "$output" == *"settings and workspaces"* ]]
+  [[ "$output" != *"broken"* ]]
+  [[ "$output" != *"Existing Spinosa setup found"* ]]
 }

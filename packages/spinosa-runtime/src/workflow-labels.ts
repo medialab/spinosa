@@ -67,6 +67,14 @@ export function workflowLabel(id: string): string {
   return WORKFLOW_COPY[id]?.label ?? id.replace(/[._]/g, " ")
 }
 
+/** Transcript title for `spinosa_route`: the plan name, not mode/via jargon. */
+export function formatRouteTitle(decision: { mode: string; operation?: string; strategy?: string }): string {
+  if (decision.mode === "orchestrated" && decision.operation && decision.strategy) {
+    return workflowLabel(`${decision.operation}.${decision.strategy}`)
+  }
+  return "Chat"
+}
+
 export function workflowWant(id: string): string {
   return WORKFLOW_COPY[id]?.want ?? workflowLabel(id)
 }

@@ -14,8 +14,15 @@ describe("isStartupIndexingPrompt", () => {
     expect(isStartupIndexingPrompt("Run Spinosa startup indexing for this workspace.")).toBe(true)
   })
 
+  test("recognizes everyday index-this-workspace asks", () => {
+    expect(isStartupIndexingPrompt("The user wants to index this workspace.")).toBe(true)
+    expect(isStartupIndexingPrompt("Please index the workspace")).toBe(true)
+    expect(isStartupIndexingPrompt("start indexing")).toBe(true)
+  })
+
   test("ignores ordinary coverage audits", () => {
     expect(isStartupIndexingPrompt("Audit coverage gaps in the corpus")).toBe(false)
+    expect(isStartupIndexingPrompt("What does the workspace index say about onboarding?")).toBe(false)
   })
 })
 

@@ -134,7 +134,7 @@ EOF
 home="${SPINOSA_HOME:-$HOME/.spinosa}"
 target="$home/bin/spinosa"
 if [ ! -x "$target" ]; then
-  echo "spinosa: installation needs repair" >&2
+  echo "spinosa: the app is not installed. Run the installer again." >&2
   exit 1
 fi
 exec "$target" "$@"

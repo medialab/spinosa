@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ── install.sh — Spinosa binary installer (auto-re-execs with bash) ─────────
 
-PINNED_VERSION="1.2.0-beta.7"
+PINNED_VERSION="1.2.0-beta.8"
 PINNED_TAG="beta"
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS="600"
 # Staged-verify budget for slow hosts (qemu linux-x64 needs 100s+ for template
@@ -653,7 +653,7 @@ while [ $# -gt 0 ]; do
       echo "  --reinstall       Reinstall even if same version"
       echo "  --dry-run         Show what would happen without doing it"
       echo "  --verify-only     Verify installed binary, do not install"
-      echo "  --yes             Skip prompts; auto-upgrade and auto-repair if needed"
+      echo "  --yes             Skip prompts; auto-upgrade and continue if a previous setup is found"
       echo "  --no-launch       Compatibility flag; the installer never auto-launches"
       echo "  --verbose         Show detailed progress (debug)"
       echo ""
@@ -661,7 +661,7 @@ while [ $# -gt 0 ]; do
       echo "  --min-days N      Reject releases newer than N days old"
       echo ""
       echo "Environment:"
-       echo "  SPINOSA_REPAIR=1            Auto-repair without prompting"
+       echo "  SPINOSA_REPAIR=1            Continue without prompting when a previous setup is found"
        echo "  SPINOSA_RELEASE_BASE_URL    Override release asset base URL (local smoke)"
        echo "  SPINOSA_VERIFY_TIMEOUT_SECONDS  Override staged verify timeout (default: $DEFAULT_VERIFY_TIMEOUT_SECONDS)"
        echo "  SPINOSA_SMOKE_TIMEOUT_SECONDS  Override per-smoke timeout (default: $DEFAULT_SMOKE_TIMEOUT_SECONDS; budgets do not add up)"
@@ -936,29 +936,34 @@ install_bundled_tools() {
   return 0
 }
 
-prompt_install_repair() {  local detail="${1:-Something in the Spinosa install needs fixing.}"
+# Confirmation for a previous home that is not a fresh install.
+# Args: headline, detail, question (default Continue?)
+prompt_install_repair() {
+  local headline="${1:-Existing Spinosa setup found.}"
+  local detail="${2:-The installer will continue. Your settings stay.}"
+  local question="${3:-Continue?}"
   printf '\n' >&2
-  printf '%s %s\n' "${R}●${RESET}" "Installation needs repair." >&2
+  printf '%s %s\n' "${C}●${RESET}" "$headline" >&2
   printf '%s\n' "$detail" >&2
   if [ "${SPINOSA_REPAIR:-}" = "1" ]; then
-    info "Repairing automatically (SPINOSA_REPAIR=1)..."
+    info "Continuing automatically (SPINOSA_REPAIR=1)..."
     return 0
   fi
   if [ "$YES" -eq 1 ]; then
-    info "Repairing automatically (--yes)..."
+    info "Continuing automatically (--yes)..."
     return 0
   fi
-  printf '%s %s [Y/n]: ' "${C}?${RESET}" "Repair now?" >&2
+  printf '%s %s [Y/n]: ' "${C}?${RESET}" "$question" >&2
   local reply
   if ! read_from_tty reply; then
     printf '\n' >&2
-    warn "No terminal for repair prompt. Re-run with --yes to auto-repair."
+    warn "No terminal for this prompt. Re-run with --yes to continue."
     return 1
   fi
   reply="${reply:-Y}"
   case "$reply" in
     n|N|no|NO)
-      info "Repair cancelled."
+      info "Cancelled."
       return 1
       ;;
     *)
@@ -1186,21 +1191,31 @@ clear_virgin_install_debris() {
 }
 
 ensure_spinosa_home() {
-  local detail=""
+  local headline="" detail="" question="Continue?"
 
   assert_spinosa_home_path_safe "$SPINOSA_HOME"
 
   if is_reclaimable_spinosa_home "$SPINOSA_HOME"; then
-    detail="Installer debris was found under ${SPINOSA_HOME} (likely a failed earlier attempt). Only known debris paths will be removed — your home directory is kept."
+    headline="Leftover files from an earlier install attempt."
+    detail="They are under ${SPINOSA_HOME}. Only those leftover files will be removed. This folder stays."
+    question="Clean up and continue?"
   elif spinosa_home_needs_repair "$SPINOSA_HOME"; then
-    detail="An incomplete or broken Spinosa binary install was found under ${SPINOSA_HOME}. The installer will re-download the platform binary; workspace metadata is kept."
+    if [ -e "${SPINOSA_HOME}/bin/spinosa" ]; then
+      headline="The Spinosa app cannot run."
+      detail="Your settings and workspaces are still under ${SPINOSA_HOME}. The app file is there but cannot run. We will replace only that file."
+      question="Replace the app?"
+    else
+      headline="Existing Spinosa setup found."
+      detail="Your settings and workspaces are still under ${SPINOSA_HOME}. The app is not installed yet, or the last install did not finish. We will download the app. Everything else stays."
+      question="Continue?"
+    fi
     REINSTALL=1
   else
     return 0
   fi
 
-  if ! prompt_install_repair "$detail"; then
-    die "Installation needs repair. Re-run with --yes (or SPINOSA_REPAIR=1) to allow repair, or choose an empty --prefix."
+  if ! prompt_install_repair "$headline" "$detail" "$question"; then
+    die "Install paused. Re-run with --yes (or SPINOSA_REPAIR=1) to continue, or choose an empty --prefix."
   fi
 
   if is_reclaimable_spinosa_home "$SPINOSA_HOME"; then
@@ -2377,7 +2392,7 @@ install_shims() {
 home="${SPINOSA_HOME:-$HOME/.spinosa}"
 target="$home/bin/spinosa"
 if [ ! -x "$target" ]; then
-  echo "spinosa: installation needs repair" >&2
+  echo "spinosa: the app is not installed. Run the installer again." >&2
   exit 1
 fi
 exec "$target" "$@"

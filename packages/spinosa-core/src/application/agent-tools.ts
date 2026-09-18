@@ -20,7 +20,7 @@ import { evidenceGate, validateArtifact, verificationOutcome } from "../artifact
 import { parseVerificationStatus } from "../artifacts/contracts"
 
 export type { OrchestratedDecision, RouteDecision } from "@spinosa/runtime"
-export { ROUTE_STRATEGIES, workflowLabel } from "@spinosa/runtime"
+export { ROUTE_STRATEGIES, formatRouteTitle, workflowLabel } from "@spinosa/runtime"
 
 // --- spinosa_route ---
 

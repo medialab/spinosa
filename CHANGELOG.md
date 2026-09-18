@@ -10,6 +10,17 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.8] — 2026-09-18
+
+### Changed
+
+- The installer says Existing Spinosa setup found when settings are present and the app is missing.
+- It does not call that case broken or repair.
+- When the app file cannot run, the installer says that. Settings stay.
+- Leftover files from a failed attempt get a cleanup prompt. They are not a broken install.
+- Index this workspace requests pick Index the workspace. They do not fall back to chat.
+- Pick a path shows the plan name. It does not say Routed general.
+
 ## [1.2.0-beta.7] — 2026-09-18
 
 ### Added
