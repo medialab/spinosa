@@ -273,6 +273,8 @@ const live: Layer.Layer<
         "llm.provider": input.model.providerID,
         "llm.model": input.model.id,
       })
+      let lastPrompt: unknown
+      let lastTransformed: typeof prepared.messages | undefined
       // Default runtime path: AI SDK owns provider execution and tool dispatch;
       // LLMAISDK.toLLMEvents below normalizes fullStream parts for the processor.
       return {
@@ -329,12 +331,16 @@ const live: Layer.Layer<
                 specificationVersion: "v3" as const,
                 async transformParams(args) {
                   if (args.type === "stream") {
-                    // @ts-expect-error
-                    args.params.prompt = ProviderTransform.message(
-                      args.params.prompt,
-                      input.model,
-                      prepared.messageTransformOptions,
-                    )
+                    const prompt = args.params.prompt
+                    if (lastPrompt !== prompt || lastTransformed === undefined) {
+                      lastPrompt = prompt
+                      lastTransformed = ProviderTransform.message(
+                        prompt as typeof prepared.messages,
+                        input.model,
+                        prepared.messageTransformOptions,
+                      )
+                    }
+                    args.params.prompt = lastTransformed as typeof args.params.prompt
                   }
                   return args.params
                 },

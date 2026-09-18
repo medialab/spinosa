@@ -54,8 +54,8 @@ import { DialogSpinosaMissingWorkspace } from "./component/dialog-spinosa-missin
 import { DialogSpinosaWorkspacePicker } from "./component/dialog-spinosa-workspace-picker"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
-import { Home } from "./routes/home"
-import { Session } from "./routes/session"
+const Home = lazy(async () => ({ default: (await import("./routes/home")).Home }))
+const Session = lazy(async () => ({ default: (await import("./routes/session")).Session }))
 
 import { SpinosaWorkspaceProvider, useSpinosaWorkspace } from "./context/spinosa-workspace"
 import { PromptHistoryProvider } from "./component/prompt/history"
@@ -549,7 +549,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       Slot: pluginRuntime.Slot,
     }),
   )
-  const [ready, setReady] = createSignal(false)
+  const [ready, setReady] = createSignal(true)
   props.pluginHost
     .start({
       api,
@@ -560,9 +560,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     .catch((error) => {
       bootLogError("tui.plugin.load", error)
       console.error("Failed to load TUI plugins", error instanceof Error ? error.message : String(error))
-    })
-    .finally(() => {
-      setReady(true)
     })
 
   // Let selection copy/dismiss win ahead of normal bindings when explicit copy is required.
@@ -1301,13 +1298,13 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       </Show>
       <Show when={tuiReady()}>
         <box flexGrow={1} minHeight={0} flexDirection="column">
-          <Show when={route.data.type === "workspace"}>
-            <Session />
-          </Show>
-          <Show when={route.data.type === "global"}>
-            <Home />
-          </Show>
           <Suspense fallback={<box />}>
+            <Show when={route.data.type === "workspace"}>
+              <Session />
+            </Show>
+            <Show when={route.data.type === "global"}>
+              <Home />
+            </Show>
             <Show when={route.data.type === "onboarding"}>
               <Onboarding />
             </Show>

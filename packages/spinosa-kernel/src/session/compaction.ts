@@ -181,8 +181,21 @@ const layer = Layer.effect(
       messages: SessionV1.WithParts[]
       model: Provider.Model
     }) {
-      const msgs = yield* MessageV2.toModelMessagesEffect(input.messages, input.model)
-      return Token.estimate(JSON.stringify(msgs))
+      let chars = 0
+      let complex = false
+      for (const msg of input.messages) {
+        for (const part of msg.parts) {
+          if (part.type === "text" || part.type === "reasoning") chars += part.text.length
+          else if (part.type === "tool" && part.state.status === "completed") chars += String(part.state.output ?? "").length
+          else if (part.type === "tool" && (part.state.status === "pending" || part.state.status === "running")) chars += 0
+          else complex = true
+        }
+      }
+      if (complex || chars === 0) {
+        const msgs = yield* MessageV2.toModelMessagesEffect(input.messages, input.model, { walkCache: { entries: [] } })
+        return Token.estimate(JSON.stringify(msgs))
+      }
+      return Token.estimateChars(Math.min(chars, 1_000_000))
     })
 
     const select = Effect.fn("SessionCompaction.select")(function* (input: {

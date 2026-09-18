@@ -1659,3 +1659,45 @@ describe("session.message-v2.latest", () => {
     expect(state.tasks[0]).toMatchObject({ type: "compaction", auto: true })
   })
 })
+
+describe("toModelMessages walk cache", () => {
+  test("reuses converted prefix messages across steps", async () => {
+    const input: SessionV1.WithParts[] = [
+      {
+        info: userInfo("m-user"),
+        parts: [
+          {
+            ...basePart("m-user", "p1"),
+            type: "text",
+            text: "hello",
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+    const cache: MessageV2.ToModelMessagesWalkCache = { entries: [] }
+    const first = await MessageV2.toModelMessages(input, model, { walkCache: cache })
+    expect(cache.entries).toHaveLength(1)
+    const second = await MessageV2.toModelMessages(input, model, { walkCache: cache })
+    expect(second).toStrictEqual(first)
+
+    const grown: SessionV1.WithParts[] = [
+      ...input,
+      {
+        info: userInfo("m-user-2"),
+        parts: [
+          {
+            ...basePart("m-user-2", "p2"),
+            type: "text",
+            text: "again",
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+    const third = await MessageV2.toModelMessages(grown, model, { walkCache: cache })
+    expect(cache.entries).toHaveLength(2)
+    expect(third).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "hello" }] },
+      { role: "user", content: [{ type: "text", text: "again" }] },
+    ])
+  })
+})

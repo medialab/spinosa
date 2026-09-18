@@ -32,6 +32,9 @@ export function formatAutocompleteEmptyMessage(searchError?: string): string {
   return detail ? `Couldn’t search files: ${detail}` : "No matching items"
 }
 
+export const FILE_SEARCH_DEBOUNCE_MS = 80
+export const AUTOCOMPLETE_POSITION_POLL_MS = 250
+
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
   return hashIndex !== -1 ? input.substring(0, hashIndex) : input
@@ -129,7 +132,7 @@ export function Autocomplete(props: {
           lastPos = { x: anchor.x, y: anchor.y, width: anchor.width }
           setPositionTick((t) => t + 1)
         }
-      }, 50)
+      }, AUTOCOMPLETE_POSITION_POLL_MS)
 
       onCleanup(() => clearInterval(interval))
     }
@@ -322,9 +325,15 @@ export function Autocomplete(props: {
   }
 
   const [fileSearchError, setFileSearchError] = createSignal<string | undefined>()
+  const [debouncedSearch, setDebouncedSearch] = createSignal("")
+  createEffect(() => {
+    const query = search()
+    const timer = setTimeout(() => setDebouncedSearch(query), FILE_SEARCH_DEBOUNCE_MS)
+    onCleanup(() => clearTimeout(timer))
+  })
 
   const [files] = createResource(
-    () => ({ query: search(), location: location() }),
+    () => ({ query: debouncedSearch(), location: location() }),
     async (input) => {
       if (!store.visible || store.visible === "/") {
         setFileSearchError(undefined)

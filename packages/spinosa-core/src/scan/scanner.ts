@@ -50,7 +50,8 @@ export interface OnboardingPreviewRow {
 export async function scanSource(
   sourcePath: string,
   importBatches: ImportBatchManager,
-): Promise<ScanCounts & ScanBytes> {
+): Promise<ScanCounts & ScanBytes & { files: string[] }> {
+  const files: string[] = []
   const out = {
     markdown: 0,
     markitdown: 0,
@@ -65,6 +66,7 @@ export async function scanSource(
   } as ScanCounts & ScanBytes
 
   for (const fp of findSourceFiles(sourcePath)) {
+    files.push(fp)
     const klass = await classifySourceFile(fp)
 
     if (klass === "ignored") {
@@ -122,7 +124,7 @@ export async function scanSource(
   importBatches.sort()
   importBatches.selectAll()
 
-  return out
+  return { ...out, files }
 }
 
 export async function detectDocumentTools(): Promise<ToolStatus> {

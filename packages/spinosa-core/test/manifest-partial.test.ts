@@ -57,7 +57,8 @@ describe("manifest partial state + integrity", () => {
       expect(d1).toMatch(/^[0-9a-f]{64}$/)
       recordResult({ logsDir: logs, rel: "c.txt", ext: ".txt", route: "direct", status: "done", srcFile: src, dest: "raw/c.txt", engine: "copy" })
       const { records } = loadManifest(logs)
-      expect(records.get("c.txt")?.sha256).toBe(d1)
+      expect(records.get("c.txt")?.sha256).toBeUndefined()
+      expect(hashSourceFile(src)).toBe(d1)
     } finally {
       rmSync(logs, { recursive: true, force: true })
     }

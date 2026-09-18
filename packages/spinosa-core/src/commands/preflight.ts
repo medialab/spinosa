@@ -272,12 +272,22 @@ export async function offerStaleTemplatePackUpdates(
   const candidates = await listCandidates(options.targetWorkspace)
   if (candidates.length === 0) return
 
+  const bundledVersion = readFrameworkVersionFromRoot(frameworkRoot)
+  const templateRoot = resolveTemplateRootFromFrameworkRoot(frameworkRoot)
   const stale: StaleTemplatePackWorkspace[] = []
-  for (const workspacePath of candidates) {
+  await Promise.all(candidates.map(async (workspacePath) => {
     try {
       const meta = await readWorkspaceMeta(workspacePath).catch(() => undefined)
-      const freshness = await inspectPackFreshness(deps, workspacePath, frameworkRoot)
-      if (!freshness.refreshRecommended) continue
+      const freshness = deps.inspectPack
+        ? await deps.inspectPack(workspacePath, frameworkRoot)
+        : inspectTemplatePackFreshness({
+            workspacePath,
+            frameworkRoot,
+            templateRoot,
+            workspaceVersion: meta?.frameworkVersion,
+            bundledVersion,
+          })
+      if (!freshness.refreshRecommended) return
       stale.push({
         path: workspacePath,
         name: meta?.projectName || path.basename(workspacePath) || workspacePath,
@@ -286,7 +296,7 @@ export async function offerStaleTemplatePackUpdates(
     } catch {
       /* individual workspace read failure is non-fatal */
     }
-  }
+  }))
 
   if (stale.length === 0) {
     spinosaLogInfo("preflight", "template packs current")

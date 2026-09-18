@@ -19,6 +19,7 @@ import {
   contiguousRanges,
   hasEmbeddedTextPdfPages,
   isDigitalPdfPages,
+  pageTextsFromClassify,
   partitionPdfPages,
 } from "../src/import/pdf-pages"
 
@@ -172,5 +173,19 @@ describe("contiguousRanges", () => {
     ])
     expect(contiguousRanges([3, 1, 2, 2])).toEqual([{ from: 1, to: 3 }])
     expect(contiguousRanges([])).toEqual([])
+  })
+})
+
+describe("pageTextsFromClassify", () => {
+  test("keeps text pages and blanks image pages", () => {
+    expect(
+      pageTextsFromClassify([
+        { page: 1, kind: "text", text: "alpha" },
+        { page: 2, kind: "image" },
+      ]),
+    ).toEqual([
+      { page: 1, text: "alpha" },
+      { page: 2, text: "" },
+    ])
   })
 })

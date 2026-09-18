@@ -874,6 +874,26 @@ export function Prompt(props: PromptProps) {
     )
   }
 
+  const EXTMARK_SYNC_MS = 16
+  let extmarkSyncTimer: ReturnType<typeof setTimeout> | undefined
+  const flushExtmarkSync = () => {
+    if (extmarkSyncTimer !== undefined) {
+      clearTimeout(extmarkSyncTimer)
+      extmarkSyncTimer = undefined
+    }
+    if (input && !input.isDestroyed) syncExtmarksWithPromptParts()
+  }
+  const scheduleExtmarkSync = () => {
+    if (extmarkSyncTimer !== undefined) return
+    extmarkSyncTimer = setTimeout(() => {
+      extmarkSyncTimer = undefined
+      if (input && !input.isDestroyed) syncExtmarksWithPromptParts()
+    }, EXTMARK_SYNC_MS)
+  }
+  onCleanup(() => {
+    if (extmarkSyncTimer !== undefined) clearTimeout(extmarkSyncTimer)
+  })
+
   const stashCommands = createMemo(() =>
     [
       {
@@ -1395,7 +1415,7 @@ export function Prompt(props: PromptProps) {
     // plainText directly and sync before any downstream reads.
     if (input && !input.isDestroyed && input.plainText !== store.prompt.input) {
       setStore("prompt", "input", input.plainText)
-      syncExtmarksWithPromptParts()
+      flushExtmarkSync()
     }
     if (props.disabled) return false
     if (workspace.creating() || move.creating()) return false
@@ -1811,7 +1831,7 @@ export function Prompt(props: PromptProps) {
                 const value = input.plainText
                 setStore("prompt", "input", value)
                 auto()?.onInput(value)
-                syncExtmarksWithPromptParts()
+                scheduleExtmarkSync()
                 setCursorVersion((value) => value + 1)
               }}
               onCursorChange={() => setCursorVersion((value) => value + 1)}

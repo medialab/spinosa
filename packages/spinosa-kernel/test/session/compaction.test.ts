@@ -1536,6 +1536,11 @@ describe("util.token.estimate", () => {
   test("returns 0 for empty string", () => {
     expect(Token.estimate("")).toBe(0)
   })
+
+  test("estimates from character counts without allocating the string", () => {
+    expect(Token.estimateChars(4000)).toBe(1000)
+    expect(Token.estimateChars(0)).toBe(0)
+  })
 })
 
 describe("SessionNs.getUsage", () => {

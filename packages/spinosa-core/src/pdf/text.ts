@@ -4,19 +4,10 @@
  */
 import stripAnsi from "strip-ansi"
 import { PDF_TEXT_EXTRACTION_FAILED_MARKER } from "../extension/pdf-js"
+import { withTimeout } from "../utils/timeout"
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs"
 
 export { PDF_TEXT_EXTRACTION_FAILED_MARKER }
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("timeout")), ms)
-    p.then(
-      (v) => { clearTimeout(t); resolve(v) },
-      (e) => { clearTimeout(t); reject(e) },
-    )
-  })
-}
 
 const PAGE_TIMEOUT_MS = 15_000
 

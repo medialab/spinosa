@@ -157,17 +157,6 @@ export async function inspectWorkspaceTemplatePack(input: {
   })
 }
 
-/** True when framework version or protocol probe files need Update workspace. */
-export async function workspaceNeedsTemplatePackRefresh(input: {
-  workspacePath: string
-  workspaceVersion?: string
-  bundledVersion?: string
-  frameworkRoot?: string
-}): Promise<boolean> {
-  const freshness = await inspectWorkspaceTemplatePack(input)
-  return freshness.refreshRecommended
-}
-
 export type { TemplatePackFreshness }
 
 async function listMapPaths(workspacePath: string) {

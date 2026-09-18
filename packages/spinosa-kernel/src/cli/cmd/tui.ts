@@ -20,10 +20,11 @@ import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-l
 import { Flag } from "@spinosa/kernel-core/flag/flag"
 import { describeWorkerCallError, TUI_WORKER_FETCH_MS, waitForWorkerReady, formatWorkerFailureForParent, parentActionForWorkerFailure, shouldWriteWorkerFailureToStderr, isRecoverableWorkerFailure, type TuiWorkerPhase } from "../tui/worker-boot"
 import {
-  printLaunchingTuiWithDelay,
+  printLaunchingTui,
   runLaunchPreflight,
 } from "@spinosa/core/commands/preflight"
 import { isSpinosaWorkspace } from "@spinosa/core/workspace/meta"
+import { runOverlappedLaunch } from "../tui/launch-overlap"
 
 declare global {
   const SPINOSA_WORKER_PATH: string
@@ -293,58 +294,50 @@ export const TuiThreadCommand = cmd({
       }
       let cwd = Filesystem.resolve(process.cwd())
 
-      // Launch preflight before spawning the worker so an accepted upgrade does not
-      // start background infrastructure from the previous installation. Also offers
-      // a Y/n template-pack refresh for the target (or registered) workspaces.
-      if (!Flag.SPINOSA_DISABLE_AUTOUPDATE) {
-        try {
-          const targetWorkspace = isSpinosaWorkspace(cwd) ? cwd : undefined
-          const preflight = await runLaunchPreflight(undefined, { targetWorkspace })
-          if (preflight === "exit") {
-            process.exit(0)
+      type SpawnedWorker = {
+        worker: Worker
+        client: RpcClient
+        stop: () => Promise<void>
+        ready: Promise<void>
+        setRunning: () => void
+        phase: () => TuiWorkerPhase
+      }
+
+      const spawnWorker = (): SpawnedWorker => {
+        const worker = new Worker(file)
+        const client = Rpc.client<typeof rpc>(worker)
+        let workerPhase: TuiWorkerPhase = "boot"
+        const isolateWorkerFailure = (error: unknown) => {
+          const message = formatWorkerFailureForParent(error)
+          bootLog("tui.worker.error", "worker error event", { message, phase: workerPhase })
+          if (shouldWriteWorkerFailureToStderr(workerPhase)) {
+            process.stderr.write(`TUI worker error event: ${message}\n`)
           }
-        } catch (error) {
-          bootLogError("tui.preflight", error)
-          process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-          process.exit(1)
+          client.failAll(new Error(message))
+          return parentActionForWorkerFailure(workerPhase)
         }
-      }
-
-      const worker = new Worker(file)
-      const client = Rpc.client<typeof rpc>(worker)
-      let workerPhase: TuiWorkerPhase = "boot"
-      const isolateWorkerFailure = (error: unknown) => {
-        const message = formatWorkerFailureForParent(error)
-        bootLog("tui.worker.error", "worker error event", { message, phase: workerPhase })
-        if (shouldWriteWorkerFailureToStderr(workerPhase)) {
-          process.stderr.write(`TUI worker error event: ${message}\n`)
+        worker.addEventListener("error", (event) => {
+          isolateWorkerFailure(event.error ?? event.message)
+        })
+        worker.addEventListener("messageerror", (event) => {
+          bootLog("tui.worker.messageerror", "worker message deserialize failed", { data: String(event.data) })
+        })
+        bootLog("tui.worker.created", "background worker spawned", { pid: process.pid })
+        const reload = () => {
+          client.call("reload", undefined).catch(() => {})
         }
-        client.failAll(new Error(message))
-        return parentActionForWorkerFailure(workerPhase)
-      }
-      worker.addEventListener("error", (event) => {
-        isolateWorkerFailure(event.error ?? event.message)
-      })
-      worker.addEventListener("messageerror", (event) => {
-        bootLog("tui.worker.messageerror", "worker message deserialize failed", { data: String(event.data) })
-      })
-      bootLog("tui.worker.created", "background worker spawned", { pid: process.pid })
-      const reload = () => {
-        client.call("reload", undefined).catch(() => {})
-      }
-      process.on("SIGUSR2", reload)
+        process.on("SIGUSR2", reload)
 
-      let stopped = false
-      const stop = async () => {
-        if (stopped) return
-        stopped = true
-        process.off("SIGUSR2", reload)
-        await withTimeout(client.call("shutdown", undefined), 5000).catch(() => {})
-        worker.terminate()
-      }
+        let stopped = false
+        const stop = async () => {
+          if (stopped) return
+          stopped = true
+          process.off("SIGUSR2", reload)
+          await withTimeout(client.call("shutdown", undefined), 5000).catch(() => {})
+          worker.terminate()
+        }
 
-      try {
-        await waitForWorkerReady({
+        const ready = waitForWorkerReady({
           ping: () => client.call("ping", undefined),
           attachError: (handler) => {
             const listener = (event: ErrorEvent) => handler(event.error ?? event.message)
@@ -352,7 +345,51 @@ export const TuiThreadCommand = cmd({
             return () => worker.removeEventListener("error", listener)
           },
         })
+
+        return {
+          worker,
+          client,
+          stop,
+          ready,
+          setRunning: () => {
+            workerPhase = "running"
+          },
+          phase: () => workerPhase,
+        }
+      }
+
+      // Spawn the worker during the update check. An accepted upgrade still
+      // stops the worker so the previous install does not keep running.
+      let spawned: SpawnedWorker
+      try {
+        const overlapped = await runOverlappedLaunch({
+          skipPreflight: Flag.SPINOSA_DISABLE_AUTOUPDATE,
+          spawn: spawnWorker,
+          stop: (item) => item.stop(),
+          preflight: async () => {
+            const targetWorkspace = isSpinosaWorkspace(cwd) ? cwd : undefined
+            return runLaunchPreflight(undefined, { targetWorkspace })
+          },
+        })
+        if (overlapped.status === "exit") {
+          process.exit(0)
+          return
+        }
+        spawned = overlapped.worker
+      } catch (error) {
+        bootLogError("tui.preflight", error)
+        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+        process.exit(1)
+        return
+      }
+
+      const { client, stop } = spawned
+      let workerPhase: TuiWorkerPhase = spawned.phase()
+
+      try {
+        await spawned.ready
         bootLog("tui.worker.ready", "worker ping succeeded")
+        spawned.setRunning()
         workerPhase = "running"
       } catch (error) {
         bootLog("tui.worker.ready.error", "worker failed to start", { detail: dumpErrorChain(error) })
@@ -364,7 +401,7 @@ export const TuiThreadCommand = cmd({
 
       const prompt = await input(args.prompt)
 
-      await printLaunchingTuiWithDelay()
+      printLaunchingTui()
 
       bootLog("tui.config.start", "loading TuiConfig.get()", { cwd })
       let config: Awaited<ReturnType<typeof TuiConfig.get>>

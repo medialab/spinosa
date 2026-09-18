@@ -17,6 +17,7 @@ import { FSUtil } from "@spinosa/kernel-core/fs-util"
 import { AppProcess } from "@spinosa/kernel-core/process"
 import { InstanceState } from "@/effect/instance-state"
 import { WorktreeEvent } from "@spinosa/schema/worktree-event"
+import { slugify } from "@/util/slugify"
 
 export const Event = WorktreeEvent
 
@@ -87,15 +88,6 @@ export type Error =
   | RemoveFailedError
   | ResetFailedError
   | ListFailedError
-
-function slugify(input: string) {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+/, "")
-    .replace(/-+$/, "")
-}
 
 function failedRemoves(...chunks: string[]) {
   return chunks.filter(Boolean).flatMap((chunk) =>

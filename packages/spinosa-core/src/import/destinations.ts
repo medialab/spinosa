@@ -27,6 +27,21 @@ function foldKey(p: string): string {
   return p.toLowerCase()
 }
 
+const DEST_WALK_SKIP = new Set([
+  ".logs",
+  ".spinosa",
+  ".git",
+  ".trash",
+  "node_modules",
+  "dist",
+  "Library",
+  "Caches",
+])
+
+export function shouldSkipDestWalkDir(name: string): boolean {
+  return DEST_WALK_SKIP.has(name)
+}
+
 function collectWorkspaceFiles(workspaceDir: string, maxFiles = 20000): Set<string> {
   const taken = new Set<string>()
   const stack = [workspaceDir]
@@ -40,7 +55,7 @@ function collectWorkspaceFiles(workspaceDir: string, maxFiles = 20000): Set<stri
       continue
     }
     for (const name of names) {
-      if (name === ".logs" || name === ".spinosa") continue
+      if (shouldSkipDestWalkDir(name)) continue
       const abs = path.join(dir, name)
       let stat: { isDirectory(): boolean } | undefined
       try {
@@ -199,6 +214,7 @@ export function existingOutputBelongsToSource(
   } catch {
     return false
   }
+  if (record.bytes !== undefined && record.mtimeMs !== undefined) return true
   if (record.sha256) {
     const digest = hashSourceFile(srcFile)
     if (!digest || digest !== record.sha256) return false

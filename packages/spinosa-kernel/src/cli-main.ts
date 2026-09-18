@@ -1,38 +1,10 @@
-import "@opentui/solid/preload"
-// Prefer the launcher helper (`buildKernelBunArgv` / bash `exec_kernel`) which
-// passes `bun --cwd <root> --preload @opentui/solid/preload <entry>`.
-// A static import alone is not reliable under ESM hoisting, and
-// `bun --preload X run file` dumps Bun's help menu instead of starting Spinosa.
-// Without the OpenTUI Solid transform, JSX becomes DOM VNodes → blank TUI.
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
-import { RunCommand } from "./cli/cmd/run"
-import { GenerateCommand } from "./cli/cmd/generate"
-import { ProvidersCommand } from "./cli/cmd/providers"
-import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
-import { PreflightCommand } from "./cli/cmd/preflight"
-import { UninstallCommand } from "./cli/cmd/uninstall"
-import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { FormatError } from "./cli/error"
-import { DebugCommand } from "./cli/cmd/debug"
-import { AttachCommand } from "./cli/cmd/attach"
-import { TuiThreadCommand } from "./cli/cmd/tui"
 import { EOL } from "os"
-import { DbCommand } from "./cli/cmd/db"
 import { dumpErrorChain, errorMessage } from "./util/error"
-import { WorkspaceNewCommand } from "./cli/cmd/workspace-new"
-import { WorkspaceAddCommand } from "./cli/cmd/workspace-add"
-import { WorkspaceUpdateCommand } from "./cli/cmd/workspace-update"
-import { WorkspaceStatusCommand } from "./cli/cmd/workspace-status"
-import { WorkspaceListCommand } from "./cli/cmd/workspace-list"
-import { DoctorCommand } from "./cli/cmd/doctor"
-import { McpCommand } from "./cli/cmd/mcp"
-import { StartupAutocleanCommand } from "./cli/cmd/startup-autoclean"
-import { VersionCommand } from "./cli/cmd/version"
-import { InternalCommand } from "./cli/cmd/internal"
 import { Heap } from "./cli/heap"
 import { bootLog } from "@spinosa/kernel-core/observability/boot-log"
 import {
@@ -40,11 +12,13 @@ import {
   isCompiledBinaryDistribution,
   registerEmbeddedTemplatePack,
 } from "@spinosa/core/distribution/bootstrap"
+import { registerLazyCommands } from "./cli/command-catalog"
 
 const args = hideBin(process.argv)
 const { pid, ppid } = process
 
-// Fast path for --help/--version: skip template bootstrap and Heap init (~400ms preload still paid, but bootstrap+Heap skipped)
+// Fast path for --help: skip template bootstrap and Heap init. `--version` is
+// handled in index.ts before this module loads.
 const isFastPath =
   args.includes("-h") ||
   args.includes("--help") ||
@@ -66,7 +40,8 @@ bootLog("kernel.init", "kernel entry parsing args", {
   BUN_VERSION: process.env.BUN_VERSION ?? undefined,
 })
 
-if (!isFastPath && isCompiledBinaryDistribution()) {  try {
+if (!isFastPath && isCompiledBinaryDistribution()) {
+  try {
     const packMod = await import("./generated/template-pack.gen.ts")
     registerEmbeddedTemplatePack(() => packMod.templatePack as never)
   } catch (error) {
@@ -137,32 +112,9 @@ const cli = yargs(args)
     process.env.SPINOSA_PID = String(process.pid)
   })
   .usage("")
-  // --- Curated Spinosa help: keep core workflow visible, hide advanced, eliminate opencode fork internals ---
-  // Visible (14): TUI default + new/add/update/status/list/doctor/providers/models/agent/mcp/upgrade/uninstall/version
-  .command(TuiThreadCommand)
-  .command(WorkspaceNewCommand)
-  .command(WorkspaceAddCommand)
-  .command(WorkspaceUpdateCommand)
-  .command(WorkspaceStatusCommand)
-  .command(WorkspaceListCommand)
-  .command(DoctorCommand)
-  .command(ProvidersCommand)
-  .command(AgentCommand)
-  .command(McpCommand)
-  .command(UpgradeCommand)
-  .command(UninstallCommand)
-  .command(ModelsCommand)
-  .command(VersionCommand)
-  // Keep but hide from main help (still callable via `spinosa <cmd> --help`): advanced/debug
-  .command({ ...AttachCommand, describe: false } as any)
-  .command({ ...RunCommand, describe: false } as any)
-  .command({ ...DebugCommand, describe: false } as any)
-  .command({ ...GenerateCommand, describe: false } as any)
-  .command({ ...DbCommand, describe: false } as any)
-  .command({ ...PreflightCommand, describe: false } as any)
-  .command({ ...StartupAutocleanCommand, describe: false } as any)
-  .command({ ...InternalCommand, describe: false } as any)
-  // Eliminated: StatsCommand, TuiThreadCommand, ConsoleCommand, ServeCommand (duplicate of web), ExportCommand, ImportCommand, PrCommand, SessionCommand, PluginCommand — not registered; yargs completion disabled
+
+registerLazyCommands(cli)
+  // Eliminated: StatsCommand, ConsoleCommand, ServeCommand (duplicate of web), ExportCommand, ImportCommand, PrCommand, SessionCommand, PluginCommand — not registered; yargs completion disabled
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

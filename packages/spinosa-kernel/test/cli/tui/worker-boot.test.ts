@@ -136,8 +136,15 @@ describe("tui-worker extra-entrypoint", () => {
     expect(source).toContain("installDomMatrixPolyfill")
   })
 
+  test("answers ping without statically importing the session server", async () => {
+    const source = await Bun.file(new URL("../../../src/cli/tui/worker-main.ts", import.meta.url)).text()
+    expect(source).not.toMatch(/from ["']@\/server\/server["']/)
+    expect(source).toContain("ping()")
+    expect(source).toContain("./worker-runtime")
+  })
+
   test("parent does not stage canvas for TUI or worker smokes; doctor still does", async () => {
-    const source = await Bun.file(new URL("../../../src/index.ts", import.meta.url)).text()
+    const source = await Bun.file(new URL("../../../src/boot-runtime.ts", import.meta.url)).text()
     expect(source).toContain("registerDocumentConverterLoader")
     expect(source).toContain("commandNeedsCanvas")
     expect(source).not.toContain('subsub === "tui-worker"')

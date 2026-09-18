@@ -2,7 +2,7 @@ import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
 import { httpClient } from "@spinosa/kernel-core/effect/app-node-platform"
 import path from "path"
 import { SessionV1 } from "@spinosa/kernel-core/v1/session"
-import { Effect, Layer, Context } from "effect"
+import { Effect, Layer, Context, Option } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
@@ -72,6 +72,7 @@ const layer: Layer.Layer<
         Effect.succeed({
           // Track which instruction files have already been attached for a given assistant message.
           claims: new Map<MessageID, Set<string>>(),
+          systemCache: undefined as { key: string; value: string[] } | undefined,
         }),
       ),
     )
@@ -158,14 +159,34 @@ const layer: Layer.Layer<
       const urls = (config.instructions ?? []).filter(
         (item) => item.startsWith("https://") || item.startsWith("http://"),
       )
+      const fingerprints = yield* Effect.forEach(
+        Array.from(paths),
+        (item) =>
+          fs.stat(item).pipe(
+            Effect.map((info) => {
+              const mtime = info.mtime.pipe(
+                Option.map((date) => date.getTime()),
+                Option.getOrElse(() => 0),
+              )
+              return `${item}:${String(info.size)}:${mtime}`
+            }),
+            Effect.catch(() => Effect.succeed(`${item}:missing`)),
+          ),
+        { concurrency: 8 },
+      )
+      const key = `${fingerprints.join("\n")}\n${urls.join("\n")}`
+      const cached = yield* InstanceState.get(state)
+      if (cached.systemCache?.key === key) return cached.systemCache.value
 
       const files = yield* Effect.forEach(Array.from(paths), read, { concurrency: 8 })
       const remote = yield* Effect.forEach(urls, fetch, { concurrency: 4 })
 
-      return [
+      const value = [
         ...Array.from(paths).flatMap((item, i) => (files[i] ? [`Instructions from: ${item}\n${files[i]}`] : [])),
         ...urls.flatMap((item, i) => (remote[i] ? [`Instructions from: ${item}\n${remote[i]}`] : [])),
       ]
+      cached.systemCache = { key, value }
+      return value
     })
 
     const find = Effect.fn("Instruction.find")(function* (dir: string) {

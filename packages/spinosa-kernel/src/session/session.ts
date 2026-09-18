@@ -667,7 +667,7 @@ const layer: Layer.Layer<
       Effect.gen(function* () {
         yield* events.publish(SessionV1.Event.PartUpdated, {
           sessionID: part.sessionID,
-          part: structuredClone(part),
+          part: part.type === "text" || part.type === "reasoning" ? { ...part } : structuredClone(part),
           time: Date.now(),
         })
         return part

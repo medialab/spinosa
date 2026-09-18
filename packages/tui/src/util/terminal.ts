@@ -16,8 +16,3 @@ export function supportsTrueColor(): boolean {
   if (term.includes("direct") || term.includes("truecolor")) return true
   return false
 }
-
-export function isDumbTerminal(): boolean {
-  const term = (process.env.TERM ?? "").toLowerCase()
-  return term === "dumb" || term === "linux"
-}

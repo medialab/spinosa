@@ -203,7 +203,6 @@ export function recordResult(entry: {
       status,
       bytes: fp?.bytes ?? -1,
       mtimeMs: fp?.mtimeMs ?? -1,
-      sha256: hashSourceFile(entry.srcFile),
       dest: entry.dest,
       engine: entry.engine,
       model: entry.model,
@@ -219,8 +218,8 @@ export function recordResult(entry: {
 
 /**
  * Compare a fresh scan against the manifest.
- * - unchanged: done + fingerprint match (+ digest match when present) → skip.
- * - changed: fingerprint/digest mismatch → re-process.
+ * - unchanged: done + size/mtime match → skip.
+ * - changed: fingerprint mismatch → re-process.
  * - removed: tracked but absent → caller prunes.
  * - untracked: new files + previous failures + partials + reroutes → process.
  * Retry forces actual processing for changed/failed/partial/rerouted/
@@ -261,14 +260,8 @@ export function reconcileManifest(
       changed.push(entry.rel)
       continue
     }
-    // Content digest is authoritative when present on both sides.
-    if (record.sha256) {
-      const digest = hashSourceFile(entry.srcFile)
-      if (digest && digest !== record.sha256) {
-        changed.push(entry.rel)
-        continue
-      }
-    }
+    // Size + mtime match is enough for resume. Re-hashing every unchanged
+    // file would reread the whole corpus on each incremental import.
     unchanged.push(entry.rel)
   }
   const removed: string[] = []

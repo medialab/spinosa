@@ -4,9 +4,14 @@ import path from "node:path"
 const MD_PATH_RE = /[\w\/\\\-]+\.md/gi
 
 /** Extract clickable workspace-relative `.md` paths from chat text. */
-export function extractMdPaths(text: string, workspaceRoot?: string): string[] {
+export function extractMdPaths(
+  text: string,
+  workspaceRoot?: string,
+  options?: { checkExists?: boolean },
+): string[] {
   const matches = text.match(MD_PATH_RE)
   if (!matches) return []
+  const checkExists = options?.checkExists !== false
   const seen = new Set<string>()
   return matches
     .filter((p) => {
@@ -18,6 +23,7 @@ export function extractMdPaths(text: string, workspaceRoot?: string): string[] {
         try {
           const resolved = path.resolve(workspaceRoot, p)
           if (!resolved.startsWith(workspaceRoot)) return false
+          if (!checkExists) return true
           // Skip stale chat/docs links that point at files never written (or deleted).
           return existsSync(resolved)
         } catch {

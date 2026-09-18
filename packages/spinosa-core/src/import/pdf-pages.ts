@@ -14,9 +14,9 @@
 
 import {
   withPdfDocument,
-  pdfDocumentTextContent,
-  pdfDocumentPageImageCoverage,
+  pdfDocumentPageTextAndCoverage,
 } from "../extension/pdf-js"
+import { statSync } from "node:fs"
 
 /**
  * Min page-area fraction covered by raster images to route a page to vision.
@@ -59,15 +59,36 @@ export function partitionPdfPages(
   return pages.map(({ page, text, imageCoverage }) => classifyPdfPage(page, text, imageCoverage, false, minCoverage))
 }
 
+export function pageTextsFromClassify(pages: readonly PdfPageClass[]): Array<{ page: number; text: string }> {
+  return pages.map((page) => (page.kind === "text" ? { page: page.page, text: page.text } : { page: page.page, text: "" }))
+}
+
+type ClassifyCacheEntry = { mtimeMs: number; size: number; pages: PdfPageClass[] }
+const classifyCache = new Map<string, ClassifyCacheEntry>()
+
+function classifyFingerprint(srcFile: string): { mtimeMs: number; size: number } {
+  try {
+    const st = statSync(srcFile)
+    return { mtimeMs: st.mtimeMs, size: st.size }
+  } catch {
+    return { mtimeMs: 0, size: 0 }
+  }
+}
+
 /** Classify every page via one shared pdf.js session. Throws on unreadable files. */
 export async function classifyPdfPages(srcFile: string): Promise<PdfPageClass[]> {
+  const fp = classifyFingerprint(srcFile)
+  const hit = classifyCache.get(srcFile)
+  if (hit && hit.mtimeMs === fp.mtimeMs && hit.size === fp.size) return hit.pages
   // One retry: under a loaded import run a healthy file can time out once.
   // Anything still failing after that is genuinely unreadable — callers fail
   // honestly instead of vision-transcribing the whole file blind.
   let lastErr: unknown
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await classifyPdfPagesOnce(srcFile)
+      const pages = await classifyPdfPagesOnce(srcFile)
+      classifyCache.set(srcFile, { ...fp, pages })
+      return pages
     } catch (err) {
       lastErr = err
     }
@@ -79,24 +100,13 @@ async function classifyPdfPagesOnce(srcFile: string): Promise<PdfPageClass[]> {
   return withPdfDocument(srcFile, async (doc) => {
     const out: PdfPageClass[] = []
     for (let page = 1; page <= doc.numPages; page++) {
-      let text: string
       try {
-        text = await pdfDocumentTextContent(doc, page)
+        const { text, imageCoverage } = await pdfDocumentPageTextAndCoverage(doc, page)
+        out.push(...partitionPdfPages([{ page, text, imageCoverage }]))
       } catch {
-        // An unreadable text layer is not a blank page. Unknown pages go to OCR.
+        // An unreadable page is not a blank page. Unknown pages go to OCR.
         out.push(classifyPdfPage(page, "", 0, true))
-        continue
       }
-      let imageCoverage: number
-      try {
-        imageCoverage = await pdfDocumentPageImageCoverage(doc, page)
-      } catch {
-        // A failed coverage probe must not void every other page's result:
-        // fail this page closed toward OCR, keep the rest of the census.
-        out.push(classifyPdfPage(page, text, 0, true))
-        continue
-      }
-      out.push(...partitionPdfPages([{ page, text, imageCoverage }]))
     }
     return out
   })

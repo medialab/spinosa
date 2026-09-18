@@ -617,8 +617,7 @@ export async function listRegisteredWorkspaces(): Promise<SpinosaRegisteredWorks
       entry.workspaceID,
     ),
   ))
-  const refreshed = await loadRegistry(undefined, { allowMissingMarker: true })
-  return refreshed.map((entry) => ({
+  return entries.map((entry) => ({
     path: entry.path,
     projectName: resolveWorkspaceDisplayName(entry.path, entry.name),
     ...(entry.workspaceID ? { workspaceID: entry.workspaceID } : {}),
@@ -661,16 +660,30 @@ export function findWorkspaceMatchesByID(workspaceID: SpinosaWorkspaceID, roots:
   return results
 }
 
+const SKIP_WORKSPACE_WALK = new Set([
+  "node_modules",
+  "dist",
+  "Library",
+  "Applications",
+  "Pictures",
+  "Movies",
+  "Music",
+  "Caches",
+  ".trash",
+])
+
 function walkWorkspaceIDMarker(dir: string, depth: number, workspaceID: SpinosaWorkspaceID, seen: Set<string>, results: string[]) {
   if (depth > 5 || seen.has(dir) || !existsSync(dir)) return
   seen.add(dir)
-  if (workspaceIDFromMarker(dir) === workspaceID) results.push(dir)
+  if (workspaceIDFromMarker(dir) === workspaceID) {
+    results.push(dir)
+    return
+  }
   if (depth === 5) return
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory() && !entry.name.startsWith(".")) {
-        walkWorkspaceIDMarker(path.join(dir, entry.name), depth + 1, workspaceID, seen, results)
-      }
+      if (!entry.isDirectory() || entry.name.startsWith(".") || SKIP_WORKSPACE_WALK.has(entry.name)) continue
+      walkWorkspaceIDMarker(path.join(dir, entry.name), depth + 1, workspaceID, seen, results)
     }
   } catch {}
 }
@@ -700,7 +713,7 @@ function walkWorkspaceMarker(dir: string, depth: number, seen: Set<string>, resu
   let entries: string[]
   try {
     entries = readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !SKIP_WORKSPACE_WALK.has(e.name))
       .map((e) => path.join(dir, e.name))
   } catch {
     return

@@ -217,6 +217,29 @@ export type MergedTranscriptRow<T extends TranscriptMessageLike = TranscriptMess
   | { kind: "message"; message: T; messageIndex: number }
   | { kind: "outbound"; entry: OutboundEntry }
 
+export function transcriptRowKey<T extends TranscriptMessageLike>(row: MergedTranscriptRow<T>): string {
+  return row.kind === "outbound" ? `outbound:${row.entry.key}` : `message:${row.message.id}`
+}
+
+/** Reuse row objects when the message/entry identity has not changed. */
+export function internTranscriptRows<T extends TranscriptMessageLike>(
+  previous: readonly MergedTranscriptRow<T>[] | undefined,
+  next: readonly MergedTranscriptRow<T>[],
+): MergedTranscriptRow<T>[] {
+  if (!previous || previous.length === 0) return [...next]
+  const prevByKey = new Map(previous.map((row) => [transcriptRowKey(row), row] as const))
+  return next.map((row) => {
+    const old = prevByKey.get(transcriptRowKey(row))
+    if (!old || old.kind !== row.kind) return row
+    if (row.kind === "message" && old.kind === "message") {
+      if (old.message === row.message && old.messageIndex === row.messageIndex) return old
+      return row
+    }
+    if (row.kind === "outbound" && old.kind === "outbound" && old.entry === row.entry) return old
+    return row
+  })
+}
+
 function compareOutboundChronological(a: OutboundEntry, b: OutboundEntry): number {
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
   return a.key < b.key ? -1 : a.key > b.key ? 1 : 0

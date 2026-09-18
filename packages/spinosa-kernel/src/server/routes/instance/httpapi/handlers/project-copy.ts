@@ -7,6 +7,7 @@ import { LLMEvent } from "@spinosa/llm"
 import { Effect, Stream } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
+import { slugify } from "@/util/slugify"
 
 const COPY_NAME_AGENT: Agent.Info = {
   name: "project-copy-name",
@@ -72,12 +73,3 @@ export const projectCopyHandlers = HttpApiBuilder.group(InstanceHttpApi, "projec
     )
   }),
 )
-
-function slugify(input: string) {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+/, "")
-    .replace(/-+$/, "")
-}

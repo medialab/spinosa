@@ -187,36 +187,44 @@ const runImport = Effect.fn("Cli.import.body")(function* (file: string, ctx: Ins
     .run()
     .pipe(Effect.orDie)
 
+  const messageRows = [] as Array<{
+    id: string
+    session_id: string
+    time_created: number
+    data: never
+  }>
+  const partRows = [] as Array<{
+    id: string
+    message_id: string
+    session_id: string
+    data: unknown
+  }>
   for (const msg of exportData.messages) {
     const msgInfo = decodeMessageInfo(msg.info) as SessionV1.Info
     const { id, sessionID: _, ...msgData } = msgInfo
-    yield* db
-      .insert(MessageTable)
-      .values({
-        id,
-        session_id: row.id,
-        time_created: msgInfo.time?.created ?? Date.now(),
-        data: msgData as never,
-      })
-      .onConflictDoNothing()
-      .run()
-      .pipe(Effect.orDie)
-
+    messageRows.push({
+      id,
+      session_id: row.id,
+      time_created: msgInfo.time?.created ?? Date.now(),
+      data: msgData as never,
+    })
     for (const part of msg.parts) {
       const partInfo = decodePart(part) as SessionV1.Part
       const { id: partId, sessionID: _s, messageID, ...partData } = partInfo
-      yield* db
-        .insert(PartTable)
-        .values({
-          id: partId,
-          message_id: messageID,
-          session_id: row.id,
-          data: partData,
-        })
-        .onConflictDoNothing()
-        .run()
-        .pipe(Effect.orDie)
+      partRows.push({
+        id: partId,
+        message_id: messageID,
+        session_id: row.id,
+        data: partData,
+      })
     }
+  }
+  const chunk = 80
+  for (let i = 0; i < messageRows.length; i += chunk) {
+    yield* db.insert(MessageTable).values(messageRows.slice(i, i + chunk) as never).onConflictDoNothing().run().pipe(Effect.orDie)
+  }
+  for (let i = 0; i < partRows.length; i += chunk) {
+    yield* db.insert(PartTable).values(partRows.slice(i, i + chunk) as never).onConflictDoNothing().run().pipe(Effect.orDie)
   }
 
   process.stdout.write(`Imported session: ${exportData.info.id}`)

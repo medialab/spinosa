@@ -237,13 +237,15 @@ export const {
         const files = await readdir(sessionsDir)
         const jsonFiles = files.filter((f) => f.endsWith(".json"))
         dbg("[sync:readLocalSessions]", { dir, dirExists: true, totalFiles: files.length, jsonFiles: jsonFiles.length })
-        const results: Session[] = []
-        for (const file of jsonFiles) {
+        const parsed = await Promise.all(jsonFiles.map(async (file) => {
           try {
             const content = await readFile(path.join(sessionsDir, file), "utf-8")
-            results.push(JSON.parse(content) as Session)
-          } catch { /* skip invalid files */ }
-        }
+            return JSON.parse(content) as Session
+          } catch {
+            return undefined
+          }
+        }))
+        const results = parsed.filter((item): item is Session => Boolean(item))
         dbg("[sync:readLocalSessions]", { dir, parsed: results.length })
         return results
       } catch (e) {
@@ -314,13 +316,19 @@ export const {
         void (async () => {
           const known = Object.keys(store.message)
           for (const sessionID of known) fullSyncedSessions.delete(sessionID)
-          for (const sessionID of known) {
-            try {
-              await result.session.sync(sessionID)
-            } catch {
-              // Next reconnect or navigation retries; never throw into events.
+          let cursor = 0
+          const workers = Math.min(4, known.length)
+          await Promise.all(Array.from({ length: workers }, async () => {
+            while (true) {
+              const sessionID = known[cursor++]
+              if (!sessionID) return
+              try {
+                await result.session.sync(sessionID)
+              } catch {
+                // Next reconnect or navigation retries; never throw into events.
+              }
             }
-          }
+          }))
         })()
         return
       }
@@ -823,9 +831,10 @@ export const {
           const output = typeof event.properties.output === "string" ? event.properties.output : ""
           const ended = eventTimestamp(event.properties.timestamp)
           let messageID: string | undefined
-          for (const [id, parts] of Object.entries(store.part)) {
-            if (parts.some((p) => p.id === callID || (p.type === "tool" && p.callID === callID))) {
-              messageID = id
+          for (const message of store.message[sessionID] ?? []) {
+            const parts = store.part[message.id]
+            if (parts?.some((p) => p.id === callID || (p.type === "tool" && p.callID === callID))) {
+              messageID = message.id
               break
             }
           }
@@ -1932,8 +1941,9 @@ export const {
                     continue
                   }
                   const currentParts = draft.part[message.info.id] ?? []
+                  const currentById = new Map(currentParts.map((item) => [item.id, item]))
                   const parts = message.parts.flatMap((part) => {
-                    const current = currentParts.find((item) => item.id === part.id)
+                    const current = currentById.get(part.id)
                     if (tracker.parts.has(part.id)) return current ? [current] : []
                     if (
                       current &&
@@ -1946,9 +1956,10 @@ export const {
                     }
                     return [part]
                   })
+                  const seen = new Set(parts.map((part) => part.id))
                   parts.push(
                     ...currentParts.filter(
-                      (part) => tracker.parts.has(part.id) && !parts.some((item) => item.id === part.id),
+                      (part) => tracker.parts.has(part.id) && !seen.has(part.id),
                     ),
                   )
                   draft.part[message.info.id] = parts

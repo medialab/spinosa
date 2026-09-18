@@ -1084,6 +1084,28 @@ const layer = Layer.effect(
         let structured: unknown
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        const modelMessageWalkCache: MessageV2.ToModelMessagesWalkCache = { entries: [] }
+        let cachedTools: Record<string, AITool> | undefined
+        let cachedToolsKey = ""
+        let toolLive:
+          | {
+              agent: Agent.Info
+              session: Session.Info
+              model: Provider.Model
+              processor: Pick<SessionProcessor.Handle, "message" | "updateToolCall" | "completeToolCall">
+              bypassAgentCheck: boolean
+              messages: SessionV1.WithParts[]
+              promptOps: TaskPromptOps
+            }
+          | undefined
+        let cachedSystem:
+          | {
+              key: string
+              skills: string | undefined
+              env: string[]
+              mcp: string | undefined
+            }
+          | undefined
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
@@ -1231,23 +1253,34 @@ const layer = Layer.effect(
               .map((p) => (p as { name: string }).name)
             const bypassAgentCheck = agentPartNames.includes(agent.name)
             const promptOps = yield* ops()
-
-            const tools = yield* SessionTools.resolve({
-              agent,
-              session,
-              model,
-              processor: handle,
-              bypassAgentCheck,
-              messages: msgs,
-              promptOps,
-            }).pipe(
-              Effect.provideService(Plugin.Service, plugin),
-              Effect.provideService(Permission.Service, permission),
-              Effect.provideService(ToolRegistry.Service, registry),
-              Effect.provideService(MCP.Service, mcp),
-              Effect.provideService(Truncate.Service, truncate),
-            )
-
+            const toolsKey = `${agent.name}\0${model.providerID}/${model.api.id}\0${session.id}`
+            if (!toolLive || !cachedTools || cachedToolsKey !== toolsKey) {
+              toolLive = {
+                agent,
+                session,
+                model,
+                processor: handle,
+                bypassAgentCheck,
+                messages: msgs,
+                promptOps,
+              }
+              cachedTools = yield* SessionTools.resolve(toolLive).pipe(
+                Effect.provideService(Plugin.Service, plugin),
+                Effect.provideService(Permission.Service, permission),
+                Effect.provideService(ToolRegistry.Service, registry),
+                Effect.provideService(MCP.Service, mcp),
+                Effect.provideService(Truncate.Service, truncate),
+              )
+              cachedToolsKey = toolsKey
+            } else {
+              toolLive.processor = handle
+              toolLive.messages = msgs
+              toolLive.bypassAgentCheck = bypassAgentCheck
+              toolLive.promptOps = promptOps
+              toolLive.agent = agent
+              toolLive.model = model
+            }
+            const tools = cachedTools
             if (lastUser.format?.type === "json_schema") {
               tools["StructuredOutput"] = createStructuredOutputTool({
                 schema: lastUser.format.schema,
@@ -1255,6 +1288,8 @@ const layer = Layer.effect(
                   structured = output
                 },
               })
+            } else {
+              delete tools["StructuredOutput"]
             }
 
             if (step === 1)
@@ -1262,13 +1297,20 @@ const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
-              sys.skills(agent),
-              sys.environment(model),
+            const systemKey = `${agent.name}\0${model.providerID}/${model.api.id}`
+            if (!cachedSystem || cachedSystem.key !== systemKey) {
+              const [skills, env, mcpInstructions] = yield* Effect.all([
+                sys.skills(agent),
+                sys.environment(model),
+                sys.mcp(agent, session.permission),
+              ])
+              cachedSystem = { key: systemKey, skills, env, mcp: mcpInstructions }
+            }
+            const [instructions, modelMsgs] = yield* Effect.all([
               instruction.system().pipe(Effect.orDie),
-              sys.mcp(agent, session.permission),
-              MessageV2.toModelMessagesEffect(msgs, model),
+              MessageV2.toModelMessagesEffect(msgs, model, { walkCache: modelMessageWalkCache }),
             ])
+            const { skills, env, mcp: mcpInstructions } = cachedSystem
             const system = [
               ...env,
               ...instructions,

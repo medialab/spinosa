@@ -373,11 +373,11 @@ async function addSingleFile(
       // keep the original + an honest placeholder (pick a vision model to
       // transcribe, or keep the copy). MarkItDown never handles PDFs.
       try {
-        const { classifyPdfPages, isDigitalPdfPages } = await import("../import/pdf-pages")
+        const { classifyPdfPages, isDigitalPdfPages, pageTextsFromClassify } = await import("../import/pdf-pages")
         const classes = await classifyPdfPages(srcFile)
         throwIfSpinosaCancelled(shouldAbort)
         if (isDigitalPdfPages(classes)) {
-          destFile = await convertTextPdf(srcFile, destFile, relPath, shouldAbort)
+          destFile = await convertTextPdf(srcFile, destFile, relPath, shouldAbort, undefined, pageTextsFromClassify(classes))
           failedDest = destFile
           throwIfSpinosaCancelled(shouldAbort)
           if (convertedOutputExists(destFile)) {

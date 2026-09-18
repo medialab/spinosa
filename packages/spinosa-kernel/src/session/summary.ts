@@ -1,5 +1,5 @@
 import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
-import { Effect, Layer, Context, Schema } from "effect"
+import { Effect, Layer, Context, Option, Schema } from "effect"
 import { SessionV1 } from "@spinosa/kernel-core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Snapshot } from "@/snapshot"
@@ -44,7 +44,14 @@ const layer = Layer.effect(
       })
       yield* events.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: [] })
       if ((yield* config.get()).snapshot === false) return
-      const all = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+      const recent = yield* sessions.messages({ sessionID: input.sessionID, limit: 64 }).pipe(Effect.orDie)
+      const fromRecent = recent.filter(
+        (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
+      )
+      const all =
+        fromRecent.some((m) => m.info.id === input.messageID)
+          ? fromRecent
+          : yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
       if (!all.length) return
 
       const messages = all.filter(
@@ -59,8 +66,8 @@ const layer = Layer.effect(
 
     const diff = Effect.fn("SessionSummary.diff")(function* (input: { sessionID: SessionID; messageID?: MessageID }) {
       if (!input.messageID) return []
-      const message = (yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
-        (item) => item.info.id === input.messageID,
+      const message = Option.getOrUndefined(
+        yield* sessions.findMessage(input.sessionID, (item) => item.info.id === input.messageID).pipe(Effect.orDie),
       )
       if (!message || message.info.role !== "user") return []
       const diffs = message.info.summary?.diffs ?? []

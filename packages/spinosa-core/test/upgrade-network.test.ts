@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
-import { http, HttpResponse } from "msw"
+import { delay, http, HttpResponse } from "msw"
 import { setupServer } from "msw/node"
 import { resolvePinnedVersionFromInstaller } from "../src/system/channels"
 
@@ -49,5 +49,20 @@ describe("rolling channel installer fetch", () => {
     const pinned = await resolvePinnedVersionFromInstaller("https://example.test/beta/install.sh")
     expect(pinned).toBe("1.0.2-beta.11")
     expect(pinned).not.toBe("1.0.2-beta.14")
+  })
+
+  test("aborts a hung installer fetch at the launch timeout", async () => {
+    server.use(
+      http.get("https://example.test/beta/install.sh", async () => {
+        await delay(5_000)
+        return HttpResponse.text('PINNED_VERSION="9.9.9"\n')
+      }),
+    )
+
+    const started = Date.now()
+    await expect(
+      resolvePinnedVersionFromInstaller("https://example.test/beta/install.sh", { timeoutMs: 50 }),
+    ).resolves.toBeUndefined()
+    expect(Date.now() - started).toBeLessThan(2000)
   })
 })

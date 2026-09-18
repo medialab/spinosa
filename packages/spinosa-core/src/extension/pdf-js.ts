@@ -15,6 +15,7 @@ import { getDocument, GlobalWorkerOptions, OPS, type PDFDocumentProxy } from "pd
 import { WorkerMessageHandler } from "pdfjs-dist/legacy/build/pdf.worker.mjs"
 import { createCanvas, type Canvas } from "@napi-rs/canvas"
 import stripAnsi from "strip-ansi"
+import { withTimeout } from "../utils/timeout"
 import {
   canvasDebugLog,
   debugCanvasEnvironment,
@@ -215,6 +216,10 @@ export async function pdfTextContent(pdfPath: string, page: number): Promise<str
 
 export async function pdfDocumentTextContent(doc: PDFDocumentProxy, page: number): Promise<string> {
   const pg = await withTimeout(doc.getPage(page), PDF_PAGE_TIMEOUT_MS)
+  return pdfPageTextContent(pg)
+}
+
+async function pdfPageTextContent(pg: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>): Promise<string> {
   const content = await withTimeout(pg.getTextContent(), PDF_PAGE_TIMEOUT_MS)
   return content.items.map((item) => ("str" in item ? item.str : "")).join(" ")
 }
@@ -242,6 +247,25 @@ const IDENTITY_CTM: Ctm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
 export async function pdfDocumentPageImageCoverage(doc: PDFDocumentProxy, page: number): Promise<number> {
   try {
     const pg = await withTimeout(doc.getPage(page), PDF_PAGE_TIMEOUT_MS)
+    return await pdfPageImageCoverage(pg)
+  } catch {
+    return 1
+  }
+}
+
+/** Text + raster coverage from one getPage. Classification used to open the page twice. */
+export async function pdfDocumentPageTextAndCoverage(
+  doc: PDFDocumentProxy,
+  page: number,
+): Promise<{ text: string; imageCoverage: number }> {
+  const pg = await withTimeout(doc.getPage(page), PDF_PAGE_TIMEOUT_MS)
+  const text = await pdfPageTextContent(pg)
+  const imageCoverage = await pdfPageImageCoverage(pg)
+  return { text, imageCoverage }
+}
+
+async function pdfPageImageCoverage(pg: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>): Promise<number> {
+  try {
     const viewport = pg.getViewport({ scale: 1 })
     const pageArea = Math.max(1, viewport.width * viewport.height)
     const ops = await withTimeout(pg.getOperatorList(), PDF_PAGE_TIMEOUT_MS)
@@ -418,14 +442,4 @@ export async function pdfExtractPageTexts(pdfPath: string): Promise<{ page: numb
 
 function searchBuffer(haystack: Buffer, needle: Buffer, start: number, end: number): boolean {
   return haystack.subarray(start, end).indexOf(needle) !== -1
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("timeout")), ms)
-    p.then(
-      (v) => { clearTimeout(t); resolve(v) },
-      (e) => { clearTimeout(t); reject(e) },
-    )
-  })
 }

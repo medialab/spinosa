@@ -262,3 +262,31 @@ describe("Instruction.systemPaths global config", () => {
     }),
   )
 })
+
+describe("Instruction.system cache", () => {
+  it.live("returns the same instructions when files do not change", () =>
+    withFiles({ "AGENTS.md": "# Root Instructions" }, (dir) =>
+      Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        const first = yield* svc.system()
+        const second = yield* svc.system()
+        expect(second).toEqual(first)
+        expect(first.some((item) => item.includes("# Root Instructions"))).toBe(true)
+        expect(dir.length).toBeGreaterThan(0)
+      }),
+    ),
+  )
+
+  it.live("reloads instructions after the file content changes", () =>
+    withFiles({ "AGENTS.md": "# Root Instructions" }, (dir) =>
+      Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        const first = yield* svc.system()
+        yield* write(path.join(dir, "AGENTS.md"), "# Updated Instructions")
+        const second = yield* svc.system()
+        expect(first.some((item) => item.includes("# Root Instructions"))).toBe(true)
+        expect(second.some((item) => item.includes("# Updated Instructions"))).toBe(true)
+      }),
+    ),
+  )
+})

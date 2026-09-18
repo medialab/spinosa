@@ -1,4 +1,4 @@
-import { mkdirSync, appendFileSync, readFileSync, rmSync } from "node:fs"
+import { mkdirSync, readFileSync, rmSync } from "node:fs"
 import * as path from "node:path"
 import { fileExt, IMAGE_EXTENSIONS, extInList } from "../constants"
 import { safeCopyAsync, writeTextAtomicSafe } from "../utils/fs"
@@ -8,6 +8,7 @@ import { ProgressEmitter } from "../progress/progress"
 import { markitdownOutputRelPath } from "../extension/classifier"
 import { VISION_TRANSCRIBE_PROMPT, mimeForImageExt, isVisionModelId } from "./vision-helpers"
 import { recordResult, manifestDest, type ManifestStatus } from "./manifest"
+import { appendNdjson, flushNdjson } from "./ndjson-buffer"
 import type { ClassifiedEntry, PhaseResult } from "./pipeline"
 
 export type VisionTranscribeRequest = {
@@ -50,9 +51,6 @@ function parseVisionModelId(id: string): { providerID: string; modelID: string }
 
 function isoNow(): string {
   return new Date().toISOString()
-}
-function appendNdjson(p: string, obj: Record<string, unknown>): void {
-  appendFileSync(p, JSON.stringify(obj) + "\n", "utf-8")
 }
 function yieldToEL(): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>()
@@ -841,5 +839,6 @@ export async function processVisionInProcess(
     }
   }
 
+  flushNdjson()
   return { converted, skipped, failed, renamed: 0, recoverable }
 }

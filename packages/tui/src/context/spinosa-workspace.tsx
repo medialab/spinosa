@@ -55,7 +55,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
     }
 
     const [bootHealth] = createResource(async () => runSpinosaBootHealth({
-      minimumOperationDurationMs: startup.skipInitialLoading ? 0 : 1_000,
+      minimumOperationDurationMs: 0,
       onProgress(operation) {
         setBootOperations((current) => current.map((candidate) => candidate.id === operation.id ? operation : candidate))
       },
@@ -153,7 +153,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
     const cwdDiscoveryTimer = setInterval(() => {
       if (activePath() || genericMode() || !isSpinosaWorkspace(paths.cwd)) return
       void openWorkspace(paths.cwd)
-    }, 3000)
+    }, 15_000)
     onCleanup(() => clearInterval(cwdDiscoveryTimer))
 
     /** Unset active workspace so Home is not workspace-ready (blocks cwd rediscovery). */

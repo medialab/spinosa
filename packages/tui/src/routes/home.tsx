@@ -122,12 +122,11 @@ export function Home() {
     setRecentLoadError(undefined)
     try {
       const workspaces = await listRegisteredWorkspaces()
-      const rows: (RecentWorkspace & { lastAccessed: number })[] = []
-      for (const ws of workspaces) {
+      const rows = await Promise.all(workspaces.map(async (ws) => {
         const meta = await readWorkspaceMeta(ws.path).catch(() => undefined)
         const available = Boolean(meta) && isUsableWorkspaceStatus(ws.presence)
         if (available && meta) {
-          rows.push({
+          return {
             path: ws.path,
             name: resolveWorkspaceDisplayName(ws.path, meta.projectName ?? ws.projectName),
             workspaceID: ws.workspaceID,
@@ -136,11 +135,9 @@ export function Home() {
             lastAccessed: getLastAccessed(ws.path),
             presence: ws.presence,
             available: true,
-          })
-          continue
+          } satisfies RecentWorkspace & { lastAccessed: number }
         }
-        // Index entry whose folder is missing or otherwise unusable — keep visible for recovery.
-        rows.push({
+        return {
           path: ws.path,
           name: resolveWorkspaceDisplayName(ws.path, meta?.projectName ?? ws.projectName),
           workspaceID: ws.workspaceID,
@@ -149,8 +146,8 @@ export function Home() {
           lastAccessed: getLastAccessed(ws.path),
           presence: isUsableWorkspaceStatus(ws.presence) ? "non_existent" : (ws.presence ?? "non_existent"),
           available: false,
-        })
-      }
+        } satisfies RecentWorkspace & { lastAccessed: number }
+      }))
       rows.sort((a, b) => {
         if (a.available !== b.available) return a.available ? -1 : 1
         return b.lastAccessed - a.lastAccessed

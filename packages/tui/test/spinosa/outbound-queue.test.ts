@@ -17,6 +17,8 @@ import {
   markOutboundSent,
   markOutboundStale,
   mergeTranscriptRows,
+  internTranscriptRows,
+  transcriptRowKey,
   outboundEntryState,
   outboundForSession,
   peekDispatchable,
@@ -263,6 +265,18 @@ describe("mergeTranscriptRows", () => {
     const messages = [{ id: "m1", time: { created: 200 } }]
     const rows = mergeTranscriptRows(messages, [outboundEntry("out-1", 200)])
     expect(rowIDs(rows)).toEqual(["m1", "out-1"])
+  })
+
+  test("interns unchanged row objects across rebuilds", () => {
+    const messages = [
+      { id: "m1", time: { created: 100 } },
+      { id: "m2", time: { created: 300 } },
+    ]
+    const first = mergeTranscriptRows(messages, [outboundEntry("out-1", 200)])
+    const second = internTranscriptRows(first, mergeTranscriptRows(messages, [outboundEntry("out-1", 200)]))
+    expect(second[0]).toBe(first[0])
+    expect(second[2]).toBe(first[2])
+    expect(transcriptRowKey(first[0]!)).toBe("message:m1")
   })
 
   test("live and settled rows share one chronological list", () => {

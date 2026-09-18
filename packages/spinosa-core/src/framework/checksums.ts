@@ -117,8 +117,10 @@ export function computeMatchingFrameworkChecksums(
       const workspaceFile = resolvePathWithinRoot(workspacePath, relativeFile, "framework manifest path")
       if (!existsSync(workspaceFile)) continue
       if (!statSync(sourceFile).isFile() || !statSync(workspaceFile).isFile()) continue
-      if (!filesMatch(sourceFile, workspaceFile)) continue
-      checksums[relativeFile] = sha256File(workspaceFile)
+      if (statSync(sourceFile).size !== statSync(workspaceFile).size) continue
+      const hash = sha256File(workspaceFile)
+      if (hash !== sha256File(sourceFile)) continue
+      checksums[relativeFile] = hash
     }
   }
   return checksums

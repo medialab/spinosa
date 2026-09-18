@@ -7,6 +7,7 @@ import path from "node:path"
 import {
   type ReleaseChannel,
   installUrlForChannel,
+  LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
   resolveReleaseVersionForChannel,
   setReleaseChannel,
   spinosaReleaseChannel,
@@ -597,7 +598,9 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
 
   let latest: string | undefined
   try {
-    latest = await resolveReleaseVersionForChannel(channel)
+    latest = await resolveReleaseVersionForChannel(channel, {
+      timeoutMs: LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
+    })
   } catch {
     return { available: false }
   }
