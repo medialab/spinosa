@@ -47,16 +47,29 @@ export function anySessionBusy(input: {
   return false
 }
 
+function directoryBelongsToWorkspace(directory: string | undefined, workspaceDir: string): boolean {
+  if (!directory) return false
+  const dir = directory.replace(/[\\/]+$/, "")
+  const root = workspaceDir.replace(/[\\/]+$/, "")
+  if (dir === root) return true
+  return dir.startsWith(`${root}/`) || dir.startsWith(`${root}\\`)
+}
+
 /**
- * Whether a session belongs to the active Spinosa directory and/or experimental
- * workspace. Never treat `workspaceID === undefined` as a match — that leaked
+ * Whether a session belongs to the active Spinosa workspace.
+ * A different `workspaceID` never matches via directory prefix.
+ * Directory matches use a path boundary so `/ws` does not include `/ws-2`.
+ * Never treat `workspaceID === undefined` as an ID match — that leaked
  * every unscoped/global session into workspace-scoped lists.
  */
 export function sessionMatchesWorkspaceScope(
   session: { workspaceID?: string; directory?: string },
   scope: { workspaceDir?: string; workspaceID?: string },
 ): boolean {
-  if (scope.workspaceID && session.workspaceID === scope.workspaceID) return true
-  if (scope.workspaceDir && session.directory?.startsWith(scope.workspaceDir)) return true
+  if (scope.workspaceID) {
+    if (session.workspaceID === scope.workspaceID) return true
+    if (session.workspaceID && session.workspaceID !== scope.workspaceID) return false
+  }
+  if (scope.workspaceDir && directoryBelongsToWorkspace(session.directory, scope.workspaceDir)) return true
   return false
 }

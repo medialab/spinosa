@@ -105,6 +105,7 @@ import { usePathFormatter } from "../../context/path-format"
 import { LocationProvider } from "../../context/location"
 import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
+import { ABORT_FAILED_TOAST } from "../../util/stop-sessions"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
 import { RouteBadge, resolveRouteBadge, routeBadgeChatTone, type RouteBadgeInfo } from "../../spinosa/route-badge"
 import {
@@ -955,7 +956,9 @@ const resolveExportPath = (filename: string): string => {
       run: async () => {
         const status = sync.data.session_status?.[route.sessionID]
         if (sessionIsBusy(status, sync.session.status(route.sessionID))) {
-          await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
+          await sdk.client.session
+            .abort({ sessionID: route.sessionID })
+            .catch(() => toast.show(ABORT_FAILED_TOAST))
         }
         const revert = session()?.revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
@@ -1435,7 +1438,7 @@ const resolveExportPath = (filename: string): string => {
                     },
                   )
                   if (!leave) return
-                  await sdk.client.session.abort({ sessionID: currentID }).catch(() => {})
+                  await sdk.client.session.abort({ sessionID: currentID }).catch(() => toast.show(ABORT_FAILED_TOAST))
                 }
                 navigate(dest)
               }}

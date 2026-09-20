@@ -19,6 +19,14 @@ import {
 } from "../spinosa/bug-report"
 import open from "open"
 
+export type HomeFooterKind = "picker" | "workspace"
+
+/** General home has no workspace, so it cannot open that workspace's sessions. */
+export function homeFooterLabels(kind: HomeFooterKind): string[] {
+  if (kind === "workspace") return ["Settings", "Sessions", "Models", "Report bug"]
+  return ["Settings", "Provider", "Models", "Report bug"]
+}
+
 export function HomeFooter() {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -75,20 +83,15 @@ export function HomeFooter() {
   }
 
   type Shortcut = { id: string; label: string; action: () => void; danger?: boolean }
+  const byLabel = createMemo<Record<string, Shortcut>>(() => ({
+    Settings: { id: "S", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
+    Provider: { id: "P", label: "Provider", action: () => dialog.replace(() => <DialogProvider />) },
+    Sessions: { id: "K", label: "Sessions", action: () => dialog.replace(() => <DialogSessionList />) },
+    Models: { id: "M", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
+    "Report bug": { id: "B", label: "Report bug", action: reportBug },
+  }))
   const buttons = createMemo<Shortcut[]>(() => {
-    const items: Shortcut[] = [
-      { id: "S", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
-      { id: "P", label: "Provider", action: () => dialog.replace(() => <DialogProvider />) },
-      { id: "M", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
-      { id: "B", label: "Report bug", action: reportBug },
-    ]
-    if (!spinosa.genericMode) {
-      items.splice(2, 0, {
-        id: "K",
-        label: "Sessions",
-        action: () => dialog.replace(() => <DialogSessionList />),
-      })
-    }
+    const items = homeFooterLabels("picker").map((label) => byLabel()[label]!)
     if (spinosa.activePath && !spinosa.genericMode) {
       items.push({
         id: "D",
@@ -109,11 +112,9 @@ export function HomeFooter() {
   // Rendered so Settings/Models stay one click away even with text in the
   // prompt box. The "/" command menu may open mid-text, but only a
   // line-start command executes on submit.
-  const chatButtons = createMemo<Shortcut[]>(() => [
-    { id: "S", label: "Settings", action: () => dialog.replace(() => <DialogSpinosaSettings />) },
-    { id: "M", label: "Models", action: () => dialog.replace(() => <DialogModel />) },
-    { id: "B", label: "Report bug", action: reportBug },
-  ])
+  const chatButtons = createMemo<Shortcut[]>(() =>
+    homeFooterLabels("workspace").map((label) => byLabel()[label]!),
+  )
 
   const renderButton = (item: Shortcut) => (
     <box

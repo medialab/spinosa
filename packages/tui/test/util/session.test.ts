@@ -60,6 +60,24 @@ describe("util.session", () => {
     expect(filtered.map((s) => s.id)).toEqual(["in", "exact"])
   })
 
+  test("does not treat a sibling directory as the same workspace", () => {
+    expect(
+      sessionMatchesWorkspaceScope(
+        { directory: "/tmp/spinosa/workspace-ab", workspaceID: undefined },
+        { workspaceDir: "/tmp/spinosa/workspace-a", workspaceID: undefined },
+      ),
+    ).toBeFalse()
+  })
+
+  test("rejects a session bound to a different workspace ID even if the directory matches", () => {
+    expect(
+      sessionMatchesWorkspaceScope(
+        { directory: "/tmp/spinosa/ws", workspaceID: "wrk_b" },
+        { workspaceDir: "/tmp/spinosa/ws", workspaceID: "wrk_a" },
+      ),
+    ).toBeFalse()
+  })
+
   test("matches experimental workspace ID when selected", () => {
     expect(
       sessionMatchesWorkspaceScope(

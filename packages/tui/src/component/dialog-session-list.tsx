@@ -21,7 +21,7 @@ import { useEvent } from "../context/event"
 import { readdir, readFile } from "node:fs/promises"
 import { dbg } from "../util/debug-log"
 import { sessionIsBusy, sessionMatchesWorkspaceScope } from "../util/session"
-import { sessionsToStopOnOpen, stopBusySessions } from "../util/stop-sessions"
+import { ABORT_FAILED_TOAST, sessionsToStopOnOpen, stopBusySessions } from "../util/stop-sessions"
 
 type SessionListFilter = { scope?: "project"; directory?: string; path?: string; workspace?: string }
 
@@ -150,9 +150,17 @@ export function DialogSessionList() {
       return session ? [session] : []
     })
     const query = search().trim().toLowerCase()
+    const filter = sync.session.query()
+    const workspaceDir = filter.directory
+    const workspaceID = project.workspace.current() ?? filter.workspace
     return [...result.map((session) => synced.get(session.id) ?? session), ...extra]
       .filter((session) => !deleted().has(session.id))
       .filter((session) => !query || session.title.toLowerCase().includes(query))
+      .filter((session) =>
+        !workspaceDir && !workspaceID
+          ? true
+          : sessionMatchesWorkspaceScope(session, { workspaceDir, workspaceID }),
+      )
   })
 
   onCleanup(
@@ -358,6 +366,8 @@ export function DialogSessionList() {
           void stopBusySessions({
             sessionIDs: ids,
             abort: (sessionID) => sdk.client.session.abort({ sessionID }),
+          }).then((failures) => {
+            if (failures.length > 0) toast.show(ABORT_FAILED_TOAST)
           })
           route.navigate({
             type: "workspace",
