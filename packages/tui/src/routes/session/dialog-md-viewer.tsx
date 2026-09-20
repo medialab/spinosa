@@ -1,16 +1,28 @@
 import { createResource, createMemo, createSignal, onMount, Show } from "solid-js"
-import { writeFile, mkdtemp, rm } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
-import { homedir, tmpdir } from "node:os"
-import { spawn } from "node:child_process"
-import { TextAttributes } from "@opentui/core"
+import { homedir } from "node:os"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
+import { useKV } from "../../context/kv"
 import { useDialog } from "../../ui/dialog"
 import { MARKDOWN_VIEWER_HEIGHT_RATIO } from "../../ui/dialog"
 import { useBindings } from "../../keymap"
 import { useToast } from "../../ui/toast"
+import { useWait } from "../../context/wait"
+import { HoverChip, HoverLabel } from "../../ui/hover-press"
 import { loadMarkdownFile, type MarkdownLoadResult } from "./load-markdown-file"
+import { WaveSpinner } from "../../component/wave-spinner"
+import {
+  clampMdViewerScale,
+  MD_VIEWER_SCALE_DEFAULT,
+  mdViewerSidePad,
+  mdViewerTableCellPad,
+} from "./md-viewer-scale"
+
+/** Dark blue for MD export — darker than theme.primary on the dark palette. */
+export const MD_EXPORT_BLUE = RGBA.fromHex("#3b7dd8")
 
 export function exportDownloadPath(filePath: string, workspaceRoot: string | undefined, ext: "md" | "pdf"): string {
   const rel = workspaceRoot ? path.relative(workspaceRoot, filePath) : filePath
@@ -22,19 +34,24 @@ export function exportDownloadPath(filePath: string, workspaceRoot: string | und
 export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string }) {
   const dialog = useDialog()
   const toast = useToast()
+  const wait = useWait()
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
+  const kv = useKV()
+  const [storedScale, setStoredScale] = kv.signal<number>("markdown_viewer_scale", MD_VIEWER_SCALE_DEFAULT)
+  const scale = () => clampMdViewerScale(storedScale())
+  const bumpScale = (delta: number) => {
+    setStoredScale((prev) => clampMdViewerScale((typeof prev === "number" ? prev : MD_VIEWER_SCALE_DEFAULT) + delta))
+  }
   const [exportState, setExportState] = createSignal<"idle" | "busy" | "done">("idle")
   const [pdfState, setPdfState] = createSignal<"idle" | "busy" | "done">("idle")
-
-  const [editError, setEditError] = createSignal<string | undefined>()
 
   onMount(() => {
     dialog.setSize("xlarge")
     dialog.setHeightRatio(MARKDOWN_VIEWER_HEIGHT_RATIO)
   })
 
-  const [loaded, { mutate: setLoaded }] = createResource(
+  const [loaded] = createResource(
     () => props.filePath,
     (filepath): Promise<MarkdownLoadResult> => loadMarkdownFile(filepath),
   )
@@ -59,6 +76,18 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
 
   const pdfPath = createMemo(() => exportDownloadPath(props.filePath, props.workspaceRoot, "pdf"))
 
+  const mdAccent = () => {
+    if (exportState() === "busy") return theme.warning
+    if (exportState() === "done") return theme.success
+    return MD_EXPORT_BLUE
+  }
+
+  const pdfAccent = () => {
+    if (pdfState() === "busy") return theme.warning
+    if (pdfState() === "done") return theme.success
+    return theme.warning
+  }
+
   const handleExport = async () => {
     if (exportState() !== "idle") return
     const md = mdText()
@@ -82,7 +111,7 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     setPdfState("busy")
     try {
       const { exportMarkdownToPdf } = await import("@spinosa/core/export/markdown-pdf")
-      const pdf = await exportMarkdownToPdf(md)
+      const pdf = await wait.withWait("Exporting PDF…", () => exportMarkdownToPdf(md))
       await writeFile(pdfPath(), pdf)
       setPdfState("done")
       setTimeout(() => setPdfState("idle"), 3000)
@@ -90,66 +119,6 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     } catch (e) {
       setPdfState("idle")
       toast.show({ variant: "error", message: `PDF export failed: ${e instanceof Error ? e.message : String(e)}` })
-    }
-  }
-
-  const handleEdit = async () => {
-    setEditError(undefined)
-    const editor = process.env.VISUAL || process.env.EDITOR
-    if (!editor) {
-      setEditError("No $EDITOR or $VISUAL set")
-      return
-    }
-    const md = mdText()
-    if (loaded.loading) {
-      setEditError("File is still loading, please wait")
-      return
-    }
-    if (!md) {
-      setEditError(loadError() ?? "File content unavailable")
-      return
-    }
-    const tmpDir = await mkdtemp(path.join(tmpdir(), "spinosa-edit-"))
-    const tmpFile = path.join(tmpDir, path.basename(props.filePath))
-    try {
-      await writeFile(tmpFile, md)
-      renderer.suspend()
-      renderer.currentRenderBuffer.clear()
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const child = spawn(editor, [tmpFile], {
-            cwd: props.workspaceRoot ?? path.dirname(props.filePath),
-            stdio: ["inherit", "inherit", "inherit"],
-            shell: process.platform === "darwin" || process.platform === "win32",
-          })
-          child.on("error", reject)
-          child.on("exit", (code, sig) => {
-            if (code === 0) resolve()
-            else reject(new Error(`Editor exited with ${sig ? `signal ${sig}` : `code ${code}`}`))
-          })
-        })
-      } finally {
-        renderer.currentRenderBuffer.clear()
-        renderer.resume()
-        renderer.requestRender()
-      }
-      const edited = await loadMarkdownFile(tmpFile)
-      if (!edited.ok) {
-        setEditError(edited.message)
-        toast.show({ variant: "error", message: `Edit failed: ${edited.message}` })
-        return
-      }
-      if (edited.text !== md) {
-        await writeFile(props.filePath, edited.text)
-        setLoaded({ ok: true, text: edited.text })
-        toast.show({ variant: "success", message: "File saved" })
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setEditError(msg)
-      toast.show({ variant: "error", message: `Edit failed: ${msg}` })
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
     }
   }
 
@@ -169,28 +138,15 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     }
   })
 
-  const exportColor = createMemo(() => {
-    switch (exportState()) {
-      case "busy": return theme.warning
-      case "done": return theme.success
-      default: return theme.primary
-    }
-  })
-
-  const pdfColor = createMemo(() => {
-    switch (pdfState()) {
-      case "busy": return theme.warning
-      case "done": return theme.success
-      default: return theme.primary
-    }
-  })
-
   useBindings(() => ({
     bindings: [
       { key: "escape", cmd: () => dialog.clear() },
       { key: "return", cmd: () => dialog.clear() },
       { key: "e", cmd: () => void handleExport() },
       { key: "p", cmd: () => void handlePdfExport() },
+      { key: "-", cmd: () => bumpScale(-1) },
+      { key: "+", cmd: () => bumpScale(1) },
+      { key: "=", cmd: () => bumpScale(1) },
     ],
   }))
 
@@ -201,26 +157,24 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
           {displayPath()}
         </text>
-        <box flexDirection="row" gap={2}>
-          <text fg={theme.textMuted} attributes={TextAttributes.UNDERLINE}
-            onMouseUp={() => {
+        <box flexDirection="row" gap={1}>
+          <HoverChip flexShrink={0} label="-" onPress={() => bumpScale(-1)} />
+          <text fg={theme.textMuted}>{`Aa ${scale()}`}</text>
+          <HoverChip flexShrink={0} label="+" onPress={() => bumpScale(1)} />
+          <HoverLabel
+            onPress={() => {
               if (renderer.getSelection()?.getSelectedText()) return
-              void handleEdit()
-            }}>
-            Edit
-          </text>
-          <text fg={theme.textMuted} onMouseUp={() => {
-            if (renderer.getSelection()?.getSelectedText()) return
-            dialog.clear()
-          }}>
+              dialog.clear()
+            }}
+          >
             esc
-          </text>
+          </HoverLabel>
         </box>
       </box>
       <box height={1} border={["top"]} borderColor={theme.border} flexShrink={0} />
       <scrollbox flexGrow={2} minHeight={0} paddingTop={1} paddingBottom={1}>
         <Show when={loaded.loading}>
-          <text fg={theme.textMuted}>Loading...</text>
+          <WaveSpinner color={theme.primary}>Loading…</WaveSpinner>
         </Show>
         <Show when={!loaded.loading && loadError()}>
           {(msg) => (
@@ -233,51 +187,48 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
           )}
         </Show>
         <Show when={!loaded.loading && mdText() !== undefined}>
-          <box paddingLeft={1}>
+          <box paddingLeft={1 + mdViewerSidePad(scale())} paddingRight={mdViewerSidePad(scale())}>
             <markdown
               content={mdText()!}
               syntaxStyle={syntax()}
               streaming={false}
               internalBlockMode="top-level"
-              tableOptions={{ style: "grid" }}
+              tableOptions={{ style: "grid", cellPaddingY: mdViewerTableCellPad(scale()) }}
               fg={theme.markdownText}
               bg={theme.background}
             />
           </box>
         </Show>
-        <Show when={editError()}>
-          {(msg) => (
-            <box paddingLeft={1} paddingTop={1}>
-              <text fg={theme.error}>{msg()}</text>
-            </box>
-          )}
-        </Show>
       </scrollbox>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0} paddingTop={1} paddingBottom={1}>
         <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
-          esc return close · e md · p pdf
+          esc close · - + size · e md · p pdf
         </text>
         <box flexDirection="row" gap={2}>
-          <box
-            onMouseUp={() => {
+          <HoverChip
+            flexShrink={0}
+            label={exportLabel()}
+            accent={mdAccent()}
+            active={exportState() !== "idle"}
+            paddingLeft={2}
+            paddingRight={2}
+            onPress={() => {
               if (renderer.getSelection()?.getSelectedText()) return
               void handleExport()
             }}
-            paddingLeft={2} paddingRight={2}
-            backgroundColor={exportColor()}
-          >
-            <text fg={theme.selectedListItemText}>{exportLabel()}</text>
-          </box>
-          <box
-            onMouseUp={() => {
+          />
+          <HoverChip
+            flexShrink={0}
+            label={pdfLabel()}
+            accent={pdfAccent()}
+            active={pdfState() !== "idle"}
+            paddingLeft={2}
+            paddingRight={2}
+            onPress={() => {
               if (renderer.getSelection()?.getSelectedText()) return
               void handlePdfExport()
             }}
-            paddingLeft={2} paddingRight={2}
-            backgroundColor={pdfColor()}
-          >
-            <text fg={theme.selectedListItemText}>{pdfLabel()}</text>
-          </box>
+          />
         </box>
       </box>
     </box>

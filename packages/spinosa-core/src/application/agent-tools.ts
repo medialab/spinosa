@@ -8,6 +8,7 @@ import {
   deterministicRoute,
   heuristicAmbiguousRoute,
   WorkflowRegistry,
+  workflowLabel,
   type OrchestratedDecision,
   type RouteDecision,
   type RouteInput,
@@ -19,6 +20,7 @@ import { evidenceGate, validateArtifact, verificationOutcome } from "../artifact
 import { parseVerificationStatus } from "../artifacts/contracts"
 
 export type { OrchestratedDecision, RouteDecision } from "@spinosa/runtime"
+export { ROUTE_STRATEGIES, formatRouteTitle, workflowLabel } from "@spinosa/runtime"
 
 // --- spinosa_route ---
 
@@ -69,6 +71,7 @@ export type SpinosaFrameResult =
       ok: true
       runID: string
       workflowID: string
+      planLabel: string
       goalPath: string
       decision: OrchestratedDecision
     }
@@ -86,7 +89,12 @@ export async function spinosaFrame(input: {
     return { ok: false, reason: "empty prompt: nothing to frame" }
   }
   const runID = generateSessionId()
-  const definition = new WorkflowRegistry().resolve(input.decision)
+  let definition
+  try {
+    definition = new WorkflowRegistry().resolve(input.decision)
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+  }
   const plan = definition.build({ runID, decision: input.decision })
   const { goalPath } = await writeWorkflowGoalArtifact(input.workspacePath, {
     runID,
@@ -94,7 +102,7 @@ export async function spinosaFrame(input: {
     decision: input.decision,
     plan,
   })
-  return { ok: true, runID, workflowID: plan.id, goalPath, decision: input.decision }
+  return { ok: true, runID, workflowID: plan.id, planLabel: workflowLabel(plan.id), goalPath, decision: input.decision }
 }
 
 // --- spinosa_mint_paths ---
@@ -214,6 +222,7 @@ const VERIFY_VALIDATORS = [
   "analysis",
   "serendipity",
   "report",
+  "visualization",
   "verification",
   "evaluation",
   "extraction",

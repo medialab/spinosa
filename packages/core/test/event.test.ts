@@ -213,6 +213,45 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("persist false notifies without writing a durable row", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const aggregateID = EventV2.ID.create()
+      const fiber = yield* events
+        .subscribe(SyncMessage)
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped)
+      yield* Effect.yieldNow
+      const event = yield* events.publish(SyncMessage, { id: aggregateID, text: "live" }, { persist: false })
+      const received = Array.from(yield* Fiber.join(fiber))
+
+      expect(received).toEqual([event])
+      expect(event.durable).toBeUndefined()
+      expect(yield* db.select().from(EventTable).where(eq(EventTable.aggregate_id, aggregateID)).all()).toEqual([])
+    }),
+  )
+
+  it.effect("publishAll writes consecutive durable sequences", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const { db } = yield* Database.Service
+      const aggregateID = EventV2.ID.create()
+      const published = yield* events.publishAll([
+        { definition: SyncMessage, data: { id: aggregateID, text: "one" } },
+        { definition: SyncMessage, data: { id: aggregateID, text: "two" } },
+      ])
+
+      expect(published.map((event) => event.data.text)).toEqual(["one", "two"])
+      expect(published.map((event) => event.durable?.seq)).toEqual([0, 1])
+      const rows = yield* db
+        .select({ seq: EventTable.seq })
+        .from(EventTable)
+        .where(eq(EventTable.aggregate_id, aggregateID))
+        .all()
+      expect(rows.map((row) => row.seq)).toEqual([0, 1])
+    }),
+  )
+
   it.effect("rejects local commit hooks on live-only events", () =>
     Effect.gen(function* () {
       const events = yield* EventV2.Service

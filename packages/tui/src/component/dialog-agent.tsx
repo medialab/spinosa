@@ -55,6 +55,8 @@ export function DialogAgent() {
       title="Select agent"
       current={local.agent.current()?.name}
       options={options()}
+      loading={spinosaAgents.loading}
+      loadingText="Loading agents…"
       onSelect={(option) => {
         if (option.value.startsWith("sdk:")) {
           local.agent.set(option.value.slice(4))

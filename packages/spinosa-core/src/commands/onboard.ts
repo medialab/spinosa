@@ -106,6 +106,7 @@ export interface OnboardingContext {
   batches: ImportBatchManager
   rawDir: string
   copyableCount: number
+  scannedFiles: string[]
 }
 export interface PhaseAccumulator {
   direct: PhaseResult
@@ -163,7 +164,7 @@ export async function prepareOnboarding(
   const rawDir = path.join(workspacePath, "raw")
   mkdirSync(rawDir, { recursive: true })
 
-  return { workspacePath, frameworkRoot, sourcePath, projectTitle, scanCounts, toolStatus, batches, rawDir, copyableCount }
+  return { workspacePath, frameworkRoot, sourcePath, projectTitle, scanCounts, toolStatus, batches, rawDir, copyableCount, scannedFiles: scanCounts.files }
 }
 
 // ── Phase C: Finalize (verification, CLI, prompt, summary) ────────────────
@@ -187,6 +188,7 @@ export async function completeOnboarding(
     undefined,
     undefined,
     options.ocrModelId,
+    ctx.scannedFiles,
   )
 
   const verify: OnboardingVerifyStats = {
@@ -296,6 +298,7 @@ export async function runOnboarding(
     verifyAfter: false,
     shouldAbort: options.shouldAbort,
     onProgress: onCopyProgress,
+    preScannedFiles: ctx.scannedFiles,
     onLog: (msg) => onPhase?.("import", msg),
     onPhaseChange: (phase) => {
       switch (phase) {

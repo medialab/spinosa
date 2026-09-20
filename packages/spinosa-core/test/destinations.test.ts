@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, statSync, writeFileSync, rmSync } from "node:fs"
+import { mkdtempSync, mkdirSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import * as path from "node:path"
-import { allocateDestinations, allocateDestinationsStable, existingOutputBelongsToSource, persistDestMap, loadDestMap } from "../src/import/destinations"
+import { allocateDestinations, allocateDestinationsStable, existingOutputBelongsToSource, persistDestMap, loadDestMap, shouldSkipDestWalkDir } from "../src/import/destinations"
 
 function makeWs(): string {
   const ws = mkdtempSync(path.join(tmpdir(), "spinosa-dest-"))
@@ -96,5 +96,32 @@ describe("destination allocation", () => {
     } finally {
       rmSync(ws, { recursive: true, force: true })
     }
+  })
+
+  test("persists a destination taken index for later runs", () => {
+    const ws = makeWs()
+    try {
+      const src = path.join(ws, "a.txt")
+      writeFileSync(src, "a")
+      allocateDestinations(
+        [{ rel: "a.txt", srcFile: src, desiredDest: path.join(ws, "raw", "a.md") }],
+        ws,
+      )
+      expect(existsSync(path.join(ws, ".logs", "dest-taken.json"))).toBe(true)
+      const second = allocateDestinations(
+        [{ rel: "b.txt", srcFile: src, desiredDest: path.join(ws, "raw", "a.md") }],
+        ws,
+      )
+      expect(second[0]!.disambiguated).toBe(true)
+    } finally {
+      rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
+  test("destination walk skips heavy directories", () => {
+    expect(shouldSkipDestWalkDir("node_modules")).toBe(true)
+    expect(shouldSkipDestWalkDir("dist")).toBe(true)
+    expect(shouldSkipDestWalkDir(".git")).toBe(true)
+    expect(shouldSkipDestWalkDir("raw")).toBe(false)
   })
 })

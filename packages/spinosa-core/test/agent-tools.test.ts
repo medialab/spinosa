@@ -5,6 +5,7 @@ import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import {
+  formatRouteTitle,
   spinosaFrame,
   spinosaGate,
   spinosaMintPaths,
@@ -34,6 +35,22 @@ describe("spinosaRoute", () => {
     const routed = spinosaRoute({ text: "anything", ...WS, command: "startup" })
     expect(routed.decision).toMatchObject({ mode: "orchestrated", operation: "corpus", strategy: "startup_index" })
     expect(routed.provisional).toBe(false)
+    expect(formatRouteTitle(routed.decision)).toBe("Index the workspace")
+  })
+
+  test("index-this-workspace asks route via rules, not a provisional chat fallback", () => {
+    const routed = spinosaRoute({ text: "The user wants to index this workspace.", ...WS })
+    expect(routed.via).toBe("rules")
+    expect(routed.provisional).toBe(false)
+    expect(routed.decision).toMatchObject({ mode: "orchestrated", operation: "corpus", strategy: "startup_index" })
+    expect(formatRouteTitle(routed.decision)).toBe("Index the workspace")
+  })
+
+  test("route titles are plan names, not mode/via jargon", () => {
+    expect(formatRouteTitle({ mode: "general" })).toBe("Chat")
+    expect(
+      formatRouteTitle({ mode: "orchestrated", operation: "research", strategy: "targeted_evidence" }),
+    ).toBe("Find evidence")
   })
 
   test("ambiguous input falls back provisional so the model can override", () => {
@@ -64,7 +81,26 @@ describe("spinosaFrame", () => {
     })
     if (!framed.ok) throw new Error(`expected frame: ${framed.reason}`)
     expect(framed.runID).toMatch(/^\d{8}-[0-9a-f]+$/)
+    expect(framed.planLabel).toBe("Find evidence")
     expect(await Bun.file(path.join(root, framed.goalPath)).exists()).toBe(true)
+  })
+
+  test("refuses an unknown operation and strategy mix with a plain hint", async () => {
+    const root = await workspace()
+    const framed = await spinosaFrame({
+      workspacePath: root,
+      cleanedPrompt: "Index this workspace",
+      decision: {
+        mode: "orchestrated", operation: "research", strategy: "startup_index",
+        scope: "corpus_wide", coverage: "exhaustive", outputs: ["map"],
+        mutation: "none", verification: "none", evaluation: "never",
+        reason: "test", confidence: 0.8,
+      },
+    })
+    expect(framed.ok).toBe(false)
+    if (framed.ok) throw new Error("expected refusal")
+    expect(framed.reason).toContain("not a research plan")
+    expect(framed.reason).toContain("targeted_evidence")
   })
 
   test("refuses outside Spinosa workspaces", async () => {

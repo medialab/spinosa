@@ -1,17 +1,18 @@
-import { release } from "node:os"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, For, Show } from "solid-js"
+import open from "open"
 import { getScrollAcceleration } from "../util/scroll"
 import { useClipboard } from "../context/clipboard"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { useExit } from "../context/exit"
+import { buildBugReportUrl, openBugReport } from "../spinosa/bug-report"
 
 export function ErrorComponent(props: { error: Error; reset: () => void; mode?: "dark" | "light" }) {
   const term = useTerminalDimensions()
   const exit = useExit()
   const clipboard = useClipboard()
-  const [copied, setCopied] = createSignal(false)
+  const [reportState, setReportState] = createSignal<"idle" | "opened" | "copied">("idle")
 
   // Safe fallback palette per mode (mirrors theme/assets/spinosa.json) since the
   // theme context may be the thing that crashed.
@@ -42,14 +43,26 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
 
   const message = props.error.message || "An unknown error occurred."
   const stack = props.error.stack || "No stack trace available."
-  const issueURL = buildIssueURL(message, stack)
+  const issueURL = buildBugReportUrl({ kind: "crash", message, stack })
 
-  const copyReport = () => {
-    void clipboard.write?.(issueURL.toString()).then(() => setCopied(true))
+  const openReport = () => {
+    void openBugReport(issueURL, {
+      openUrl: (href) => open(href),
+      writeClipboard: clipboard.write,
+    }).then((result) => {
+      if (result === "opened") setReportState("opened")
+      else if (result === "copied") setReportState("copied")
+    })
+  }
+
+  const reportLabel = () => {
+    if (reportState() === "opened") return "✓ Opened"
+    if (reportState() === "copied") return "✓ Copied"
+    return "Open report"
   }
 
   const actions = [
-    { key: "c", label: () => (copied() ? "✓ Copied" : "Copy report"), copy: true, onUse: copyReport },
+    { key: "o", label: reportLabel, copy: true, onUse: openReport },
     { key: "r", label: () => "Restart", onUse: props.reset },
     { key: "q", label: () => "Quit", onUse: () => exit() },
   ]
@@ -87,7 +100,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
     if (evt.name === "home" && scroll) return scroll.scrollTo(0)
     if (evt.name === "end" && scroll) return scroll.scrollTo(scroll.scrollHeight)
     if (evt.name === "q") return exit()
-    if (evt.name === "c") return copyReport()
+    if (evt.name === "o" || evt.name === "c") return openReport()
     if (evt.name === "r") return props.reset()
   })
 
@@ -95,6 +108,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
   const contentWidth = () => Math.min(84, Math.max(24, term().width - 4))
   const showSubtext = () => term().height >= 18
   const showFooter = () => term().height >= 20
+  const reported = () => reportState() !== "idle"
 
   return (
     <box
@@ -134,10 +148,11 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
           <For each={actions}>
             {(action, index) => {
               const isSelected = () => selected() === index()
-              const isCopied = () => action.copy && copied()
+              const isCopied = () => action.copy && reported()
               return (
                 <box flexDirection="column" alignItems="center" flexShrink={0}>
                   <box
+                    onMouseOver={() => setSelected(index())}
                     onMouseDown={() => setSelected(index())}
                     onMouseUp={() => action.onUse()}
                     backgroundColor={isCopied() ? colors.success : isSelected() ? colors.primary : colors.element}
@@ -188,9 +203,11 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         <Show when={showFooter()}>
           <box flexDirection="column" alignItems="center" flexShrink={0}>
             <text fg={colors.muted}>
-              {copied()
-                ? "Report copied — paste it into a new GitHub issue."
-                : "Copy the report and open a GitHub issue to help us fix this."}
+              {reportState() === "opened"
+                ? "GitHub form opened. Submit on github.com/medialab/spinosa to file the issue."
+                : reportState() === "copied"
+                  ? "URL copied — paste it in a browser, then Submit on GitHub."
+                  : "Open the GitHub form. Nothing is posted until you Submit."}
             </text>
             <text fg={colors.muted}>spinosa {InstallationVersion}</text>
           </box>
@@ -198,65 +215,4 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
       </box>
     </box>
   )
-}
-
-function buildIssueURL(message: string, stack: string) {
-  const url = new URL("https://github.com/medialab/spinosa/issues/new")
-  url.searchParams.set("title", `TUI crash: ${message}`)
-
-  // Budget the stack against the fully URL-encoded length (not the raw length) so
-  // the final link stays under GitHub's practical limit; flag truncation so a
-  // clipped trace is obvious. searchParams.set handles encoding without throwing,
-  // so measuring url.toString() is both correct and safe on any input.
-  const MAX_URL_LENGTH = 6000
-  const marker = "\n... (truncated)"
-  const head = [
-    `The spinosa TUI crashed with an unexpected error.`,
-    ``,
-    `**Error:** ${message}`,
-    ``,
-    `**Version:** ${InstallationVersion}`,
-    `**OS:** ${describeOS()}`,
-    `**Terminal:** ${describeTerminal()}`,
-    ``,
-    `Reported automatically from the spinosa crash screen. If you can, describe what you were doing when it crashed.`,
-    ``,
-    `**Stack trace:**`,
-    ``,
-  ].join("\n")
-  const setBody = (body: string) => url.searchParams.set("body", head + "```\n" + body + "\n```")
-
-  setBody(stack)
-  if (url.toString().length <= MAX_URL_LENGTH) return url
-
-  // Largest raw stack prefix whose encoded URL (with the marker) still fits.
-  let lo = 0
-  let hi = stack.length
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2)
-    setBody(stack.slice(0, mid) + marker)
-    if (url.toString().length <= MAX_URL_LENGTH) lo = mid
-    else hi = mid - 1
-  }
-  setBody(stack.slice(0, lo) + marker)
-  return url
-}
-
-function describeOS() {
-  const name =
-    process.platform === "darwin"
-      ? "macOS"
-      : process.platform === "win32"
-        ? "Windows"
-        : process.platform === "linux"
-          ? "Linux"
-          : process.platform
-  return `${name} ${release()} (${process.arch})`
-}
-
-function describeTerminal() {
-  const program = process.env.TERM_PROGRAM || process.env.TERM || "unknown"
-  const version = process.env.TERM_PROGRAM_VERSION ? ` ${process.env.TERM_PROGRAM_VERSION}` : ""
-  const multiplexer = process.env.TMUX ? " in tmux" : process.env.STY ? " in screen" : ""
-  return `${program}${version}${multiplexer}`
 }

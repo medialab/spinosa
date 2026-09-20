@@ -26,6 +26,23 @@ const capture = () => {
         })
         return event
       }),
+    publishAll: (entries) =>
+      Effect.forEach(entries, (entry) =>
+        Effect.sync(() => {
+          const event = {
+            id: EventV2.ID.create(),
+            type: entry.definition.type,
+            data: entry.data,
+          } as EventV2.Payload<(typeof entries)[number]["definition"]>
+          published.push({
+            type: entry.definition.durable
+              ? EventV2.versionedType(entry.definition.type, entry.definition.durable.version)
+              : entry.definition.type,
+            data: entry.data,
+          })
+          return event
+        }),
+      ),
     subscribe: () => Stream.empty,
     all: () => Stream.empty,
     durable: () => Stream.empty,

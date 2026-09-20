@@ -23,6 +23,8 @@ import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { useTuiConfig } from "../config"
 import { formatKeyBindings, useBindings, useKeymapSelector } from "../keymap"
+import { HoverLabel } from "./hover-press"
+import { WaitFallback } from "../context/wait-ui"
 
 export interface DialogSelectProps<T> {
   title: string
@@ -30,6 +32,8 @@ export interface DialogSelectProps<T> {
   placeholder?: string
   footer?: JSX.Element
   emptyView?: JSX.Element
+  loading?: boolean
+  loadingText?: string
   options: DialogSelectOption<T>[]
   flat?: boolean
   ref?: (ref: DialogSelectRef<T>) => void
@@ -512,6 +516,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         flexDirection="row"
         backgroundColor={active() ? theme.primary : RGBA.fromInts(0, 0, 0, 0)}
         onMouseUp={() => triggerAction(item)}
+        onMouseOver={() => {
+          if (props.locked || disabled()) return
+          const index = actionItems().indexOf(item)
+          if (index >= 0) setFocusedAction(index)
+        }}
       >
         <text
           fg={disabled() ? theme.textMuted : active() ? fg : theme.text}
@@ -533,9 +542,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
               {props.title}
             </text>
           )}
-          <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-            esc
-          </text>
+          <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
         </box>
         <Show when={props.renderFilter !== false}>
           <box paddingTop={1}>
@@ -569,10 +576,14 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         <Show
           when={grouped().length > 0}
           fallback={
-            props.emptyView ?? (
-              <box paddingLeft={4} paddingRight={4} paddingTop={1}>
-                <text fg={theme.textMuted}>No results found</text>
-              </box>
+            props.loading ? (
+              <WaitFallback>{props.loadingText ?? "Loading…"}</WaitFallback>
+            ) : (
+              props.emptyView ?? (
+                <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+                  <text fg={theme.textMuted}>No results found</text>
+                </box>
+              )
             )
           }
         >

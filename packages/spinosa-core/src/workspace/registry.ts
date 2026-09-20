@@ -606,19 +606,7 @@ export async function setWorkspaceTags(input: {
 
 export async function listRegisteredWorkspaces(): Promise<SpinosaRegisteredWorkspace[]> {
   const entries = await loadRegistry(undefined, { allowMissingMarker: true })
-  await Promise.all(entries.filter((entry) =>
-    validateWorkspace(entry.path)
-    && (entry.presence === "present" || entry.presence === "legacy" || entry.presence === "unknown")
-  ).map((entry) =>
-    registerWorkspace(
-      entry.path,
-      resolveWorkspaceDisplayName(entry.path, entry.name),
-      undefined,
-      entry.workspaceID,
-    ),
-  ))
-  const refreshed = await loadRegistry(undefined, { allowMissingMarker: true })
-  return refreshed.map((entry) => ({
+  return entries.map((entry) => ({
     path: entry.path,
     projectName: resolveWorkspaceDisplayName(entry.path, entry.name),
     ...(entry.workspaceID ? { workspaceID: entry.workspaceID } : {}),
@@ -661,16 +649,32 @@ export function findWorkspaceMatchesByID(workspaceID: SpinosaWorkspaceID, roots:
   return results
 }
 
+const SKIP_WORKSPACE_WALK = new Set([
+  "node_modules",
+  "dist",
+  "Library",
+  "Applications",
+  "Pictures",
+  "Movies",
+  "Music",
+  "Caches",
+  ".trash",
+])
+
+const WORKSPACE_ID_WALK_DEPTH = 3
+
 function walkWorkspaceIDMarker(dir: string, depth: number, workspaceID: SpinosaWorkspaceID, seen: Set<string>, results: string[]) {
-  if (depth > 5 || seen.has(dir) || !existsSync(dir)) return
+  if (depth > WORKSPACE_ID_WALK_DEPTH || seen.has(dir) || !existsSync(dir)) return
   seen.add(dir)
-  if (workspaceIDFromMarker(dir) === workspaceID) results.push(dir)
-  if (depth === 5) return
+  if (workspaceIDFromMarker(dir) === workspaceID) {
+    results.push(dir)
+    return
+  }
+  if (depth === WORKSPACE_ID_WALK_DEPTH) return
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory() && !entry.name.startsWith(".")) {
-        walkWorkspaceIDMarker(path.join(dir, entry.name), depth + 1, workspaceID, seen, results)
-      }
+      if (!entry.isDirectory() || entry.name.startsWith(".") || SKIP_WORKSPACE_WALK.has(entry.name)) continue
+      walkWorkspaceIDMarker(path.join(dir, entry.name), depth + 1, workspaceID, seen, results)
     }
   } catch {}
 }
@@ -685,7 +689,7 @@ export async function recoverWorkspacePathByID(workspaceID: SpinosaWorkspaceID, 
 }
 
 function walkWorkspaceMarker(dir: string, depth: number, seen: Set<string>, results: string[]) {
-  if (depth > 5) return
+  if (depth > WORKSPACE_ID_WALK_DEPTH) return
   if (seen.has(dir)) return
   seen.add(dir)
 
@@ -695,12 +699,12 @@ function walkWorkspaceMarker(dir: string, depth: number, seen: Set<string>, resu
     return
   }
 
-  if (depth === 5) return
+  if (depth === WORKSPACE_ID_WALK_DEPTH) return
 
   let entries: string[]
   try {
     entries = readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !SKIP_WORKSPACE_WALK.has(e.name))
       .map((e) => path.join(dir, e.name))
   } catch {
     return

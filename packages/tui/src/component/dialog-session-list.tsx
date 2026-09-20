@@ -338,6 +338,8 @@ export function DialogSessionList() {
     <DialogSelect
       title="Sessions"
       options={options()}
+      loading={Boolean(search()) ? searchResults.loading : browseResults.loading}
+      loadingText="Loading sessions…"
       skipFilter={true}
       preserveSelection={true}
       current={currentSessionID()}

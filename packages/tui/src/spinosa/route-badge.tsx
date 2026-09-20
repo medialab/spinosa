@@ -1,13 +1,19 @@
 import { Show } from "solid-js"
+import { workflowLabel } from "@spinosa/core"
 import { useTheme } from "../context/theme"
+import { spinosaToolOutcome } from "../util/tool-display"
 
 /**
  * Conversation route badge: manifests transient outbound state and, for
  * persisted user messages, the general-prompt (or historical workflow)
- * identity stamped at submit as part metadata.
+ * identity stamped at submit as part metadata. After `spinosa_route`
+ * picks a path, a general tag becomes that path (Chat or a plan name).
  */
 
 export const SPINOSA_ROUTE_METADATA = "spinosaRoute"
+
+/** Matches `formatRouteTitle` for `mode: "general"`. */
+export const CHAT_PATH_LABEL = "Chat"
 
 export type RouteBadgeInfo =
   | { kind: "general"; routedBy?: "rules" | "model"; confidence?: number }
@@ -20,6 +26,8 @@ export type RouteBadgeInfo =
       routedBy?: "rules" | "model"
       confidence?: number
     }
+  // Derived from a later `spinosa_route` tool title. Not persisted.
+  | { kind: "path"; label: string }
   // Transient TUI-local states for the outbound queue (never persisted to
   // part metadata).
   | { kind: "queued" }
@@ -91,18 +99,53 @@ export function routeBadgeFromParts(parts: readonly unknown[] | undefined): Rout
   return
 }
 
-function shortWorkflow(id: string): string {
-  return id.replace(/^research\./, "").replace(/_/g, " ")
+/** Last successful `spinosa_route` title from assistant tool parts. */
+export function spinosaRoutePathFromParts(parts: readonly unknown[] | undefined): string | undefined {
+  if (!parts) return
+  let found: string | undefined
+  for (const part of parts) {
+    if (!part || typeof part !== "object") continue
+    const candidate = part as { type?: unknown; tool?: unknown; state?: unknown }
+    if (candidate.type !== "tool" || candidate.tool !== "spinosa_route") continue
+    const outcome = spinosaToolOutcome(candidate.state)
+    if (!outcome || outcome === "Failed") continue
+    found = outcome
+  }
+  return found
+}
+
+/**
+ * General (and unstamped) user tags follow a later Pick a path result.
+ * Submit-stamped workflow rows keep their plan identity.
+ */
+export function resolveRouteBadge(
+  userParts: readonly unknown[] | undefined,
+  followUpParts?: readonly unknown[],
+): RouteBadgeInfo | undefined {
+  const stamped = routeBadgeFromParts(userParts)
+  const path = spinosaRoutePathFromParts(followUpParts)
+  if (path && (!stamped || stamped.kind === "general")) {
+    return { kind: "path", label: path }
+  }
+  return stamped
+}
+
+/** Chat-family tags share the general-prompt success tone. */
+export function routeBadgeChatTone(info: RouteBadgeInfo): boolean {
+  return info.kind === "general" || (info.kind === "path" && info.label === CHAT_PATH_LABEL)
 }
 
 export function routeBadgeLabel(info: RouteBadgeInfo): string {
   if (info.kind === "general") return "General prompt"
+  if (info.kind === "path") {
+    return info.label === CHAT_PATH_LABEL ? CHAT_PATH_LABEL : `◈ ${info.label}`
+  }
   if (info.kind === "queued") return "○ queued"
   if (info.kind === "steered") return "→ steered"
   if (info.kind === "sent") return "✓ Sent"
   if (info.kind === "interrupted") return "⛔ Interrupted"
   if (info.kind === "failed") return "Failed"
-  return `◈ ${shortWorkflow(info.workflowID)}`
+  return `◈ ${workflowLabel(info.workflowID)}`
 }
 
 /** Small chip rendered under the user message timestamp row. */
@@ -110,7 +153,7 @@ export function RouteBadge(props: { info: RouteBadgeInfo }) {
   const { theme } = useTheme()
 
   const tone = () => {
-    if (props.info.kind === "general") return theme.success
+    if (routeBadgeChatTone(props.info)) return theme.success
     if (props.info.kind === "queued") return theme.textMuted
     if (props.info.kind === "steered") return theme.primary
     if (props.info.kind === "sent") return theme.textMuted

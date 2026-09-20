@@ -109,16 +109,34 @@ export function computeMatchingFrameworkChecksums(
   const fwEntries = entries ?? readFrameworkFilesTsv(
     path.join(templateRoot, ".spinosa", "workspace-files.tsv"),
   )
+  const sourceHashCache = new Map<string, string>()
   const checksums: FrameworkChecksums = {}
+  const seen = new Set<string>()
   for (const entry of fwEntries) {
     if (entry.role === "user_state" || entry.policy === "exclude_from_update") continue
     for (const relativeFile of managedFilesUnder(templateRoot, entry.path)) {
+      if (seen.has(relativeFile)) continue
+      seen.add(relativeFile)
       const sourceFile = resolvePathWithinRoot(templateRoot, relativeFile, "framework manifest path")
       const workspaceFile = resolvePathWithinRoot(workspacePath, relativeFile, "framework manifest path")
-      if (!existsSync(workspaceFile)) continue
-      if (!statSync(sourceFile).isFile() || !statSync(workspaceFile).isFile()) continue
-      if (!filesMatch(sourceFile, workspaceFile)) continue
-      checksums[relativeFile] = sha256File(workspaceFile)
+      let sourceStat
+      let workspaceStat
+      try {
+        sourceStat = statSync(sourceFile)
+        workspaceStat = statSync(workspaceFile)
+      } catch {
+        continue
+      }
+      if (!sourceStat.isFile() || !workspaceStat.isFile()) continue
+      if (sourceStat.size !== workspaceStat.size) continue
+      let sourceHash = sourceHashCache.get(sourceFile)
+      if (!sourceHash) {
+        sourceHash = sha256File(sourceFile)
+        sourceHashCache.set(sourceFile, sourceHash)
+      }
+      const hash = sha256File(workspaceFile)
+      if (hash !== sourceHash) continue
+      checksums[relativeFile] = hash
     }
   }
   return checksums

@@ -12,6 +12,23 @@ import { ConfigPlugin } from "@/config/plugin"
 import { ConfigPluginV1 } from "@spinosa/kernel-core/v1/config/plugin"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 
+async function mapWithConcurrency<T, R>(items: readonly T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  if (items.length === 0) return []
+  const out: R[] = new Array(items.length)
+  let next = 0
+  const n = Math.max(1, Math.min(concurrency, items.length))
+  await Promise.all(
+    Array.from({ length: n }, async () => {
+      while (true) {
+        const index = next++
+        if (index >= items.length) return
+        out[index] = await fn(items[index]!)
+      }
+    }),
+  )
+  return out
+}
+
 export namespace PluginLoader {
   // A normalized plugin declaration derived from config before any filesystem or npm work happens.
   export type Plan = {
@@ -207,11 +224,9 @@ export namespace PluginLoader {
   // treated as permanent for this process because Bun caches failed module resolution.
   export async function loadExternal<R = Loaded>(input: Input<R>): Promise<R[]> {
     const candidates = input.items.map((origin) => ({ origin, plan: plan(origin.spec) }))
-    const list: Array<Promise<AttemptResult<R>>> = []
-    for (const candidate of candidates) {
-      list.push(attempt(candidate, input.kind, false, input.finish, input.missing, input.report))
-    }
-    const out = await Promise.all(list)
+    const out = await mapWithConcurrency(candidates, 8, (candidate) =>
+      attempt(candidate, input.kind, false, input.finish, input.missing, input.report),
+    )
     if (input.wait) {
       let deps: Promise<void> | undefined
       for (let i = 0; i < candidates.length; i++) {

@@ -1,3 +1,3 @@
-Classify a Spinosa workspace request into general vs orchestrated intent dimensions using deterministic routing rules.
+Say whether this is a normal chat turn or a research run.
 
-Use before framing any multi-step research work. Returns a RouteDecision JSON plus provenance. When the result is provisional, the rules abstained: apply your own judgment and override the fallback when the request clearly needs more (or less) than it claims.
+Call this first on a real workspace request. A general result means answer in chat. An orchestrated result means call spinosa_frame next, using the same decision JSON — do not rewrite strategy into a sentence or a -> chain.

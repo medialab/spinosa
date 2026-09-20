@@ -1,27 +1,11 @@
 /**
- * Product entry — canvas/pdf stay out of TUI boot.
- * Doctor and pdf-runtime smokes still stage at start; everything else waits
- * for `ensureDocumentConverters` (onboarding tools green-dot, first PDF).
- * No OCR engine ships; no companion-lib staging needed.
+ * Product entry. `--version` / `-v` / `version` exit here so the TUI preload
+ * and command graph never load. Everything else continues in `boot-runtime.ts`.
  */
-import { installSpinosaBootNoiseSuppression } from "./native/boot-noise"
-import { ensureCanvasNativeBinding } from "./native/canvas-native"
-import { installDomMatrixPolyfill } from "./native/dom-matrix-polyfill"
-import { commandNeedsCanvas } from "./native/canvas-boot"
-import { registerDocumentConverterLoader, ensureDocumentConverters } from "@spinosa/core/tools/detection"
-import { installProcessFailureLogs } from "@spinosa/kernel-core/observability/boot-log"
+import { tryHandleFastCli } from "./cli/fast-path"
 
-installProcessFailureLogs()
-installSpinosaBootNoiseSuppression()
-
-registerDocumentConverterLoader(async () => {
-  ensureCanvasNativeBinding()
-  const { loadNapiCanvas } = await import("./generated/napi-canvas-force.gen.ts")
-  await loadNapiCanvas()
-})
-
-if (commandNeedsCanvas(process.argv.slice(1))) {
-  await ensureDocumentConverters()
+if (tryHandleFastCli(process.argv)) {
+  process.exit(0)
 }
-installDomMatrixPolyfill()
-await import("./cli-main.ts")
+
+await import("./boot-runtime.ts")

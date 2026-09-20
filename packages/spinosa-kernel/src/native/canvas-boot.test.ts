@@ -33,7 +33,7 @@ describe("commandNeedsCanvas", () => {
 
 describe("parent canvas boot", () => {
   test("does not import napi-canvas-force until the converter loader runs", async () => {
-    const source = await Bun.file(new URL("../index.ts", import.meta.url)).text()
+    const source = await Bun.file(new URL("../boot-runtime.ts", import.meta.url)).text()
     expect(source).toContain("registerDocumentConverterLoader")
     expect(source).toContain("commandNeedsCanvas")
     expect(source).toMatch(

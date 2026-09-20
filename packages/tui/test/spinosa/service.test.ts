@@ -53,6 +53,7 @@ describe("service fixture workspace", () => {
     expect(compareFrameworkVersions("0.1.9", "0.2.0")).toBe(-1)
     expect(workspaceNeedsFrameworkUpdate("0.1.0", "0.2.0")).toBe(true)
     expect(workspaceNeedsFrameworkUpdate("0.2.0", "0.2.0")).toBe(false)
+    expect(workspaceNeedsFrameworkUpdate("0.2.0", "0.1.0")).toBe(true)
     expect(workspaceNeedsFrameworkUpdate("unknown", "0.2.0")).toBe(false)
     expect(workspaceNeedsFrameworkUpdate("dev", "0.2.0")).toBe(true)
   })

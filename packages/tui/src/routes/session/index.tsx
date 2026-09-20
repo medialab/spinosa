@@ -41,7 +41,14 @@ import type {
 } from "@spinosa/sdk/v2"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
-import { ellipsisToolLine, toolFilePath, webSearchProviderLabel } from "../../util/tool-display"
+import {
+  ellipsisToolLine,
+  formatSpinosaToolLine,
+  isSpinosaTool,
+  spinosaToolOutcome,
+  toolFilePath,
+  webSearchProviderLabel,
+} from "../../util/tool-display"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -51,12 +58,14 @@ import { DialogAlert } from "../../ui/dialog-alert"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import { isConversationShellReady, shouldBounceMissingSession, shouldConfirmLeaveBusySession, resolveBackNavigation } from "./conversation-shell-ready"
+import { sessionBackLabel, sessionBackWidth } from "./subagent-chrome"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogMdViewer } from "./dialog-md-viewer"
 import { extractMdPaths } from "./extract-md-paths"
+import { toolPartsFingerprint } from "./tool-callout-fingerprint"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogQueuedPrompts } from "../../component/dialog-queued-prompts"
 import { SessionFooter } from "./footer"
@@ -78,6 +87,7 @@ import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
+import { HoverLabel } from "../../ui/hover-press"
 import * as Model from "../../util/model"
 import { formatExportContent, type ExportFormat } from "../../util/transcript"
 import { sessionEpilogue } from "../../util/presentation"
@@ -96,12 +106,15 @@ import { LocationProvider } from "../../context/location"
 import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
-import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
+import { RouteBadge, resolveRouteBadge, routeBadgeChatTone, type RouteBadgeInfo } from "../../spinosa/route-badge"
 import {
   dispatchPositions,
+  findOutboundEcho,
+  internTranscriptRows,
   kickPump,
   mergeTranscriptRows,
   outboundForSession,
+  removeOutbound,
   steerOutbound,
   type OutboundEntry,
 } from "../../spinosa/outbound-queue"
@@ -338,15 +351,25 @@ const resolveExportPath = (filename: string): string => {
       .filter((x) => x.parentID === parentID || x.id === parentID)
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
+  const sessionParts = createMemo(() => {
+    const list = sync.data.message[route.sessionID] ?? []
+    const scoped: typeof sync.data.part = {}
+    for (const message of list) {
+      scoped[message.id] = sync.data.part[message.id]
+      const parentID = "parentID" in message ? message.parentID : undefined
+      if (typeof parentID === "string") scoped[parentID] = sync.data.part[parentID]
+    }
+    return scoped
+  })
   const messages = createMemo(() =>
     (sync.data.message[route.sessionID] ?? []).filter(
-      (message) => !isSilentResearchAssistant(message, sync.data.part),
+      (message) => !isSilentResearchAssistant(message, sessionParts()),
     ),
   )
   const foregroundTasks = createMemo(() =>
     sync.data.capabilities.experimentalBackgroundSubagents
       ? messages().flatMap((message) =>
-          (sync.data.part[message.id] ?? []).filter(
+          (sessionParts()[message.id] ?? []).filter(
             (part): part is ToolPart =>
               part.type === "tool" &&
               part.tool === "task" &&
@@ -397,7 +420,55 @@ const resolveExportPath = (filename: string): string => {
   // interrupted, failed) merges with server messages by birth time. Status
   // flips happen in place — rows never move between lists.
   const outboundEntries = createMemo(() => outboundForSession(route.sessionID ?? ""))
-  const transcriptRows = createMemo(() => mergeTranscriptRows(messages(), outboundEntries()))
+  type SessionMessage = ReturnType<typeof messages>[number]
+  let internedTranscriptRows: import("../../spinosa/outbound-queue").MergedTranscriptRow<SessionMessage>[] | undefined
+  const transcriptRows = createMemo(() => {
+    const next = mergeTranscriptRows(messages(), outboundEntries(), sessionParts())
+    internedTranscriptRows = internTranscriptRows(internedTranscriptRows, next)
+    return internedTranscriptRows
+  })
+  const TRANSCRIPT_RENDER_LIMIT = 120
+  const TRANSCRIPT_VIEWPORT = 56
+  const TRANSCRIPT_BUFFER = 8
+  const hiddenTranscriptCount = createMemo(() => Math.max(0, transcriptRows().length - TRANSCRIPT_RENDER_LIMIT))
+  const [pinnedToBottom, setPinnedToBottom] = createSignal(true)
+  const [scrollY, setScrollY] = createSignal(0)
+  const [scrollExtent, setScrollExtent] = createSignal({ height: 0, content: 0 })
+  const visibleTranscriptRows = createMemo(() => {
+    const rows = transcriptRows()
+    const windowed = rows.length <= TRANSCRIPT_RENDER_LIMIT ? rows : rows.slice(-TRANSCRIPT_RENDER_LIMIT)
+    if (windowed.length <= TRANSCRIPT_VIEWPORT) return windowed
+    if (pinnedToBottom()) return windowed.slice(-TRANSCRIPT_VIEWPORT)
+    const extent = scrollExtent()
+    const max = Math.max(0, extent.content - extent.height)
+    const fraction = max <= 0 ? 1 : Math.min(1, Math.max(0, scrollY() / max))
+    const start = Math.floor(fraction * Math.max(0, windowed.length - TRANSCRIPT_VIEWPORT))
+    const from = Math.max(0, start - TRANSCRIPT_BUFFER)
+    return windowed.slice(from, from + TRANSCRIPT_VIEWPORT + TRANSCRIPT_BUFFER * 2)
+  })
+  const hiddenViewportCount = createMemo(() => {
+    const rows = transcriptRows()
+    const windowed = rows.length <= TRANSCRIPT_RENDER_LIMIT ? rows : rows.slice(-TRANSCRIPT_RENDER_LIMIT)
+    return Math.max(0, windowed.length - visibleTranscriptRows().length)
+  })
+  const userCreatedById = createMemo(() => {
+    const map = new Map<string, number>()
+    for (const message of messages()) {
+      if (message.role === "user" && message.time) map.set(message.id, message.time.created)
+    }
+    return map
+  })
+
+  createEffect(() => {
+    const sid = route.sessionID
+    if (!sid) return
+    const msgs = messages()
+    const parts = sessionParts()
+    for (const entry of outboundForSession(sid)) {
+      if (entry.state !== "sent") continue
+      if (findOutboundEcho(msgs, parts, entry)) removeOutbound(sid, entry.key)
+    }
+  })
   // Dispatch-order position per live entry key (first to send = #1). Rows
   // render chronologically; the counter visualizes queue position.
   const queuePositions = createMemo(() => dispatchPositions(route.sessionID ?? ""))
@@ -427,16 +498,55 @@ const resolveExportPath = (filename: string): string => {
   const sdk = useSDK()
   const editor = useEditorContext()
   const pathFormatter = usePathFormatter()
+  let prevToolCalloutFp = ""
+  let prevToolCalloutSides = new Map<string, ToolCalloutInfo>()
+  let prevPrefixFp = ""
+  let prevPrefixSides = new Map<string, ToolCalloutInfo>()
+  let prevPrefixLeft = 0
+  let prevPrefixRight = 0
+  let prevPrefixEndDisplay: string | undefined
   const toolCalloutSides = createMemo(() => {
     const layout = transcriptLayout()
     const sides = new Map<string, ToolCalloutInfo>()
-    if (layout.mode !== "callout") return sides
+    if (layout.mode !== "callout") {
+      prevToolCalloutFp = ""
+      prevToolCalloutSides = sides
+      prevPrefixFp = ""
+      prevPrefixSides = sides
+      prevPrefixLeft = 0
+      prevPrefixRight = 0
+      prevPrefixEndDisplay = undefined
+      return sides
+    }
+
+    const currentMessages = messages()
+    const currentParts = sessionParts()
+    const lastMessage = currentMessages.at(-1)
+    const prefixMessages = lastMessage ? currentMessages.slice(0, -1) : currentMessages
+    const prefixFp = `${layout.railWidth}:${toolPartsFingerprint(prefixMessages, currentParts)}`
+    const lastFp = lastMessage ? toolPartsFingerprint([lastMessage], currentParts) : ""
+    const fingerprint = `${prefixFp}|${lastFp}`
+    if (fingerprint === prevToolCalloutFp) return prevToolCalloutSides
+
+    const lastParts = lastMessage
+      ? (currentParts[lastMessage.id] ?? []).filter((part): part is ToolPart => part.type === "tool")
+      : []
+    const firstLastDisplay = lastParts[0] ? toolDisplay(lastParts[0].tool) : undefined
+    const reusePrefix =
+      Boolean(lastMessage) &&
+      prevPrefixFp === prefixFp &&
+      prevPrefixFp !== "" &&
+      (!firstLastDisplay || firstLastDisplay !== prevPrefixEndDisplay)
+
+    const scanMessages = reusePrefix && lastMessage ? [lastMessage] : currentMessages
+    if (reusePrefix) {
+      for (const [id, info] of prevPrefixSides) sides.set(id, info)
+    }
 
     const groups: { parts: ToolPart[]; display: string }[] = []
     let currentGroup: { parts: ToolPart[]; display: string } | undefined
-
-    for (const message of messages()) {
-      for (const part of sync.data.part[message.id] ?? []) {
+    for (const message of scanMessages) {
+      for (const part of currentParts[message.id] ?? []) {
         if (part.type !== "tool") { currentGroup = undefined; continue }
         const display = toolDisplay(part.tool)
         if (!currentGroup || currentGroup.display !== display) {
@@ -447,8 +557,8 @@ const resolveExportPath = (filename: string): string => {
       }
     }
 
-    let leftHeight = 0
-    let rightHeight = 0
+    let leftHeight = reusePrefix ? prevPrefixLeft : 0
+    let rightHeight = reusePrefix ? prevPrefixRight : 0
     for (const group of groups) {
       const count = group.parts.length
       const first = group.parts[0]
@@ -457,6 +567,7 @@ const resolveExportPath = (filename: string): string => {
         first.state.input ?? {},
         first.state.status === "pending" ? {} : (first.state.metadata ?? {}),
         (value) => pathFormatter.format(value),
+        spinosaToolOutcome(first.state),
       )
       const tag = count > 1 ? `${summary.tag} x${count}` : summary.tag
       const commands = count > 1 ? group.parts.map((p) => buildCopyCommand(p.tool, p.state.input ?? {}, { tag: summary.tag, command: summary.command })) : undefined
@@ -476,6 +587,52 @@ const resolveExportPath = (filename: string): string => {
         else rightHeight += partHeight
       }
     }
+
+    if (!reusePrefix) {
+      const prefixCallIDs = new Set<string>()
+      for (const message of prefixMessages) {
+        for (const part of currentParts[message.id] ?? []) {
+          if (part.type === "tool" && part.callID) prefixCallIDs.add(part.callID)
+        }
+      }
+      prevPrefixSides = new Map([...sides].filter(([id]) => prefixCallIDs.has(id)))
+      let walkLeft = 0
+      let walkRight = 0
+      for (const message of prefixMessages) {
+        for (const part of currentParts[message.id] ?? []) {
+          if (part.type !== "tool" || !part.callID) continue
+          const info = sides.get(part.callID)
+          if (!info) continue
+          const rowHeight = estimateToolCalloutHeight(
+            info.summary ?? { tag: "", command: "" },
+            layout.railWidth,
+            part.tool,
+            part.state.status === "pending" ? {} : (part.state.metadata ?? {}),
+            part.state.input ?? {},
+          )
+          if (info.side === "left") walkLeft += rowHeight
+          else walkRight += rowHeight
+        }
+      }
+      prevPrefixLeft = walkLeft
+      prevPrefixRight = walkRight
+      prevPrefixEndDisplay = undefined
+      for (let i = prefixMessages.length - 1; i >= 0; i--) {
+        const parts = currentParts[prefixMessages[i]!.id] ?? []
+        for (let j = parts.length - 1; j >= 0; j--) {
+          const part = parts[j]
+          if (part?.type === "tool") {
+            prevPrefixEndDisplay = toolDisplay(part.tool)
+            break
+          }
+        }
+        if (prevPrefixEndDisplay) break
+      }
+      prevPrefixFp = prefixFp
+    }
+
+    prevToolCalloutFp = fingerprint
+    prevToolCalloutSides = sides
     return sides
   })
 
@@ -556,6 +713,18 @@ const resolveExportPath = (filename: string): string => {
 
   let seeded = false
   let scroll: ScrollBoxRenderable
+  createEffect(() => {
+    const id = setInterval(() => {
+      if (!scroll) return
+      const height = scroll.height ?? 0
+      const scrollHeight = scroll.scrollHeight ?? 0
+      const max = Math.max(0, scrollHeight - height)
+      setPinnedToBottom(max <= 0 || scroll.y >= max - 8)
+      setScrollY(scroll.y)
+      setScrollExtent({ height, content: scrollHeight })
+    }, 120)
+    onCleanup(() => clearInterval(id))
+  })
   let prompt: PromptRef | undefined
   const bind = (r: PromptRef | undefined) => {
     prompt = r
@@ -1207,27 +1376,29 @@ const resolveExportPath = (filename: string): string => {
     toBottom()
   }))
 
+  const sessionContext = {
+    get width() {
+      return transcriptLayout().contentWidth
+    },
+    layout: transcriptLayout,
+    toolCalloutSide: (callID: string) => toolCalloutSides().get(callID),
+    get sessionID() {
+      return route.sessionID
+    },
+    conceal,
+    thinkingMode,
+    showThinking,
+    showDetails,
+    showGenericToolOutput,
+    diffWrapMode,
+    providers,
+    sync,
+    tui: tuiConfig,
+  }
+
   return (
     <LocationProvider location={location()}>
-      <context.Provider
-        value={{
-          get width() {
-            return transcriptLayout().contentWidth
-          },
-          layout: transcriptLayout,
-          toolCalloutSide: (callID) => toolCalloutSides().get(callID),
-          sessionID: route.sessionID,
-          conceal,
-          thinkingMode,
-          showThinking,
-          showDetails,
-          showGenericToolOutput,
-          diffWrapMode,
-          providers,
-          sync,
-          tui: tuiConfig,
-        }}
-      >
+      <context.Provider value={sessionContext}>
         <box flexDirection="row" flexGrow={1} minHeight={0} position="relative">
           <Show when={session()}>
             <box
@@ -1275,9 +1446,9 @@ const resolveExportPath = (filename: string): string => {
               backgroundColor={buttonBackground(theme, backHover())}
               flexDirection="row"
               alignItems="center"
-              width={11}
+              width={sessionBackWidth(sessionBackLabel(session()))}
             >
-              <text fg={buttonText(theme, backHover())}>{"< Back"}</text>
+              <text fg={buttonText(theme, backHover())}>{sessionBackLabel(session())}</text>
             </box>
             <box
               position="absolute"
@@ -1330,7 +1501,12 @@ const resolveExportPath = (filename: string): string => {
                 scrollAcceleration={scrollAcceleration()}
               >
                 <box height={1} />
-                <For each={transcriptRows()}>
+                <Show when={hiddenTranscriptCount() + hiddenViewportCount() > 0}>
+                  <text fg={theme.textMuted}>
+                    {hiddenTranscriptCount() + hiddenViewportCount()} earlier messages
+                  </text>
+                </Show>
+                <For each={visibleTranscriptRows()}>
                   {(row) => (
                     <Switch>
                       <Match when={row.kind === "outbound" ? row : undefined}>
@@ -1436,6 +1612,12 @@ const resolveExportPath = (filename: string): string => {
                                   last={lastAssistant()?.id === message().id}
                                   message={message() as AssistantMessage}
                                   parts={sync.data.part[message().id] ?? []}
+                                  parentCreated={
+                                    "parentID" in message()
+                                      ? userCreatedById().get((message() as AssistantMessage).parentID)
+                                      : undefined
+                                  }
+                                  backgroundSubagents={sync.data.capabilities.experimentalBackgroundSubagents}
                                 />
                               </Match>
                             </Switch>
@@ -1611,6 +1793,7 @@ function ToolRailCallout(props: {
   })
   const railWidth = createMemo(() => layout()?.railWidth ?? 1)
   const [copied, setCopied] = createSignal(false)
+  const [copyHover, setCopyHover] = createSignal(false)
 
   const lines = createMemo(() => Math.max(1, estimateToolCalloutHeight(
     props.callout.summary ?? { tag: "", command: "" },
@@ -1653,10 +1836,14 @@ function ToolRailCallout(props: {
           <text width={3} fg={color()}>├──</text>
         </Show>
         <Show when={props.side === "right"} fallback={
-          <box onMouseUp={handleCopy}>
+          <box
+            onMouseOver={() => setCopyHover(true)}
+            onMouseOut={() => setCopyHover(false)}
+            onMouseUp={handleCopy}
+          >
             <text fg={theme.textMuted} wrapMode="none">
               <span style={{ bg: color(), fg: selectedForeground(theme, color()), bold: true }}> {props.callout.summary!.tag} </span>
-              <span style={{ bg: theme.backgroundElement, fg: theme.textMuted }}>{copied() ? " ✓ " : " copy "}</span>
+              <span style={{ bg: buttonBackground(theme, copied() || copyHover()), fg: buttonText(theme, copied() || copyHover()) }}>{copied() ? " ✓ " : " copy "}</span>
             </text>
           </box>
         }>
@@ -1775,10 +1962,23 @@ function UserMessage(props: {
   )
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
-  // Route badge: workflow identity is stamped at submit time; routed
-  // general verdicts stamp a General prompt badge so the header never
-  // flips from "Evaluating" to empty. Direct (unrouted) sends stay bare.
-  const routeInfo = createMemo(() => routeBadgeFromParts(props.parts))
+  // Route badge: submit stamps general or a workflow. After the agent
+  // calls Pick a path, a general tag becomes Chat or the plan name.
+  const routeInfo = createMemo(() => {
+    const list = sync.data.message[props.message.sessionID] ?? []
+    const followUp: Part[] = []
+    for (const message of list) {
+      if (message.role !== "assistant") continue
+      if (!("parentID" in message) || message.parentID !== props.message.id) continue
+      const parts = sync.data.part[message.id]
+      if (parts) followUp.push(...parts)
+    }
+    return resolveRouteBadge(props.parts, followUp)
+  })
+  const chatTone = createMemo(() => {
+    const info = routeInfo()
+    return Boolean(info && routeBadgeChatTone(info))
+  })
 
   createEffect(() => {
     const current = delivery()
@@ -1847,7 +2047,7 @@ function UserMessage(props: {
           <box
             ref={(el: BoxRenderable) => alwaysSeparate.add(el)}
             border={["left"]}
-            borderColor={routeInfo()?.kind === "general" ? theme.success : color()}
+            borderColor={chatTone() ? theme.success : color()}
             customBorderChars={SplitBorder.customBorderChars}
             marginTop={props.index === 0 ? 0 : 1}
           >
@@ -2035,12 +2235,16 @@ function OptimisticUserRow(props: { entry: OutboundEntry; queuePosition?: number
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+function AssistantMessage(props: {
+  message: AssistantMessage
+  parts: Part[]
+  last: boolean
+  parentCreated?: number
+  backgroundSubagents?: boolean
+}) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
-  const sync = useSync()
-  const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
   const model = createMemo(() => {
     const providerID = props.message.providerID
     const modelID = props.message.modelID
@@ -2055,9 +2259,8 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const duration = createMemo(() => {
     if (!final()) return 0
     if (!props.message.time.completed) return 0
-    const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
-    if (!user || !user.time) return 0
-    return props.message.time.completed - user.time.created
+    if (!props.parentCreated) return 0
+    return props.message.time.completed - props.parentCreated
   })
 
   const childShortcut = useCommandShortcut("session.child.first")
@@ -2098,7 +2301,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
               <span style={{ fg: theme.textMuted }}> view subagents</span>
               <Show
                 when={
-                  sync.data.capabilities.experimentalBackgroundSubagents &&
+                  props.backgroundSubagents &&
                   props.parts.some(
                     (x) =>
                       x.type === "tool" &&
@@ -2181,6 +2384,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
   // Collapsed by default in hide mode: a single line throughout, so the
   // layout never shifts. Click to open the full markdown block, click to close.
   const [expanded, setExpanded] = createSignal(false)
+  const [hover, setHover] = createSignal(false)
 
   const content = createMemo(() => {
     // OpenRouter encrypts some reasoning blocks; drop the placeholder.
@@ -2212,7 +2416,12 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
           flexDirection="column"
           flexShrink={0}
         >
-          <box onMouseUp={toggle}>
+          <box
+            onMouseOver={() => inMinimal() && setHover(true)}
+            onMouseOut={() => setHover(false)}
+            onMouseUp={toggle}
+            backgroundColor={hover() ? theme.backgroundElement : undefined}
+          >
             <ReasoningHeader
               toggleable={inMinimal()}
               open={!inMinimal() || expanded()}
@@ -2291,16 +2500,29 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const sync = useSync()
   const route = useSessionRoute()
   const sessionDir = createMemo(() => sync.data.session.find((s) => s.id === route.sessionID)?.directory)
-  const mdFiles = createMemo(() => extractMdPaths(props.part.text, sessionDir()))
+  const streaming = () => props.last && !props.message.time.completed
+  const [throttledText, setThrottledText] = createSignal(props.part.text)
+  createEffect(() => {
+    const text = props.part.text
+    if (!streaming()) {
+      setThrottledText(text)
+      return
+    }
+    const timer = setTimeout(() => setThrottledText(text), 50)
+    onCleanup(() => clearTimeout(timer))
+  })
+  const mdFiles = createMemo(() =>
+    streaming() ? [] : extractMdPaths(throttledText(), sessionDir()),
+  )
   return (
-    <Show when={props.part.text.trim()}>
+    <Show when={throttledText().trim()}>
       <TranscriptRow>
         <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
           <markdown
             syntaxStyle={syntax()}
             streaming={true}
             internalBlockMode="top-level"
-            content={stripAnsi(props.part.text.trim())}
+            content={stripAnsi(throttledText().trim())}
             tableOptions={{ style: "grid" }}
             conceal={ctx.conceal()}
             fg={theme.markdownText}
@@ -2311,13 +2533,16 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
               <text fg={theme.textMuted}>📄</text>
               <For each={mdFiles()}>
                 {(f) => (
-                  <text fg={theme.markdownLink} attributes={TextAttributes.UNDERLINE}
-                    onMouseUp={() => {
+                  <HoverLabel
+                    attributes={TextAttributes.UNDERLINE}
+                    restFg={theme.markdownLink}
+                    onPress={() => {
                       const absPath = path.join(sessionDir() ?? "", f)
                       dialog.replace(() => <DialogMdViewer filePath={absPath} workspaceRoot={sessionDir()} />)
-                    }}>
+                    }}
+                  >
                     {f}
-                  </text>
+                  </HoverLabel>
                 )}
               </For>
             </box>
@@ -2375,8 +2600,12 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
       side: info.side,
       continuation: info.continuation,
       summary: info.summary ?? (
-        info.continuation ? undefined : buildToolCalloutSummary(props.part.tool, toolprops.input, toolprops.metadata, (value) =>
-          pathFormatter.format(value),
+        info.continuation ? undefined : buildToolCalloutSummary(
+          props.part.tool,
+          toolprops.input,
+          toolprops.metadata,
+          (value) => pathFormatter.format(value),
+          spinosaToolOutcome(props.part.state),
         )
       ),
       part: props.part,
@@ -2458,6 +2687,7 @@ export function buildToolCalloutSummary(
   inputValue: Record<string, unknown>,
   metadata: Record<string, unknown>,
   formatPath: (value: string | undefined) => string,
+  title?: string,
 ): ToolCalloutSummary {
   const display = toolDisplay(tool)
 
@@ -2509,6 +2739,13 @@ export function buildToolCalloutSummary(
   }
   if (display === "skill") {
     return { tag: "SKILL", command: stringValue(inputValue.name) ?? "Load skill" }
+  }
+
+  if (isSpinosaTool(tool)) {
+    return {
+      tag: "SPINOSA",
+      command: formatSpinosaToolLine(tool, title ?? stringValue(metadata.title)),
+    }
   }
 
   return {
@@ -2610,18 +2847,24 @@ function GenericTool(props: ToolProps) {
     if (expanded() || !collapsed().overflow) return output()
     return collapsed().output
   })
+  const headline = createMemo(() => {
+    if (isSpinosaTool(props.tool)) {
+      return formatSpinosaToolLine(props.tool, spinosaToolOutcome(props.part.state))
+    }
+    return `${props.tool} ${input(props.input)}`.trim()
+  })
 
   return (
     <Show
       when={props.output && ctx.showGenericToolOutput()}
       fallback={
         <InlineTool icon="⚙" pending="Writing command..." complete={true} part={props.part}>
-          {props.tool} {input(props.input)}
+          {headline()}
         </InlineTool>
       }
     >
       <BlockTool
-        title={`# ${props.tool} ${input(props.input)}`}
+        title={`# ${headline()}`}
         part={props.part}
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
@@ -3095,9 +3338,11 @@ function Task(props: ToolProps) {
       content.push(`↳ ${formatSubagentRetry(retrying.attempt, Locale.truncate(retrying.message, 80))}`)
     } else if (isRunning() && tools().length > 0) {
       if (current()) {
-        const state = current()!.state
-        const title = state.status === "running" || state.status === "completed" ? state.title : undefined
-        content.push(`↳ ${Locale.titlecase(current()!.tool)} ${title}`)
+        const tool = current()!.tool
+        const title = spinosaToolOutcome(current()!.state)
+        content.push(
+          `↳ ${isSpinosaTool(tool) ? formatSpinosaToolLine(tool, title) : `${Locale.titlecase(tool)} ${title}`}`,
+        )
       } else content.push(`↳ ${formatSubagentToolcalls(tools().length)}`)
     }
 

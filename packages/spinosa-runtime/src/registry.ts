@@ -3,6 +3,7 @@
 // IDs or agent names. Unknown combinations throw (caller falls back).
 import type { OrchestratedDecision } from "./routing"
 import type { WorkflowDefinition } from "./workflow"
+import { formatUnknownWorkflow } from "./workflow-labels"
 import { researchTargeted } from "./workflows/research-targeted"
 import { researchContextual } from "./workflows/research-contextual"
 import { researchCensus } from "./workflows/research-census"
@@ -43,7 +44,13 @@ export class WorkflowRegistry {
       }
     })
     if (!definition) {
-      throw new Error(`No workflow supports ${decision.operation}.${decision.strategy}`)
+      throw new Error(
+        formatUnknownWorkflow({
+          operation: decision.operation,
+          strategy: decision.strategy,
+          knownIds: this.definitions.map((item) => item.id),
+        }),
+      )
     }
     return definition
   }

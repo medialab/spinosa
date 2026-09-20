@@ -3,6 +3,7 @@ import { For, createEffect, createMemo, createResource, createSignal, onCleanup,
 import { Logo } from "../component/logo"
 import { useSync } from "../context/sync"
 import { useToast } from "../ui/toast"
+import { useWait } from "../context/wait"
 import { useArgs } from "../context/args"
 import { useGlobalRoute } from "../context/route"
 import { usePromptRef } from "../context/prompt"
@@ -20,6 +21,7 @@ import { safeResourceValue } from "../util/resource"
 import { CenteredColumn } from "../component/centered-column"
 import { useSpinosaWorkspace } from "../context/spinosa-workspace"
 import { useTheme } from "../context/theme"
+import { WaveSpinner } from "../component/wave-spinner"
 import type { Theme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { DialogSpinosaStartupChoice } from "../component/dialog-spinosa-startup-choice"
@@ -29,6 +31,7 @@ import { getWorkspaceLaunchDecision } from "../spinosa/workspace-launch"
 import { setupStatusLabel, setupStatusThemeKey } from "../spinosa/status-labels"
 import { HomeFooter } from "../component/home-footer"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { HoverChip } from "../ui/hover-press"
 import { countRawMarkdownFiles, listRegisteredWorkspaces, readBundledFrameworkVersion, isPrereleaseFrameworkVersion, readWorkspaceMeta } from "../spinosa/service"
 import { workspaceAsciiBannerText, resolveWorkspaceDisplayName } from "../spinosa/workspace-name"
 import { upgradeFramework } from "@spinosa/core/commands/upgrade"
@@ -122,12 +125,11 @@ export function Home() {
     setRecentLoadError(undefined)
     try {
       const workspaces = await listRegisteredWorkspaces()
-      const rows: (RecentWorkspace & { lastAccessed: number })[] = []
-      for (const ws of workspaces) {
+      const rows = await Promise.all(workspaces.map(async (ws) => {
         const meta = await readWorkspaceMeta(ws.path).catch(() => undefined)
         const available = Boolean(meta) && isUsableWorkspaceStatus(ws.presence)
         if (available && meta) {
-          rows.push({
+          return {
             path: ws.path,
             name: resolveWorkspaceDisplayName(ws.path, meta.projectName ?? ws.projectName),
             workspaceID: ws.workspaceID,
@@ -136,11 +138,9 @@ export function Home() {
             lastAccessed: getLastAccessed(ws.path),
             presence: ws.presence,
             available: true,
-          })
-          continue
+          } satisfies RecentWorkspace & { lastAccessed: number }
         }
-        // Index entry whose folder is missing or otherwise unusable — keep visible for recovery.
-        rows.push({
+        return {
           path: ws.path,
           name: resolveWorkspaceDisplayName(ws.path, meta?.projectName ?? ws.projectName),
           workspaceID: ws.workspaceID,
@@ -149,8 +149,8 @@ export function Home() {
           lastAccessed: getLastAccessed(ws.path),
           presence: isUsableWorkspaceStatus(ws.presence) ? "non_existent" : (ws.presence ?? "non_existent"),
           available: false,
-        })
-      }
+        } satisfies RecentWorkspace & { lastAccessed: number }
+      }))
       rows.sort((a, b) => {
         if (a.available !== b.available) return a.available ? -1 : 1
         return b.lastAccessed - a.lastAccessed
@@ -208,6 +208,7 @@ export function Home() {
   })
 
   const toast = useToast()
+  const wait = useWait()
   const cleanStaleInstallerData = async () => {
     if (maintenanceAction() !== "idle") return
     const status = safeResourceValue(maintenance)
@@ -224,7 +225,7 @@ export function Home() {
 
     setMaintenanceAction("cleaning")
     try {
-      const result = await cleanupStaleInstallDirectories()
+      const result = await wait.withWait("Cleaning leftover files…", () => cleanupStaleInstallDirectories())
       if (result.installInProgress) {
         toast.show({ variant: "info", message: "Cleanup skipped because a Spinosa install is in progress." })
       } else if (result.removedDirectories.length > 0) {
@@ -257,7 +258,9 @@ export function Home() {
     job.start()
     toast.show({ variant: "info", message: "Repairing Spinosa runtime…" })
     try {
-      const result = await upgradeFramework({ channel, version: bundled, reinstall: true, yes: true, suppressInstallOutput: true })
+      const result = await wait.withWait("Repairing Spinosa runtime…", () =>
+        upgradeFramework({ channel, version: bundled, reinstall: true, yes: true, suppressInstallOutput: true }),
+      )
       if (!result.success) {
         job.finish("error", "Dependency repair failed")
         toast.show({ variant: "error", message: "Dependency repair failed." })
@@ -482,22 +485,22 @@ export function Home() {
             <box width="100%" maxWidth={promptMaxWidth()} flexShrink={0} flexDirection="row" alignItems="center" gap={1}>
               <text fg={theme.warning}>{compactMaintenanceCue()}</text>
               <Show when={maintenanceCleanupAvailable()}>
-                <box
-                  paddingX={1}
-                  backgroundColor={theme.backgroundElement}
-                  onMouseDown={() => void cleanStaleInstallerData()}
-                >
-                  <text fg={theme.primary}>{maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}</text>
-                </box>
+                <HoverChip
+                  paddingLeft={1}
+                  paddingRight={1}
+                  label={maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}
+                  inactiveFg={theme.primary}
+                  onPress={() => void cleanStaleInstallerData()}
+                />
               </Show>
               <Show when={maintenanceRepairRequired()}>
-                <box
-                  paddingX={1}
-                  backgroundColor={theme.backgroundElement}
-                  onMouseDown={() => void repairDependencies()}
-                >
-                  <text fg={theme.primary}>{maintenanceAction() === "repairing" ? "Reinstalling…" : "Repair"}</text>
-                </box>
+                <HoverChip
+                  paddingLeft={1}
+                  paddingRight={1}
+                  label={maintenanceAction() === "repairing" ? "Reinstalling…" : "Repair"}
+                  inactiveFg={theme.primary}
+                  onPress={() => void repairDependencies()}
+                />
               </Show>
             </box>
             <box height={1} />
@@ -522,13 +525,13 @@ export function Home() {
                     Spinosa found {maintenanceStaleCount()} leftover install/temp path
                     {maintenanceStaleCount() === 1 ? "" : "s"}.
                   </text>
-                  <box
-                    paddingX={1}
-                    backgroundColor={theme.backgroundElement}
-                    onMouseDown={() => void cleanStaleInstallerData()}
-                  >
-                    <text fg={theme.primary}>{maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}</text>
-                  </box>
+                  <HoverChip
+                    paddingLeft={1}
+                    paddingRight={1}
+                    label={maintenanceAction() === "cleaning" ? "Cleaning…" : "Clean up"}
+                    inactiveFg={theme.primary}
+                    onPress={() => void cleanStaleInstallerData()}
+                  />
                 </box>
                 <For each={[
                   ...(safeResourceValue(maintenance)?.staleInstallDirectories ?? []),
@@ -545,13 +548,13 @@ export function Home() {
             <Show when={maintenanceRepairRequired()}>
               <box flexDirection="row" alignItems="center" gap={1}>
                 <text fg={theme.warning}>Spinosa’s runtime is incomplete or damaged.</text>
-                <box
-                  paddingX={1}
-                  backgroundColor={theme.backgroundElement}
-                  onMouseDown={() => void repairDependencies()}
-                >
-                  <text fg={theme.primary}>{maintenanceAction() === "repairing" ? "Reinstalling…" : "Reinstall runtime"}</text>
-                </box>
+                <HoverChip
+                  paddingLeft={1}
+                  paddingRight={1}
+                  label={maintenanceAction() === "repairing" ? "Reinstalling…" : "Reinstall runtime"}
+                  inactiveFg={theme.primary}
+                  onPress={() => void repairDependencies()}
+                />
               </box>
               <box height={1} />
             </Show>
@@ -577,7 +580,7 @@ export function Home() {
 
           {/* recent workspaces (global home only) */}
           <Show when={providerConnected() && !workspaceReady() && recentLoading()}>
-            <text fg={theme.textMuted}>Loading recent workspaces…</text>
+            <WaveSpinner color={theme.primary}>Loading recent workspaces…</WaveSpinner>
             <box height={1} />
           </Show>
           <Show when={providerConnected() && !workspaceReady() && !recentLoading() && recentLoadError()}>

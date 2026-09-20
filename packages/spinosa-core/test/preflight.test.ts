@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   LAUNCH_STATUS_CHECKING,
   LAUNCH_STATUS_LAUNCHING,
@@ -15,6 +16,7 @@ function freshness(overrides: Partial<TemplatePackFreshness> = {}): TemplatePack
     stale: true,
     refreshRecommended: true,
     versionBehind: false,
+    versionAhead: false,
     protocolBehind: true,
     stalePaths: ["AGENTS.md", "startup-prompt.md"],
     missingPaths: [],
@@ -31,14 +33,13 @@ function dependencies(overrides: Partial<PreflightDependencies> = {}) {
     upgradeFramework: async () => ({
       success: true,
       newVersion: "1.1.0",
-      workspaceUpgradesNeeded: ["/work/alpha", "/work/beta"],
+      workspaceUpgradesNeeded: [],
     }),
     updateWorkspace: async (workspace) => {
       updated.push(workspace)
       return { success: true, added: 0, updated: 1, removed: 0, skipped: 0, changes: true }
     },
     confirm: async () => false,
-    frameworkRoot: (version) => `/home/versions/${version}`,
     currentFrameworkRoot: () => "/framework",
     listPackCheckCandidates: async () => [],
     canPrompt: () => false,
@@ -68,22 +69,14 @@ describe("launch preflight", () => {
     expect(questions).toEqual(["\x1b[36m?\x1b[0m \x1b[1mSpinosa v1.1.0\x1b[0m is available (current \x1b[32mv1.0.0\x1b[0m). Upgrade now?"])
   })
 
-  test("upgrades outdated workspaces and exits without auto-launching", async () => {
-    const answers = [true, true]
-    const roots: string[] = []
+  test("exits after a Spinosa upgrade without updating workspaces", async () => {
     const { deps, output, updated } = dependencies({
       checkUpgradeAvailable: async () => ({ available: true, currentVersion: "1.0.0", latestVersion: "1.1.0" }),
-      confirm: async () => answers.shift() ?? false,
-      updateWorkspace: async (workspace, root) => {
-        updated.push(workspace)
-        roots.push(root)
-        return { success: true, added: 0, updated: 1, removed: 0, skipped: 0, changes: true }
-      },
+      confirm: async () => true,
     })
 
     expect(await runLaunchPreflight(deps)).toBe("exit")
-    expect(updated).toEqual(["/work/alpha", "/work/beta"])
-    expect(roots).toEqual(["/home/versions/1.1.0", "/home/versions/1.1.0"])
+    expect(updated).toEqual([])
     expect(output.at(-1)).toBe(LAUNCH_STATUS_UPGRADE_DONE)
   })
 
@@ -102,24 +95,6 @@ describe("launch preflight", () => {
       "Spinosa upgrade failed: Installer checksum verification failed",
     )
     expect(output).toEqual([LAUNCH_STATUS_CHECKING])
-  })
-
-  test("still exits cleanly when one workspace update throws", async () => {
-    const answers = [true, true]
-    const { deps, output } = dependencies({
-      checkUpgradeAvailable: async () => ({ available: true, currentVersion: "1.0.0", latestVersion: "1.1.0" }),
-      upgradeFramework: async () => ({
-        success: true,
-        newVersion: "1.1.0",
-        workspaceUpgradesNeeded: ["/work/missing"],
-      }),
-      confirm: async () => answers.shift() ?? false,
-      updateWorkspace: async () => { throw new Error("workspace is missing") },
-    })
-
-    expect(await runLaunchPreflight(deps)).toBe("exit")
-    expect(output.join("\n")).toContain("Could not update missing: workspace is missing")
-    expect(output.at(-1)).toBe(LAUNCH_STATUS_UPGRADE_DONE)
   })
 
   test("offers stale template pack update and continues into TUI after accept", async () => {
@@ -235,5 +210,19 @@ describe("offerStaleTemplatePackUpdates", () => {
 describe("launch status constants", () => {
   test("exports stable launch status lines", () => {
     expect(LAUNCH_STATUS_LAUNCHING).toBe("Launching TUI...")
+  })
+})
+
+describe("upgrade and preflight stay split", () => {
+  test("launch preflight does not keep the old post-upgrade workspace offer", async () => {
+    const source = await readFile(new URL("../src/commands/preflight.ts", import.meta.url), "utf8")
+    expect(source).not.toContain("offerWorkspaceUpgrades")
+    expect(source).not.toContain("workspaceUpgradesNeeded")
+  })
+
+  test("framework upgrade does not scan registered workspaces", async () => {
+    const source = await readFile(new URL("../src/commands/upgrade.ts", import.meta.url), "utf8")
+    expect(source).not.toContain("Checking workspaces for updates")
+    expect(source).not.toContain("discoverRegisteredWorkspaces")
   })
 })

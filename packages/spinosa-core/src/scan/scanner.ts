@@ -47,10 +47,17 @@ export interface OnboardingPreviewRow {
   tone?: "ok" | "warn"
 }
 
+type ScanSourceCache = {
+  result: ScanCounts & ScanBytes & { files: string[] }
+  batches: Array<{ ext: string; sz: number }>
+}
+const scanSourceCache = new Map<string, ScanSourceCache>()
+
 export async function scanSource(
   sourcePath: string,
   importBatches: ImportBatchManager,
-): Promise<ScanCounts & ScanBytes> {
+): Promise<ScanCounts & ScanBytes & { files: string[] }> {
+  const files: string[] = []
   const out = {
     markdown: 0,
     markitdown: 0,
@@ -64,7 +71,23 @@ export async function scanSource(
     total: 0,
   } as ScanCounts & ScanBytes
 
-  for (const fp of findSourceFiles(sourcePath)) {
+  const collected = findSourceFiles(sourcePath)
+  let dirMtime = 0
+  try {
+    dirMtime = statSync(sourcePath).mtimeMs
+  } catch {}
+  const cacheKey = `${sourcePath}\0${dirMtime}\0${collected.length}\0${collected[0] ?? ""}\0${collected.at(-1) ?? ""}`
+  const cached = scanSourceCache.get(cacheKey)
+  if (cached) {
+    for (const rec of cached.batches) importBatches.record(rec.ext, rec.sz)
+    importBatches.sort()
+    importBatches.selectAll()
+    return { ...cached.result, files: [...cached.result.files] }
+  }
+  const batches: Array<{ ext: string; sz: number }> = []
+
+  for (const fp of collected) {
+    files.push(fp)
     const klass = await classifySourceFile(fp)
 
     if (klass === "ignored") {
@@ -88,30 +111,48 @@ export async function scanSource(
     switch (klass) {
       case "markdown":
         out.markdown++
-        if (ext) importBatches.record(ext, sz)
+        if (ext) {
+          importBatches.record(ext, sz)
+          batches.push({ ext, sz })
+        }
         break
       case "markitdown":
         out.markitdown++
-        if (ext) importBatches.record(ext, sz)
+        if (ext) {
+          importBatches.record(ext, sz)
+          batches.push({ ext, sz })
+        }
         break
       case "native":
         out.native++
-        if (ext) importBatches.record(ext, sz)
+        if (ext) {
+          importBatches.record(ext, sz)
+          batches.push({ ext, sz })
+        }
         break
       case "binary_copyable":
         out.binaryCopyable++
         break
       case "ocr_convertible":
         out.ocrConvertible++
-        if (ext) importBatches.record(ext, sz)
+        if (ext) {
+          importBatches.record(ext, sz)
+          batches.push({ ext, sz })
+        }
         break
       case "video":
         out.video++
-        if (ext) importBatches.record(ext, sz)
+        if (ext) {
+          importBatches.record(ext, sz)
+          batches.push({ ext, sz })
+        }
         break
       case "audio":
         out.audio++
-        if (ext) importBatches.record(ext, sz)
+        if (ext) {
+          importBatches.record(ext, sz)
+          batches.push({ ext, sz })
+        }
         break
       case "unknown":
         out.unknown++
@@ -122,7 +163,9 @@ export async function scanSource(
   importBatches.sort()
   importBatches.selectAll()
 
-  return out
+  const result = { ...out, files }
+  scanSourceCache.set(cacheKey, { result, batches })
+  return result
 }
 
 export async function detectDocumentTools(): Promise<ToolStatus> {

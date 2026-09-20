@@ -1658,4 +1658,85 @@ describe("session.message-v2.latest", () => {
     expect(state.tasks).toHaveLength(1)
     expect(state.tasks[0]).toMatchObject({ type: "compaction", auto: true })
   })
+
+  test("a failed compact assistant without finish does not keep compaction in later-turn tasks", () => {
+    const failedSummary: SessionV1.WithParts = {
+      info: {
+        ...assistantInfo(SUMMARY_ASSISTANT, COMPACTION_USER),
+        summary: true,
+        error: {
+          name: "APIError",
+          data: {
+            message: "Error from provider (Console): OpenCode's free tier can only be used from within OpenCode",
+          },
+        },
+      } as SessionV1.Assistant,
+      parts: [],
+    }
+    const nextUser: SessionV1.WithParts = {
+      info: userInfo(CONTINUE_USER),
+      parts: [{ ...basePart(CONTINUE_USER, "p1"), type: "text", text: "hello again" }] as SessionV1.Part[],
+    }
+
+    const state = MessageV2.latest([tailUser, overflowAssistant, compactionUser, failedSummary, nextUser])
+
+    expect(state.finished?.id).toBe(SUMMARY_ASSISTANT)
+    expect(state.user?.id).toBe(CONTINUE_USER)
+    expect(state.tasks).toEqual([])
+  })
+})
+
+describe("toModelMessages walk cache", () => {
+  test("reuses converted prefix messages across steps", async () => {
+    const input: SessionV1.WithParts[] = [
+      {
+        info: userInfo("m-user"),
+        parts: [
+          {
+            ...basePart("m-user", "p1"),
+            type: "text",
+            text: "hello",
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+    const cache: MessageV2.ToModelMessagesWalkCache = { entries: [] }
+    const first = await MessageV2.toModelMessages(input, model, { walkCache: cache })
+    expect(cache.entries).toHaveLength(1)
+    const second = await MessageV2.toModelMessages(input, model, { walkCache: cache })
+    expect(second).toStrictEqual(first)
+
+    const grown: SessionV1.WithParts[] = [
+      ...input,
+      {
+        info: userInfo("m-user-2"),
+        parts: [
+          {
+            ...basePart("m-user-2", "p2"),
+            type: "text",
+            text: "again",
+          },
+        ] as SessionV1.Part[],
+      },
+    ]
+    const third = await MessageV2.toModelMessages(grown, model, { walkCache: cache })
+    expect(cache.entries).toHaveLength(2)
+    expect(third).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "hello" }] },
+      { role: "user", content: [{ type: "text", text: "again" }] },
+    ])
+  })
+})
+
+describe("session.message-v2.mergeLatestMessages", () => {
+  test("updates matching ids and appends only newer messages", () => {
+    const a = { info: userInfo("m1"), parts: [] }
+    const b = { info: userInfo("m2"), parts: [] }
+    const b2 = { info: userInfo("m2"), parts: [{ type: "text", text: "upd" } as SessionV1.Part] }
+    const c = { info: userInfo("m3"), parts: [] }
+    const older = { info: userInfo("m0"), parts: [] }
+    const merged = MessageV2.mergeLatestMessages([a, b], [older, b2, c])
+    expect(merged.map((msg) => String(msg.info.id))).toEqual(["m1", "m2", "m3"])
+    expect(merged[1]?.parts).toEqual(b2.parts)
+  })
 })

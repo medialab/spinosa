@@ -191,6 +191,7 @@ function WhichKeyPanel(props: {
   const dimensions = useTerminalDimensions()
   const [offset, setOffset] = createSignal(0)
   const [activeGroup, setActiveGroup] = createSignal<string | undefined>()
+  const [hoverGroup, setHoverGroup] = createSignal<string | undefined>()
   const pending = useKeymapSelector((keymap) => keymap.getPendingSequence())
   const active = useKeymapSelector((keymap) => keymap.getActiveKeys({ includeMetadata: true }))
   const pendingActive = createMemo(() => pending().length > 0 && active().length > 0)
@@ -430,14 +431,16 @@ function WhichKeyPanel(props: {
                         paddingLeft={1}
                         paddingRight={1}
                         flexShrink={0}
-                        backgroundColor={selected() ? look().tab : undefined}
+                        backgroundColor={selected() || hoverGroup() === group().label ? look().tab : undefined}
+                        onMouseOver={() => setHoverGroup(group().label)}
+                        onMouseOut={() => setHoverGroup((current) => (current === group().label ? undefined : current))}
                         onMouseDown={() => {
                           setActiveGroup(group().label)
                           setOffset(0)
                         }}
                       >
                         <text
-                          fg={selected() ? look().tabText : look().muted}
+                          fg={selected() || hoverGroup() === group().label ? look().tabText : look().muted}
                           attributes={selected() ? TextAttributes.BOLD : undefined}
                           wrapMode="none"
                         >

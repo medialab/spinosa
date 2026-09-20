@@ -63,6 +63,13 @@ function eventTimestamp(value: unknown, fallback = Date.now()): number {
   return Date.parse(String(value ?? "")) || fallback
 }
 
+const callIDToMessageID = new Map<string, string>()
+function rememberCall(sessionID: string, messageID: string, part: { id?: string; type?: string; callID?: string }) {
+  if (part.type !== "tool") return
+  if (part.callID) callIDToMessageID.set(`${sessionID}\0${part.callID}`, messageID)
+  if (part.id) callIDToMessageID.set(`${sessionID}\0${part.id}`, messageID)
+}
+
 /** Project V2 tool content/result into the V1 ToolPart completed `output` string. */
 function toolOutputFromV2(content: unknown, result?: unknown): string {
   if (Array.isArray(content)) {
@@ -237,13 +244,15 @@ export const {
         const files = await readdir(sessionsDir)
         const jsonFiles = files.filter((f) => f.endsWith(".json"))
         dbg("[sync:readLocalSessions]", { dir, dirExists: true, totalFiles: files.length, jsonFiles: jsonFiles.length })
-        const results: Session[] = []
-        for (const file of jsonFiles) {
+        const parsed = await Promise.all(jsonFiles.map(async (file) => {
           try {
             const content = await readFile(path.join(sessionsDir, file), "utf-8")
-            results.push(JSON.parse(content) as Session)
-          } catch { /* skip invalid files */ }
-        }
+            return JSON.parse(content) as Session
+          } catch {
+            return undefined
+          }
+        }))
+        const results = parsed.filter((item): item is Session => Boolean(item))
         dbg("[sync:readLocalSessions]", { dir, parsed: results.length })
         return results
       } catch (e) {
@@ -314,13 +323,19 @@ export const {
         void (async () => {
           const known = Object.keys(store.message)
           for (const sessionID of known) fullSyncedSessions.delete(sessionID)
-          for (const sessionID of known) {
-            try {
-              await result.session.sync(sessionID)
-            } catch {
-              // Next reconnect or navigation retries; never throw into events.
+          let cursor = 0
+          const workers = Math.min(4, known.length)
+          await Promise.all(Array.from({ length: workers }, async () => {
+            while (true) {
+              const sessionID = known[cursor++]
+              if (!sessionID) return
+              try {
+                await result.session.sync(sessionID)
+              } catch {
+                // Next reconnect or navigation retries; never throw into events.
+              }
             }
-          }
+          }))
         })()
         return
       }
@@ -822,13 +837,17 @@ export const {
           const callID = event.properties.callID as string
           const output = typeof event.properties.output === "string" ? event.properties.output : ""
           const ended = eventTimestamp(event.properties.timestamp)
-          let messageID: string | undefined
-          for (const [id, parts] of Object.entries(store.part)) {
-            if (parts.some((p) => p.id === callID || (p.type === "tool" && p.callID === callID))) {
-              messageID = id
-              break
+          let messageID = callIDToMessageID.get(`${sessionID}\0${callID}`)
+          if (!messageID) {
+            for (const message of store.message[sessionID] ?? []) {
+              const parts = store.part[message.id]
+              if (parts?.some((p) => p.id === callID || (p.type === "tool" && p.callID === callID))) {
+                messageID = message.id
+                break
+              }
             }
           }
+          if (messageID) rememberCall(sessionID, messageID, { id: callID, type: "tool", callID })
           if (!messageID) break
           const parts = store.part[messageID]
           const result = search(parts, callID, (p) => p.id)
@@ -1581,6 +1600,7 @@ export const {
         }
         case "message.part.updated": {
           touchPart(event.properties.part.sessionID, event.properties.part.id)
+          rememberCall(event.properties.part.sessionID, event.properties.part.messageID, event.properties.part)
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
             setStore("part", event.properties.part.messageID, [event.properties.part])
@@ -1913,14 +1933,16 @@ export const {
                 draft.todo[sessionID] = todo.data ?? []
                 if (!messagesOk) return
                 const currentMessages = draft.message[sessionID] ?? []
+                const currentById = new Map(currentMessages.map((item) => [item.id, item]))
                 const infos = (messageList ?? []).flatMap((message) => {
                   if (!tracker.messages.has(message.info.id)) return [message.info]
-                  const current = currentMessages.find((item) => item.id === message.info.id)
+                  const current = currentById.get(message.info.id)
                   return current ? [current] : []
                 })
+                const infoIDs = new Set(infos.map((message) => message.id))
                 infos.push(
                   ...currentMessages.filter(
-                    (message) => tracker.messages.has(message.id) && !infos.some((item) => item.id === message.id),
+                    (message) => tracker.messages.has(message.id) && !infoIDs.has(message.id),
                   ),
                 )
                 const removed = infos.slice(0, -100)
@@ -1932,8 +1954,9 @@ export const {
                     continue
                   }
                   const currentParts = draft.part[message.info.id] ?? []
+                  const currentById = new Map(currentParts.map((item) => [item.id, item]))
                   const parts = message.parts.flatMap((part) => {
-                    const current = currentParts.find((item) => item.id === part.id)
+                    const current = currentById.get(part.id)
                     if (tracker.parts.has(part.id)) return current ? [current] : []
                     if (
                       current &&
@@ -1946,12 +1969,14 @@ export const {
                     }
                     return [part]
                   })
+                  const seen = new Set(parts.map((part) => part.id))
                   parts.push(
                     ...currentParts.filter(
-                      (part) => tracker.parts.has(part.id) && !parts.some((item) => item.id === part.id),
+                      (part) => tracker.parts.has(part.id) && !seen.has(part.id),
                     ),
                   )
                   draft.part[message.info.id] = parts
+                  for (const part of parts) rememberCall(sessionID, message.info.id, part)
                 }
                 for (const message of removed) delete draft.part[message.id]
                 draft.message[sessionID] = visible

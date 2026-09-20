@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises"
+import { withTimeout } from "../utils/timeout"
 
 const QUICK_SCAN_LEN = 262144
 const CENSUS_BASE_TIMEOUT_MS = 5000
@@ -12,16 +13,6 @@ const CENSUS_BASE_TIMEOUT_MS = 5000
 export function pdfCensusTimeoutMs(sizeBytes: number): number {
   const sizeMB = Math.max(0, sizeBytes / 1048576)
   return Math.min(60_000, CENSUS_BASE_TIMEOUT_MS + Math.ceil(sizeMB * 1000))
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
-    p.then(
-      (v) => { clearTimeout(t); resolve(v) },
-      (e) => { clearTimeout(t); reject(e) },
-    )
-  })
 }
 
 async function pdfJs() {
@@ -105,6 +96,7 @@ export async function isTextBasedPdf(pdfPath: string): Promise<boolean> {
     return await withTimeout(
       m.withPdfDocument(pdfPath, (doc) => m.pdfDocumentTextPagesMeetThreshold(doc)),
       pdfCensusTimeoutMs(data.byteLength),
+      `Timed out after ${pdfCensusTimeoutMs(data.byteLength)}ms`,
     )
   } catch {
     return false

@@ -31,6 +31,12 @@ describe("deterministicRoute startup precedence", () => {
     expect(deterministicRoute(input())).toBeUndefined()
   })
 
+  test("everyday index-this-workspace text is startup_index", () => {
+    expect(
+      deterministicRoute(input({ text: "The user wants to index this workspace." })),
+    ).toMatchObject({ mode: "orchestrated", operation: "corpus", strategy: "startup_index" })
+  })
+
   test("non-Spinosa workspace stays general", () => {
     const decision = deterministicRoute(
       input({ text: "hello", workspace: { isSpinosa: false, setupStatus: "unknown" } }),

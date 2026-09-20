@@ -9,6 +9,7 @@ import { isTextBasedPdf } from "../src/extension/pdf"
 import {
   PDF_TEXT_EXTRACTION_FAILED_MARKER,
   pdfDocLoadTimeoutMs,
+  pdfExceedsLoadCap,
   pdfDocumentExtractAllText,
   pdfDocumentTextPagesMeetThreshold,
 } from "../src/extension/pdf-js"
@@ -19,6 +20,7 @@ import {
   contiguousRanges,
   hasEmbeddedTextPdfPages,
   isDigitalPdfPages,
+  pageTextsFromClassify,
   partitionPdfPages,
 } from "../src/import/pdf-pages"
 
@@ -35,6 +37,8 @@ describe("census timeouts scale with file size", () => {
     expect(pdfDocLoadTimeoutMs(0)).toBe(2000)
     expect(pdfDocLoadTimeoutMs(100 * 1048576)).toBe(27000)
     expect(pdfDocLoadTimeoutMs(10 * 1024 * 1048576)).toBe(30000)
+    expect(pdfExceedsLoadCap(64 * 1024 * 1024)).toBe(false)
+    expect(pdfExceedsLoadCap(64 * 1024 * 1024 + 1)).toBe(true)
   })
 
   test("census budget grows then caps", () => {
@@ -172,5 +176,19 @@ describe("contiguousRanges", () => {
     ])
     expect(contiguousRanges([3, 1, 2, 2])).toEqual([{ from: 1, to: 3 }])
     expect(contiguousRanges([])).toEqual([])
+  })
+})
+
+describe("pageTextsFromClassify", () => {
+  test("keeps text pages and blanks image pages", () => {
+    expect(
+      pageTextsFromClassify([
+        { page: 1, kind: "text", text: "alpha" },
+        { page: 2, kind: "image" },
+      ]),
+    ).toEqual([
+      { page: 1, text: "alpha" },
+      { page: 2, text: "" },
+    ])
   })
 })

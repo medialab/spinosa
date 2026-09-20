@@ -217,6 +217,29 @@ export type MergedTranscriptRow<T extends TranscriptMessageLike = TranscriptMess
   | { kind: "message"; message: T; messageIndex: number }
   | { kind: "outbound"; entry: OutboundEntry }
 
+export function transcriptRowKey<T extends TranscriptMessageLike>(row: MergedTranscriptRow<T>): string {
+  return row.kind === "outbound" ? `outbound:${row.entry.key}` : `message:${row.message.id}`
+}
+
+/** Reuse row objects when the message/entry identity has not changed. */
+export function internTranscriptRows<T extends TranscriptMessageLike>(
+  previous: readonly MergedTranscriptRow<T>[] | undefined,
+  next: readonly MergedTranscriptRow<T>[],
+): MergedTranscriptRow<T>[] {
+  if (!previous || previous.length === 0) return [...next]
+  const prevByKey = new Map(previous.map((row) => [transcriptRowKey(row), row] as const))
+  return next.map((row) => {
+    const old = prevByKey.get(transcriptRowKey(row))
+    if (!old || old.kind !== row.kind) return row
+    if (row.kind === "message" && old.kind === "message") {
+      if (old.message === row.message && old.messageIndex === row.messageIndex) return old
+      return row
+    }
+    if (row.kind === "outbound" && old.kind === "outbound" && old.entry === row.entry) return old
+    return row
+  })
+}
+
 function compareOutboundChronological(a: OutboundEntry, b: OutboundEntry): number {
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
   return a.key < b.key ? -1 : a.key > b.key ? 1 : 0
@@ -233,8 +256,10 @@ function compareOutboundChronological(a: OutboundEntry, b: OutboundEntry): numbe
 export function mergeTranscriptRows<T extends TranscriptMessageLike>(
   messages: readonly T[],
   entries: readonly OutboundEntry[],
+  partsByMessageID?: Readonly<Record<string, readonly unknown[] | undefined>>,
 ): MergedTranscriptRow<T>[] {
-  const pending = [...entries].sort(compareOutboundChronological)
+  const visible = partsByMessageID ? withoutEchoedSentOutbound(entries, messages, partsByMessageID) : entries
+  const pending = [...visible].sort(compareOutboundChronological)
   const rows: MergedTranscriptRow<T>[] = []
   let at = 0
   messages.forEach((message, messageIndex) => {
@@ -252,6 +277,37 @@ export function mergeTranscriptRows<T extends TranscriptMessageLike>(
   return rows
 }
 
+function promptIDFromPart(part: unknown): string | undefined {
+  if (!part || typeof part !== "object" || !("metadata" in part)) return
+  const metadata = (part as { metadata?: unknown }).metadata
+  if (!metadata || typeof metadata !== "object") return
+  const value = (metadata as Record<string, unknown>)[SPINOSA_PROMPT_METADATA]
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function promptIDFromParts(parts: readonly unknown[] | undefined): string | undefined {
+  if (!parts) return
+  for (const part of parts) {
+    const id = promptIDFromPart(part)
+    if (id) return id
+  }
+  return undefined
+}
+
+/** Genuine user text from synced parts (same join as the transcript row). */
+export function userTextFromParts(parts: readonly unknown[] | undefined): string {
+  if (!parts) return ""
+  const texts: string[] = []
+  for (const part of parts) {
+    if (!part || typeof part !== "object") continue
+    const candidate = part as { type?: unknown; text?: unknown; synthetic?: unknown }
+    if (candidate.type !== "text" || candidate.synthetic === true) continue
+    if (typeof candidate.text !== "string") continue
+    texts.push(candidate.text)
+  }
+  return texts.join("\n\n").trim()
+}
+
 /**
  * Find the server echo carrying a prompt id stamped at admission. Checks
  * part metadata (the same channel as the route badge), so every admission
@@ -266,15 +322,61 @@ export function findEchoByPromptID(
     const parts = partsByMessageID[message.id]
     if (!parts) continue
     for (const part of parts) {
-      if (!part || typeof part !== "object" || !("metadata" in part)) continue
-      const metadata = (part as { metadata?: unknown }).metadata
-      if (!metadata || typeof metadata !== "object") continue
-      if ((metadata as Record<string, unknown>)[SPINOSA_PROMPT_METADATA] === promptID) {
-        return message.id
-      }
+      if (promptIDFromPart(part) === promptID) return message.id
     }
   }
   return undefined
+}
+
+export type OutboundEchoEntry = {
+  key: string
+  text: string
+  admittedID?: string
+}
+
+/**
+ * Resolve the persisted user row that replaces a sent optimistic row.
+ * Prompt-id and admission-id win; same-text user rows cover echoes that
+ * dropped the stamp so "✓ Sent" never sits next to "General prompt".
+ */
+export function findOutboundEcho(
+  messages: readonly { id: string; role?: string }[],
+  partsByMessageID: Readonly<Record<string, readonly unknown[] | undefined>>,
+  entry: OutboundEchoEntry,
+  claimed: ReadonlySet<string> = new Set(),
+): string | undefined {
+  const byPrompt = findEchoByPromptID(messages, partsByMessageID, entry.key)
+  if (byPrompt && !claimed.has(byPrompt)) return byPrompt
+  if (entry.admittedID && !claimed.has(entry.admittedID) && hasServerEcho(messages, entry.admittedID)) {
+    return entry.admittedID
+  }
+  const want = entry.text.trim()
+  if (!want) return undefined
+  for (const message of messages) {
+    if (claimed.has(message.id)) continue
+    if (message.role && message.role !== "user") continue
+    const parts = partsByMessageID[message.id]
+    const stamped = promptIDFromParts(parts)
+    if (stamped && stamped !== entry.key) continue
+    if (userTextFromParts(parts) === want) return message.id
+  }
+  return undefined
+}
+
+/** Drop sent rows whose server echo is already in the transcript. */
+export function withoutEchoedSentOutbound<T extends { id: string; role?: string }>(
+  entries: readonly OutboundEntry[],
+  messages: readonly T[],
+  partsByMessageID: Readonly<Record<string, readonly unknown[] | undefined>>,
+): OutboundEntry[] {
+  const claimed = new Set<string>()
+  return entries.filter((entry) => {
+    if (entry.state !== "sent") return true
+    const echo = findOutboundEcho(messages, partsByMessageID, entry, claimed)
+    if (!echo) return true
+    claimed.add(echo)
+    return false
+  })
 }
 
 /** Admission kicked off: the row stays visible as sent until the server echo takes over. */

@@ -23,7 +23,9 @@ import { DialogSpinosaStartupChoice } from "./dialog-spinosa-startup-choice"
 import { DialogSpinosaIncompleteImport } from "./dialog-spinosa-incomplete-import"
 import { DialogSpinosaMissingWorkspace } from "./dialog-spinosa-missing-workspace"
 import { DialogSpinosaManageStale } from "./dialog-spinosa-manage-stale"
-import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { buttonBackground, buttonBorder, buttonText, hoverLabelFg } from "../util/button"
+import { HoverChip, HoverLabel } from "../ui/hover-press"
+import { WaveSpinner } from "./wave-spinner"
 import type { SpinosaSetupStatus } from "../spinosa/types"
 import type { SpinosaWorkspacePresence } from "@spinosa/core/types"
 import { isUsableWorkspaceStatus } from "@spinosa/core/workspace/presence"
@@ -92,6 +94,7 @@ export function DialogSpinosaWorkspacePicker(props: { onClose?: () => void } = {
   const statusWidth = () => compactColumns() ? 13 : 14
 
   const [sortColumn, setSortColumn] = createSignal<SortColumn>("name")
+  const [hoverSort, setHoverSort] = createSignal<SortColumn | undefined>()
   const [sortDir, setSortDir] = createSignal<SortDir>("asc")
   const [selected, setSelected] = createSignal(0)
 
@@ -308,36 +311,29 @@ export function DialogSpinosaWorkspacePicker(props: { onClose?: () => void } = {
       {/* ── back button ── */}
       <box flexDirection="row" alignItems="center" justifyContent="space-between">
         <box flexDirection="row" alignItems="center" gap={1}>
-          <box
-            paddingLeft={2}
-            paddingRight={2}
-            paddingTop={1}
-            paddingBottom={1}
-            onMouseDown={close}
-          >
-            <text fg={theme.textMuted}>← Back</text>
-          </box>
+          <HoverLabel onPress={close}>← Back</HoverLabel>
           <text fg={theme.text}>
             <span style={{ bold: true }}>Choose a workspace</span>
           </text>
         </box>
-        <box
+        <HoverChip
           paddingLeft={2}
           paddingRight={2}
           paddingTop={1}
           paddingBottom={1}
-          onMouseDown={workspaces.loading || staleCount() === 0 ? undefined : openManageStale}
-        >
-          <text fg={staleCount() > 0 ? theme.warning : theme.textMuted}>
-            {staleCount() > 0 ? `Manage ${staleCount()} stale` : "No stale"}
-          </text>
-        </box>
+          label={staleCount() > 0 ? `Manage ${staleCount()} stale` : "No stale"}
+          inactiveFg={staleCount() > 0 ? theme.warning : theme.textMuted}
+          onPress={() => {
+            if (workspaces.loading || staleCount() === 0) return
+            openManageStale()
+          }}
+        />
       </box>
       <box height={1} />
 
       {/* ── loading ── */}
       <Show when={workspaces.loading}>
-        <text fg={theme.textMuted}>Loading saved workspaces…</text>
+        <WaveSpinner color={theme.primary}>Loading saved workspaces…</WaveSpinner>
       </Show>
 
       {/* ── error ── */}
@@ -362,31 +358,56 @@ export function DialogSpinosaWorkspacePicker(props: { onClose?: () => void } = {
             paddingBottom={1}
             backgroundColor={theme.backgroundPanel}
           >
-            <box width={nameWidth()} onMouseDown={() => toggleSort("name")}>
-              <text fg={theme.textMuted}>
+            <box
+              width={nameWidth()}
+              onMouseOver={() => setHoverSort("name")}
+              onMouseOut={() => setHoverSort(undefined)}
+              onMouseDown={() => toggleSort("name")}
+            >
+              <text fg={hoverLabelFg(theme, hoverSort() === "name")}>
                 Name{sortColumn() === "name" ? (sortDir() === "asc" ? " ↑" : " ↓") : ""}
               </text>
             </box>
-            <box width={folderWidth()} onMouseDown={() => toggleSort("folder")}>
-              <text fg={theme.textMuted}>
+            <box
+              width={folderWidth()}
+              onMouseOver={() => setHoverSort("folder")}
+              onMouseOut={() => setHoverSort(undefined)}
+              onMouseDown={() => toggleSort("folder")}
+            >
+              <text fg={hoverLabelFg(theme, hoverSort() === "folder")}>
                 Parent{sortColumn() === "folder" ? (sortDir() === "asc" ? " ↑" : " ↓") : ""}
               </text>
             </box>
-            <box width={statusWidth()} onMouseDown={() => toggleSort("status")}>
-              <text fg={theme.textMuted}>
+            <box
+              width={statusWidth()}
+              onMouseOver={() => setHoverSort("status")}
+              onMouseOut={() => setHoverSort(undefined)}
+              onMouseDown={() => toggleSort("status")}
+            >
+              <text fg={hoverLabelFg(theme, hoverSort() === "status")}>
                 Status{sortColumn() === "status" ? (sortDir() === "asc" ? " ↑" : " ↓") : ""}
               </text>
             </box>
             <Show when={showVersion()}>
-              <box width={9} onMouseDown={() => toggleSort("version")}>
-                <text fg={theme.textMuted}>
+              <box
+                width={9}
+                onMouseOver={() => setHoverSort("version")}
+                onMouseOut={() => setHoverSort(undefined)}
+                onMouseDown={() => toggleSort("version")}
+              >
+                <text fg={hoverLabelFg(theme, hoverSort() === "version")}>
                   Ver{sortColumn() === "version" ? (sortDir() === "asc" ? " ↑" : " ↓") : ""}
                 </text>
               </box>
             </Show>
             <Show when={showAccessed()}>
-              <box width={17} onMouseDown={() => toggleSort("accessed")}>
-                <text fg={theme.textMuted}>
+              <box
+                width={17}
+                onMouseOver={() => setHoverSort("accessed")}
+                onMouseOut={() => setHoverSort(undefined)}
+                onMouseDown={() => toggleSort("accessed")}
+              >
+                <text fg={hoverLabelFg(theme, hoverSort() === "accessed")}>
                   Accessed{sortColumn() === "accessed" ? (sortDir() === "asc" ? " ↑" : " ↓") : ""}
                 </text>
               </box>

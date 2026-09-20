@@ -25,12 +25,15 @@ import { useBindings, useCommandSlashes, useOpencodeModeStack } from "../../keym
 import { displayCharAt, displaySlice, mentionTriggerIndex, promptOffsetWidth } from "../../prompt/display"
 import type { FileSystemEntry } from "@spinosa/sdk/v2"
 import { errorMessage } from "../../util/error"
+import { WaveSpinner } from "../wave-spinner"
 
 /** Empty @-mention list copy: distinguish search failure from no matches. */
 export function formatAutocompleteEmptyMessage(searchError?: string): string {
   const detail = searchError?.trim()
   return detail ? `Couldn’t search files: ${detail}` : "No matching items"
 }
+
+export const FILE_SEARCH_DEBOUNCE_MS = 80
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -112,33 +115,16 @@ export function Autocomplete(props: {
     input: "keyboard" as "keyboard" | "mouse",
   })
 
-  const [positionTick, setPositionTick] = createSignal(0)
-
   createEffect(() => {
     if (!store.visible) return
     const popMode = modeStack.push("autocomplete")
     onCleanup(popMode)
   })
 
-  createEffect(() => {
-    if (store.visible) {
-      let lastPos = { x: 0, y: 0, width: 0 }
-      const interval = setInterval(() => {
-        const anchor = props.anchor()
-        if (anchor.x !== lastPos.x || anchor.y !== lastPos.y || anchor.width !== lastPos.width) {
-          lastPos = { x: anchor.x, y: anchor.y, width: anchor.width }
-          setPositionTick((t) => t + 1)
-        }
-      }, 50)
-
-      onCleanup(() => clearInterval(interval))
-    }
-  })
-
   const position = createMemo(() => {
     if (!store.visible) return { x: 0, y: 0, width: 0 }
     dimensions()
-    positionTick()
+    props.value
     const anchor = props.anchor()
     const parent = anchor.parent
     const parentX = parent?.x ?? 0
@@ -322,9 +308,15 @@ export function Autocomplete(props: {
   }
 
   const [fileSearchError, setFileSearchError] = createSignal<string | undefined>()
+  const [debouncedSearch, setDebouncedSearch] = createSignal("")
+  createEffect(() => {
+    const query = search()
+    const timer = setTimeout(() => setDebouncedSearch(query), FILE_SEARCH_DEBOUNCE_MS)
+    onCleanup(() => clearTimeout(timer))
+  })
 
   const [files] = createResource(
-    () => ({ query: search(), location: location() }),
+    () => ({ query: debouncedSearch(), location: location() }),
     async (input) => {
       if (!store.visible || store.visible === "/") {
         setFileSearchError(undefined)
@@ -775,7 +767,7 @@ export function Autocomplete(props: {
   // keystroke while filtering. Short lists scroll in stable space instead.
   const height = createMemo(() => {
     if (!store.visible) return 1
-    positionTick()
+    void position()
     return Math.min(10, Math.max(1, props.anchor().y))
   })
 
@@ -806,11 +798,17 @@ export function Autocomplete(props: {
         <Index
           each={options()}
           fallback={
-            <box paddingLeft={1} paddingRight={1}>
-              <text fg={fileSearchError() ? theme.error : theme.textMuted}>
-                {formatAutocompleteEmptyMessage(fileSearchError())}
-              </text>
-            </box>
+            files.loading && store.visible === "@" ? (
+              <box paddingLeft={1} paddingRight={1}>
+                <WaveSpinner color={theme.textMuted}>Searching files…</WaveSpinner>
+              </box>
+            ) : (
+              <box paddingLeft={1} paddingRight={1}>
+                <text fg={fileSearchError() ? theme.error : theme.textMuted}>
+                  {formatAutocompleteEmptyMessage(fileSearchError())}
+                </text>
+              </box>
+            )
           }
         >
           {(option, index) => (

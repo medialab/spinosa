@@ -7,6 +7,7 @@ import type { useSDK } from "../context/sdk"
 import type { useToast } from "../ui/toast"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogSelect } from "../ui/dialog-select"
+import { HoverLabel } from "../ui/hover-press"
 import { DialogVisionModel } from "../component/dialog-vision"
 import { normalizeApiKeyInput, apiKeyInputError } from "../util/api-key"
 import { isConsoleManagedProvider } from "../util/provider-origin"
@@ -252,7 +253,7 @@ export function createVisionAuthFlow(deps: VisionAuthFlowDeps) {
               <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
                 <box flexDirection="row" justifyContent="space-between">
                   <text fg={theme.text} attributes={TextAttributes.BOLD}>{method.label}</text>
-                  <text fg={theme.textMuted} onMouseUp={() => resolve(false)}>esc</text>
+                  <HoverLabel onPress={() => resolve(false)}>esc</HoverLabel>
                 </box>
                 <box gap={1}>
                   <text fg={theme.primary}>{data.url}</text>

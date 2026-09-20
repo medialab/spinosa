@@ -1,6 +1,6 @@
 # Chart Rendering Reference
 
-Canonical reference for Unicode chart types used by `spinosa-visualizer`, `spinosa-writer`, and `spinosa-serendippo`. Every chart uses only Unicode characters in markdown fenced code blocks — no HTML, no SVG, no images.
+Canonical reference for Unicode chart types used by `spinosa-writer` and `spinosa-serendippo`. Every quantitative chart should come from `spinosa_figure`. Output uses only Unicode characters in markdown fenced code blocks — no HTML, no SVG, no images.
 
 ## Common Settings
 
@@ -70,6 +70,9 @@ Every chart carries a text description after the code block. No information conv
 
 ### Disclose sources and transformations
 Footer includes source, units, date, and a note on normalization, smoothing, or exclusions applied.
+
+### Chart budget
+No chart when a sentence is enough. Normally one figure per section. Two figures maximum per section.
 
 ### Validate the rendered output
 Read the final rendered chart against source data. Check bar lengths, braille dot counts, sparkline min/max, label clipping, zero baseline.
@@ -666,7 +669,6 @@ bar   = "◐" * filled_quadrants + "◑" * partial + "░" * empty
 | **Purpose**  | Show patterns across rows and columns in a 2D matrix          |
 | **Task**     | Matrix pattern detection, correlation, comparison across two dimensions |
 | **Chars**    | `░` (low), `▒` (med-low), `▓` (med-high), `█` (high), ` ` (missing) |
-| **Script**   | `scripts/matrix-heatmap.py`                                   |
 
 **Formula:**
 ```
@@ -698,7 +700,6 @@ char = ["░", "▒", "▓", "█"][shade_level]
 | **Purpose**  | Show connected trend lines for one or two series over ordered x-axis |
 | **Task**     | Connected trend, time series with connected points             |
 | **Chars**    | Braille U+2800...U+28FF — interpolated dots between consecutive points |
-| **Script**   | `scripts/line-chart.py`                                       |
 
 **Formula:**
 ```
@@ -733,7 +734,6 @@ For each series:
 | **Purpose**  | Show overlapping horizontal series stacked vertically          |
 | **Task**     | Overlapping profiles, ridge comparison                        |
 | **Chars**    | Braille U+2800...U+28FF — filled silhouette per series        |
-| **Script**   | `scripts/ridge-plot.py`                                       |
 
 **Formula:**
 ```
@@ -771,7 +771,6 @@ For each series s:
 | **Purpose**  | Compare values across categories using upward-growing bars    |
 | **Task**     | Category comparison, compact layout when horizontal space is tight |
 | **Chars**    | `▁▂▃▄▅▆▇█` (8 vertical eighths, upward-growing)              |
-| **Script**   | `scripts/vertical-bar.py`                                     |
 
 **Formula:**
 ```
@@ -809,7 +808,6 @@ For each row r (0=top to height-1=bottom):
 | **Purpose**  | Show grouped or stacked bars per bin, one series per shade    |
 | **Task**     | Multi-series distribution, grouped comparison                  |
 | **Chars**    | `█▓▒░` (one per series, up to 4 series)                       |
-| **Script**   | `scripts/categorical-histogram.py`                            |
 
 **Formula:**
 ```

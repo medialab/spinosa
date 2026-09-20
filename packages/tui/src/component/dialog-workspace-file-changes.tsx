@@ -8,6 +8,7 @@ import { useTheme } from "../context/theme"
 import { useTuiConfig } from "../config"
 import { useDialog, type DialogContext } from "../ui/dialog"
 import { getScrollAcceleration } from "../util/scroll"
+import { HoverLabel } from "../ui/hover-press"
 
 const options = ["no", "yes"] as const
 
@@ -71,9 +72,7 @@ export function DialogWorkspaceFileChanges(props: {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title ?? "Uncommitted changes"}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <box paddingLeft={2} paddingRight={2}>
         <text fg={theme.textMuted} wrapMode="word">
@@ -115,6 +114,7 @@ export function DialogWorkspaceFileChanges(props: {
               paddingLeft={2}
               paddingRight={2}
               backgroundColor={item === store.active ? theme.primary : undefined}
+              onMouseOver={() => setStore("active", item)}
               onMouseUp={() => {
                 setStore("active", item)
                 props.onSelect(item)

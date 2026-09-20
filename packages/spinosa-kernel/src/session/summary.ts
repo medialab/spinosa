@@ -1,5 +1,5 @@
 import { LayerNode } from "@spinosa/kernel-core/effect/layer-node"
-import { Effect, Layer, Context, Schema } from "effect"
+import { Effect, Layer, Context, Option, Schema } from "effect"
 import { SessionV1 } from "@spinosa/kernel-core/v1/session"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Snapshot } from "@/snapshot"
@@ -9,7 +9,11 @@ import { Config } from "@/config/config"
 import { snapshotRange, unquoteGitPath } from "./summary-helpers"
 
 export interface Interface {
-  readonly summarize: (input: { sessionID: SessionID; messageID: MessageID }) => Effect.Effect<void>
+  readonly summarize: (input: {
+    sessionID: SessionID
+    messageID: MessageID
+    messages?: SessionV1.WithParts[]
+  }) => Effect.Effect<void>
   readonly diff: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Snapshot.FileDiff[]>
   readonly computeDiff: (input: { messages: SessionV1.WithParts[] }) => Effect.Effect<Snapshot.FileDiff[]>
 }
@@ -33,6 +37,7 @@ const layer = Layer.effect(
     const summarize = Effect.fn("SessionSummary.summarize")(function* (input: {
       sessionID: SessionID
       messageID: MessageID
+      messages?: SessionV1.WithParts[]
     }) {
       yield* sessions.setSummary({
         sessionID: input.sessionID,
@@ -44,7 +49,16 @@ const layer = Layer.effect(
       })
       yield* events.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: [] })
       if ((yield* config.get()).snapshot === false) return
-      const all = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+      const recent = input.messages
+        ?? (yield* sessions.messages({ sessionID: input.sessionID, limit: 64 }).pipe(Effect.orDie))
+      const fromRecent = recent.filter(
+        (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
+      )
+      const all =
+        fromRecent.some((m) => m.info.id === input.messageID)
+          ? fromRecent
+          : input.messages
+            ?? (yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie))
       if (!all.length) return
 
       const messages = all.filter(
@@ -59,8 +73,8 @@ const layer = Layer.effect(
 
     const diff = Effect.fn("SessionSummary.diff")(function* (input: { sessionID: SessionID; messageID?: MessageID }) {
       if (!input.messageID) return []
-      const message = (yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
-        (item) => item.info.id === input.messageID,
+      const message = Option.getOrUndefined(
+        yield* sessions.findMessage(input.sessionID, (item) => item.info.id === input.messageID).pipe(Effect.orDie),
       )
       if (!message || message.info.role !== "user") return []
       const diffs = message.info.summary?.diffs ?? []

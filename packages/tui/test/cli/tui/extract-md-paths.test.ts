@@ -21,4 +21,10 @@ describe("extractMdPaths", () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  test("can skip existsSync while text is still streaming", () => {
+    expect(
+      extractMdPaths("See notes/draft.md later.", "/tmp/never-this-workspace", { checkExists: false }),
+    ).toEqual(["notes/draft.md"])
+  })
 })

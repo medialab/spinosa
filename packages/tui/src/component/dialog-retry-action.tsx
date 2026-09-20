@@ -7,6 +7,7 @@ import { Link } from "../ui/link"
 import { BgPulse } from "./bg-pulse"
 import { useBindings } from "../keymap"
 import { buttonBackground, buttonText } from "../util/button"
+import { HoverLabel } from "../ui/hover-press"
 
 const GO_URL = "https://opencode.ai/go"
 const PAD_X = 3
@@ -88,9 +89,9 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
           <text attributes={TextAttributes.BOLD} fg={theme.text} bg={textBg()}>
             {props.title}
           </text>
-          <text fg={theme.textMuted} bg={textBg()} onMouseUp={() => dialog.clear()}>
+          <HoverLabel onPress={() => dialog.clear()} bg={textBg()}>
             esc
-          </text>
+          </HoverLabel>
         </box>
         <box gap={0}>
           <text fg={theme.textMuted} bg={textBg()}>

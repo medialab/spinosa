@@ -53,17 +53,12 @@ function orchestrated(
  * Returns a decision, or undefined when the request needs the router model.
  */
 export function deterministicRoute(input: RouteInput): RouteDecision | undefined {
-  // 1. Explicit selected agent: the user chose the executor, no routing.
-  if (input.explicitAgent) {
-    return { mode: "general" }
-  }
-  // 2. Non-Spinosa workspace → direct execution.
+  // 1. Non-Spinosa workspace → direct execution.
   if (!input.workspace.isSpinosa) {
     return { mode: "general" }
   }
-  // 3. The /startup flow only: explicit startup command or the startup
-  // prompt text itself. Everything else — including what to do while the
-  // workspace is unindexed — is the router model's call.
+  // 2. Startup indexing wins over a pinned agent. The TUI forces Orchestrator
+  // (`build`) for this flow; that pin must not collapse the run to chat.
   if ((input.command && STARTUP_COMMANDS.has(input.command)) || isStartupIndexingPrompt(input.text)) {
     return orchestrated("corpus", "startup_index", "startup command or prompt", {
       scope: "corpus_wide",
@@ -71,12 +66,28 @@ export function deterministicRoute(input: RouteInput): RouteDecision | undefined
       verification: "strict",
     })
   }
+  // 3. Explicit selected agent: the user chose the executor, no routing.
+  if (input.explicitAgent) {
+    return { mode: "general" }
+  }
   // Anything else → Stage 2 router model call.
   return undefined
 }
 
 /** Stage-2 fallback classifier for bounded single ops vs targeted research. */
 export function heuristicAmbiguousRoute(text: string): RouteDecision {
+  if (/\b(new files?|added (?:new )?files?|incremental add)\b/i.test(text) && /\b(raw\/|corpus|sources?)\b/i.test(text)) {
+    return orchestrated("corpus", "add_sources", "new files to ingest")
+  }
+  if (/\b(apply(?: the)? cleanup|move stale|\.trash)\b/i.test(text)) {
+    return orchestrated("maintenance", "cleanup_apply", "apply approved cleanup")
+  }
+  if (/\b(clean\s*up|cleanup|hygiene|stale files)\b/i.test(text)) {
+    return orchestrated("maintenance", "cleanup_proposal", "hygiene")
+  }
+  if (/\bcoverage\b/i.test(text) && /\b(gaps?|maps?|missing)\b/i.test(text)) {
+    return orchestrated("meta", "coverage_audit", "coverage audit")
+  }
   if (/\b(corpus|archive|sources?|evidence)\b/i.test(text)) {
     const contextual = /analy[sz]e|compare|synthesi|taxonomy|patterns/i.test(text)
     return orchestrated("research", contextual ? "contextual_synthesis" : "targeted_evidence", "source-grounded multi-stage", {

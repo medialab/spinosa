@@ -2,6 +2,7 @@ import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog } from "./dialog"
 import { useBindings, useCommandShortcut } from "../keymap"
+import { HoverChip, HoverLabel } from "./hover-press"
 
 export function DialogHelp() {
   const dialog = useDialog()
@@ -21,9 +22,7 @@ export function DialogHelp() {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           Help
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc/enter
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc/enter</HoverLabel>
       </box>
       <box paddingBottom={1}>
         <text fg={theme.textMuted}>
@@ -31,9 +30,7 @@ export function DialogHelp() {
         </text>
       </box>
       <box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
-        <box paddingLeft={3} paddingRight={3} backgroundColor={theme.primary} onMouseUp={() => dialog.clear()}>
-          <text fg={theme.selectedListItemText}>ok</text>
-        </box>
+        <HoverChip paddingLeft={3} paddingRight={3} label="ok" onPress={() => dialog.clear()} />
       </box>
     </box>
   )

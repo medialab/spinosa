@@ -89,6 +89,31 @@ describe("import manifest", () => {
     }
   })
 
+  test("resume treats same size and mtime as unchanged without re-hashing", () => {
+    const { root, logsDir } = makeLogs()
+    try {
+      const src = makeSource(root, "same.txt", "aaaa")
+      recordResult({
+        logsDir,
+        rel: "same.txt",
+        ext: "txt",
+        route: "direct",
+        status: "done",
+        srcFile: src,
+        dest: "raw/same.txt",
+        engine: "direct",
+      })
+      const { records } = loadManifest(logsDir)
+      const record = records.get("same.txt")!
+      record.sha256 = "0".repeat(64)
+      const result = reconcileManifest(records, [{ rel: "same.txt", srcFile: src, ext: "txt" }])
+      expect(result.unchanged).toEqual(["same.txt"])
+      expect(result.changed).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("pruneManifest drops removed rels and keeps the rest", () => {
     const { root, logsDir } = makeLogs()
     try {

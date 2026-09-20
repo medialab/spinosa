@@ -78,9 +78,42 @@ describe("scan-phase placeholder outcome", () => {
       expect(res.failed).toBe(0)
       expect(existsSync(dest)).toBe(true)
       expect(readFileSync(dest, "utf-8")).toContain("Local OCR was removed")
+      const { loadManifest } = await import("../src/import/manifest")
+      const { records } = loadManifest(path.join(root, ".logs"))
+      const rec = [...records.values()].find((r) => r.rel === "scan.pdf")
+      expect(rec?.pendingPages?.length).toBeGreaterThan(0)
+      expect(rec?.status).toBe("skipped")
     } finally {
       const { rmSync } = await import("node:fs")
       rmSync(root, { recursive: true, force: true })
     }
   }, 120_000)
+})
+
+describe("convertTextPdf supplied page texts", () => {
+  test("writes supplied pages without opening a PDF", async () => {
+    const { root, raw } = stage("supplied")
+    try {
+      const dest = path.join(raw, "supplied.md")
+      const actual = await convertTextPdf(
+        path.join(root, "missing.pdf"),
+        dest,
+        "supplied.pdf",
+        undefined,
+        undefined,
+        [
+          { page: 1, text: "hello one" },
+          { page: 2, text: "hello two" },
+        ],
+      )
+      expect(actual).toBe(dest)
+      expect(readFileSync(dest, "utf-8")).toContain("Page 1")
+      const page = path.join(raw, "supplied", "page-001.md")
+      expect(readFileSync(page, "utf-8")).toContain("hello one")
+      expect(readFileSync(page, "utf-8")).toContain("type:")
+    } finally {
+      const { rmSync } = await import("node:fs")
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })

@@ -59,7 +59,7 @@
     { "action": "clickText", "text": "Export" },
     { "action": "assert", "visible": ["Include thinking", "Include tool details", "Include assistant metadata", "Open without saving"] },
     { "action": "clickText", "text": "esc" },
-    { "action": "clickText", "text": "< Back" },
+    { "action": "clickText", "text": "< Workspace home" },
     { "action": "clickText", "text": "Visualizer" },
     { "action": "waitForText", "text": "Conversation graphs" },
     { "action": "assert", "visible": ["Workspace:", "Session:", "1 Files", "2 Flow", "3 Activity"] }

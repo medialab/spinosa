@@ -76,6 +76,7 @@ type Input = {
   readonly request: LLMRequest
   /** Defaults to auto (overflow / threshold). Manual `/compact` passes `"manual"`. */
   readonly reason?: "auto" | "manual"
+  readonly projectID?: string
 }
 
 const estimate = (value: unknown) => Token.estimate(JSON.stringify(value))
@@ -204,6 +205,9 @@ export const make = (dependencies: Dependencies) => {
       .stream(
         LLM.request({
           model: input.model,
+          // OpenCode compact reuses the parent turn's HTTP overlay so Console
+          // sees the same User-Agent and x-opencode-* identity as chat.
+          http: input.request.http,
           messages: [Message.user(summaryPrompt)],
           tools: [],
           generation: { maxTokens: summaryOutput },

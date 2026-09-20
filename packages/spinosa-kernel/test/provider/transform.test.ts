@@ -4865,3 +4865,38 @@ describe("ProviderTransform.providerOptions - ai-gateway-provider", () => {
     expect(result).toEqual({ openaiCompatible: { reasoningEffort: "high" } })
   })
 })
+
+describe("ProviderTransform.messageFromPrefix", () => {
+  test("prefix plus tail matches a full transform", () => {
+    const model = {
+      id: "claude-3",
+      providerID: "anthropic",
+      api: { id: "claude-3", url: "https://example.com", npm: "@ai-sdk/anthropic" },
+      name: "Claude",
+      capabilities: {
+        temperature: true,
+        reasoning: false,
+        attachment: false,
+        toolcall: true,
+        input: { text: true, audio: false, image: false, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+      limit: { context: 0, input: 0, output: 0 },
+      status: "active",
+      options: {},
+      headers: {},
+      release_date: "2026-01-01",
+    } as any
+    const msgs = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+    ] as any[]
+    const full = ProviderTransform.message(msgs, model, {})
+    const prefix = ProviderTransform.normalizeMessageList(msgs.slice(0, -1), model, {})
+    const fromPrefix = ProviderTransform.messageFromPrefix(prefix, msgs.slice(-1), model, {})
+    expect(fromPrefix).toEqual(full)
+  })
+})

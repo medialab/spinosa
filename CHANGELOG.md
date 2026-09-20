@@ -10,9 +10,175 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-09-20
+
 ### Changed
 
-- Stable tags use the same CI dry-run, promote, and publish path as beta. A stable dry-run checks out `main`. Code: `.github/workflows/release-beta.yml`, `scripts/release/validate-tag.ts`.
+- Stable release of the 1.2.0-beta.5 through 1.2.0-beta.12 line.
+- Numbered reports can include framed Unicode charts from `spinosa_figure`.
+- Launch uses a cached upgrade version. It does not wait on the network.
+- Console compact uses the OpenCode system prompt.
+- Stable tags use the same CI dry-run, promote, and publish path as beta.
+
+## [1.2.0-beta.12] — 2026-09-20
+
+### Added
+
+- `spinosa_figure` draws framed Unicode charts from typed numbers.
+
+### Changed
+
+- Census and comparative runs put charts in the numbered report. They do not write a separate visualization file.
+- Visualization checks require a fenced figure with a caption, a source, and units.
+
+### Removed
+
+- Codex no longer registers the removed `spinosa-visualizer` agent.
+
+## [1.2.0-beta.11] — 2026-09-20
+
+### Changed
+
+- Launch uses the cached upgrade version. It does not wait on the network.
+- Launch uses the cached OpenCode User-Agent. It does not wait on npm.
+- The TUI is ready before plugins finish loading.
+- Template extract for the TUI starts after the CLI parser.
+- Workspace listing does not rewrite the registry on every Home load.
+- Import reuses a destination index. Verify reuses the scanned file list.
+- The agent loop keeps the compacted session in memory after the first load.
+- Import writes scaffold frontmatter on the first write. It does not rewrite the file.
+- The import manifest rewrites unique records when it has many duplicate lines.
+- Running tool progress writes SQLite at most every 250 ms. Live events still fire.
+- Prompt submit writes all user parts in one batch.
+- The transcript shows the viewport plus a buffer when you scroll.
+- Dialogs load when you open them.
+- Import refuses a PDF larger than 64 MB.
+- The TUI shows a wave spinner while it waits for work to finish.
+- After Pick a path, the General prompt tag becomes Chat or the plan name.
+
+### Fixed
+
+- Console compact uses the OpenCode system prompt. Other providers keep the Spinosa prompt.
+- Console compact sends the OpenCode User-Agent on the HTTP Request.
+- Console keeps the AI SDK User-Agent suffix that OpenCode sends.
+- Compact reuses the chat HTTP overlay. It does not rebuild Console headers.
+- A failed compact does not block later chat turns.
+
+## [1.2.0-beta.10] — 2026-09-18
+
+### Fixed
+
+- Upgrade smoke no longer prints /dev/tty Device not configured between steps.
+
+## [1.2.0-beta.9] — 2026-09-18
+
+### Changed
+
+- If Spinosa is older than a workspace, Update workspace can align the workspace down to that install. User files still follow the same keep-or-replace rules.
+
+## [1.2.0-beta.8] — 2026-09-18
+
+### Changed
+
+- The installer says Existing Spinosa setup found when settings are present and the app is missing.
+- It does not call that case broken or repair.
+- When the app file cannot run, the installer says that. Settings stay.
+- Leftover files from a failed attempt get a cleanup prompt. They are not a broken install.
+- Index this workspace requests pick Index the workspace. They do not fall back to chat.
+- Pick a path shows the plan name. It does not say Routed general.
+
+## [1.2.0-beta.7] — 2026-09-18
+
+### Added
+
+- The TUI Report bug action opens a GitHub issue form. Nothing is posted until you Submit.
+- Reports go to github.com/medialab/spinosa/issues after Submit.
+- The crash screen Open report action uses the same sanitized GitHub form.
+- The markdown viewer has minus and plus controls for reader size.
+- Mapper agents can call spinosa_map to write extraction packets and maps.
+
+### Changed
+
+- Launch preflight does not update workspaces after a Spinosa binary upgrade. The next start checks template packs.
+- Workspace cleanup and the workspace index run in the terminal after upgrade checks. The TUI does not rerun boot health.
+- The workspace orchestrator asks one to three questions from task ambiguity before it routes work.
+- The TUI shows Spinosa tools as a short name and outcome. It does not dump tool arguments.
+- The TUI lights clickable controls when the pointer is over them.
+- A child session draws a colored frame around the TUI.
+- Each child session keeps one accent color from a palette.
+- The parent Back control shows Workspace home.
+- A child Back control shows back.
+- The markdown viewer is read-only.
+- Export MD uses dark blue. Export PDF uses orange. Both fill on hover.
+- PDF export uses compact headings. It does not repeat a matching cover title.
+- Research plans use everyday names. The TUI says Start the run, not Framing refused.
+- `strategy` is one short name from spinosa_route. It is not a sentence or a chain.
+
+### Removed
+
+- The markdown viewer does not include an Edit action.
+- The session environment prompt does not say whether the folder is a git repository.
+
+### Fixed
+
+- Bug reports redact home paths inside stack parentheses. They attach sanitized boot and TUI lines from the last two hours.
+- Bug reports collapse identical following log lines to xN.
+- Home Update workspace forces a pack refresh. It does not report success when the pack is still stale.
+- Startup cleanup errors log and print one line. They do not stop the TUI.
+- The transcript drops the Sent row once the General prompt echo is visible.
+- A long chat no longer toasts TUI worker request timed out. Prompt send returns at admission.
+
+## [1.2.0-beta.6] — 2026-09-18
+
+### Fixed
+
+- The TUI paints Home and Session after plugins load. Instant boot no longer skips `onComplete`.
+- Assistant text stays on one markdown widget. Streaming no longer swaps `<text>` for `<markdown>`.
+- Console free-tier User-Agent is at least OpenCode 1.18.0. Launch probes npm. A Console version error raises the User-Agent and retries.
+
+## [1.2.0-beta.5] — 2026-09-18
+
+### Changed
+
+- `--version` exits before the TUI preload and command modules load.
+- CLI commands load only when yargs runs that command.
+- The TUI worker answers ping before it loads the session server.
+- Launch starts the worker during the update check.
+- Launch does not wait 300 ms after the worker is ready.
+- Launch upgrade check times out after 2.5 s on a cache miss.
+- Import resume trusts size and mtime. It does not re-hash unchanged files.
+- Import records store size and mtime. They do not hash the source again.
+- The session loop reuses tools, system prompts, and converted history.
+- Streaming assistant text skips markdown parse and `.md` exists checks.
+- The diff viewer opens one patch file by default.
+- Autocomplete position poll waits 250 ms.
+- PDF classification opens each page once.
+- MarkItDown and image copy run with a small worker pool.
+- The session transcript scopes parts to the active session.
+- File `@` search waits 80 ms after the last keystroke.
+- Global path migration does not block module load. The CLI awaits it before parse.
+- The TUI paints Home and Session after a lazy load. Plugin chrome does not gate first paint.
+- Workspace discovery skips `node_modules`, `dist`, and similar heavy directories.
+- Destination walks skip the same heavy directories.
+- Preflight probes stale template packs in parallel.
+- Checksum compare hashes each file once.
+- Plugin load and visualizer BFS cap concurrency at 8.
+- Home recent-workspace rows load in parallel.
+- CWD workspace poll waits 15 s.
+- Reconnect hydrates known sessions with a pool of 4.
+- Transcript render keeps the last 120 rows.
+- Tool-input deltas reuse the in-memory part. Doom-loop checks do not reload SQL.
+- Durable part publish shallow-copies text and reasoning.
+- Provider transform reuses the last prompt when the SDK repeats it.
+- Compaction estimates tokens from character counts.
+- Session summarize reads a recent window first.
+- PDF classify caches page text by size and mtime. Digital convert reuses it.
+- PDF import runs two files at a time.
+- PDF page files write cold frontmatter once.
+- Import records completed and pending PDF pages.
+- Onboarding reuses the scan file list for classify and verify.
+- Import diagnostic NDJSON writes in batches.
+- Session import inserts messages and parts in chunks.
 
 ## [1.2.0] — 2026-09-17
 

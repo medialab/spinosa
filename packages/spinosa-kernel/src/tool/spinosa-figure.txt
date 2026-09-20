@@ -1,0 +1,13 @@
+Render a framed Unicode chart as GitHub-flavored Markdown.
+
+Use this instead of drawing bars or sparklines by hand. You still choose the kind and supply finite numbers, labels, a caption, a source, and units. The tool owns width (52), zero baseline, empty-data placeholders, and the caption/source footer.
+
+Paste the returned fenced block into the report field of write_report. Do not invent a separate visualization_*.md file.
+
+Kinds:
+- bar: category comparison or progress. items: [{label, value}, ...]. Values must be >= 0.
+- sparkline: compact trend. values: number[]. Optional label.
+- stacked_bar: part-to-whole, at most 4 segments. segments: [{label, value}, ...].
+- status_matrix: health grid. columns plus rows: [{label, cells}] where each cell is pass, warning, fail, pending, or active.
+
+Empty data still returns a framed placeholder with ?. Non-finite numbers are refused.

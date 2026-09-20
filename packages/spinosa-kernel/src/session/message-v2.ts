@@ -130,10 +130,32 @@ function providerMeta(metadata: Record<string, unknown> | undefined): Record<str
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
 
+export type ToModelMessagesWalkCache = {
+  entries: Array<{
+    key: string
+    messages: UIMessage[]
+    tools: string[]
+  }>
+}
+
+function toModelMessagesWalkKey(msg: WithParts): string {
+  const completed = msg.info.role === "assistant" ? String(msg.info.time.completed ?? "") : ""
+  const parts = msg.parts
+    .map((part) => {
+      if (part.type === "text") return `t:${part.text.length}:${part.ignored ? 1 : 0}`
+      if (part.type === "tool") return `k:${part.callID}:${part.state.status}`
+      if (part.type === "reasoning") return `r:${part.text.length}`
+      if (part.type === "file") return `f:${part.mime}:${part.filename ?? ""}:${part.url?.length ?? 0}`
+      return part.type
+    })
+    .join(",")
+  return `${msg.info.id}:${completed}:${parts}`
+}
+
 export const toModelMessagesEffect = Effect.fnUntraced(function* (
   input: WithParts[],
   model: Provider.Model,
-  options?: { stripMedia?: boolean; toolOutputMaxChars?: number },
+  options?: { stripMedia?: boolean; toolOutputMaxChars?: number; walkCache?: ToModelMessagesWalkCache },
 ) {
   const result: UIMessage[] = []
   const toolNames = new Set<string>()
@@ -194,8 +216,26 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
     return { type: "json", value: output as never }
   }
 
+  const walkCache = options?.walkCache
+  let walkIndex = 0
   for (const msg of input) {
-    if (msg.parts.length === 0) continue
+    const key = toModelMessagesWalkKey(msg)
+    const hit = walkCache?.entries[walkIndex]
+    if (hit && hit.key === key) {
+      result.push(...hit.messages)
+      for (const name of hit.tools) toolNames.add(name)
+      walkIndex++
+      continue
+    }
+    if (walkCache) walkCache.entries.length = walkIndex
+    const resultAt = result.length
+    const toolsBefore = new Set(toolNames)
+
+    if (msg.parts.length === 0) {
+      walkCache?.entries.push({ key, messages: [], tools: [] })
+      walkIndex++
+      continue
+    }
 
     if (msg.info.role === "user") {
       const userMessage: UIMessage = {
@@ -401,6 +441,15 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
         }
       }
     }
+
+    if (walkCache) {
+      walkCache.entries.push({
+        key,
+        messages: result.slice(resultAt),
+        tools: [...toolNames].filter((name) => !toolsBefore.has(name)),
+      })
+    }
+    walkIndex++
   }
 
   const tools = Object.fromEntries(Array.from(toolNames).map((toolName) => [toolName, { toModelOutput }]))
@@ -419,7 +468,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
 export function toModelMessages(
   input: WithParts[],
   model: Provider.Model,
-  options?: { stripMedia?: boolean; toolOutputMaxChars?: number },
+  options?: { stripMedia?: boolean; toolOutputMaxChars?: number; walkCache?: ToModelMessagesWalkCache },
 ): Promise<ModelMessage[]> {
   return Effect.runPromise(toModelMessagesEffect(input, model, options))
 }
@@ -520,6 +569,30 @@ export const get = Effect.fn("MessageV2.get")(function* (input: { sessionID: Ses
   }
 })
 
+export function mergeLatestMessages(prev: WithParts[], tail: WithParts[]): WithParts[] {
+  if (tail.length === 0) return prev
+  if (prev.length === 0) return [...tail]
+  const indexById = new Map<string, number>()
+  let maxId = prev[0]!.info.id
+  const out = prev.map((msg, index) => {
+    indexById.set(msg.info.id, index)
+    if (msg.info.id > maxId) maxId = msg.info.id
+    return msg
+  })
+  for (const msg of tail) {
+    const index = indexById.get(msg.info.id)
+    if (index !== undefined) {
+      out[index] = msg
+      continue
+    }
+    if (msg.info.id <= maxId) continue
+    indexById.set(msg.info.id, out.length)
+    out.push(msg)
+    maxId = msg.info.id
+  }
+  return out
+}
+
 export function filterCompacted(msgs: Iterable<WithParts>) {
   const result = [] as WithParts[]
   const completed = new Set<string>()
@@ -592,7 +665,7 @@ export function latest(msgs: WithParts[]) {
     const info = msg.info
     if (info.role === "user" && (!user || info.id > user.id)) user = info
     if (info.role === "assistant" && (!assistant || info.id > assistant.id)) assistant = info
-    if (info.role === "assistant" && info.finish && (!finished || info.id > finished.id)) finished = info
+    if (info.role === "assistant" && (info.finish || info.error) && (!finished || info.id > finished.id)) finished = info
   }
   const tasks = msgs.flatMap((m) =>
     finished && m.info.id <= finished.id

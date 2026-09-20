@@ -7,14 +7,14 @@ import path from "node:path"
 import {
   type ReleaseChannel,
   installUrlForChannel,
+  LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
   resolveReleaseVersionForChannel,
   setReleaseChannel,
   spinosaReleaseChannel,
 } from "../system/channels"
 import { discoverInstalledFramework, installedReleaseVersion, resolveFrameworkRoot } from "../framework/discovery"
 import { compareFrameworkVersions, isDowngrade } from "../utils/version"
-import { ensureGlobalMetadata, discoverRegisteredWorkspaces } from "../workspace/registry"
-import { readWorkspaceMeta } from "../workspace/meta"
+import { ensureGlobalMetadata } from "../workspace/registry"
 import { writeTextAtomic } from "../utils/fs"
 import { spinosaLogInfo } from "../utils/log"
 import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
@@ -455,29 +455,11 @@ export async function upgradeFramework(
     }
   }
 
-  options.onPhase?.("discover", "Checking workspaces for updates...")
-  const workspaces: string[] = []
-  try { workspaces.push(...(await discoverRegisteredWorkspaces())) } catch { /* workspace discovery is best-effort */ }
-  const needsUpdate: string[] = []
-  for (const ws of workspaces) {
-    try {
-      const meta = await readWorkspaceMeta(ws)
-      if (
-        meta &&
-        meta.frameworkVersion &&
-        meta.frameworkVersion !== "unknown" &&
-        meta.frameworkVersion !== resolvedVersion
-      ) {
-        needsUpdate.push(ws)
-      }
-    } catch { /* individual workspace read failure is non-fatal */ }
-  }
-
   return {
     success: true,
     previousVersion: effectiveInstalled || undefined,
     newVersion: resolvedVersion,
-    workspaceUpgradesNeeded: needsUpdate,
+    workspaceUpgradesNeeded: [],
   }
 }
 
@@ -585,7 +567,18 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   const now = Math.floor(Date.now() / 1000)
 
   const cache = readVersionCache(channel)
-  if (cache?.version && now - cache.timestamp < versionCacheTtlSec(channel)) {
+  const refresh = () =>
+    resolveReleaseVersionForChannel(channel, {
+      timeoutMs: LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
+    })
+      .then((latest) => {
+        if (latest) writeVersionCache(channel, latest)
+      })
+      .catch(() => {})
+
+  if (cache?.version) {
+    const stale = now - cache.timestamp >= versionCacheTtlSec(channel)
+    if (stale) void refresh()
     const latestCmp = compareFrameworkVersions(cache.version, installedVersion)
     const available = latestCmp !== undefined && latestCmp > 0
     return {
@@ -595,24 +588,6 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
     }
   }
 
-  let latest: string | undefined
-  try {
-    latest = await resolveReleaseVersionForChannel(channel)
-  } catch {
-    return { available: false }
-  }
-  if (!latest) {
-    return { available: false }
-  }
-
-  const latestCmp = compareFrameworkVersions(latest, installedVersion)
-  const available = latestCmp !== undefined && latestCmp > 0
-
-  writeVersionCache(channel, latest)
-
-  return {
-    available,
-    currentVersion: installedVersion,
-    latestVersion: available ? latest : undefined,
-  }
+  void refresh()
+  return { available: false, currentVersion: installedVersion }
 }

@@ -12,5 +12,4 @@
 | Mapper | `spinosa-mapper` | `spinosa-mapper` | Reads raw files in batches; extracts content-grounded fragments, key passages, and concept signals; writes maps |
 | Serendippo | `spinosa-serendippo` | `spinosa-serendippo` | Finds hidden cross-corpus connections and proposes map enrichment |
 | Overseer | `spinosa-overseer` | `spinosa-overseer` | Coverage/retrospective audit after `workspace_started`; never during startup |
-| Visualizer | `spinosa-writer` | `spinosa-writer` | Renders pure-Unicode charts in markdown when a run requests visualization |
 

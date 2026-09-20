@@ -1,6 +1,7 @@
 import type { TuiPlugin, TuiPluginApi } from "@spinosa/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Show } from "solid-js"
+import { HoverLabel } from "../../ui/hover-press"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 
@@ -49,9 +50,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
               <text fg={theme().text}>
                 <b>Getting started</b>
               </text>
-              <text fg={theme().textMuted} onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)}>
-                ✕
-              </text>
+              <HoverLabel onPress={() => props.api.kv.set("dismissed_getting_started", true)}>✕</HoverLabel>
             </box>
             <text fg={theme().textMuted}>Spinosa includes free models so you can start immediately.</text>
             <text fg={theme().textMuted}>

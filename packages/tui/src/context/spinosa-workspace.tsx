@@ -1,3 +1,4 @@
+import { watch } from "node:fs"
 import { createEffect, createSignal, createResource, onCleanup } from "solid-js"
 import { createSimpleContext } from "./helper"
 import { useKV } from "./kv"
@@ -15,10 +16,10 @@ import { inspectWorkspaceTemplatePack, isSpinosaWorkspace, readWorkspaceMeta } f
 import type { SpinosaWorkspaceMeta } from "../spinosa/types"
 import { setActiveWorkspacePath, tuiLog } from "../spinosa/log"
 import { inspectRegisteredWorkspacePresence, isUsableWorkspacePresence } from "@spinosa/core/workspace/presence"
-import { runSpinosaBootHealth, SPINOSA_BOOT_OPERATIONS, type SpinosaBootOperation } from "@spinosa/core/system/boot"
 import type { RouteNavigateInput } from "./route"
 import { KV } from "../constants/kv-keys"
 import { useToast } from "../ui/toast"
+import { useWait } from "../context/wait"
 import {
   buildOpenWorkspaceSoftFail,
   humanizeWorkspacePresence,
@@ -35,6 +36,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
     const paths = useTuiPaths()
     const startup = useTuiStartup()
     const toast = useToast()
+    const wait = useWait()
     const cwdWorkspace = isSpinosaWorkspace(paths.cwd) ? paths.cwd : undefined
     const [activePath, setActivePath] = createSignal<string | undefined>()
     const [genericMode, setGenericMode] = createSignal(false)
@@ -42,7 +44,6 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
     const [pickerReturnSessionId, setPickerReturnSessionId] = createSignal<string | undefined>()
     const [pendingPrompt, setPendingPrompt] = createSignal<{ workspacePath: string; prompt: PromptInfo } | undefined>()
     const [openFailure, setOpenFailure] = createSignal<OpenWorkspaceSoftFail | undefined>()
-    const [bootOperations, setBootOperations] = createSignal<SpinosaBootOperation[]>(SPINOSA_BOOT_OPERATIONS.map((operation) => ({ ...operation })))
     let attemptedInitialWorkspaceHydration = false
 
     const reportOpenFailure = (failure: OpenWorkspaceSoftFail) => {
@@ -54,18 +55,12 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
       })
     }
 
-    const [bootHealth] = createResource(async () => runSpinosaBootHealth({
-      minimumOperationDurationMs: startup.skipInitialLoading ? 0 : 1_000,
-      onProgress(operation) {
-        setBootOperations((current) => current.map((candidate) => candidate.id === operation.id ? operation : candidate))
-      },
-    }))
-
     const [meta, { refetch: refetchMeta }] = createResource(activePath, async (workspacePath) => {
       if (!workspacePath || !isSpinosaWorkspace(workspacePath)) return undefined
       return readWorkspaceMeta(workspacePath).catch(() => undefined)
     })
-    const openWorkspace = async (workspacePath: string, options?: { route?: RouteNavigateInput }) => {
+    const openWorkspace = async (workspacePath: string, options?: { route?: RouteNavigateInput }) =>
+      wait.withWait("Opening workspace…", async () => {
       const presence = await inspectRegisteredWorkspacePresence(workspacePath).catch(() => undefined)
       if (presence && !isUsableWorkspacePresence(presence)) {
         if (presence.status === "identity_mismatch") {
@@ -148,13 +143,23 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
           })
         })
         .catch(() => {})
-    }
+    })
 
     const cwdDiscoveryTimer = setInterval(() => {
       if (activePath() || genericMode() || !isSpinosaWorkspace(paths.cwd)) return
       void openWorkspace(paths.cwd)
-    }, 3000)
-    onCleanup(() => clearInterval(cwdDiscoveryTimer))
+    }, 60_000)
+    let cwdWatcher: ReturnType<typeof watch> | undefined
+    try {
+      cwdWatcher = watch(paths.cwd, { persistent: false }, () => {
+        if (activePath() || genericMode() || !isSpinosaWorkspace(paths.cwd)) return
+        void openWorkspace(paths.cwd)
+      })
+    } catch {}
+    onCleanup(() => {
+      clearInterval(cwdDiscoveryTimer)
+      cwdWatcher?.close()
+    })
 
     /** Unset active workspace so Home is not workspace-ready (blocks cwd rediscovery). */
     const clearActiveWorkspace = () => {
@@ -186,7 +191,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
     }
 
     createEffect(() => {
-      if (!kv.ready || bootHealth.loading || attemptedInitialWorkspaceHydration || activePath() || genericMode()) {
+      if (!kv.ready || attemptedInitialWorkspaceHydration || activePath() || genericMode()) {
         return
       }
       if (startup.initialRoute || route.data.type !== "global" || route.data.prompt) {
@@ -228,13 +233,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
         return meta.loading
       },
       get bootReady() {
-        return !bootHealth.loading
-      },
-      get bootOperations() {
-        return bootOperations()
-      },
-      get bootHealth() {
-        return bootHealth()
+        return true
       },
       get pickerRequested() {
         return pickerRequested()

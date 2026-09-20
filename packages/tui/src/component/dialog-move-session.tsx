@@ -14,7 +14,7 @@ import { errorMessage } from "../util/error"
 import { useToast } from "../ui/toast"
 import { useCommandShortcut } from "../keymap"
 import { useProject } from "../context/project"
-import { Spinner } from "./spinner"
+import { WaveSpinner } from "./wave-spinner"
 import { DialogWorkspaceFileChanges } from "./dialog-workspace-file-changes"
 import type { ProjectDirectories } from "@spinosa/sdk/v2"
 import { useRoute } from "../context/route"
@@ -296,7 +296,7 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
               Move session
             </text>
             <Show when={working() || directories.loading || loadedProject.loading}>
-              <Spinner />
+              <WaveSpinner />
             </Show>
           </box>
         }

@@ -60,13 +60,7 @@ export function DialogConsoleOrg() {
     if (showError()) return []
     const listed = safeResourceValue(orgs)
     if (listed === undefined) {
-      return [
-        {
-          title: "Loading orgs...",
-          value: "loading",
-          onSelect: () => {},
-        },
-      ]
+      return []
     }
 
     if (listed.length === 0) {
@@ -148,6 +142,8 @@ export function DialogConsoleOrg() {
       title="Switch org"
       options={options()}
       current={current()}
+      loading={orgs.loading && !showError()}
+      loadingText="Loading orgs…"
       emptyView={
         showError() ? (
           <text fg={theme.error} attributes={TextAttributes.BOLD}>

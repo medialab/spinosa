@@ -91,8 +91,3 @@ export function createImportJob(input: {
     registered,
   }
 }
-
-/** Cancel any Spinosa domain job by id (import, research, etc.). */
-export function cancelSpinosaJob(jobId: string): boolean {
-  return JobRunner.cancel(jobId)
-}

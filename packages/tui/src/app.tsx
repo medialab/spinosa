@@ -12,6 +12,8 @@ import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
 import { createCliRenderer, MouseButton } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
+import { WaitProvider, useWait } from "./context/wait"
+import { WaitOverlay, WaitFallback, Waiting } from "./context/wait-ui"
 import {
   createEffect,
   createMemo,
@@ -42,20 +44,11 @@ import { DataProvider } from "./context/data"
 import { LocationProvider } from "./context/location"
 import { LocalProvider, useLocal } from "./context/local"
 import { PermissionProvider } from "./context/permission"
-import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
-import { DialogMcp } from "./component/dialog-mcp"
-import { DialogStatus } from "./component/dialog-status"
-import { DialogHelp } from "./ui/dialog-help"
-import { DialogAgent } from "./component/dialog-agent"
-import { DialogSessionList } from "./component/dialog-session-list"
-import { DialogWorkspaceList } from "./component/dialog-workspace-list"
-import { DialogSpinosaMissingWorkspace } from "./component/dialog-spinosa-missing-workspace"
-import { DialogSpinosaWorkspacePicker } from "./component/dialog-spinosa-workspace-picker"
-import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
+import { pickSubagentAccent, siblingSubagentIDs } from "./routes/session/subagent-chrome"
 
 import { SpinosaWorkspaceProvider, useSpinosaWorkspace } from "./context/spinosa-workspace"
 import { PromptHistoryProvider } from "./component/prompt/history"
@@ -66,6 +59,11 @@ import { DialogConfirm } from "./ui/dialog-confirm"
 import { formatOpenWorkspaceFailureMessage } from "./spinosa/home-visibility"
 import { isDefaultTitle, sessionIsBusy } from "./util/session"
 import { setToastError, tuiLog } from "./spinosa/log"
+import {
+  BUG_REPORT_CONFIRM_MESSAGE,
+  BUG_REPORT_CONFIRM_TITLE,
+  reportBugFromTui,
+} from "./spinosa/bug-report"
 import { KVProvider, useKV } from "./context/kv"
 import { KV } from "./constants/kv-keys"
 import { readWrkWorkspaceID, writeMarkerWrkID } from "@spinosa/core/workspace/identity"
@@ -78,7 +76,6 @@ import { TuiConfigProvider, useTuiConfig, type TuiConfig } from "./config"
 import { createTuiApiAdapters } from "./plugin/adapters"
 import { createTuiApi } from "./plugin/api"
 import { createPluginRuntime, PluginRuntimeProvider, usePluginRuntime, type TuiPluginHost } from "./plugin/runtime"
-import { CommandPaletteDialog } from "./component/command-palette"
 import {
   COMMAND_PALETTE_COMMAND,
   SPINOSA_BASE_MODE,
@@ -89,7 +86,6 @@ import {
 } from "./keymap"
 
 import type { EventSource } from "./context/sdk"
-import { DialogVariant } from "./component/dialog-variant"
 import { createTuiAttention } from "./attention"
 import * as TuiAudio from "./audio"
 import { destroyRenderer } from "./util/renderer"
@@ -105,6 +101,42 @@ const AddFiles = lazy(async () => ({
 }))
 const Visualizer = lazy(async () => ({
   default: (await import("./routes/spinosa/visualizer")).Visualizer,
+}))
+const DialogModel = lazy(async () => ({
+  default: (await import("./component/dialog-model")).DialogModel,
+}))
+const DialogMcp = lazy(async () => ({
+  default: (await import("./component/dialog-mcp")).DialogMcp,
+}))
+const DialogStatus = lazy(async () => ({
+  default: (await import("./component/dialog-status")).DialogStatus,
+}))
+const DialogHelp = lazy(async () => ({
+  default: (await import("./ui/dialog-help")).DialogHelp,
+}))
+const DialogAgent = lazy(async () => ({
+  default: (await import("./component/dialog-agent")).DialogAgent,
+}))
+const DialogSessionList = lazy(async () => ({
+  default: (await import("./component/dialog-session-list")).DialogSessionList,
+}))
+const DialogWorkspaceList = lazy(async () => ({
+  default: (await import("./component/dialog-workspace-list")).DialogWorkspaceList,
+}))
+const DialogSpinosaMissingWorkspace = lazy(async () => ({
+  default: (await import("./component/dialog-spinosa-missing-workspace")).DialogSpinosaMissingWorkspace,
+}))
+const DialogSpinosaWorkspacePicker = lazy(async () => ({
+  default: (await import("./component/dialog-spinosa-workspace-picker")).DialogSpinosaWorkspacePicker,
+}))
+const DialogConsoleOrg = lazy(async () => ({
+  default: (await import("./component/dialog-console-org")).DialogConsoleOrg,
+}))
+const CommandPaletteDialog = lazy(async () => ({
+  default: (await import("./component/command-palette")).CommandPaletteDialog,
+}))
+const DialogVariant = lazy(async () => ({
+  default: (await import("./component/dialog-variant")).DialogVariant,
 }))
 
 const appGlobalBindingCommands = [
@@ -139,6 +171,7 @@ const appBindingCommands = [
   "opencode.status",
   "help.show",
   "docs.open",
+  "bug.report",
   "diff.open",
   "workspace.list",
   "app.debug",
@@ -352,6 +385,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                           <OpencodeKeymapProvider keymap={keymap}>
                             <ArgsProvider {...input.args}>
                               <KVProvider>
+                                <WaitProvider>
                                 <ToastProvider>
                                   <RouteProvider
                                     initialRoute={
@@ -425,6 +459,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                     </SpinosaWorkspaceProvider>
                                   </RouteProvider>
                                 </ToastProvider>
+                                </WaitProvider>
                               </KVProvider>
                             </ArgsProvider>
                           </OpencodeKeymapProvider>
@@ -482,37 +517,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const attention = createTuiAttention({ renderer, config: tuiConfig, kv })
   const clipboard = useClipboard()
   const spinosa = useSpinosaWorkspace()
+  const wait = useWait()
   const [startupLoadingComplete, setStartupLoadingComplete] = createSignal(startup.skipInitialLoading)
-  const appReady = () => ready() && (startup.skipInitialLoading || spinosa.bootReady)
-  const tuiReady = () => appReady() && (startup.skipInitialLoading || startupLoadingComplete())
-
-  // Auto-retry if TUI hasn't rendered after 3-5s normal startup + buffer.
-  // Whitescreen after `checking for updates...` leaves `tuiReady()` false.
-  let retryTimer: ReturnType<typeof setTimeout> | undefined
-  let retried = false
-  onMount(() => {
-    retryTimer = setTimeout(() => {
-      if (tuiReady() || retried) return
-      retried = true
-      tuiLog("tui auto-retry: tuiReady still false after 8s, forcing reload")
-      // Force boot ready and hide startup loading to unblock render.
-      // If still not ready, the next effect will trigger a full reload.
-      setStartupLoadingComplete(true)
-      setTimeout(() => {
-        if (!tuiReady()) {
-          tuiLog("tui auto-retry: still not ready, reloading renderer")
-          // Destroy and recreate is handled by Effect scope; here we just
-          // force a hard reload via location (works in dev) or exit.
-          try {
-            globalThis.location?.reload?.()
-          } catch {}
-        }
-      }, 1000)
-    }, 8000)
-  })
-  onCleanup(() => {
-    if (retryTimer) clearTimeout(retryTimer)
-  })
 
   onMount(() => {
     const unregister = registerTuiExitHook(async () => {
@@ -550,6 +556,33 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }),
   )
   const [ready, setReady] = createSignal(false)
+  const appReady = () => ready() && (startup.skipInitialLoading || spinosa.bootReady)
+  const tuiReady = () => appReady() && (startup.skipInitialLoading || startupLoadingComplete())
+
+  // Auto-retry if TUI hasn't rendered after 3-5s normal startup + buffer.
+  // Whitescreen after `checking for updates...` leaves `tuiReady()` false.
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retried = false
+  onMount(() => {
+    retryTimer = setTimeout(() => {
+      if (tuiReady() || retried) return
+      retried = true
+      tuiLog("tui auto-retry: tuiReady still false after 8s, forcing reload")
+      setStartupLoadingComplete(true)
+      setTimeout(() => {
+        if (!tuiReady()) {
+          tuiLog("tui auto-retry: still not ready, reloading renderer")
+          try {
+            globalThis.location?.reload?.()
+          } catch {}
+        }
+      }, 1000)
+    }, 8000)
+  })
+  onCleanup(() => {
+    if (retryTimer) clearTimeout(retryTimer)
+  })
+  setReady(true)
   props.pluginHost
     .start({
       api,
@@ -560,9 +593,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     .catch((error) => {
       bootLogError("tui.plugin.load", error)
       console.error("Failed to load TUI plugins", error instanceof Error ? error.message : String(error))
-    })
-    .finally(() => {
-      setReady(true)
     })
 
   // Let selection copy/dismiss win ahead of normal bindings when explicit copy is required.
@@ -667,7 +697,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (match) {
       continued = true
       if (args.fork) {
-        void sdk.client.session.fork({ sessionID: match }).then((result) => {
+        void wait.withWait("Forking session…", () => sdk.client.session.fork({ sessionID: match })).then((result) => {
           if (result.data?.id) {
             route.navigate({ type: "workspace", sessionID: result.data.id })
           } else {
@@ -685,9 +715,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   // to avoid a race where reconcile overwrites the newly forked session)
   let forked = false
   createEffect(() => {
-    if (forked || sync.status !== "complete" || !args.sessionID || !args.fork) return
+    const sessionID = args.sessionID
+    if (forked || sync.status !== "complete" || !sessionID || !args.fork) return
     forked = true
-    void sdk.client.session.fork({ sessionID: args.sessionID }).then((result) => {
+    void wait.withWait("Forking session…", () => sdk.client.session.fork({ sessionID })).then((result) => {
       if (result.data?.id) {
         route.navigate({ type: "workspace", sessionID: result.data.id })
       } else {
@@ -748,7 +779,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           })
       if (failure.recoverable && recover) {
         dialog.replace(() => (
-          <DialogSpinosaMissingWorkspace
+          <Waiting>
+            <DialogSpinosaMissingWorkspace
             workspacePath={failure.path}
             workspaceName={failure.name}
             workspaceID={failure.workspaceID}
@@ -763,7 +795,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
               dialog.clear()
               await spinosa.openWorkspace(workspacePath)
             }}
-          />
+            />
+          </Waiting>
         ))
         return
       }
@@ -810,7 +843,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       }
       const restore = () => spinosa.restorePickerRoute()
       dialog.replace(
-        () => <DialogSpinosaWorkspacePicker onClose={restore} />,
+        () => (
+          <Waiting>
+            <DialogSpinosaWorkspacePicker onClose={restore} />
+          </Waiting>
+        ),
         undefined,
         () => {
           dialog.dismiss()
@@ -835,7 +872,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
         hidden: true,
         run: () => {
-          dialog.replace(() => <CommandPaletteDialog />)
+          dialog.replace(() => (
+            <Waiting>
+              <CommandPaletteDialog />
+            </Waiting>
+          ))
         },
       },
       {
@@ -849,7 +890,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           // No abort here: opening the switcher must not kill the running
           // session. If the user commits to a different session, the picker
           // aborts the old one at selection time.
-          dialog.replace(() => <DialogSessionList />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogSessionList />
+            </Waiting>
+          ))
         },
       },
       {
@@ -891,7 +936,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         hidden: !Flag.SPINOSA_EXPERIMENTAL_WORKSPACES,
         slashName: "workspaces",
         run: () => {
-          dialog.replace(() => <DialogWorkspaceList />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogWorkspaceList />
+            </Waiting>
+          ))
         },
       },
       ...Array.from({ length: 9 }, (_, i) => ({
@@ -912,7 +961,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         // Bias /mo toward /models over /move without changing global fuzzy scoring.
         slashAliases: ["mo"],
         run: () => {
-          dialog.replace(() => <DialogModel />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogModel />
+            </Waiting>
+          ))
         },
       },
       {
@@ -957,7 +1010,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "Agent",
         slashName: "agents",
         run: () => {
-          dialog.replace(() => <DialogAgent />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogAgent />
+            </Waiting>
+          ))
         },
       },
       {
@@ -966,7 +1023,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "Agent",
         slashName: "mcps",
         run: () => {
-          dialog.replace(() => <DialogMcp />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogMcp />
+            </Waiting>
+          ))
         },
       },
       {
@@ -1000,7 +1061,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
               variant: "info",
             })
           }
-          dialog.replace(() => <DialogVariant />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogVariant />
+            </Waiting>
+          ))
         },
       },
       {
@@ -1031,7 +1096,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
               slashName: "org",
               slashAliases: ["orgs", "switch-org"],
               run: () => {
-                dialog.replace(() => <DialogConsoleOrg />)
+                dialog.replace(() => (
+                  <Waiting>
+                    <DialogConsoleOrg />
+                  </Waiting>
+                ))
               },
               category: "Provider",
             },
@@ -1042,7 +1111,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: "View status",
         slashName: "status",
         run: () => {
-          dialog.replace(() => <DialogStatus />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogStatus />
+            </Waiting>
+          ))
         },
         category: "System",
       },
@@ -1051,7 +1124,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: "Help",
         slashName: "help",
         run: () => {
-          dialog.replace(() => <DialogHelp />)
+          dialog.replace(() => (
+            <Waiting>
+              <DialogHelp />
+            </Waiting>
+          ))
         },
         category: "System",
       },
@@ -1061,6 +1138,26 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => {
           open("https://medialab.github.io/spinosa").catch(() => {})
           dialog.clear()
+        },
+        category: "System",
+      },
+      {
+        name: "bug.report",
+        title: "Report bug",
+        slashName: "report",
+        slashAliases: ["bug"],
+        run: () => {
+          void reportBugFromTui({
+            confirm: () =>
+              DialogConfirm.show(dialog, BUG_REPORT_CONFIRM_TITLE, BUG_REPORT_CONFIRM_MESSAGE, {
+                confirmLabel: "Open GitHub",
+                cancelLabel: "Cancel",
+                defaultChoice: "cancel",
+              }),
+            showToast: toast.show,
+            writeClipboard: clipboard.write,
+            openUrl: (href) => open(href),
+          })
         },
         category: "System",
       },
@@ -1276,12 +1373,21 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     return render({ params: route.data.data })
   })
 
+  const subagentBorder = createMemo(() => {
+    if (route.data.type !== "workspace") return undefined
+    const current = sync.session.get(route.data.sessionID)
+    if (!current?.parentID) return undefined
+    return pickSubagentAccent(theme, current.id, siblingSubagentIDs(sync.data.session, current))
+  })
+
   return (
     <box
       width={dimensions().width}
       height={dimensions().height}
       flexDirection="column"
       backgroundColor={theme.background}
+      border={Boolean(subagentBorder())}
+      borderColor={subagentBorder()}
       onMouseDown={(evt) => {
         if (!Flag.SPINOSA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
         if (evt.button !== MouseButton.RIGHT) return
@@ -1307,7 +1413,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           <Show when={route.data.type === "global"}>
             <Home />
           </Show>
-          <Suspense fallback={<box />}>
+          <Suspense fallback={<WaitFallback>Loading screen…</WaitFallback>}>
             <Show when={route.data.type === "onboarding"}>
               <Onboarding />
             </Show>
@@ -1326,7 +1432,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       <Show when={!startup.skipInitialLoading}>
         <StartupLoading
           ready={appReady}
-          operations={() => spinosa.bootOperations}
           onComplete={() => setStartupLoadingComplete(true)}
         />
       </Show>
@@ -1340,6 +1445,14 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             variant: "warning",
             duration: 8000,
           })
+        }}
+      />
+      <WaitOverlay
+        extra={() => {
+          if (route.conversationBooting()) return undefined
+          if (!tuiReady()) return undefined
+          if (sync.status === "loading") return "Loading sessions…"
+          return undefined
         }}
       />
       {/* Viewport-relative host: parent is full terminal width×height, not content column */}

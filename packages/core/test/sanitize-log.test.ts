@@ -102,4 +102,14 @@ describe("sanitizeLogText corpus leaks", () => {
     expect(text).not.toContain(home.replace(/^\/+/, ""))
     expect(text).toContain("$PATH")
   })
+
+  test("redacts stack frames that wrap a home path in parentheses", () => {
+    const home = homedir()
+    const file = path.join(home, "Documents", "spinosa-desktop-worktree", "node_modules", "@effect", "NodeHttpServer.js")
+    const text = sanitizeLogText(`at onError (${file}:74:30)\n    at ~effect/Effect/evaluate (${file}:79:12)`)
+    expect(text).not.toContain("spinosa-desktop-worktree")
+    expect(text).not.toContain(home)
+    expect(text).toContain("$PATH")
+    expect(text).toContain("~effect/Effect/evaluate")
+  })
 })

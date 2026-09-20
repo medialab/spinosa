@@ -88,7 +88,7 @@ function createModel(opts: {
 
 const wide = () => ProviderTest.fake({ model: createModel({ context: 100_000, output: 32_000 }) })
 
-function createUserMessage(sessionID: SessionID, text: string) {
+function createUserMessage(sessionID: SessionID, text: string, model = ref) {
   return Effect.gen(function* () {
     const ssn = yield* SessionNs.Service
     const msg = yield* ssn.updateMessage({
@@ -96,7 +96,7 @@ function createUserMessage(sessionID: SessionID, text: string) {
       role: "user",
       sessionID,
       agent: "build",
-      model: ref,
+      model,
       time: { created: Date.now() },
     })
     yield* ssn.updatePart({
@@ -278,8 +278,8 @@ function compactionProcessLayer(options?: CompactionProcessOptions) {
   ])
 }
 
-function createSummaryCompaction(sessionID: SessionID) {
-  return SessionCompaction.use.create({ sessionID, agent: "build", model: ref, auto: false })
+function createSummaryCompaction(sessionID: SessionID, model = ref) {
+  return SessionCompaction.use.create({ sessionID, agent: "build", model, auto: false })
 }
 
 function readCompactionPart(sessionID: SessionID) {
@@ -922,6 +922,45 @@ describe("session.compaction.process", () => {
   )
 
   itCompaction.instance(
+    "uses OpenCode's compaction system prompt for Console",
+    () => {
+      const stub = llm()
+      let captured: LLM.StreamInput | undefined
+      stub.push(reply("summary", (input) => (captured = input)))
+      const model = createModel({ context: 100_000, output: 32_000 })
+      model.providerID = ProviderV2.ID.make("opencode")
+      const provider = ProviderTest.fake({ model })
+      const modelRef = { providerID: model.providerID, modelID: model.id }
+
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        yield* createUserMessage(session.id, "private history marker", modelRef)
+        yield* createSummaryCompaction(session.id, modelRef)
+
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        const parent = msgs.at(-1)?.info.id
+        expect(parent).toBeTruthy()
+        yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+        expect(captured?.agent.prompt).toBe(`You are a context summarization agent. You are given a conversation between a user and an agent. Your goal is to produce a structured summary matching the format specified so another coding agent can continue the work.
+
+Always follow the exact output structure requested by the user prompt. Keep every section, preserve exact file paths and identifiers when known, and prefer terse bullets over paragraphs.
+
+Do not continue the conversation. Do not respond to any questions in the conversation. Only output the structured summary in the exact format requested by the user prompt. Respond in the same language as the conversation.`)
+        expect(JSON.stringify(captured?.messages)).toContain("private history marker")
+      }).pipe(
+        withCompaction({
+          llm: stub.llmLayer,
+          provider,
+          config: cfg({ tail_turns: 0 }),
+        }),
+      )
+    },
+    { git: true },
+  )
+
+  itCompaction.instance(
     "persists tail_start_id for retained recent turns",
     Effect.gen(function* () {
       const ssn = yield* SessionNs.Service
@@ -1535,6 +1574,11 @@ describe("util.token.estimate", () => {
 
   test("returns 0 for empty string", () => {
     expect(Token.estimate("")).toBe(0)
+  })
+
+  test("estimates from character counts without allocating the string", () => {
+    expect(Token.estimateChars(4000)).toBe(1000)
+    expect(Token.estimateChars(0)).toBe(0)
   })
 })
 

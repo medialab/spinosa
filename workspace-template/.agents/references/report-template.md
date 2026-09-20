@@ -50,8 +50,8 @@ query: [original user query]
 
 ## Report
 [Main body: evidence, interpretation, analysis, patterns.
-Structure freely with H2/H3 as needed. Inline source citations.
-Unicode charts used where they add clarity.
+Use H3 for sub-topics in this section only. Never add a second H1.
+Inline source citations. Unicode charts from `spinosa_figure` where they add clarity.
 Limitations (gaps, uncertainties, what was not checked) noted inline.
 For large evidence sets (>50 sources), include the top 10-20 here and link to the appendix:]
 
@@ -119,130 +119,10 @@ Full evidence set for the main report. The main report's `## Report` section con
 ...
 ```
 
-## Unicode Chart Types
+## Unicode charts
 
-The report template supports 6 chart types for different visualization needs.
+Call **`spinosa_figure`** for quantitative charts (`bar`, `sparkline`, `stacked_bar`, `status_matrix`). Paste the returned Markdown into the `report` field of `write_report`. Do not hand-draw bar lengths or sparklines.
 
-### Chart Type Registry
+Chooser, 52-character width, glyphs, and accessibility: [[.agents/references/chart-rendering.md]].
 
-| Type | Characters | Use Case | File/Zone |
-|---|---|---|---|
-| **Distribution Bars** | `▓░█` | Compare 3-4 metrics side-by-side | Startup Report |
-| **Progress Bar** | `▓░` | Linear completion tracking | Extraction Checkpoint |
-| **Status Matrix** | `✓⚠✗○◉` | Multi-dimensional health grid | Workspace Index |
-| **Gauge** | `◐◑◉` | Single circular metric | Janitor Report |
-| **Sparkline** | `▁▂▃▄▅▆▇█` | Trend over time | Serendipity Report |
-| **Stacked Bar** | `█▓▒░` | Composition of segments | Evidence Packet |
-
-### Common Settings
-
-```
-bar_width = 16 characters
-border_style = ┌─ Title ─┐ / └─────────┘
-alignment = labels left, charts right
-status_values = ○ pending → ✓ verified / ⚠ corrections / ✗ failed
-```
-
-### Bar Calculation (Distribution Bars, Progress Bar, Stacked Bar)
-
-```
-filled = round((value / total) * bar_width)
-empty = bar_width - filled
-bar = "▓" * filled + "░" * empty
-```
-
-If total is 0 or unknown, show full bar with "?" for count.
-
-### Status Matrix Rendering
-
-```
-For each cell, assign status based on data:
-  ✓ = all checks passed
-  ⚠ = minor issues or warnings
-  ✗ = failures or missing
-  ○ = not yet checked
-  ◉ = currently processing
-```
-
-### Gauge Rendering
-
-```
-Calculate percentage: pct = value / total
-Determine fill level:
-  0%   = ░░░░░░░░░░░░░░░░
-  25%  = ◐░░░░░░░░░░░░░░░
-  50%  = ◐◐◐◐◐◐◐◐◑░░░░░░░
-  75%  = ◐◐◐◐◐◐◐◐◐◐◐◐◑░░░
-  100% = ◐◐◐◐◐◐◐◐◐◐◐◐◐◐◐◐
-```
-
-### Sparkline Rendering
-
-```
-Normalize values to 0-7 range:
-  normalized = round((value - min) / (max - min) * 7)
-  char = "▁▂▃▄▅▆▇█"[normalized]
-```
-
-### Stacked Bar Rendering
-
-```
-For each segment:
-  segment_width = round((segment_value / total) * bar_width)
-  Concatenate segments: bar = "█" * s1 + "▓" * s2 + "▒" * s3 + "░" * s4
-```
-
-### Dashboard Examples
-
-**Distribution Bars (Startup Report):**
-```
-┌─ Startup Status ───────────────────────────────────────────────┐
-│ Extract  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  925/925 files                     │
-│ Maps     ▓▓▓▓▓▓▓▓▓▓▓▓░░░░  15 created                         │
-│ Dict     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░  342 terms                          │
-│ Valid    ✓ passed                                                │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Progress Bar (Extraction Checkpoint):**
-```
-┌─ Extraction Progress ───────────────────────────────────────────┐
-│ Files    ▓▓▓▓▓▓▓▓▓▓░░░░░░  450/925 (48%)                       │
-│ Batches  ▓▓▓▓▓▓░░░░░░░░░░  30/60 completed                     │
-│ Status   in_progress                                             │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Status Matrix (Workspace Index):**
-```
-┌─ Workspace Health ──────────────────────────────────────────────┐
-│ Group    A    B    C    D    E    F                             │
-│ Maps     ✓    ✓    ⚠    ✓    ✓    ✗                            │
-│ Links    ✓    ✓    ✓    ✓    ⚠    ✓                            │
-│ Fresh    ✓    ✓    ✓    ✓    ✓    ✓                            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Gauge (Janitor Report):**
-```
-┌─ Hygiene Score ─────────────────────────────────────────────────┐
-│ Overall  ◐◐◐◐◐◐◐◐◑░░░░░░░  75%                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Sparkline (Serendipity Report):**
-```
-┌─ Discovery Trend ───────────────────────────────────────────────┐
-│ Links    ▁▂▃▅▆▇█▇▅▃▂▁▂▃▅▆▇  12 connections                     │
-│ Maps     ▂▃▅▇█▇▅▃▂▁▁▂▃▅▇█  8 maps consulted                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Stacked Bar (Evidence Packet):**
-```
-┌─ Search Metrics ────────────────────────────────────────────────┐
-│ Source   ████▓▓▓▓░░░░░░░░  maps:4 raw_scanned:8 raw_read:4     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-
+Budget: no chart when a sentence is enough; normally one figure per section; two maximum per section.

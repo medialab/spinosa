@@ -12,6 +12,7 @@ export const Parameters = Schema.Struct({
     Schema.Literal("analysis"),
     Schema.Literal("serendipity"),
     Schema.Literal("report"),
+    Schema.Literal("visualization"),
     Schema.Literal("verification"),
     Schema.Literal("evaluation"),
     Schema.Literal("extraction"),

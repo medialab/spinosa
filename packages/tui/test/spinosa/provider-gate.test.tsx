@@ -20,6 +20,14 @@ test("global home actions require a connected provider", async () => {
   mock.module("../../src/context/spinosa-workspace", () => ({
     useSpinosaWorkspace: () => ({ activePath: undefined, genericMode: false, meta: undefined, showPicker() {} }),
   }))
+  mock.module("../../src/context/wait", () => ({
+    useWait: () => ({
+      label: () => undefined,
+      begin() {},
+      end() {},
+      withWait: async (_text: string, work: () => Promise<unknown>) => work(),
+    }),
+  }))
   mock.module("../../src/context/prompt", () => ({ usePromptRef: () => ({ current: undefined }) }))
   mock.module("../../src/keymap", () => ({
     useBindings() {},

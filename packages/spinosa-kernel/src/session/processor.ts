@@ -62,10 +62,12 @@ type ToolCall = {
   messageID: SessionV1.ToolPart["messageID"]
   sessionID: SessionV1.ToolPart["sessionID"]
   done: Deferred.Deferred<void>
+  part: SessionV1.ToolPart
 }
 
 interface ProcessorContext extends Input {
   toolcalls: Record<string, ToolCall>
+  recentToolParts: SessionV1.ToolPart[]
   shouldBreak: boolean
   snapshot: string | undefined
   blocked: boolean
@@ -105,6 +107,7 @@ const layer = Layer.effect(
         sessionID: input.sessionID,
         model: input.model,
         toolcalls: {},
+        recentToolParts: [],
         shouldBreak: false,
         snapshot: initialSnapshot,
         blocked: false,
@@ -126,19 +129,28 @@ const layer = Layer.effect(
         if (done) yield* Deferred.succeed(done, undefined).pipe(Effect.ignore)
       })
 
+      const rememberToolPart = (part: SessionV1.ToolPart) => {
+        const index = ctx.recentToolParts.findIndex((item) => item.id === part.id)
+        if (index >= 0) ctx.recentToolParts[index] = part
+        else ctx.recentToolParts.push(part)
+        if (ctx.recentToolParts.length > 8) ctx.recentToolParts.splice(0, ctx.recentToolParts.length - 8)
+      }
+
+      const storeToolCall = (toolCallID: string, call: ToolCall, part: SessionV1.ToolPart) => {
+        ctx.toolcalls[toolCallID] = {
+          ...call,
+          part,
+          partID: part.id,
+          messageID: part.messageID,
+          sessionID: part.sessionID,
+        }
+        rememberToolPart(part)
+      }
+
       const readToolCall = Effect.fn("SessionProcessor.readToolCall")(function* (toolCallID: string) {
         const call = ctx.toolcalls[toolCallID]
         if (!call) return undefined
-        const part = yield* session.getPart({
-          partID: call.partID,
-          messageID: call.messageID,
-          sessionID: call.sessionID,
-        })
-        if (!part || part.type !== "tool") {
-          delete ctx.toolcalls[toolCallID]
-          return undefined
-        }
-        return { call, part }
+        return { call, part: call.part }
       })
 
       const updateToolCall = Effect.fn("SessionProcessor.updateToolCall")(function* (
@@ -148,12 +160,7 @@ const layer = Layer.effect(
         const match = yield* readToolCall(toolCallID)
         if (!match) return undefined
         const part = yield* session.updatePart(update(match.part))
-        ctx.toolcalls[toolCallID] = {
-          ...match.call,
-          partID: part.id,
-          messageID: part.messageID,
-          sessionID: part.sessionID,
-        }
+        storeToolCall(toolCallID, match.call, part)
         return part
       })
 
@@ -168,7 +175,7 @@ const layer = Layer.effect(
       ) {
         const match = yield* readToolCall(toolCallID)
         if (!match || match.part.state.status !== "running") return
-        yield* session.updatePart({
+        const part = yield* session.updatePart({
           ...match.part,
           state: {
             status: "completed",
@@ -180,13 +187,14 @@ const layer = Layer.effect(
             attachments: output.attachments,
           },
         })
+        storeToolCall(toolCallID, match.call, part)
         yield* settleToolCall(toolCallID)
       })
 
       const failToolCall = Effect.fn("SessionProcessor.failToolCall")(function* (toolCallID: string, error: unknown) {
         const match = yield* readToolCall(toolCallID)
         if (!match || match.part.state.status !== "running") return false
-        yield* session.updatePart({
+        const part = yield* session.updatePart({
           ...match.part,
           state: {
             status: "error",
@@ -195,6 +203,7 @@ const layer = Layer.effect(
             time: { start: match.part.state.time.start, end: Date.now() },
           },
         })
+        storeToolCall(toolCallID, match.call, part)
         if (error instanceof PermissionV1.RejectedError || error instanceof Question.RejectedError) {
           ctx.blocked = ctx.shouldBreak
         }
@@ -223,12 +232,7 @@ const layer = Layer.effect(
             ...existing.part,
             metadata: { ...existing.part.metadata, providerExecuted: true },
           })
-          ctx.toolcalls[input.id] = {
-            ...existing.call,
-            partID: part.id,
-            messageID: part.messageID,
-            sessionID: part.sessionID,
-          }
+          storeToolCall(input.id, existing.call, part)
           return { call: ctx.toolcalls[input.id], part }
         }
         const part = yield* session.updatePart({
@@ -246,7 +250,9 @@ const layer = Layer.effect(
           partID: part.id,
           messageID: part.messageID,
           sessionID: part.sessionID,
+          part,
         }
+        rememberToolPart(part)
         return { call: ctx.toolcalls[input.id], part }
       })
 
@@ -325,9 +331,7 @@ const layer = Layer.effect(
                 : value.providerMetadata,
             }))
 
-            const parts = yield* MessageV2.parts(ctx.assistantMessage.id).pipe(
-              Effect.provideService(Database.Service, database),
-            )
+            const parts = ctx.recentToolParts
             if (!isDoomLoop(parts, value.name, input)) {
               return
             }
@@ -580,6 +584,7 @@ const layer = Layer.effect(
           return
         }
         ctx.assistantMessage.error = error
+        ctx.assistantMessage.finish ??= "error"
         yield* events.publish(Session.Event.Error, {
           sessionID: ctx.assistantMessage.sessionID,
           error: ctx.assistantMessage.error,

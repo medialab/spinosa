@@ -4,6 +4,7 @@ import type { WorkspaceFile } from "./visualizer-graph-data";
 import type { ToolCallRecord } from "./visualizer-types";
 
 export const TOOL_CALL_PAGE_SIZE = 200;
+const VISUALIZER_LOAD_CONCURRENCY = 8;
 export const DEFAULT_HEAVY_DIRECTORIES = [
   ".bun",
   ".cache",
@@ -257,24 +258,22 @@ export async function loadSessionClosure(
   let frontier = [...sessions];
   while (frontier.length > 0) {
     coverage.levelsLoaded++;
-    const responses = await Promise.all(
-      frontier.map(async (parent) => {
-        const result = await sdkRequest("sessions", coverage, () =>
-          client.session.children({
-            sessionID: parent.id,
-            directory: options.directory,
-          }),
-        );
-        const children = requireArray(
-          result.data,
-          "sessions",
-          coverage,
-          `children for session ${parent.id}`,
-        );
-        coverage.sessionsExpanded++;
-        return { parent, children };
-      }),
-    );
+    const responses = await mapWithConcurrency(frontier, VISUALIZER_LOAD_CONCURRENCY, async (parent) => {
+      const result = await sdkRequest("sessions", coverage, () =>
+        client.session.children({
+          sessionID: parent.id,
+          directory: options.directory,
+        }),
+      );
+      const children = requireArray(
+        result.data,
+        "sessions",
+        coverage,
+        `children for session ${parent.id}`,
+      );
+      coverage.sessionsExpanded++;
+      return { parent, children };
+    });
 
     const next: VisualizerSession[] = [];
     for (const { parent, children } of responses) {
@@ -316,11 +315,14 @@ export async function loadSelectedSessionTree(
     messagesLoaded: 0,
     toolCallsLoaded: 0,
   };
-  const settled = await Promise.allSettled(
-    closure.sessions.map((session) =>
-      loadPagedSessionToolCalls(client, session, options),
-    ),
-  );
+  const settled = await mapWithConcurrency(closure.sessions, VISUALIZER_LOAD_CONCURRENCY, async (session) => {
+    try {
+      const value = await loadPagedSessionToolCalls(client, session, options);
+      return { status: "fulfilled" as const, value };
+    } catch (reason) {
+      return { status: "rejected" as const, reason };
+    }
+  });
   const toolCalls: ToolCallRecord[] = [];
   let failure: { sessionID: string; cause: unknown } | undefined;
 
@@ -595,4 +597,25 @@ function errorText(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return "SDK request failed";
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const n = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(
+    Array.from({ length: n }, async () => {
+      while (true) {
+        const index = next++;
+        if (index >= items.length) return;
+        out[index] = await fn(items[index]!);
+      }
+    }),
+  );
+  return out;
 }

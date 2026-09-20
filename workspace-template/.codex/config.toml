@@ -43,10 +43,6 @@ config_file = "agents/spinosa-serendippo.toml"
 description = "Verifies claims, quotes, and paths against original sources. Corrects errors in-place and never creates new interpretations. "
 config_file = "agents/spinosa-verifier.toml"
 
-[agents.spinosa-visualizer]
-description = "Creates data visualizations using only Unicode characters within markdown. No HTML, SVG, or images — pure block, braille, shade, and line-drawing characters that render in any markdown viewer. Use when evidence, data tables, or numerical findings need an honest visual form inside a markdown report. "
-config_file = "agents/spinosa-visualizer.toml"
-
 [agents.spinosa-writer]
 description = "Produces user-facing answer reports from prior artifacts in the chain. Does not search or verify; leaves those steps to Searcher and Verifier. "
 config_file = "agents/spinosa-writer.toml"

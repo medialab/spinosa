@@ -4,6 +4,7 @@ import { For } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useBindings } from "../keymap"
+import { HoverChip, HoverLabel } from "../ui/hover-press"
 
 export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | void | Promise<boolean | void> }) {
   const dialog = useDialog()
@@ -37,9 +38,7 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           Workspace unavailable
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
       <text fg={theme.textMuted} wrapMode="word">
         This session is attached to a workspace that is no longer available.
@@ -50,17 +49,17 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
       <box flexDirection="row" justifyContent="flex-end" paddingBottom={1} gap={1}>
         <For each={options}>
           {(item) => (
-            <box
+            <HoverChip
               paddingLeft={2}
               paddingRight={2}
-              backgroundColor={item === store.active ? theme.primary : undefined}
-              onMouseUp={() => {
+              label={item}
+              active={item === store.active}
+              onHover={() => setStore("active", item)}
+              onPress={() => {
                 setStore("active", item)
                 void confirm()
               }}
-            >
-              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{item}</text>
-            </box>
+            />
           )}
         </For>
       </box>

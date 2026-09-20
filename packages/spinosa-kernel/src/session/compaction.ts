@@ -22,6 +22,7 @@ import { ProviderV2 } from "@spinosa/kernel-core/provider"
 import { ModelV2 } from "@spinosa/kernel-core/model"
 import { buildPrompt } from "@spinosa/kernel-core/session/compaction"
 import { SessionCompactionEvent } from "@spinosa/schema/session-compaction-event"
+import { isOpenCodeProviderID } from "@spinosa/kernel-core/installation/opencode-compat"
 
 export const Event = SessionCompactionEvent
 
@@ -32,6 +33,14 @@ const PRUNE_PROTECTED_TOOLS = ["skill"]
 const DEFAULT_TAIL_TURNS = 2
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 8_000
+// Console's free tier identifies OpenCode compaction by this upstream system prompt.
+// Keep byte-for-byte with packages/opencode/src/agent/prompt/compaction.txt.
+const OPEN_CODE_COMPACTION_PROMPT = `You are a context summarization agent. You are given a conversation between a user and an agent. Your goal is to produce a structured summary matching the format specified so another coding agent can continue the work.
+
+Always follow the exact output structure requested by the user prompt. Keep every section, preserve exact file paths and identifiers when known, and prefer terse bullets over paragraphs.
+
+Do not continue the conversation. Do not respond to any questions in the conversation. Only output the structured summary in the exact format requested by the user prompt. Respond in the same language as the conversation.`
+const estimateCache = new Map<string, number>()
 type Turn = {
   start: number
   end: number
@@ -181,8 +190,34 @@ const layer = Layer.effect(
       messages: SessionV1.WithParts[]
       model: Provider.Model
     }) {
-      const msgs = yield* MessageV2.toModelMessagesEffect(input.messages, input.model)
-      return Token.estimate(JSON.stringify(msgs))
+      const last = input.messages.at(-1)
+      const lastPart = last?.parts.at(-1)
+      const cacheKey = `${input.model.id}:${input.messages.length}:${last?.info.id ?? ""}:${lastPart?.id ?? ""}:${last?.parts.length ?? 0}`
+      const cached = estimateCache.get(cacheKey)
+      if (cached !== undefined) return cached
+      let chars = 0
+      let complex = false
+      for (const msg of input.messages) {
+        for (const part of msg.parts) {
+          if (part.type === "text" || part.type === "reasoning") chars += part.text.length
+          else if (part.type === "tool" && part.state.status === "completed") chars += String(part.state.output ?? "").length
+          else if (part.type === "tool" && (part.state.status === "pending" || part.state.status === "running")) chars += 0
+          else complex = true
+        }
+      }
+      let value: number
+      if (complex || chars === 0) {
+        const msgs = yield* MessageV2.toModelMessagesEffect(input.messages, input.model, { walkCache: { entries: [] } })
+        value = Token.estimate(JSON.stringify(msgs))
+      } else {
+        value = Token.estimateChars(Math.min(chars, 1_000_000))
+      }
+      estimateCache.set(cacheKey, value)
+      if (estimateCache.size > 256) {
+        const first = estimateCache.keys().next().value
+        if (first) estimateCache.delete(first)
+      }
+      return value
     })
 
     const select = Effect.fn("SessionCompaction.select")(function* (input: {
@@ -348,6 +383,7 @@ const layer = Layer.effect(
       const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
+      const openCode = isOpenCodeProviderID(model.providerID)
       const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
         stripMedia: true,
         toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
@@ -387,7 +423,7 @@ const layer = Layer.effect(
       })
       const result = yield* processor.process({
         user: userMessage,
-        agent,
+        agent: openCode ? { ...agent, prompt: OPEN_CODE_COMPACTION_PROMPT } : agent,
         sessionID: input.sessionID,
         tools: {},
         system: [],
@@ -503,7 +539,11 @@ const layer = Layer.effect(
         }
       }
 
-      if (processor.message.error) return "stop"
+      if (processor.message.error) {
+        processor.message.finish ??= "error"
+        yield* session.updateMessage(processor.message)
+        return "stop"
+      }
       if (result === "continue") {
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
       }

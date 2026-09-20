@@ -133,28 +133,13 @@ function mapProviderOptions(
   });
 }
 
-export function message(
+export function normalizeMessageList(
   msgs: ModelMessage[],
   model: Provider.Model,
   options: Record<string, unknown>,
 ) {
   msgs = unsupportedParts(msgs, model);
   msgs = normalizeMessages(msgs, model, options);
-  if (
-    (model.providerID === "anthropic" ||
-      model.providerID === "google-vertex-anthropic" ||
-      model.api.id.includes("anthropic") ||
-      model.api.id.includes("claude") ||
-      model.id.includes("anthropic") ||
-      model.id.includes("claude") ||
-      model.api.npm === "@ai-sdk/anthropic" ||
-      model.api.npm === "@ai-sdk/alibaba") &&
-    model.api.npm !== "@ai-sdk/gateway"
-  ) {
-    msgs = applyCaching(msgs, model);
-  }
-
-  // Remap providerOptions keys from stored providerID to expected SDK key
   const key = sdkKey(model.api.npm);
   if (key && key !== model.providerID) {
     const remap: ProviderOptionsTransform = (opts) => {
@@ -165,11 +150,8 @@ export function message(
       delete result[model.providerID];
       return result;
     };
-
     msgs = mapProviderOptions(msgs, remap);
   }
-
-  // Strip Responses item IDs before serialization, following Codex and keeping signed request bodies immutable.
   if (
     options.store !== true &&
     key &&
@@ -188,7 +170,58 @@ export function message(
       return { ...options, [key]: sanitized };
     });
   }
+  return msgs;
+}
 
+export function message(
+  msgs: ModelMessage[],
+  model: Provider.Model,
+  options: Record<string, unknown>,
+) {
+  msgs = normalizeMessageList(msgs, model, options);
+  if (
+    (model.providerID === "anthropic" ||
+      model.providerID === "google-vertex-anthropic" ||
+      model.api.id.includes("anthropic") ||
+      model.api.id.includes("claude") ||
+      model.id.includes("anthropic") ||
+      model.id.includes("claude") ||
+      model.api.npm === "@ai-sdk/anthropic" ||
+      model.api.npm === "@ai-sdk/alibaba") &&
+    model.api.npm !== "@ai-sdk/gateway"
+  ) {
+    msgs = applyCaching(msgs, model);
+  }
+  return msgs;
+}
+
+export function messageFromPrefix(
+  prefix: ModelMessage[],
+  tail: ModelMessage[],
+  model: Provider.Model,
+  options: Record<string, unknown>,
+) {
+  const next = normalizeMessageList(tail, model, options);
+  const msgs = [...prefix, ...next].map((msg) => ({
+    ...msg,
+    content: Array.isArray(msg.content)
+      ? msg.content.map((part) => (typeof part === "object" && part ? { ...part } : part))
+      : msg.content,
+    providerOptions: msg.providerOptions ? { ...msg.providerOptions } : msg.providerOptions,
+  })) as ModelMessage[];
+  if (
+    (model.providerID === "anthropic" ||
+      model.providerID === "google-vertex-anthropic" ||
+      model.api.id.includes("anthropic") ||
+      model.api.id.includes("claude") ||
+      model.id.includes("anthropic") ||
+      model.id.includes("claude") ||
+      model.api.npm === "@ai-sdk/anthropic" ||
+      model.api.npm === "@ai-sdk/alibaba") &&
+    model.api.npm !== "@ai-sdk/gateway"
+  ) {
+    return applyCaching(msgs, model);
+  }
   return msgs;
 }
 

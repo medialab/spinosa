@@ -4,7 +4,7 @@ import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
 import { useBindings } from "../../keymap"
 import { useClipboard } from "../../context/clipboard"
-import { buttonBackground, buttonText } from "../../util/button"
+import { HoverChip, HoverLabel } from "../../ui/hover-press"
 type ToolDetailPart = {
   tool?: string
   callID?: string
@@ -100,9 +100,7 @@ export function DialogToolDetail(props: { part: ToolDetailPart; workdir?: string
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
           Tool detail
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
+        <HoverLabel onPress={() => dialog.clear()}>esc</HoverLabel>
       </box>
 
       <box flexDirection="row" justifyContent="space-between">
@@ -131,20 +129,16 @@ export function DialogToolDetail(props: { part: ToolDetailPart; workdir?: string
       </box>
 
       {/* copy button */}
-      <box
+      <HoverChip
         paddingLeft={2}
         paddingRight={2}
         paddingTop={1}
         paddingBottom={1}
-        backgroundColor={buttonBackground(theme, false)}
-        border={["left"]}
-        borderColor={theme.primary}
-        onMouseUp={() => void copyCommand()}
-      >
-        <text fg={buttonText(theme, false, copied() ? theme.success : theme.primary)}>
-          {copied() ? "✓ Copied" : "[c] Copy command"}
-        </text>
-      </box>
+        border
+        label={copied() ? "✓ Copied" : "[c] Copy command"}
+        onPress={() => void copyCommand()}
+        inactiveFg={copied() ? theme.success : theme.primary}
+      />
 
       {/* error section */}
       <Show when={s()?.status === "error" && s()?.error}>

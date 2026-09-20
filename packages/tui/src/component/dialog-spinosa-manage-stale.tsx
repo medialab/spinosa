@@ -4,7 +4,9 @@ import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useBindings } from "../keymap"
-import { buttonBackground, buttonBorder, buttonText } from "../util/button"
+import { buttonBackground, buttonText } from "../util/button"
+import { HoverChip, HoverLabel } from "../ui/hover-press"
+import { WaveSpinner } from "./wave-spinner"
 import { useTerminalDimensions } from "@opentui/solid"
 import { truncatePathTail } from "../spinosa/truncate-path"
 import { listRegisteredWorkspaces, unregisterWorkspace } from "../spinosa/service"
@@ -343,17 +345,17 @@ export function DialogSpinosaManageStale(props: {
         <box paddingLeft={1} paddingRight={1} paddingBottom={1} gap={1}>
           <box flexDirection="row" justifyContent="space-between" alignItems="center">
             <box flexDirection="row" gap={1} alignItems="center">
-              <text fg={theme.textMuted} onMouseUp={() => { handleEscape() }}>← Back</text>
+              <HoverLabel onPress={handleEscape}>← Back</HoverLabel>
               <text attributes={TextAttributes.BOLD} fg={theme.text}>Manage stale workspaces</text>
             </box>
-            <text fg={theme.textMuted} onMouseUp={() => { handleEscape() }}>esc</text>
+            <HoverLabel onPress={handleEscape}>esc</HoverLabel>
           </box>
           <text fg={theme.textMuted} wrapMode="word">
             × delete · ⌕ scan · → set path · Tab or 1–3 · Enter runs the focused action.
           </text>
 
           <Show when={rows.loading}>
-            <text fg={theme.textMuted}>Loading stale workspaces…</text>
+            <WaveSpinner color={theme.primary}>Loading stale workspaces…</WaveSpinner>
           </Show>
 
           <Show when={!rows.loading && stale().length === 0}>
@@ -469,21 +471,18 @@ export function DialogSpinosaManageStale(props: {
               </text>
             </box>
             <Show when={stale().length > 0}>
-              <box
+              <HoverChip
                 flexShrink={0}
                 paddingLeft={2}
                 paddingRight={2}
-                backgroundColor={buttonBackground(theme, store.deleteArmed === "all")}
-                border={["left"]}
-                borderColor={buttonBorder(theme, store.deleteArmed === "all", theme.error)}
-                onMouseUp={() => {
+                border
+                danger
+                active={store.deleteArmed === "all"}
+                label={store.deleteArmed === "all" ? "Confirm delete all" : `Delete all ${stale().length}`}
+                onPress={() => {
                   if (!store.busy) void deleteAllRemaining()
                 }}
-              >
-                <text fg={buttonText(theme, store.deleteArmed === "all", theme.error)}>
-                  {store.deleteArmed === "all" ? "Confirm delete all" : `Delete all ${stale().length}`}
-                </text>
-              </box>
+              />
             </Show>
           </box>
         </box>

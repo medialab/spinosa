@@ -6,6 +6,7 @@ import { For } from "solid-js"
 import { Locale } from "../util/locale"
 import { useBindings } from "../keymap"
 import { buttonBackground, buttonText } from "../util/button"
+import { HoverLabel } from "./hover-press"
 
 export type DialogConfirmProps = {
   title: string
@@ -68,12 +69,14 @@ export function DialogConfirm(props: DialogConfirmProps) {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => {
-          props.onCancel?.()
-          dialog.clear()
-        }}>
+        <HoverLabel
+          onPress={() => {
+            props.onCancel?.()
+            dialog.clear()
+          }}
+        >
           esc
-        </text>
+        </HoverLabel>
       </box>
       <box paddingBottom={1}>
         <text fg={theme.textMuted}>{props.message}</text>

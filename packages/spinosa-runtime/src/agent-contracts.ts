@@ -21,6 +21,12 @@ const READ_ONLY: readonly ToolRule[] = [
   { tool: "write", resource: "agent_reports/*", effect: "allow" },
 ]
 
+const WRITER: readonly ToolRule[] = [
+  ...READ_ONLY,
+  { tool: "write_report", resource: "*", effect: "allow" },
+  { tool: "spinosa_figure", resource: "*", effect: "allow" },
+]
+
 export const AGENT_CONTRACTS: Record<string, AgentContract> = {
   "spinosa-searcher": {
     id: "spinosa-searcher",
@@ -48,7 +54,7 @@ export const AGENT_CONTRACTS: Record<string, AgentContract> = {
     capability: "report.compose",
     acceptedInputs: ["goal", "validated_inputs"],
     outputs: ["report", "visualization"],
-    defaultToolPolicy: READ_ONLY,
+    defaultToolPolicy: WRITER,
   },
   "spinosa-verifier": {
     id: "spinosa-verifier",

@@ -55,6 +55,8 @@ export function DialogSkill(props: DialogSkillProps) {
       title="Skills"
       placeholder="Search skills..."
       options={options()}
+      loading={skills.loading && !showError()}
+      loadingText="Loading skills…"
       renderFilter={!showError()}
       locked={showError()}
       emptyView={

@@ -64,7 +64,7 @@ export function sanitizeLogText(value: string, workspacePath?: string): string {
   })
   text = text.replace(/file:\/\/[^\s"'`]+/gi, (url) => anonymizePathToken(url.slice("file://".length)))
   text = text.replace(
-    /(^|[\s="'`])((?:[A-Za-z]:)?(?:\/|\\)[^\s"'`]+|~\/[^\s"'`]+|\$SPINOSA_HOME[^\s"'`]*)/g,
+    /(^|[\s="'`(\[{<,;])((?:[A-Za-z]:)?(?:\/|\\)[^\s"'`]+|~\/[^\s"'`]+|\$SPINOSA_HOME[^\s"'`]*)/g,
     (_match, prefix: string, token: string) => `${prefix}${anonymizePathToken(token)}`,
   )
   text = text.replace(PATH_ASSIGN, (_match, key: string, raw: string) => {

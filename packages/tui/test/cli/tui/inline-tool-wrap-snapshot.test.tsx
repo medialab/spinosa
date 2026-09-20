@@ -293,8 +293,39 @@ describe("TUI inline tool wrapping", () => {
         (value) => value ?? "",
       ),
     ).toEqual({
-      tag: "TASK",
+      tag: "SUB-AGENT",
       command: "try tool calls",
+    })
+  })
+
+  test("summarizes Spinosa kernel tools without dumping arguments", () => {
+    expect(
+      buildToolCalloutSummary(
+        "spinosa_route",
+        {
+          text: "Test the custom Spinosa tools non-destructively and report whether they work.",
+          setupStatus: "workspace_started",
+          fileCount: 0,
+        },
+        {},
+        (value) => value ?? "",
+        "Index the workspace",
+      ),
+    ).toEqual({
+      tag: "SPINOSA",
+      command: "Pick a path: Index the workspace",
+    })
+
+    expect(
+      buildToolCalloutSummary(
+        "spinosa_gate",
+        { claim: "paths exist", evidence: "map.json" },
+        {},
+        (value) => value ?? "",
+      ),
+    ).toEqual({
+      tag: "SPINOSA",
+      command: "Check coverage",
     })
   })
 
@@ -407,7 +438,7 @@ describe("TUI inline tool wrapping", () => {
     )
 
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(3)
+    expect(scroll?.scrollHeight).toBe(4)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
 
     setSeparated(true)
@@ -417,7 +448,7 @@ describe("TUI inline tool wrapping", () => {
 
     setSeparated(false)
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(3)
+    expect(scroll?.scrollHeight).toBe(4)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
   })
 })

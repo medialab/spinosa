@@ -24,7 +24,6 @@ type LogEvent =
   | "tool"
   | "error"
   | "result"
-  | "gate"
   | "tui"
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024
@@ -88,18 +87,10 @@ export function logResult(phase: string, converted: number, skipped: number, fai
   logEntry("info", "result", { phase, converted, skipped, failed, msg: `${phase}: ${converted} converted, ${skipped} skipped, ${failed} failed`, ...extra })
 }
 
-/** Log a gate action */
-export function logGate(label: string) {
-  logEntry("info", "gate", { label, msg: `Gate: ${label}` })
-}
-
 let _toastError: ((err: unknown) => void) | undefined
 /** Register a toast callback — called by logError for visible error feedback */
 export function setToastError(fn: (err: unknown) => void) {
   _toastError = fn
-}
-export function getToastError() {
-  return _toastError
 }
 
 /** Log an error with optional stack */

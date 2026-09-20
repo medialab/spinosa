@@ -17,6 +17,22 @@ function todayUTC(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+export function coldFrontmatterLines(extraFields: string[] = []): string[] {
+  return [
+    "---",
+    ...COLD_SCAFFOLD_FIELDS.map((f) => `${f}:`),
+    `created: ${todayUTC()}`,
+    ...extraFields,
+    "---",
+    "",
+  ]
+}
+
+export function withColdFrontmatterPrefix(body: string, extraFields: string[] = []): string {
+  if (body.startsWith("---\n") || body.startsWith("---\r\n")) return body
+  return `${coldFrontmatterLines(extraFields).join("\n")}${body}`
+}
+
 export function injectColdFrontmatter(mdFile: string): void {
   if (!existsSync(mdFile)) return
 
@@ -27,15 +43,7 @@ export function injectColdFrontmatter(mdFile: string): void {
     const merged = mergeMissingFields(lines)
     writeTextAtomic(mdFile, merged)
   } else {
-    const date = todayUTC()
-    const scaffold = [
-      "---",
-      ...COLD_SCAFFOLD_FIELDS.map((f) => `${f}:`),
-      `created: ${date}`,
-      "---",
-      "",
-    ]
-    writeTextAtomic(mdFile, [...scaffold, content].join("\n"))
+    writeTextAtomic(mdFile, [...coldFrontmatterLines(), content].join("\n"))
   }
 }
 

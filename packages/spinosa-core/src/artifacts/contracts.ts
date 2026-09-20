@@ -13,6 +13,7 @@ export type ArtifactValidatorID =
   | "evaluation"
   | "extraction"
   | "maps"
+  | "map"
   | "coverage"
   | "cleanup"
 

@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { isSpinosaWorkspace, readWorkspaceMarker, spinosaRoute } from "@spinosa/core"
+import { formatRouteTitle, isSpinosaWorkspace, readWorkspaceMarker, spinosaRoute } from "@spinosa/core"
 import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./spinosa-route.txt"
@@ -51,7 +51,7 @@ export const SpinosaRouteTool = Tool.define(
             ...(params.command ? { command: params.command } : {}),
           })
           return {
-            title: `Routed ${result.decision.mode} (${result.via})`,
+            title: formatRouteTitle(result.decision),
             output: [
               `<route_decision via="${result.via}" provisional="${result.provisional}">`,
               JSON.stringify(result.decision, null, 2),

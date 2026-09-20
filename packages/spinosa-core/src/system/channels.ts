@@ -19,6 +19,12 @@ const SPINOSA_BETA_INSTALL_URL =
 const SPINOSA_RELEASE_REPO =
   process.env.SPINOSA_RELEASE_REPO ?? "medialab/spinosa"
 const FETCH_TIMEOUT_MS = 10_000
+/** Launch-time upgrade probe. Fail open instead of blocking TUI start. */
+export const LAUNCH_UPGRADE_CHECK_TIMEOUT_MS = 2_500
+
+export type ChannelFetchOptions = {
+  timeoutMs?: number
+}
 
 export function spinosaConfigFile(): string {
   const metaDir = process.env.SPINOSA_METADATA_DIR ??
@@ -145,12 +151,15 @@ export async function setAutoUpgrade(enabled: boolean): Promise<void> {
   })
 }
 
-export async function resolvePinnedVersionFromInstaller(url: string): Promise<string | undefined> {
+export async function resolvePinnedVersionFromInstaller(
+  url: string,
+  options?: ChannelFetchOptions,
+): Promise<string | undefined> {
   // The URL is env-overridable for dev/testing: only fetch https targets so
   // a stray env value can't turn the version check into plaintext SSRF bait.
   if (!/^https:\/\//i.test(url)) return undefined
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), options?.timeoutMs ?? FETCH_TIMEOUT_MS)
   try {
     const response = await fetch(url, { signal: controller.signal })
     if (!response.ok) return undefined
@@ -164,22 +173,27 @@ export async function resolvePinnedVersionFromInstaller(url: string): Promise<st
   }
 }
 
-export async function resolveLatestStableVersion(): Promise<string | undefined> {
-  return resolvePinnedVersionFromInstaller(SPINOSA_STABLE_INSTALL_URL)
+export async function resolveLatestStableVersion(
+  options?: ChannelFetchOptions,
+): Promise<string | undefined> {
+  return resolvePinnedVersionFromInstaller(SPINOSA_STABLE_INSTALL_URL, options)
 }
 
-export async function resolveLatestBetaVersion(): Promise<string | undefined> {
-  return resolvePinnedVersionFromInstaller(SPINOSA_BETA_INSTALL_URL)
+export async function resolveLatestBetaVersion(
+  options?: ChannelFetchOptions,
+): Promise<string | undefined> {
+  return resolvePinnedVersionFromInstaller(SPINOSA_BETA_INSTALL_URL, options)
 }
 
 export async function resolveReleaseVersionForChannel(
   channel: ReleaseChannel,
+  options?: ChannelFetchOptions,
 ): Promise<string | undefined> {
   switch (channel) {
     case "stable":
-      return resolveLatestStableVersion()
+      return resolveLatestStableVersion(options)
     case "beta":
-      return resolveLatestBetaVersion()
+      return resolveLatestBetaVersion(options)
   }
 }
 

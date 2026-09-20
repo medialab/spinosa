@@ -7,12 +7,18 @@ import { Global } from "@spinosa/kernel-core/global"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
 import { createEventSource, createFetch, directory, json } from "./fixture/tui-sdk"
 
-test("TUI app lazy-loads onboarding and add-files", async () => {
+test("TUI app lazy-loads secondary routes and keeps Home/Session eager", async () => {
   const source = await Bun.file(new URL("../src/app.tsx", import.meta.url)).text()
+  expect(source).toMatch(/^import \{ Home \} from ["']\.\/routes\/home["']/m)
+  expect(source).toMatch(/^import \{ Session \} from ["']\.\/routes\/session["']/m)
+  expect(source).not.toContain('await import("./routes/home")')
+  expect(source).not.toContain('await import("./routes/session")')
   expect(source).not.toMatch(/^import \{ Onboarding \} from ["'].*onboarding["']/m)
   expect(source).not.toMatch(/^import \{ AddFiles \} from ["'].*add-files["']/m)
   expect(source).toContain('await import("./routes/spinosa/onboarding")')
   expect(source).toContain('await import("./routes/spinosa/add-files")')
+  expect(source).toMatch(/const \[ready, setReady\] = createSignal\(false\)/)
+  expect(source).toContain("setReady(true)")
 })
 
 async function expectProcessSignalShutdown(signal: "SIGHUP" | "SIGINT") {

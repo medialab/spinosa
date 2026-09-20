@@ -7,6 +7,7 @@ import {
   enqueueOutbound,
   failedOutboundForSession,
   findEchoByPromptID,
+  findOutboundEcho,
   hasServerEcho,
   interruptedOutboundForSession,
   isOutboundPumping,
@@ -17,6 +18,8 @@ import {
   markOutboundSent,
   markOutboundStale,
   mergeTranscriptRows,
+  internTranscriptRows,
+  transcriptRowKey,
   outboundEntryState,
   outboundForSession,
   peekDispatchable,
@@ -235,10 +238,15 @@ describe("outbound queue", () => {
 })
 
 describe("mergeTranscriptRows", () => {
-  const outboundEntry = (key: string, createdAt: number, state: OutboundEntry["state"] = "interrupted"): OutboundEntry => ({
+  const outboundEntry = (
+    key: string,
+    createdAt: number,
+    state: OutboundEntry["state"] = "interrupted",
+    text = key,
+  ): OutboundEntry => ({
     key,
     sessionID: "ses-merge",
-    text: key,
+    text,
     snapshot: snapshot(key),
     dispatch: dispatch(),
     createdAt,
@@ -265,6 +273,18 @@ describe("mergeTranscriptRows", () => {
     expect(rowIDs(rows)).toEqual(["m1", "out-1"])
   })
 
+  test("interns unchanged row objects across rebuilds", () => {
+    const messages = [
+      { id: "m1", time: { created: 100 } },
+      { id: "m2", time: { created: 300 } },
+    ]
+    const first = mergeTranscriptRows(messages, [outboundEntry("out-1", 200)])
+    const second = internTranscriptRows(first, mergeTranscriptRows(messages, [outboundEntry("out-1", 200)]))
+    expect(second[0]).toBe(first[0])
+    expect(second[2]).toBe(first[2])
+    expect(transcriptRowKey(first[0]!)).toBe("message:m1")
+  })
+
   test("live and settled rows share one chronological list", () => {
     const messages = [
       { id: "m1", time: { created: 100 } },
@@ -278,6 +298,63 @@ describe("mergeTranscriptRows", () => {
     ])
     expect(rowIDs(rows)).toEqual(["old-interrupted", "m1", "live-queued", "live-sent", "new-failed", "m2"])
   })
+
+  test("drops Sent once the General prompt echo is already in the transcript", () => {
+    const messages = [{ id: "m1", role: "user" as const, time: { created: 300 } }]
+    const parts = {
+      m1: [{ type: "text", text: "call each of them", metadata: { [SPINOSA_PROMPT_METADATA]: "out-1" } }],
+    }
+    const rows = mergeTranscriptRows(
+      messages,
+      [outboundEntry("out-1", 200, "sent", "call each of them")],
+      parts,
+    )
+    expect(rowIDs(rows)).toEqual(["m1"])
+  })
+
+  test("drops Sent when the echo lost the prompt stamp but kept the same text", () => {
+    const messages = [{ id: "m1", role: "user" as const, time: { created: 300 } }]
+    const parts = {
+      m1: [{ type: "text", text: "call each of them" }],
+    }
+    const rows = mergeTranscriptRows(
+      messages,
+      [outboundEntry("out-1", 200, "sent", "call each of them")],
+      parts,
+    )
+    expect(rowIDs(rows)).toEqual(["m1"])
+  })
+
+  test("keeps queued rows even when a historical user row has the same text", () => {
+    const messages = [{ id: "m1", role: "user" as const, time: { created: 100 } }]
+    const parts = { m1: [{ type: "text", text: "call each of them" }] }
+    const rows = mergeTranscriptRows(
+      messages,
+      [outboundEntry("out-2", 200, "queued", "call each of them")],
+      parts,
+    )
+    expect(rowIDs(rows)).toEqual(["m1", "out-2"])
+  })
+
+  test("pairs two identical texts onto two user rows", () => {
+    const messages = [
+      { id: "m1", role: "user" as const, time: { created: 100 } },
+      { id: "m2", role: "user" as const, time: { created: 300 } },
+    ]
+    const parts = {
+      m1: [{ type: "text", text: "call each of them" }],
+      m2: [{ type: "text", text: "call each of them" }],
+    }
+    const rows = mergeTranscriptRows(
+      messages,
+      [
+        outboundEntry("out-1", 50, "sent", "call each of them"),
+        outboundEntry("out-2", 250, "sent", "call each of them"),
+      ],
+      parts,
+    )
+    expect(rowIDs(rows)).toEqual(["m1", "m2"])
+  })
 })
 
 describe("prompt id echo correlation", () => {
@@ -290,6 +367,30 @@ describe("prompt id echo correlation", () => {
     expect(findEchoByPromptID(messages, parts, "outbound-1")).toBe("m2")
     expect(findEchoByPromptID(messages, parts, "missing")).toBeUndefined()
     expect(findEchoByPromptID([], {}, "outbound-1")).toBeUndefined()
+  })
+
+  test("matches an unstamped user echo by text so Sent can retire", () => {
+    const messages = [
+      { id: "m1", role: "user" },
+      { id: "m2", role: "assistant" },
+    ]
+    const parts = {
+      m1: [{ type: "text", text: "call each of them" }],
+      m2: [{ type: "text", text: "call each of them" }],
+    }
+    expect(
+      findOutboundEcho(messages, parts, { key: "out-1", text: "call each of them" }),
+    ).toBe("m1")
+  })
+
+  test("does not steal a user row stamped for another prompt", () => {
+    const messages = [{ id: "m1", role: "user" }]
+    const parts = {
+      m1: [{ type: "text", text: "call each of them", metadata: { [SPINOSA_PROMPT_METADATA]: "out-other" } }],
+    }
+    expect(
+      findOutboundEcho(messages, parts, { key: "out-1", text: "call each of them" }),
+    ).toBeUndefined()
   })
 })
 

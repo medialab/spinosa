@@ -82,6 +82,47 @@ export function normalizeToolMetadataForDisplay(
   return metadata
 }
 
+const SPINOSA_TOOL_LABELS: Record<string, string> = {
+  spinosa_route: "Pick a path",
+  spinosa_frame: "Start the run",
+  spinosa_mint_paths: "Name the files",
+  spinosa_gate: "Check coverage",
+  spinosa_verify: "Check the file",
+  spinosa_map: "Map sources",
+  spinosa_figure: "Draw a chart",
+}
+
+export function isSpinosaTool(tool: string): boolean {
+  return tool.startsWith("spinosa_")
+}
+
+/** Short human name for a kernel `spinosa_*` tool. Unknown ids keep the Spinosa prefix. */
+export function spinosaToolLabel(tool: string): string {
+  const known = SPINOSA_TOOL_LABELS[tool]
+  if (known) return known
+  if (!isSpinosaTool(tool)) return tool
+  const rest = tool.slice("spinosa_".length).replaceAll("_", " ").trim()
+  return rest ? `Spinosa ${rest}` : "Spinosa"
+}
+
+/** Outcome text from a tool part state. Pending calls have none. */
+export function spinosaToolOutcome(state: unknown): string | undefined {
+  if (!state || typeof state !== "object" || Array.isArray(state)) return undefined
+  const status = "status" in state ? state.status : undefined
+  const title = "title" in state && typeof state.title === "string" ? state.title.trim() : ""
+  if (status === "error") return title || "Failed"
+  if (status === "running" || status === "completed") return title || undefined
+  return undefined
+}
+
+/** Transcript line: `Start the run` while pending, `Start the run: outcome` after. */
+export function formatSpinosaToolLine(tool: string, outcome?: string): string {
+  const label = spinosaToolLabel(tool)
+  const text = outcome?.trim()
+  if (!text) return label
+  return `${label}: ${text}`
+}
+
 /** One visible line for sequential tool rows in the transcript. */
 export function ellipsisToolLine(value: string, maxLength = 72): string {
   if (value.length <= maxLength) return value

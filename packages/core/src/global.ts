@@ -1,4 +1,5 @@
 import path from "path"
+import { mkdirSync } from "fs"
 import fs from "fs/promises"
 import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
 import os from "os"
@@ -129,8 +130,6 @@ export async function migrateLegacyPaths(input: { legacy: Paths; spinosa: Paths 
   }
 }
 
-await migrateLegacyPaths({ legacy: legacyPaths, spinosa: spinosaPaths })
-
 const globalPath = {
   home: userHome,
   cache: userDirs.cache,
@@ -145,15 +144,22 @@ const globalPath = {
 
 Flock.setGlobal({ state: globalPath.state })
 
-await Promise.all([
-  fs.mkdir(globalPath.data, { recursive: true }),
-  fs.mkdir(globalPath.config, { recursive: true }),
-  fs.mkdir(globalPath.state, { recursive: true }),
-  fs.mkdir(globalPath.tmp, { recursive: true }),
-  fs.mkdir(globalPath.log, { recursive: true }),
-  fs.mkdir(globalPath.bin, { recursive: true }),
-  fs.mkdir(globalPath.repos, { recursive: true }),
-])
+let globalDirsReady = false
+function ensureGlobalDirs() {
+  if (globalDirsReady) return
+  globalDirsReady = true
+  for (const dir of [globalPath.data, globalPath.config, globalPath.state, globalPath.tmp, globalPath.log, globalPath.bin, globalPath.repos]) {
+    mkdirSync(dir, { recursive: true })
+  }
+}
+
+/** Legacy-path migration runs after mkdir. Boot awaits this before CLI parse. */
+export const GlobalReady = Promise.resolve()
+  .then(() => {
+    ensureGlobalDirs()
+    return migrateLegacyPaths({ legacy: legacyPaths, spinosa: spinosaPaths })
+  })
+  .catch(() => [] as MigrationResult[])
 
 export namespace Global {
   export const Path = globalPath
@@ -173,6 +179,7 @@ export namespace Global {
   export class Service extends Context.Service<Service, Interface>()("@spinosa/Global") {}
 
   export function make(input: Partial<Interface> = {}): Interface {
+    ensureGlobalDirs()
     return {
       home: Path.home,
       data: Path.data,

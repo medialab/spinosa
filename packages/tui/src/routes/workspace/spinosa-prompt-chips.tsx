@@ -1,6 +1,7 @@
 import { createMemo, createResource, createSignal, For } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useToast } from "../../ui/toast"
+import { useWait } from "../../context/wait"
 import { useRoute } from "../../context/route"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { useExit } from "../../context/exit"
@@ -34,6 +35,7 @@ type ActionRowItem = {
 export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Promise<void> }) {
   const { theme } = useTheme()
   const toast = useToast()
+  const wait = useWait()
   const { navigate } = useRoute()
   const spinosa = useSpinosaWorkspace()
   const exit = useExit()
@@ -48,7 +50,7 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
     () => (workspaceReady() ? "bundled" : undefined),
     () => readBundledFrameworkVersion().catch(() => undefined),
   )
-  const [packFreshness] = createResource(
+  const [packFreshness, { refetch: refetchPackFreshness }] = createResource(
     () => {
       const workspacePath = spinosa.activePath
       if (!workspacePath || spinosa.genericMode) return undefined
@@ -83,16 +85,19 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
     })
     let result: Awaited<ReturnType<typeof updateWorkspace>>
     try {
-      result = await updateWorkspace({
-        workspacePath,
-        frameworkRoot: resolveFrameworkRoot() ?? "",
+      result = await wait.withWait("Updating workspace…", () =>
+        updateWorkspace({
+          workspacePath,
+          frameworkRoot: resolveFrameworkRoot() ?? "",
+          force: true,
         onPhase: (_phase, detail) => {
           const line = detail.trim()
           if (!line) return
           // Keep the full phase detail on the chip (was truncated to 22 chars).
           setUpdateLabel(line.replace(/^[#>\s]+/, ""))
         },
-      })
+      }),
+      )
     } catch (error) {
       setBusyAction(undefined)
       setUpdateLabel("Updating workspace…")
@@ -112,9 +117,16 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
         await writeWorkspaceFrameworkVersion(workspacePath, version)
       }
     }
-    spinosa.refresh()
+    await spinosa.refresh()
+    const afterVersion = bundledVersion() ?? (await readBundledFrameworkVersion())
+    const after = await inspectWorkspaceTemplatePack({
+      workspacePath,
+      workspaceVersion: afterVersion,
+      bundledVersion: afterVersion,
+    }).catch((): TemplatePackFreshness | undefined => undefined)
+    await refetchPackFreshness()
 
-    if (result.success) {
+    if (result.success && after && !after.refreshRecommended) {
       // Protocol/agents are not hot-reloaded — exit so the user restarts Spinosa.
       if (result.changes) {
         setEpilogue(
@@ -144,8 +156,10 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
     setUpdateLabel("Updating workspace…")
 
     const message =
-      result.error?.trim() ||
-      "Nothing was changed. The update failed without a detailed reason."
+      result.success && after?.refreshRecommended
+        ? after.message || "Workspace files still do not match the current pack."
+        : result.error?.trim() ||
+          "Nothing was changed. The update failed without a detailed reason."
     toast.show({
       title: "Couldn’t update this workspace",
       variant: "error",

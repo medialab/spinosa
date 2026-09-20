@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
 import {
@@ -40,6 +40,7 @@ import { moveToTrash } from "@spinosa/core/utils/trash"
 import { readFrameworkVersionFromRoot, resolveFrameworkRoot, resolveTemplateRootFromFrameworkRoot } from "@spinosa/core/framework/discovery"
 import {
   inspectTemplatePackFreshness,
+  workspaceVersionAheadOfBundled,
   workspaceVersionBehindBundled,
   type TemplatePackFreshness,
 } from "@spinosa/core/framework/template-pack-freshness"
@@ -53,11 +54,22 @@ import type { FrameworkReleaseStream } from "@spinosa/core/types"
 
 // --- Inline functions not yet in spinosa-core ---
 
+const rawMarkdownCountCache = new Map<string, { mtimeMs: number; count: number }>()
+
 export async function countRawMarkdownFiles(rootDir: string) {
   if (!existsSync(rootDir)) return 0
+  let mtimeMs = 0
+  try {
+    mtimeMs = statSync(rootDir).mtimeMs
+  } catch {
+    return 0
+  }
+  const hit = rawMarkdownCountCache.get(rootDir)
+  if (hit && hit.mtimeMs === mtimeMs) return hit.count
   let count = 0
   const glob = new Bun.Glob("**/*.md")
   for await (const _ of glob.scan({ cwd: rootDir, onlyFiles: true })) count++
+  rawMarkdownCountCache.set(rootDir, { mtimeMs, count })
   return count
 }
 
@@ -135,7 +147,10 @@ export function workspaceNeedsFrameworkUpdate(
   const targetStream = bundledFrameworkStream(bundled) ?? installStream
   if (workspaceStream && targetStream && workspaceStream !== targetStream) return false
 
-  return workspaceVersionBehindBundled(workspaceVersion, bundledVersion)
+  return (
+    workspaceVersionBehindBundled(workspaceVersion, bundledVersion) ||
+    workspaceVersionAheadOfBundled(workspaceVersion, bundledVersion)
+  )
 }
 
 /** Version-or-protocol stale pack check against the current template root. */
@@ -155,17 +170,6 @@ export async function inspectWorkspaceTemplatePack(input: {
     workspaceVersion: input.workspaceVersion,
     bundledVersion,
   })
-}
-
-/** True when framework version or protocol probe files need Update workspace. */
-export async function workspaceNeedsTemplatePackRefresh(input: {
-  workspacePath: string
-  workspaceVersion?: string
-  bundledVersion?: string
-  frameworkRoot?: string
-}): Promise<boolean> {
-  const freshness = await inspectWorkspaceTemplatePack(input)
-  return freshness.refreshRecommended
 }
 
 export type { TemplatePackFreshness }
