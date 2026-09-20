@@ -101,8 +101,14 @@ async function defaultSleep(ms: number): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
+function shouldHoldStatus(): boolean {
+  if (process.env.SPINOSA_DISABLE_PREFLIGHT_DELAY === "1") return false
+  if (!process.stdout.isTTY) return false
+  return true
+}
+
 async function ensureMinVisibleSince(start: number, minMs: number, deps: PreflightDependencies): Promise<void> {
-  if (process.env.SPINOSA_DISABLE_PREFLIGHT_DELAY === "1") return
+  if (!shouldHoldStatus()) return
   const elapsed = Date.now() - start
   if (elapsed >= minMs) return
   const sleep = deps.sleep ?? defaultSleep
@@ -143,15 +149,17 @@ async function inspectPackFreshness(
   deps: PreflightDependencies,
   workspacePath: string,
   frameworkRoot: string,
+  bundledVersion?: string,
+  templateRoot?: string,
 ): Promise<TemplatePackFreshness> {
   if (deps.inspectPack) return deps.inspectPack(workspacePath, frameworkRoot)
   const meta = await readWorkspaceMeta(workspacePath).catch(() => undefined)
   return inspectTemplatePackFreshness({
     workspacePath,
     frameworkRoot,
-    templateRoot: resolveTemplateRootFromFrameworkRoot(frameworkRoot),
+    templateRoot: templateRoot ?? resolveTemplateRootFromFrameworkRoot(frameworkRoot),
     workspaceVersion: meta?.frameworkVersion,
-    bundledVersion: readFrameworkVersionFromRoot(frameworkRoot),
+    bundledVersion: bundledVersion ?? readFrameworkVersionFromRoot(frameworkRoot),
   })
 }
 
@@ -166,7 +174,7 @@ export async function printLaunchingTuiWithDelay(
   sleep: (ms: number) => Promise<void> = defaults.sleep ?? defaultSleep,
 ): Promise<void> {
   out(LAUNCH_STATUS_LAUNCHING)
-  if (process.env.SPINOSA_DISABLE_PREFLIGHT_DELAY === "1") return
+  if (!shouldHoldStatus()) return
   await sleep(MIN_STATUS_MS)
 }
 
@@ -262,7 +270,7 @@ export async function offerStaleTemplatePackUpdates(
         continue
       }
 
-      const after = await inspectPackFreshness(deps, entry.path, frameworkRoot)
+      const after = await inspectPackFreshness(deps, entry.path, frameworkRoot, bundledVersion, templateRoot)
       if (after.refreshRecommended) {
         failed++
         const detail = formatStalePaths(after)

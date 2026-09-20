@@ -1,3 +1,4 @@
+import { watch } from "node:fs"
 import { createEffect, createSignal, createResource, onCleanup } from "solid-js"
 import { createSimpleContext } from "./helper"
 import { useKV } from "./kv"
@@ -18,6 +19,7 @@ import { inspectRegisteredWorkspacePresence, isUsableWorkspacePresence } from "@
 import type { RouteNavigateInput } from "./route"
 import { KV } from "../constants/kv-keys"
 import { useToast } from "../ui/toast"
+import { useWait } from "../context/wait"
 import {
   buildOpenWorkspaceSoftFail,
   humanizeWorkspacePresence,
@@ -34,6 +36,7 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
     const paths = useTuiPaths()
     const startup = useTuiStartup()
     const toast = useToast()
+    const wait = useWait()
     const cwdWorkspace = isSpinosaWorkspace(paths.cwd) ? paths.cwd : undefined
     const [activePath, setActivePath] = createSignal<string | undefined>()
     const [genericMode, setGenericMode] = createSignal(false)
@@ -56,7 +59,8 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
       if (!workspacePath || !isSpinosaWorkspace(workspacePath)) return undefined
       return readWorkspaceMeta(workspacePath).catch(() => undefined)
     })
-    const openWorkspace = async (workspacePath: string, options?: { route?: RouteNavigateInput }) => {
+    const openWorkspace = async (workspacePath: string, options?: { route?: RouteNavigateInput }) =>
+      wait.withWait("Opening workspace…", async () => {
       const presence = await inspectRegisteredWorkspacePresence(workspacePath).catch(() => undefined)
       if (presence && !isUsableWorkspacePresence(presence)) {
         if (presence.status === "identity_mismatch") {
@@ -139,13 +143,23 @@ export const { use: useSpinosaWorkspace, provider: SpinosaWorkspaceProvider } = 
           })
         })
         .catch(() => {})
-    }
+    })
 
     const cwdDiscoveryTimer = setInterval(() => {
       if (activePath() || genericMode() || !isSpinosaWorkspace(paths.cwd)) return
       void openWorkspace(paths.cwd)
-    }, 15_000)
-    onCleanup(() => clearInterval(cwdDiscoveryTimer))
+    }, 60_000)
+    let cwdWatcher: ReturnType<typeof watch> | undefined
+    try {
+      cwdWatcher = watch(paths.cwd, { persistent: false }, () => {
+        if (activePath() || genericMode() || !isSpinosaWorkspace(paths.cwd)) return
+        void openWorkspace(paths.cwd)
+      })
+    } catch {}
+    onCleanup(() => {
+      clearInterval(cwdDiscoveryTimer)
+      cwdWatcher?.close()
+    })
 
     /** Unset active workspace so Home is not workspace-ready (blocks cwd rediscovery). */
     const clearActiveWorkspace = () => {

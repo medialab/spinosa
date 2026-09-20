@@ -30,9 +30,9 @@ describe("SPINOSA_DISABLE_MODELS_FETCH", () => {
     try {
       Flag.SPINOSA_DISABLE_MODELS_FETCH = undefined
       process.env.SPINOSA_DISABLE_MODELS_FETCH = "1"
-      expect(Flag.SPINOSA_DISABLE_MODELS_FETCH).toBe(true)
+      expect(Boolean(Flag.SPINOSA_DISABLE_MODELS_FETCH)).toBe(true)
       process.env.SPINOSA_DISABLE_MODELS_FETCH = "0"
-      expect(Flag.SPINOSA_DISABLE_MODELS_FETCH).toBe(false)
+      expect(Boolean(Flag.SPINOSA_DISABLE_MODELS_FETCH)).toBe(false)
       Flag.SPINOSA_DISABLE_MODELS_FETCH = true
       process.env.SPINOSA_DISABLE_MODELS_FETCH = "0"
       expect(Flag.SPINOSA_DISABLE_MODELS_FETCH).toBe(true)

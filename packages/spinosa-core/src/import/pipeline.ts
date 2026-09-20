@@ -19,7 +19,7 @@ import {
 import { safeCopyAsync, writeTextAtomicSafe } from "../utils/fs"
 import { spinosaLogInfo, spinosaLogWarn } from "../utils/log"
 import type { FileClass, ImportRoute } from "../extension/types"
-import { injectColdFrontmatter, convertedOutputExists, coldFrontmatterLines } from "./frontmatter"
+import { injectColdFrontmatter, convertedOutputExists, coldFrontmatterLines, withColdFrontmatterPrefix } from "./frontmatter"
 import type { ImportBatchManager } from "./batch"
 import { isSpinosaCancellationError, throwIfSpinosaCancelled, SpinosaCancellationError } from "./cancellation"
 import { isVisionModelId } from "./vision-helpers"
@@ -319,6 +319,7 @@ export async function scanAndClassifySource(
   ocrFiles: ClassifiedEntry[]
   copyFiles: ClassifiedEntry[]
   logsDir: string
+  sourceFiles: string[]
 } | null> {
   const allFiles: string[] = []
   try {
@@ -442,7 +443,7 @@ export async function scanAndClassifySource(
     // Allocation is hardening: never fail classification when it errors.
   }
 
-  return { directFiles, markitdownFiles, visionFiles, ocrFiles, copyFiles, logsDir }
+  return { directFiles, markitdownFiles, visionFiles, ocrFiles, copyFiles, logsDir, sourceFiles: allFiles }
 }
 
 
@@ -450,7 +451,7 @@ export async function scanAndClassifySource(
 
 const DIRECT_COPY_CONCURRENCY = 8
 const MARKITDOWN_CONCURRENCY = 4
-const PDF_CONCURRENCY = 2
+const PDF_CONCURRENCY = 4
 const DIRECT_COPY_RETRY_DELAY_MS = 5_000
 const DIRECT_COPY_MAX_RETRIES = 3
 
@@ -706,12 +707,14 @@ export async function processMarkitdownInProcess(
           const raw = readFileSync(f.src, "utf-8")
           throwIfSpinosaCancelled(shouldAbort)
           mkdirSync(path.dirname(f.dest), { recursive: true })
-          const writtenDest = writeTextAtomicSafe(f.dest, `# ${path.basename(f.rel)}\n\n\`\`\`${ext}\n${raw}\n\`\`\`\n`)
+          const writtenDest = writeTextAtomicSafe(
+            f.dest,
+            withColdFrontmatterPrefix(`# ${path.basename(f.rel)}\n\n\`\`\`${ext}\n${raw}\n\`\`\`\n`),
+          )
           // writeTextAtomicSafe may truncate ENAMETOOLONG dests: everything
           // downstream (frontmatter, recoverable, manifest) must use the
           // path actually written, not the requested one.
           f.dest = writtenDest
-          injectColdFrontmatter(f.dest)
           converted++
           await emitDone(f.rel)
           recoverable.push({ src: f.src, dest: f.dest })
@@ -768,8 +771,7 @@ export async function processMarkitdownInProcess(
           throwIfSpinosaCancelled(shouldAbort)
           const text = result?.markdown ?? ""
           if (!text.trim()) throw new Error("MarkItDown returned no content")
-          f.dest = writeTextAtomicSafe(f.dest, text)
-          injectColdFrontmatter(f.dest)
+          f.dest = writeTextAtomicSafe(f.dest, withColdFrontmatterPrefix(text))
           converted++
           await emitDone(f.rel)
           recoverable.push({ src: f.src, dest: f.dest })
@@ -982,11 +984,10 @@ export async function processOcr(
         const binaryDest = path.join(path.dirname(file.dest), path.basename(file.src))
         const copied = await safeCopyAsync(file.src, binaryDest)
         const placeholder = [
-          "---",
-          `source_document: "${path.basename(file.rel).replace(/"/g, '\\"')}"`,
-          `ocr_status: local_ocr_removed`,
-          "---",
-          "",
+          ...coldFrontmatterLines([
+            `source_document: "${path.basename(file.rel).replace(/"/g, '\\"')}"`,
+            `ocr_status: local_ocr_removed`,
+          ]),
           `# ${path.basename(file.rel, path.extname(file.rel))} — transcription pending`,
           "",
           `Local OCR was removed. Original file kept as \`${path.basename(binaryDest)}\`.`,
@@ -999,7 +1000,6 @@ export async function processOcr(
         try {
           mkdirSync(path.dirname(file.dest), { recursive: true })
           writeTextAtomicSafe(file.dest, placeholder)
-          injectColdFrontmatter(file.dest)
         } catch {}
         if (copied && convertedOutputExists(file.dest)) {
           onLog?.(`  ${file.rel} → scanned, no local OCR — keeping original ${path.basename(binaryDest)} + placeholder (pick a vision model to transcribe)`)
@@ -1187,11 +1187,10 @@ export async function processPdf(
         try { rmSync(f.dest, { force: true }) } catch {}
         const copied = await safeCopyAsync(f.src, binaryDest)
         const placeholder = [
-        "---",
-        `source_document: "${path.basename(f.rel).replace(/"/g, '\\"')}"`,
-        `pdf_status: no_extractable_text`,
-        "---",
-        "",
+        ...coldFrontmatterLines([
+          `source_document: "${path.basename(f.rel).replace(/"/g, '\\"')}"`,
+          `pdf_status: no_extractable_text`,
+        ]),
         `# ${title} — scan pending transcription`,
         "",
         `No text could be extracted with pdf.js (${pageTexts.length} pages). Local OCR was removed.`,
@@ -1204,7 +1203,6 @@ export async function processPdf(
       try {
         mkdirSync(path.dirname(f.dest), { recursive: true })
         f.dest = writeTextAtomicSafe(f.dest, placeholder)
-        injectColdFrontmatter(f.dest)
       } catch {}
       onLog?.(`  ${f.rel} → no extractable text — original kept as ${path.basename(binaryDest)} (pick a vision model to transcribe, or keep the copy)`)
       recordPhaseResult(logsDir, f, stepRoute, "skipped", "pdfjs", stepModel, undefined, {
@@ -1666,8 +1664,10 @@ export async function writePdfTextOutput(
 
   if (pages === 1) {
     mkdirSync(path.dirname(destFile), { recursive: true })
-    const actualDest = writeTextAtomicSafe(destFile, `# ${title}\n\n${pageTexts[0]!.text.trim() || "[No text extracted]"}\n`)
-    injectColdFrontmatter(actualDest)
+    const actualDest = writeTextAtomicSafe(
+      destFile,
+      withColdFrontmatterPrefix(`# ${title}\n\n${pageTexts[0]!.text.trim() || "[No text extracted]"}\n`),
+    )
     await onPage?.(1, 1)
     return actualDest
   }
@@ -1697,8 +1697,7 @@ export async function writePdfTextOutput(
   mkdirSync(path.dirname(destFile), { recursive: true })
   const indexBody = (dirBase: string): string =>
     `# ${title}\n\n${pageTexts.map(({ page }) => `- [Page ${page}](${dirBase}/page-${String(page).padStart(3, "0")}.md)`).join("\n")}\n`
-  const actualDest = writeTextAtomicSafe(destFile, indexBody(path.basename(pageDir)))
-  injectColdFrontmatter(actualDest)
+  const actualDest = writeTextAtomicSafe(destFile, withColdFrontmatterPrefix(indexBody(path.basename(pageDir))))
   if (actualDest !== destFile) {
     // ENAMETOOLONG truncated the index: move the splits dir to match the
     // written stem and rewrite the index so links resolve (finding: truncated
@@ -1707,8 +1706,7 @@ export async function writePdfTextOutput(
     try {
       rmSync(actualPageDir, { recursive: true, force: true })
       renameSync(pageDir, actualPageDir)
-      const rewritten = writeTextAtomicSafe(actualDest, indexBody(path.basename(actualPageDir)))
-      injectColdFrontmatter(rewritten)
+      const rewritten = writeTextAtomicSafe(actualDest, withColdFrontmatterPrefix(indexBody(path.basename(actualPageDir))))
       return rewritten
     } catch {
       // Splits stay under the requested dir; the index still converts.
@@ -1876,8 +1874,7 @@ export async function verifyAndRecoverImport(
           throwIfSpinosaCancelled(shouldAbort)
           const text = stripAnsi(result?.markdown ?? "")
           if (!text.trim()) throw new Error("MarkItDown returned no content")
-          writeTextAtomicSafe(destFile, text)
-          injectColdFrontmatter(destFile)
+          writeTextAtomicSafe(destFile, withColdFrontmatterPrefix(text))
           onLog?.(`    Recovered (markitdown-ts): ${relPath}`)
           ok = true
         } catch (error) {
@@ -1913,7 +1910,6 @@ export async function verifyAndRecoverImport(
               recoveredDest = await convertTextPdf(srcFile, destFile, relPath, shouldAbort, undefined, pageTextsFromClassify(classes))
               throwIfSpinosaCancelled(shouldAbort)
               if (convertedOutputExists(recoveredDest)) {
-                injectColdFrontmatter(recoveredDest)
                 ocrConverted = 1
                 onLog?.(`    Recovered (digital PDF via pdf.js): ${relPath}`)
               }
@@ -1926,7 +1922,6 @@ export async function verifyAndRecoverImport(
           ocrError = err instanceof Error ? err.message : String(err)
         }
         if (ocrConverted > 0 && convertedOutputExists(recoveredDest)) {
-          injectColdFrontmatter(recoveredDest)
           onLog?.(`    Recovered (digital PDF via pdf.js): ${relPath}`)
           ok = true
         } else {
@@ -2113,6 +2108,7 @@ export async function copySource(
       options?.subfolder,
       options?.runPhase,
       typeof options?.ocrModelId === "string" ? options.ocrModelId : undefined,
+      classified.sourceFiles,
     )
     res.stillMissing = verifyResult.stillMissing
     res.recovered = verifyResult.recovered

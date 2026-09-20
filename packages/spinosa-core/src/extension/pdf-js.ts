@@ -164,9 +164,20 @@ export function pdfDocLoadTimeoutMs(sizeBytes: number): number {
   return Math.min(30_000, 2_000 + Math.ceil(sizeMB * 250))
 }
 
+export const PDF_LOAD_MAX_BYTES = 64 * 1024 * 1024
+
+export function pdfExceedsLoadCap(sizeBytes: number): boolean {
+  return sizeBytes > PDF_LOAD_MAX_BYTES
+}
+
 async function getDoc(pdfPath: string): Promise<PDFDocumentProxy> {
   ensurePdfJsWorker()
   const file = await readFile(pdfPath)
+  if (pdfExceedsLoadCap(file.byteLength)) {
+    throw new Error(
+      `PDF exceeds ${PDF_LOAD_MAX_BYTES} byte load cap (${file.byteLength} bytes): ${path.basename(pdfPath)}`,
+    )
+  }
   const data = bufferToPdfJsUint8Array(file)
   // Standard-14 fonts (Helvetica et al.) need their metric data or glyph
   // mapping aborts mid-page and embedded text comes back truncated — which

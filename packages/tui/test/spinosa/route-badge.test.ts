@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import {
+  CHAT_PATH_LABEL,
+  resolveRouteBadge,
+  routeBadgeChatTone,
   routeBadgeFromParts,
   routeBadgeLabel,
   SPINOSA_ROUTE_METADATA,
+  spinosaRoutePathFromParts,
 } from "../../src/spinosa/route-badge"
 
 describe("routeBadgeFromParts", () => {
@@ -120,5 +124,95 @@ describe("routeBadgeLabel", () => {
     ])
     expect(info).toMatchObject({ kind: "general", routedBy: "rules" })
     expect(routeBadgeLabel(info!)).toBe("General prompt")
+  })
+
+  test("a Pick a path title becomes Chat or a plan name", () => {
+    expect(routeBadgeLabel({ kind: "path", label: CHAT_PATH_LABEL })).toBe("Chat")
+    expect(routeBadgeLabel({ kind: "path", label: "Find evidence" })).toBe("◈ Find evidence")
+    expect(routeBadgeChatTone({ kind: "path", label: CHAT_PATH_LABEL })).toBe(true)
+    expect(routeBadgeChatTone({ kind: "path", label: "Find evidence" })).toBe(false)
+    expect(routeBadgeChatTone({ kind: "general" })).toBe(true)
+  })
+})
+
+const generalUser = [{ type: "text", text: "Hi", metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "general" } } }]
+const workflowUser = [
+  {
+    type: "text",
+    text: "find evidence",
+    metadata: {
+      [SPINOSA_ROUTE_METADATA]: {
+        kind: "workflow",
+        workflowID: "research.targeted_evidence",
+        operation: "research",
+        strategy: "targeted_evidence",
+        runID: "r1",
+      },
+    },
+  },
+]
+
+describe("resolveRouteBadge", () => {
+  test("keeps General prompt until Pick a path has a title", () => {
+    expect(resolveRouteBadge(generalUser)).toMatchObject({ kind: "general" })
+    expect(
+      resolveRouteBadge(generalUser, [
+        { type: "tool", tool: "spinosa_route", state: { status: "pending" } },
+      ]),
+    ).toMatchObject({ kind: "general" })
+    expect(
+      resolveRouteBadge(generalUser, [
+        { type: "tool", tool: "spinosa_route", state: { status: "running" } },
+      ]),
+    ).toMatchObject({ kind: "general" })
+    expect(
+      resolveRouteBadge(generalUser, [
+        { type: "tool", tool: "spinosa_route", state: { status: "error", title: "Failed" } },
+      ]),
+    ).toMatchObject({ kind: "general" })
+  })
+
+  test("replaces General prompt with Chat or a plan name", () => {
+    expect(
+      resolveRouteBadge(generalUser, [
+        { type: "tool", tool: "spinosa_route", state: { status: "completed", title: "Chat" } },
+      ]),
+    ).toEqual({ kind: "path", label: "Chat" })
+    expect(
+      resolveRouteBadge(generalUser, [
+        {
+          type: "tool",
+          tool: "spinosa_route",
+          state: { status: "completed", title: "Index the workspace" },
+        },
+      ]),
+    ).toEqual({ kind: "path", label: "Index the workspace" })
+    expect(
+      resolveRouteBadge([{ type: "text", text: "unstamped" }], [
+        { type: "tool", tool: "spinosa_route", state: { status: "completed", title: "Chat" } },
+      ]),
+    ).toEqual({ kind: "path", label: "Chat" })
+  })
+
+  test("does not overwrite a submit-stamped workflow badge", () => {
+    expect(
+      resolveRouteBadge(workflowUser, [
+        { type: "tool", tool: "spinosa_route", state: { status: "completed", title: "Chat" } },
+      ]),
+    ).toMatchObject({ kind: "workflow", workflowID: "research.targeted_evidence" })
+  })
+
+  test("uses the last successful Pick a path title", () => {
+    expect(
+      spinosaRoutePathFromParts([
+        { type: "tool", tool: "spinosa_route", state: { status: "completed", title: "Chat" } },
+        { type: "tool", tool: "read", state: { status: "completed", title: "ignore" } },
+        {
+          type: "tool",
+          tool: "spinosa_route",
+          state: { status: "completed", title: "Find evidence" },
+        },
+      ]),
+    ).toBe("Find evidence")
   })
 })

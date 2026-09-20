@@ -106,7 +106,7 @@ import { LocationProvider } from "../../context/location"
 import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
-import { RouteBadge, routeBadgeFromParts, type RouteBadgeInfo } from "../../spinosa/route-badge"
+import { RouteBadge, resolveRouteBadge, routeBadgeChatTone, type RouteBadgeInfo } from "../../spinosa/route-badge"
 import {
   dispatchPositions,
   findOutboundEcho,
@@ -428,10 +428,28 @@ const resolveExportPath = (filename: string): string => {
     return internedTranscriptRows
   })
   const TRANSCRIPT_RENDER_LIMIT = 120
+  const TRANSCRIPT_VIEWPORT = 56
+  const TRANSCRIPT_BUFFER = 8
   const hiddenTranscriptCount = createMemo(() => Math.max(0, transcriptRows().length - TRANSCRIPT_RENDER_LIMIT))
+  const [pinnedToBottom, setPinnedToBottom] = createSignal(true)
+  const [scrollY, setScrollY] = createSignal(0)
+  const [scrollExtent, setScrollExtent] = createSignal({ height: 0, content: 0 })
   const visibleTranscriptRows = createMemo(() => {
     const rows = transcriptRows()
-    return rows.length <= TRANSCRIPT_RENDER_LIMIT ? rows : rows.slice(-TRANSCRIPT_RENDER_LIMIT)
+    const windowed = rows.length <= TRANSCRIPT_RENDER_LIMIT ? rows : rows.slice(-TRANSCRIPT_RENDER_LIMIT)
+    if (windowed.length <= TRANSCRIPT_VIEWPORT) return windowed
+    if (pinnedToBottom()) return windowed.slice(-TRANSCRIPT_VIEWPORT)
+    const extent = scrollExtent()
+    const max = Math.max(0, extent.content - extent.height)
+    const fraction = max <= 0 ? 1 : Math.min(1, Math.max(0, scrollY() / max))
+    const start = Math.floor(fraction * Math.max(0, windowed.length - TRANSCRIPT_VIEWPORT))
+    const from = Math.max(0, start - TRANSCRIPT_BUFFER)
+    return windowed.slice(from, from + TRANSCRIPT_VIEWPORT + TRANSCRIPT_BUFFER * 2)
+  })
+  const hiddenViewportCount = createMemo(() => {
+    const rows = transcriptRows()
+    const windowed = rows.length <= TRANSCRIPT_RENDER_LIMIT ? rows : rows.slice(-TRANSCRIPT_RENDER_LIMIT)
+    return Math.max(0, windowed.length - visibleTranscriptRows().length)
   })
   const userCreatedById = createMemo(() => {
     const map = new Map<string, number>()
@@ -482,24 +500,52 @@ const resolveExportPath = (filename: string): string => {
   const pathFormatter = usePathFormatter()
   let prevToolCalloutFp = ""
   let prevToolCalloutSides = new Map<string, ToolCalloutInfo>()
+  let prevPrefixFp = ""
+  let prevPrefixSides = new Map<string, ToolCalloutInfo>()
+  let prevPrefixLeft = 0
+  let prevPrefixRight = 0
+  let prevPrefixEndDisplay: string | undefined
   const toolCalloutSides = createMemo(() => {
     const layout = transcriptLayout()
     const sides = new Map<string, ToolCalloutInfo>()
     if (layout.mode !== "callout") {
       prevToolCalloutFp = ""
       prevToolCalloutSides = sides
+      prevPrefixFp = ""
+      prevPrefixSides = sides
+      prevPrefixLeft = 0
+      prevPrefixRight = 0
+      prevPrefixEndDisplay = undefined
       return sides
     }
 
     const currentMessages = messages()
     const currentParts = sessionParts()
-    const fingerprint = `${layout.railWidth}:${toolPartsFingerprint(currentMessages, currentParts)}`
+    const lastMessage = currentMessages.at(-1)
+    const prefixMessages = lastMessage ? currentMessages.slice(0, -1) : currentMessages
+    const prefixFp = `${layout.railWidth}:${toolPartsFingerprint(prefixMessages, currentParts)}`
+    const lastFp = lastMessage ? toolPartsFingerprint([lastMessage], currentParts) : ""
+    const fingerprint = `${prefixFp}|${lastFp}`
     if (fingerprint === prevToolCalloutFp) return prevToolCalloutSides
+
+    const lastParts = lastMessage
+      ? (currentParts[lastMessage.id] ?? []).filter((part): part is ToolPart => part.type === "tool")
+      : []
+    const firstLastDisplay = lastParts[0] ? toolDisplay(lastParts[0].tool) : undefined
+    const reusePrefix =
+      Boolean(lastMessage) &&
+      prevPrefixFp === prefixFp &&
+      prevPrefixFp !== "" &&
+      (!firstLastDisplay || firstLastDisplay !== prevPrefixEndDisplay)
+
+    const scanMessages = reusePrefix && lastMessage ? [lastMessage] : currentMessages
+    if (reusePrefix) {
+      for (const [id, info] of prevPrefixSides) sides.set(id, info)
+    }
 
     const groups: { parts: ToolPart[]; display: string }[] = []
     let currentGroup: { parts: ToolPart[]; display: string } | undefined
-
-    for (const message of currentMessages) {
+    for (const message of scanMessages) {
       for (const part of currentParts[message.id] ?? []) {
         if (part.type !== "tool") { currentGroup = undefined; continue }
         const display = toolDisplay(part.tool)
@@ -511,8 +557,8 @@ const resolveExportPath = (filename: string): string => {
       }
     }
 
-    let leftHeight = 0
-    let rightHeight = 0
+    let leftHeight = reusePrefix ? prevPrefixLeft : 0
+    let rightHeight = reusePrefix ? prevPrefixRight : 0
     for (const group of groups) {
       const count = group.parts.length
       const first = group.parts[0]
@@ -541,6 +587,50 @@ const resolveExportPath = (filename: string): string => {
         else rightHeight += partHeight
       }
     }
+
+    if (!reusePrefix) {
+      const prefixCallIDs = new Set<string>()
+      for (const message of prefixMessages) {
+        for (const part of currentParts[message.id] ?? []) {
+          if (part.type === "tool" && part.callID) prefixCallIDs.add(part.callID)
+        }
+      }
+      prevPrefixSides = new Map([...sides].filter(([id]) => prefixCallIDs.has(id)))
+      let walkLeft = 0
+      let walkRight = 0
+      for (const message of prefixMessages) {
+        for (const part of currentParts[message.id] ?? []) {
+          if (part.type !== "tool" || !part.callID) continue
+          const info = sides.get(part.callID)
+          if (!info) continue
+          const rowHeight = estimateToolCalloutHeight(
+            info.summary ?? { tag: "", command: "" },
+            layout.railWidth,
+            part.tool,
+            part.state.status === "pending" ? {} : (part.state.metadata ?? {}),
+            part.state.input ?? {},
+          )
+          if (info.side === "left") walkLeft += rowHeight
+          else walkRight += rowHeight
+        }
+      }
+      prevPrefixLeft = walkLeft
+      prevPrefixRight = walkRight
+      prevPrefixEndDisplay = undefined
+      for (let i = prefixMessages.length - 1; i >= 0; i--) {
+        const parts = currentParts[prefixMessages[i]!.id] ?? []
+        for (let j = parts.length - 1; j >= 0; j--) {
+          const part = parts[j]
+          if (part?.type === "tool") {
+            prevPrefixEndDisplay = toolDisplay(part.tool)
+            break
+          }
+        }
+        if (prevPrefixEndDisplay) break
+      }
+      prevPrefixFp = prefixFp
+    }
+
     prevToolCalloutFp = fingerprint
     prevToolCalloutSides = sides
     return sides
@@ -623,6 +713,18 @@ const resolveExportPath = (filename: string): string => {
 
   let seeded = false
   let scroll: ScrollBoxRenderable
+  createEffect(() => {
+    const id = setInterval(() => {
+      if (!scroll) return
+      const height = scroll.height ?? 0
+      const scrollHeight = scroll.scrollHeight ?? 0
+      const max = Math.max(0, scrollHeight - height)
+      setPinnedToBottom(max <= 0 || scroll.y >= max - 8)
+      setScrollY(scroll.y)
+      setScrollExtent({ height, content: scrollHeight })
+    }, 120)
+    onCleanup(() => clearInterval(id))
+  })
   let prompt: PromptRef | undefined
   const bind = (r: PromptRef | undefined) => {
     prompt = r
@@ -1399,9 +1501,9 @@ const resolveExportPath = (filename: string): string => {
                 scrollAcceleration={scrollAcceleration()}
               >
                 <box height={1} />
-                <Show when={hiddenTranscriptCount() > 0}>
+                <Show when={hiddenTranscriptCount() + hiddenViewportCount() > 0}>
                   <text fg={theme.textMuted}>
-                    {hiddenTranscriptCount()} earlier messages
+                    {hiddenTranscriptCount() + hiddenViewportCount()} earlier messages
                   </text>
                 </Show>
                 <For each={visibleTranscriptRows()}>
@@ -1860,10 +1962,23 @@ function UserMessage(props: {
   )
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
-  // Route badge: workflow identity is stamped at submit time; routed
-  // general verdicts stamp a General prompt badge so the header never
-  // flips from "Evaluating" to empty. Direct (unrouted) sends stay bare.
-  const routeInfo = createMemo(() => routeBadgeFromParts(props.parts))
+  // Route badge: submit stamps general or a workflow. After the agent
+  // calls Pick a path, a general tag becomes Chat or the plan name.
+  const routeInfo = createMemo(() => {
+    const list = sync.data.message[props.message.sessionID] ?? []
+    const followUp: Part[] = []
+    for (const message of list) {
+      if (message.role !== "assistant") continue
+      if (!("parentID" in message) || message.parentID !== props.message.id) continue
+      const parts = sync.data.part[message.id]
+      if (parts) followUp.push(...parts)
+    }
+    return resolveRouteBadge(props.parts, followUp)
+  })
+  const chatTone = createMemo(() => {
+    const info = routeInfo()
+    return Boolean(info && routeBadgeChatTone(info))
+  })
 
   createEffect(() => {
     const current = delivery()
@@ -1932,7 +2047,7 @@ function UserMessage(props: {
           <box
             ref={(el: BoxRenderable) => alwaysSeparate.add(el)}
             border={["left"]}
-            borderColor={routeInfo()?.kind === "general" ? theme.success : color()}
+            borderColor={chatTone() ? theme.success : color()}
             customBorderChars={SplitBorder.customBorderChars}
             marginTop={props.index === 0 ? 0 : 1}
           >
@@ -2386,18 +2501,28 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const route = useSessionRoute()
   const sessionDir = createMemo(() => sync.data.session.find((s) => s.id === route.sessionID)?.directory)
   const streaming = () => props.last && !props.message.time.completed
+  const [throttledText, setThrottledText] = createSignal(props.part.text)
+  createEffect(() => {
+    const text = props.part.text
+    if (!streaming()) {
+      setThrottledText(text)
+      return
+    }
+    const timer = setTimeout(() => setThrottledText(text), 50)
+    onCleanup(() => clearTimeout(timer))
+  })
   const mdFiles = createMemo(() =>
-    streaming() ? [] : extractMdPaths(props.part.text, sessionDir()),
+    streaming() ? [] : extractMdPaths(throttledText(), sessionDir()),
   )
   return (
-    <Show when={props.part.text.trim()}>
+    <Show when={throttledText().trim()}>
       <TranscriptRow>
         <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
           <markdown
             syntaxStyle={syntax()}
             streaming={true}
             internalBlockMode="top-level"
-            content={stripAnsi(props.part.text.trim())}
+            content={stripAnsi(throttledText().trim())}
             tableOptions={{ style: "grid" }}
             conceal={ctx.conceal()}
             fg={theme.markdownText}

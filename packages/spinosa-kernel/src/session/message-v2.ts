@@ -569,6 +569,30 @@ export const get = Effect.fn("MessageV2.get")(function* (input: { sessionID: Ses
   }
 })
 
+export function mergeLatestMessages(prev: WithParts[], tail: WithParts[]): WithParts[] {
+  if (tail.length === 0) return prev
+  if (prev.length === 0) return [...tail]
+  const indexById = new Map<string, number>()
+  let maxId = prev[0]!.info.id
+  const out = prev.map((msg, index) => {
+    indexById.set(msg.info.id, index)
+    if (msg.info.id > maxId) maxId = msg.info.id
+    return msg
+  })
+  for (const msg of tail) {
+    const index = indexById.get(msg.info.id)
+    if (index !== undefined) {
+      out[index] = msg
+      continue
+    }
+    if (msg.info.id <= maxId) continue
+    indexById.set(msg.info.id, out.length)
+    out.push(msg)
+    maxId = msg.info.id
+  }
+  return out
+}
+
 export function filterCompacted(msgs: Iterable<WithParts>) {
   const result = [] as WithParts[]
   const completed = new Set<string>()
@@ -641,7 +665,7 @@ export function latest(msgs: WithParts[]) {
     const info = msg.info
     if (info.role === "user" && (!user || info.id > user.id)) user = info
     if (info.role === "assistant" && (!assistant || info.id > assistant.id)) assistant = info
-    if (info.role === "assistant" && info.finish && (!finished || info.id > finished.id)) finished = info
+    if (info.role === "assistant" && (info.finish || info.error) && (!finished || info.id > finished.id)) finished = info
   }
   const tasks = msgs.flatMap((m) =>
     finished && m.info.id <= finished.id

@@ -3,6 +3,7 @@ import { For, createEffect, createMemo, createResource, createSignal, onCleanup,
 import { Logo } from "../component/logo"
 import { useSync } from "../context/sync"
 import { useToast } from "../ui/toast"
+import { useWait } from "../context/wait"
 import { useArgs } from "../context/args"
 import { useGlobalRoute } from "../context/route"
 import { usePromptRef } from "../context/prompt"
@@ -20,6 +21,7 @@ import { safeResourceValue } from "../util/resource"
 import { CenteredColumn } from "../component/centered-column"
 import { useSpinosaWorkspace } from "../context/spinosa-workspace"
 import { useTheme } from "../context/theme"
+import { WaveSpinner } from "../component/wave-spinner"
 import type { Theme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { DialogSpinosaStartupChoice } from "../component/dialog-spinosa-startup-choice"
@@ -206,6 +208,7 @@ export function Home() {
   })
 
   const toast = useToast()
+  const wait = useWait()
   const cleanStaleInstallerData = async () => {
     if (maintenanceAction() !== "idle") return
     const status = safeResourceValue(maintenance)
@@ -222,7 +225,7 @@ export function Home() {
 
     setMaintenanceAction("cleaning")
     try {
-      const result = await cleanupStaleInstallDirectories()
+      const result = await wait.withWait("Cleaning leftover files…", () => cleanupStaleInstallDirectories())
       if (result.installInProgress) {
         toast.show({ variant: "info", message: "Cleanup skipped because a Spinosa install is in progress." })
       } else if (result.removedDirectories.length > 0) {
@@ -255,7 +258,9 @@ export function Home() {
     job.start()
     toast.show({ variant: "info", message: "Repairing Spinosa runtime…" })
     try {
-      const result = await upgradeFramework({ channel, version: bundled, reinstall: true, yes: true, suppressInstallOutput: true })
+      const result = await wait.withWait("Repairing Spinosa runtime…", () =>
+        upgradeFramework({ channel, version: bundled, reinstall: true, yes: true, suppressInstallOutput: true }),
+      )
       if (!result.success) {
         job.finish("error", "Dependency repair failed")
         toast.show({ variant: "error", message: "Dependency repair failed." })
@@ -575,7 +580,7 @@ export function Home() {
 
           {/* recent workspaces (global home only) */}
           <Show when={providerConnected() && !workspaceReady() && recentLoading()}>
-            <text fg={theme.textMuted}>Loading recent workspaces…</text>
+            <WaveSpinner color={theme.primary}>Loading recent workspaces…</WaveSpinner>
             <box height={1} />
           </Show>
           <Show when={providerConnected() && !workspaceReady() && !recentLoading() && recentLoadError()}>

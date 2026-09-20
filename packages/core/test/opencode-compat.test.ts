@@ -4,12 +4,23 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import {
   OPENCODE_COMPAT_ENV,
+  OPENCODE_CONSOLE_TRACE_ENV,
   OPENCODE_CONSOLE_MIN_VERSION,
   advertisedOpenCodeVersion,
   applyAdvertisedOpenCodeVersion,
+  applyOpenCodeConsoleUserAgent,
   fetchLatestOpenCodeAiVersion,
+  fetchOpenCodeConsoleByUrl,
+  isOpenCodeConsoleUrl,
+  isOpenCodeProviderID,
   maxOpenCodeVersion,
+  openCodeClientName,
+  openCodeConsoleHeaders,
+  openCodeConsoleHttp,
+  openCodeConsoleRequest,
+  openCodeConsoleRequestFingerprint,
   openCodeUserAgent,
+  pinOpenCodeConsoleUserAgent,
   parseOpenCodeVersion,
   readOpenCodeCompatCache,
   resetAdvertisedOpenCodeVersionForTests,
@@ -17,6 +28,7 @@ import {
   parseOpenCodeConsoleRequirement,
   adoptOpenCodeConsoleRequirement,
   writeOpenCodeCompatCache,
+  type FetchLike,
 } from "../src/installation/opencode-compat"
 import { OpenCodeCompatVersion } from "../src/installation/version"
 
@@ -30,6 +42,7 @@ afterEach(() => {
     cacheDir = ""
   }
   delete process.env.SPINOSA_METADATA_DIR
+  delete process.env[OPENCODE_CONSOLE_TRACE_ENV]
 })
 
 function isolateCache(): void {
@@ -128,5 +141,188 @@ describe("OpenCode Console compatibility version", () => {
       now: 1_000 + 7 * 60 * 60 * 1000,
     })
     expect(synced.version).toBe("1.19.0")
+  })
+
+  test("Console identity headers use the advertised OpenCode User-Agent", () => {
+    isolateCache()
+    expect(isOpenCodeProviderID("opencode")).toBe(true)
+    expect(isOpenCodeProviderID("opencode-go")).toBe(true)
+    expect(isOpenCodeProviderID("openai")).toBe(false)
+    expect(
+      openCodeConsoleHeaders({
+        sessionID: "ses_1",
+        requestID: "msg_1",
+        client: "cli",
+        projectID: "prj_1",
+      }),
+    ).toEqual({
+      "x-opencode-project": "prj_1",
+      "x-opencode-session": "ses_1",
+      "x-opencode-request": "msg_1",
+      "x-opencode-client": "cli",
+      "User-Agent": openCodeUserAgent(),
+    })
+  })
+
+  test("fetch-hop User-Agent pin beats Bun and product defaults", () => {
+    isolateCache()
+    const expected = openCodeUserAgent()
+    const fromInit = applyOpenCodeConsoleUserAgent("https://console.opencode.ai/v1/chat/completions", {
+      headers: {
+        "User-Agent": "spinosa/1.2.0-beta.6",
+        "x-opencode-session": "ses_1",
+      },
+    })
+    expect(fromInit.get("user-agent")).toBe(expected)
+    expect(fromInit.get("x-opencode-session")).toBe("ses_1")
+
+    const fromRequest = applyOpenCodeConsoleUserAgent(
+      new Request("https://console.opencode.ai/v1/chat/completions", {
+        headers: { "User-Agent": "Bun/1.2.21", "x-opencode-client": "cli" },
+      }),
+    )
+    expect(fromRequest.get("user-agent")).toBe(expected)
+    expect(fromRequest.get("x-opencode-client")).toBe("cli")
+  })
+
+  test("keeps OpenCode's AI SDK User-Agent suffix on the Request", () => {
+    isolateCache()
+    const official = openCodeUserAgent()
+    const compound = `${official} ai-sdk/openai-compatible/1.0.0 runtime/bun/1.3.14`
+    expect(pinOpenCodeConsoleUserAgent(compound)).toBe(compound)
+    expect(pinOpenCodeConsoleUserAgent("ai-sdk/openai-compatible/1.0.0")).toBe(
+      `${official} ai-sdk/openai-compatible/1.0.0`,
+    )
+
+    const request = openCodeConsoleRequest(
+      new Request("https://console.opencode.ai/v1/chat/completions", {
+        headers: { "User-Agent": compound, "x-opencode-session": "ses_1" },
+      }),
+    )
+    expect(request.headers.get("user-agent")).toBe(compound)
+    expect(request.headers.get("x-opencode-session")).toBe("ses_1")
+  })
+
+  test("openCodeConsoleRequest bakes User-Agent onto the Request object", () => {
+    isolateCache()
+    const expected = openCodeUserAgent()
+    const request = openCodeConsoleRequest(
+      new Request("https://console.opencode.ai/v1/chat/completions", {
+        headers: { "User-Agent": "Bun/1.2.21" },
+      }),
+      { headers: { "x-opencode-session": "ses_1" } },
+    )
+    expect(request.headers.get("user-agent")).toBe(expected)
+    expect(request.headers.get("x-opencode-session")).toBe("ses_1")
+  })
+
+  test("Console HTTP overlay pins identity headers and User-Agent last", () => {
+    isolateCache()
+    expect(openCodeClientName()).toBeTruthy()
+    expect(isOpenCodeConsoleUrl("https://console.opencode.ai/v1/chat/completions")).toBe(true)
+    expect(isOpenCodeConsoleUrl("https://api.github.com")).toBe(false)
+    expect(
+      openCodeConsoleHttp("opencode", {
+        sessionID: "ses_1",
+        requestID: "msg_compact",
+        client: "cli",
+        projectID: "prj_1",
+      }, { headers: { "User-Agent": "spinosa/1.2.0", "x-custom": "1" } }),
+    ).toEqual({
+      headers: {
+        "x-custom": "1",
+        "x-opencode-project": "prj_1",
+        "x-opencode-session": "ses_1",
+        "x-opencode-request": "msg_compact",
+        "x-opencode-client": "cli",
+        "User-Agent": openCodeUserAgent(),
+      },
+    })
+    expect(openCodeConsoleHttp("openai", { sessionID: "ses_1", requestID: "msg_1" })).toBeUndefined()
+  })
+
+  test("fetch wrapper only rewrites Console hosts", async () => {
+    isolateCache()
+    const expected = openCodeUserAgent()
+    const seen: Array<{ url: string; ua: string | null }> = []
+    const base: FetchLike = async (input, init) => {
+      const request = input instanceof Request ? input : new Request(String(input), init)
+      seen.push({ url: request.url, ua: request.headers.get("user-agent") })
+      return new Response("ok")
+    }
+    await fetchOpenCodeConsoleByUrl("https://console.opencode.ai/v1/chat/completions", {
+      headers: { "User-Agent": "Bun/1.2.21" },
+    }, base)
+    await fetchOpenCodeConsoleByUrl("https://example.com/v1/chat/completions", {
+      headers: { "User-Agent": "Bun/1.2.21" },
+    }, base)
+    expect(seen[0]?.ua).toBe(expected)
+    expect(seen[1]?.ua).toBe("Bun/1.2.21")
+  })
+
+  test("wire fingerprint reports identity and body shape without credentials or prompt text", async () => {
+    isolateCache()
+    const request = openCodeConsoleRequest("https://console.opencode.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer secret",
+        "x-opencode-session": "ses_1",
+        "x-opencode-request": "msg_1",
+        "x-opencode-client": "cli",
+      },
+      body: JSON.stringify({
+        model: "big-pickle",
+        stream: true,
+        messages: [
+          { role: "system", content: "private system" },
+          { role: "user", content: "private prompt" },
+        ],
+        tools: [],
+      }),
+    })
+
+    const fingerprint = await openCodeConsoleRequestFingerprint(request)
+    expect(fingerprint).toMatchObject({
+      url: "https://console.opencode.ai/v1/chat/completions",
+      method: "POST",
+      headers: {
+        "user-agent": openCodeUserAgent(),
+        "x-opencode-session": "ses_1",
+        "x-opencode-request": "msg_1",
+        "x-opencode-client": "cli",
+      },
+      body: {
+        model: "big-pickle",
+        stream: true,
+        messageCount: 2,
+        messageRoles: ["system", "user"],
+        toolCount: 0,
+      },
+    })
+    expect(fingerprint.contentLength).toBeGreaterThan(0)
+    expect(JSON.stringify(fingerprint)).not.toContain("secret")
+    expect(JSON.stringify(fingerprint)).not.toContain("private")
+  })
+
+  test("opt-in wire trace records response metadata", async () => {
+    isolateCache()
+    const tracePath = path.join(cacheDir, "console-http.jsonl")
+    process.env[OPENCODE_CONSOLE_TRACE_ENV] = tracePath
+
+    await fetchOpenCodeConsoleByUrl(
+      "https://console.opencode.ai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer secret", "x-opencode-session": "ses_1" },
+        body: JSON.stringify({ model: "big-pickle", messages: [{ role: "user", content: "private" }] }),
+      },
+      async () => new Response("ok", { status: 202 }),
+    )
+
+    const traced = JSON.parse(readFileSync(tracePath, "utf-8")) as Record<string, unknown>
+    expect(traced.status).toBe(202)
+    expect(traced.contentLength).toBeGreaterThan(0)
+    expect(JSON.stringify(traced)).not.toContain("secret")
+    expect(JSON.stringify(traced)).not.toContain("private")
   })
 })

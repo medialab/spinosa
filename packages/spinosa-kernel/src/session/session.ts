@@ -477,6 +477,7 @@ export interface Interface {
     partID: PartID
   }) => Effect.Effect<SessionV1.Part | undefined>
   readonly updatePart: <T extends SessionV1.Part>(part: T) => Effect.Effect<T>
+  readonly updateParts: (parts: SessionV1.Part[]) => Effect.Effect<SessionV1.Part[]>
   readonly updatePartDelta: (input: {
     sessionID: SessionID
     messageID: MessageID
@@ -663,15 +664,68 @@ const layer: Layer.Layer<
         return msg
       }).pipe(Effect.withSpan("Session.updateMessage"))
 
+    const clonePartForPublish = (part: SessionV1.Part): SessionV1.Part => {
+      if (part.type === "text" || part.type === "reasoning") return { ...part }
+      if (part.type === "tool" && part.state.status === "running") {
+        return { ...part, state: { ...part.state } }
+      }
+      return structuredClone(part)
+    }
+    const RUNNING_PERSIST_MS = 250
+    const lastRunningPersist = new Map<string, { at: number; key: string }>()
+    const runningPersistKey = (part: SessionV1.ToolPart) => {
+      if (part.state.status !== "running") return part.state.status
+      const sessionId = part.state.metadata && typeof part.state.metadata.sessionId === "string" ? part.state.metadata.sessionId : ""
+      return `running:${part.state.title ?? ""}:${sessionId}`
+    }
+    const persistPartUpdate = (part: SessionV1.Part) => {
+      if (part.type !== "tool") return true
+      if (part.state.status !== "running") {
+        lastRunningPersist.delete(part.id)
+        return true
+      }
+      const key = runningPersistKey(part)
+      const now = Date.now()
+      const prev = lastRunningPersist.get(part.id)
+      if (prev && prev.key === key && now - prev.at < RUNNING_PERSIST_MS) return false
+      lastRunningPersist.set(part.id, { at: now, key })
+      return true
+    }
+    const publishPart = (part: SessionV1.Part, time: number, persist: boolean) =>
+      events.publish(
+        SessionV1.Event.PartUpdated,
+        {
+          sessionID: part.sessionID,
+          part: clonePartForPublish(part),
+          time,
+        },
+        persist ? undefined : { persist: false },
+      )
     const updatePart = <T extends SessionV1.Part>(part: T): Effect.Effect<T> =>
       Effect.gen(function* () {
-        yield* events.publish(SessionV1.Event.PartUpdated, {
-          sessionID: part.sessionID,
-          part: part.type === "text" || part.type === "reasoning" ? { ...part } : structuredClone(part),
-          time: Date.now(),
-        })
+        yield* publishPart(part, Date.now(), persistPartUpdate(part))
         return part
       }).pipe(Effect.withSpan("Session.updatePart"))
+    const updateParts = (parts: SessionV1.Part[]): Effect.Effect<SessionV1.Part[]> =>
+      Effect.gen(function* () {
+        if (parts.length === 0) return parts
+        const time = Date.now()
+        yield* events.publishAll(
+          parts.map((part) => {
+            const persist = persistPartUpdate(part)
+            return {
+              definition: SessionV1.Event.PartUpdated,
+              data: {
+                sessionID: part.sessionID,
+                part: clonePartForPublish(part),
+                time,
+              },
+              ...(persist ? {} : { options: { persist: false as const } }),
+            }
+          }),
+        )
+        return parts
+      }).pipe(Effect.withSpan("Session.updateParts"))
 
     const getPart: Interface["getPart"] = Effect.fn("Session.getPart")(function* (input) {
       const row = yield* db
@@ -961,6 +1015,7 @@ const layer: Layer.Layer<
       removeMessage,
       removePart,
       updatePart,
+      updateParts,
       getPart,
       updatePartDelta,
       findMessage,

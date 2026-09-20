@@ -28,6 +28,11 @@ export function coldFrontmatterLines(extraFields: string[] = []): string[] {
   ]
 }
 
+export function withColdFrontmatterPrefix(body: string, extraFields: string[] = []): string {
+  if (body.startsWith("---\n") || body.startsWith("---\r\n")) return body
+  return `${coldFrontmatterLines(extraFields).join("\n")}${body}`
+}
+
 export function injectColdFrontmatter(mdFile: string): void {
   if (!existsSync(mdFile)) return
 

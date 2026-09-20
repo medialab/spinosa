@@ -10,6 +10,35 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.11] — 2026-09-20
+
+### Changed
+
+- Launch uses the cached upgrade version. It does not wait on the network.
+- Launch uses the cached OpenCode User-Agent. It does not wait on npm.
+- The TUI is ready before plugins finish loading.
+- Template extract for the TUI starts after the CLI parser.
+- Workspace listing does not rewrite the registry on every Home load.
+- Import reuses a destination index. Verify reuses the scanned file list.
+- The agent loop keeps the compacted session in memory after the first load.
+- Import writes scaffold frontmatter on the first write. It does not rewrite the file.
+- The import manifest rewrites unique records when it has many duplicate lines.
+- Running tool progress writes SQLite at most every 250 ms. Live events still fire.
+- Prompt submit writes all user parts in one batch.
+- The transcript shows the viewport plus a buffer when you scroll.
+- Dialogs load when you open them.
+- Import refuses a PDF larger than 64 MB.
+- The TUI shows a wave spinner while it waits for work to finish.
+- After Pick a path, the General prompt tag becomes Chat or the plan name.
+
+### Fixed
+
+- Console compact uses the OpenCode system prompt. Other providers keep the Spinosa prompt.
+- Console compact sends the OpenCode User-Agent on the HTTP Request.
+- Console keeps the AI SDK User-Agent suffix that OpenCode sends.
+- Compact reuses the chat HTTP overlay. It does not rebuild Console headers.
+- A failed compact does not block later chat turns.
+
 ## [1.2.0-beta.10] — 2026-09-18
 
 ### Fixed

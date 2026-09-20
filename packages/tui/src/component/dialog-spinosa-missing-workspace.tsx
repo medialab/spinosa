@@ -3,7 +3,7 @@ import { createEffect, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
-import { Spinner } from "./spinner"
+import { WaveSpinner } from "./wave-spinner"
 import { buttonBackground, buttonBorder, buttonText } from "../util/button"
 import { HoverChip, HoverLabel } from "../ui/hover-press"
 import { truncatePathTail } from "../spinosa/truncate-path"
@@ -454,7 +454,7 @@ export function DialogSpinosaMissingWorkspace(props: {
       </Show>
 
       <Show when={store.busy || store.phase === "scanning"}>
-        <Spinner color={theme.primary}>{store.message || "Scanning…"}</Spinner>
+        <WaveSpinner color={theme.primary}>{store.message || "Scanning…"}</WaveSpinner>
       </Show>
       <Show when={!store.busy && store.phase === "actions" && store.message}>
         <text fg={store.removeArmed ? theme.warning : theme.textMuted} wrapMode="word">{store.message}</text>

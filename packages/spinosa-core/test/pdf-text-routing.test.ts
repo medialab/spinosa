@@ -9,6 +9,7 @@ import { isTextBasedPdf } from "../src/extension/pdf"
 import {
   PDF_TEXT_EXTRACTION_FAILED_MARKER,
   pdfDocLoadTimeoutMs,
+  pdfExceedsLoadCap,
   pdfDocumentExtractAllText,
   pdfDocumentTextPagesMeetThreshold,
 } from "../src/extension/pdf-js"
@@ -36,6 +37,8 @@ describe("census timeouts scale with file size", () => {
     expect(pdfDocLoadTimeoutMs(0)).toBe(2000)
     expect(pdfDocLoadTimeoutMs(100 * 1048576)).toBe(27000)
     expect(pdfDocLoadTimeoutMs(10 * 1024 * 1048576)).toBe(30000)
+    expect(pdfExceedsLoadCap(64 * 1024 * 1024)).toBe(false)
+    expect(pdfExceedsLoadCap(64 * 1024 * 1024 + 1)).toBe(true)
   })
 
   test("census budget grows then caps", () => {

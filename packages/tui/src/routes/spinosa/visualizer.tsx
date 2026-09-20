@@ -9,6 +9,7 @@ import { useRoute } from "../../context/route"
 import { useSDK } from "../../context/sdk"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { useTheme } from "../../context/theme"
+import { WaveSpinner } from "../../component/wave-spinner"
 import { SPINOSA_BASE_MODE, useBindings } from "../../keymap"
 import { listRegisteredWorkspaces, readWorkspaceMeta } from "../../spinosa/service"
 import { setupStatusThemeKey } from "../../spinosa/status-labels"
@@ -429,9 +430,16 @@ export function Visualizer() {
                 when={!stateMessage()}
                 fallback={
                   <box width="100%" height="100%" alignItems="center" justifyContent="center" paddingX={2}>
-                    <text fg={callLoad().status === "error" || fileLoad().status === "error" ? theme.error : theme.textMuted}>
-                      {stateMessage()}
-                    </text>
+                    <Show
+                      when={fileLoad().status === "loading" || callLoad().status === "loading"}
+                      fallback={
+                        <text fg={callLoad().status === "error" || fileLoad().status === "error" ? theme.error : theme.textMuted}>
+                          {stateMessage()}
+                        </text>
+                      }
+                    >
+                      <WaveSpinner color={theme.primary}>{stateMessage()}</WaveSpinner>
+                    </Show>
                   </box>
                 }
               >

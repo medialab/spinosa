@@ -41,6 +41,7 @@ import { Snapshot } from "../../snapshot"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 import { SessionLoopControl } from "../loop-control"
+import { openCodeConsoleHttp } from "../../installation/opencode-compat"
 
 const DOOM_LOOP_THRESHOLD = 3
 const DOOM_LOOP_ACTION = "doom_loop"
@@ -254,9 +255,20 @@ const layer = Layer.effect(
         messages: [...toLLMMessages(context, model), ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])],
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: isLastStep ? "none" : undefined,
+        http: openCodeConsoleHttp(model.provider, {
+          sessionID: session.id,
+          requestID: context.at(-1)?.id ?? session.id,
+          projectID: session.projectID,
+        }),
       })
       // prepareNextTurn: auto-compaction / overflow decision before the provider call.
-      const wouldCompact = yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request })
+      const wouldCompact = yield* compaction.compactIfNeeded({
+        sessionID: session.id,
+        entries,
+        model,
+        request,
+        projectID: session.projectID,
+      })
       const prepare = hooks.prepareNextTurn({ snapshot: turnSnapshot, wouldCompact })
       if (prepare.action === "stop") {
         return {
@@ -441,7 +453,13 @@ const layer = Layer.effect(
             recoverOverflow &&
             !publisher.hasAssistantStarted() &&
             isContextOverflowFailure(overflowFailure ?? failure) &&
-            (yield* restore(recoverOverflow({ sessionID: session.id, entries, model, request })))
+            (yield* restore(recoverOverflow({
+              sessionID: session.id,
+              entries,
+              model,
+              request,
+              projectID: session.projectID,
+            })))
           ) {
             savePoints.set(
               session.id,
@@ -613,6 +631,11 @@ const layer = Layer.effect(
           model,
         ),
         tools: [],
+        http: openCodeConsoleHttp(model.provider, {
+          sessionID: session.id,
+          requestID: session.id,
+          projectID: session.projectID,
+        }),
       })
       return yield* compaction.compactAfterOverflow({
         sessionID: session.id,
@@ -620,6 +643,7 @@ const layer = Layer.effect(
         model,
         request,
         reason: "manual",
+        projectID: session.projectID,
       })
     })
 

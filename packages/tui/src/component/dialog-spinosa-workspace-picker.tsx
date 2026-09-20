@@ -25,6 +25,7 @@ import { DialogSpinosaMissingWorkspace } from "./dialog-spinosa-missing-workspac
 import { DialogSpinosaManageStale } from "./dialog-spinosa-manage-stale"
 import { buttonBackground, buttonBorder, buttonText, hoverLabelFg } from "../util/button"
 import { HoverChip, HoverLabel } from "../ui/hover-press"
+import { WaveSpinner } from "./wave-spinner"
 import type { SpinosaSetupStatus } from "../spinosa/types"
 import type { SpinosaWorkspacePresence } from "@spinosa/core/types"
 import { isUsableWorkspaceStatus } from "@spinosa/core/workspace/presence"
@@ -332,7 +333,7 @@ export function DialogSpinosaWorkspacePicker(props: { onClose?: () => void } = {
 
       {/* ── loading ── */}
       <Show when={workspaces.loading}>
-        <text fg={theme.textMuted}>Loading saved workspaces…</text>
+        <WaveSpinner color={theme.primary}>Loading saved workspaces…</WaveSpinner>
       </Show>
 
       {/* ── error ── */}

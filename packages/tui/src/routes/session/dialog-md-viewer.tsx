@@ -10,8 +10,10 @@ import { useDialog } from "../../ui/dialog"
 import { MARKDOWN_VIEWER_HEIGHT_RATIO } from "../../ui/dialog"
 import { useBindings } from "../../keymap"
 import { useToast } from "../../ui/toast"
+import { useWait } from "../../context/wait"
 import { HoverChip, HoverLabel } from "../../ui/hover-press"
 import { loadMarkdownFile, type MarkdownLoadResult } from "./load-markdown-file"
+import { WaveSpinner } from "../../component/wave-spinner"
 import {
   clampMdViewerScale,
   MD_VIEWER_SCALE_DEFAULT,
@@ -32,6 +34,7 @@ export function exportDownloadPath(filePath: string, workspaceRoot: string | und
 export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string }) {
   const dialog = useDialog()
   const toast = useToast()
+  const wait = useWait()
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const kv = useKV()
@@ -108,7 +111,7 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
     setPdfState("busy")
     try {
       const { exportMarkdownToPdf } = await import("@spinosa/core/export/markdown-pdf")
-      const pdf = await exportMarkdownToPdf(md)
+      const pdf = await wait.withWait("Exporting PDF…", () => exportMarkdownToPdf(md))
       await writeFile(pdfPath(), pdf)
       setPdfState("done")
       setTimeout(() => setPdfState("idle"), 3000)
@@ -171,7 +174,7 @@ export function DialogMdViewer(props: { filePath: string; workspaceRoot?: string
       <box height={1} border={["top"]} borderColor={theme.border} flexShrink={0} />
       <scrollbox flexGrow={2} minHeight={0} paddingTop={1} paddingBottom={1}>
         <Show when={loaded.loading}>
-          <text fg={theme.textMuted}>Loading...</text>
+          <WaveSpinner color={theme.primary}>Loading…</WaveSpinner>
         </Show>
         <Show when={!loaded.loading && loadError()}>
           {(msg) => (

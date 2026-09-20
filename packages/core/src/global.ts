@@ -144,12 +144,22 @@ const globalPath = {
 
 Flock.setGlobal({ state: globalPath.state })
 
-for (const dir of [globalPath.data, globalPath.config, globalPath.state, globalPath.tmp, globalPath.log, globalPath.bin, globalPath.repos]) {
-  mkdirSync(dir, { recursive: true })
+let globalDirsReady = false
+function ensureGlobalDirs() {
+  if (globalDirsReady) return
+  globalDirsReady = true
+  for (const dir of [globalPath.data, globalPath.config, globalPath.state, globalPath.tmp, globalPath.log, globalPath.bin, globalPath.repos]) {
+    mkdirSync(dir, { recursive: true })
+  }
 }
 
 /** Legacy-path migration runs after mkdir. Boot awaits this before CLI parse. */
-export const GlobalReady = migrateLegacyPaths({ legacy: legacyPaths, spinosa: spinosaPaths }).catch(() => [] as MigrationResult[])
+export const GlobalReady = Promise.resolve()
+  .then(() => {
+    ensureGlobalDirs()
+    return migrateLegacyPaths({ legacy: legacyPaths, spinosa: spinosaPaths })
+  })
+  .catch(() => [] as MigrationResult[])
 
 export namespace Global {
   export const Path = globalPath
@@ -169,6 +179,7 @@ export namespace Global {
   export class Service extends Context.Service<Service, Interface>()("@spinosa/Global") {}
 
   export function make(input: Partial<Interface> = {}): Interface {
+    ensureGlobalDirs()
     return {
       home: Path.home,
       data: Path.data,

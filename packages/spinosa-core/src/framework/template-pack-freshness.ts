@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import path from "node:path"
 import { compareFrameworkVersions, isLegacyDevWorkspaceVersion, normalizeFrameworkVersion } from "../utils/version"
 import { readFrameworkVersionFromRoot, resolveTemplateRootFromFrameworkRoot } from "./discovery"
@@ -71,10 +71,23 @@ function sha256Text(content: string): string {
   return createHash("sha256").update(content).digest("hex")
 }
 
-function readOptionalText(filePath: string): string | undefined {
+const protocolHashCache = new Map<string, { mtimeMs: number; size: number; hash: string }>()
+
+function protocolHashForFile(
+  filePath: string,
+  relativePath: string,
+  options?: { workspacePath?: string; role?: "template" | "workspace" },
+): string | undefined {
   if (!existsSync(filePath)) return
   try {
-    return readFileSync(filePath, "utf-8")
+    const stat = statSync(filePath)
+    const key = `${options?.role ?? "file"}:${filePath}`
+    const hit = protocolHashCache.get(key)
+    if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit.hash
+    const text = readFileSync(filePath, "utf-8")
+    const hash = sha256Text(protocolBodyForCompare(relativePath, text, options))
+    protocolHashCache.set(key, { mtimeMs: stat.mtimeMs, size: stat.size, hash })
+    return hash
   } catch {
     return
   }
@@ -143,25 +156,19 @@ export function inspectTemplatePackFreshness(input: {
     for (const relative of probes) {
       const templateFile = path.join(templateRoot, relative)
       const workspaceFile = path.join(input.workspacePath, relative)
-      const templateText = readOptionalText(templateFile)
-      if (templateText === undefined) continue
-      const workspaceText = readOptionalText(workspaceFile)
-      if (workspaceText === undefined) {
+      const templateHash = protocolHashForFile(templateFile, relative, {
+        workspacePath: input.workspacePath,
+        role: "template",
+      })
+      if (templateHash === undefined) continue
+      const workspaceHash = protocolHashForFile(workspaceFile, relative, {
+        workspacePath: input.workspacePath,
+        role: "workspace",
+      })
+      if (workspaceHash === undefined) {
         missingPaths.push(relative)
         continue
       }
-      const templateHash = sha256Text(
-        protocolBodyForCompare(relative, templateText, {
-          workspacePath: input.workspacePath,
-          role: "template",
-        }),
-      )
-      const workspaceHash = sha256Text(
-        protocolBodyForCompare(relative, workspaceText, {
-          workspacePath: input.workspacePath,
-          role: "workspace",
-        }),
-      )
       if (templateHash !== workspaceHash) stalePaths.push(relative)
     }
   }

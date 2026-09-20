@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, statSync, writeFileSync, rmSync } from "node:fs"
+import { mkdtempSync, mkdirSync, statSync, writeFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { allocateDestinations, allocateDestinationsStable, existingOutputBelongsToSource, persistDestMap, loadDestMap, shouldSkipDestWalkDir } from "../src/import/destinations"
@@ -93,6 +93,26 @@ describe("destination allocation", () => {
       )
       expect(second[0]!.dest).toBe(desired)
       expect(second[0]!.disambiguated).toBe(false)
+    } finally {
+      rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
+  test("persists a destination taken index for later runs", () => {
+    const ws = makeWs()
+    try {
+      const src = path.join(ws, "a.txt")
+      writeFileSync(src, "a")
+      allocateDestinations(
+        [{ rel: "a.txt", srcFile: src, desiredDest: path.join(ws, "raw", "a.md") }],
+        ws,
+      )
+      expect(existsSync(path.join(ws, ".logs", "dest-taken.json"))).toBe(true)
+      const second = allocateDestinations(
+        [{ rel: "b.txt", srcFile: src, desiredDest: path.join(ws, "raw", "a.md") }],
+        ws,
+      )
+      expect(second[0]!.disambiguated).toBe(true)
     } finally {
       rmSync(ws, { recursive: true, force: true })
     }

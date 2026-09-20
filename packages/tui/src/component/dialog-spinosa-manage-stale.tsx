@@ -6,6 +6,7 @@ import { useDialog } from "../ui/dialog"
 import { useBindings } from "../keymap"
 import { buttonBackground, buttonText } from "../util/button"
 import { HoverChip, HoverLabel } from "../ui/hover-press"
+import { WaveSpinner } from "./wave-spinner"
 import { useTerminalDimensions } from "@opentui/solid"
 import { truncatePathTail } from "../spinosa/truncate-path"
 import { listRegisteredWorkspaces, unregisterWorkspace } from "../spinosa/service"
@@ -354,7 +355,7 @@ export function DialogSpinosaManageStale(props: {
           </text>
 
           <Show when={rows.loading}>
-            <text fg={theme.textMuted}>Loading stale workspaces…</text>
+            <WaveSpinner color={theme.primary}>Loading stale workspaces…</WaveSpinner>
           </Show>
 
           <Show when={!rows.loading && stale().length === 0}>

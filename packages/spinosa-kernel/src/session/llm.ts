@@ -273,8 +273,17 @@ const live: Layer.Layer<
         "llm.provider": input.model.providerID,
         "llm.model": input.model.id,
       })
-      let lastPrompt: unknown
+      let lastPromptKey: string | undefined
       let lastTransformed: typeof prepared.messages | undefined
+      let lastNormalizedPrefix: typeof prepared.messages | undefined
+      let lastPrefixLen = 0
+      const promptKey = (prompt: unknown[]) => {
+        const last = prompt.at(-1) as { role?: string; content?: unknown } | undefined
+        const prev = prompt.at(-2) as { role?: string; content?: unknown } | undefined
+        const lastLen = typeof last?.content === "string" ? last.content.length : Array.isArray(last?.content) ? last.content.length : 0
+        const prevLen = typeof prev?.content === "string" ? prev.content.length : Array.isArray(prev?.content) ? prev.content.length : 0
+        return `${prompt.length}:${last?.role ?? ""}:${lastLen}:${prev?.role ?? ""}:${prevLen}`
+      }
       // Default runtime path: AI SDK owns provider execution and tool dispatch;
       // LLMAISDK.toLLMEvents below normalizes fullStream parts for the processor.
       return {
@@ -331,14 +340,58 @@ const live: Layer.Layer<
                 specificationVersion: "v3" as const,
                 async transformParams(args) {
                   if (args.type === "stream") {
-                    const prompt = args.params.prompt
-                    if (lastPrompt !== prompt || lastTransformed === undefined) {
-                      lastPrompt = prompt
-                      lastTransformed = ProviderTransform.message(
-                        prompt as typeof prepared.messages,
-                        input.model,
-                        prepared.messageTransformOptions,
-                      )
+                    const prompt = args.params.prompt as unknown[]
+                    const key = promptKey(prompt)
+                    if (key !== lastPromptKey || lastTransformed === undefined) {
+                      const typed = prompt as typeof prepared.messages
+                      const last = typed.at(-1)
+                      if (
+                        lastNormalizedPrefix &&
+                        last &&
+                        typed.length === lastPrefixLen + 1 &&
+                        lastPrefixLen > 0
+                      ) {
+                        const tail = [last]
+                        lastTransformed = ProviderTransform.messageFromPrefix(
+                          lastNormalizedPrefix,
+                          tail,
+                          input.model,
+                          prepared.messageTransformOptions,
+                        ) as typeof prepared.messages
+                        lastNormalizedPrefix = [
+                          ...lastNormalizedPrefix,
+                          ...ProviderTransform.normalizeMessageList(
+                            tail,
+                            input.model,
+                            prepared.messageTransformOptions,
+                          ),
+                        ] as typeof prepared.messages
+                        lastPrefixLen = typed.length
+                      } else {
+                        const prefix = typed.slice(0, -1)
+                        const tail = typed.slice(-1)
+                        lastNormalizedPrefix = ProviderTransform.normalizeMessageList(
+                          prefix,
+                          input.model,
+                          prepared.messageTransformOptions,
+                        ) as typeof prepared.messages
+                        lastTransformed = ProviderTransform.messageFromPrefix(
+                          lastNormalizedPrefix,
+                          tail,
+                          input.model,
+                          prepared.messageTransformOptions,
+                        ) as typeof prepared.messages
+                        lastNormalizedPrefix = [
+                          ...lastNormalizedPrefix,
+                          ...ProviderTransform.normalizeMessageList(
+                            tail,
+                            input.model,
+                            prepared.messageTransformOptions,
+                          ),
+                        ] as typeof prepared.messages
+                        lastPrefixLen = typed.length
+                      }
+                      lastPromptKey = key
                     }
                     args.params.prompt = lastTransformed as typeof args.params.prompt
                   }

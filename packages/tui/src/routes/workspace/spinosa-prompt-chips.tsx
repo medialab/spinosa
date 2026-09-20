@@ -1,6 +1,7 @@
 import { createMemo, createResource, createSignal, For } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useToast } from "../../ui/toast"
+import { useWait } from "../../context/wait"
 import { useRoute } from "../../context/route"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { useExit } from "../../context/exit"
@@ -34,6 +35,7 @@ type ActionRowItem = {
 export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Promise<void> }) {
   const { theme } = useTheme()
   const toast = useToast()
+  const wait = useWait()
   const { navigate } = useRoute()
   const spinosa = useSpinosaWorkspace()
   const exit = useExit()
@@ -83,17 +85,19 @@ export function SpinosaPromptChips(props: { onWorkspaceDeleted?: () => void | Pr
     })
     let result: Awaited<ReturnType<typeof updateWorkspace>>
     try {
-      result = await updateWorkspace({
-        workspacePath,
-        frameworkRoot: resolveFrameworkRoot() ?? "",
-        force: true,
+      result = await wait.withWait("Updating workspace…", () =>
+        updateWorkspace({
+          workspacePath,
+          frameworkRoot: resolveFrameworkRoot() ?? "",
+          force: true,
         onPhase: (_phase, detail) => {
           const line = detail.trim()
           if (!line) return
           // Keep the full phase detail on the chip (was truncated to 22 chars).
           setUpdateLabel(line.replace(/^[#>\s]+/, ""))
         },
-      })
+      }),
+      )
     } catch (error) {
       setBusyAction(undefined)
       setUpdateLabel("Updating workspace…")

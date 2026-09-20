@@ -9,7 +9,11 @@ import { Config } from "@/config/config"
 import { snapshotRange, unquoteGitPath } from "./summary-helpers"
 
 export interface Interface {
-  readonly summarize: (input: { sessionID: SessionID; messageID: MessageID }) => Effect.Effect<void>
+  readonly summarize: (input: {
+    sessionID: SessionID
+    messageID: MessageID
+    messages?: SessionV1.WithParts[]
+  }) => Effect.Effect<void>
   readonly diff: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Snapshot.FileDiff[]>
   readonly computeDiff: (input: { messages: SessionV1.WithParts[] }) => Effect.Effect<Snapshot.FileDiff[]>
 }
@@ -33,6 +37,7 @@ const layer = Layer.effect(
     const summarize = Effect.fn("SessionSummary.summarize")(function* (input: {
       sessionID: SessionID
       messageID: MessageID
+      messages?: SessionV1.WithParts[]
     }) {
       yield* sessions.setSummary({
         sessionID: input.sessionID,
@@ -44,14 +49,16 @@ const layer = Layer.effect(
       })
       yield* events.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: [] })
       if ((yield* config.get()).snapshot === false) return
-      const recent = yield* sessions.messages({ sessionID: input.sessionID, limit: 64 }).pipe(Effect.orDie)
+      const recent = input.messages
+        ?? (yield* sessions.messages({ sessionID: input.sessionID, limit: 64 }).pipe(Effect.orDie))
       const fromRecent = recent.filter(
         (m) => m.info.id === input.messageID || (m.info.role === "assistant" && m.info.parentID === input.messageID),
       )
       const all =
         fromRecent.some((m) => m.info.id === input.messageID)
           ? fromRecent
-          : yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+          : input.messages
+            ?? (yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie))
       if (!all.length) return
 
       const messages = all.filter(

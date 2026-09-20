@@ -3,6 +3,7 @@ export * as AISDK from "./aisdk"
 import { makeLocationNode } from "./effect/app-node"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
 import { Cause, Context, Effect, Layer, Schema, Scope } from "effect"
+import { fetchOpenCodeConsole, isOpenCodeProviderID, type FetchLike } from "./installation/opencode-compat"
 import { ModelV2 } from "./model"
 import { ProviderV2 } from "./provider"
 import { State } from "./state"
@@ -35,6 +36,7 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
   const customFetch = typeof options.fetch === "function" ? options.fetch : undefined
   const chunkTimeout = typeof options.chunkTimeout === "number" ? options.chunkTimeout : undefined
   const timeout = typeof options.timeout === "number" ? options.timeout : undefined
+  const pinConsoleUserAgent = isOpenCodeProviderID(model.providerID)
   delete options.chunkTimeout
   options.fetch = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const opts = { ...(init ?? {}) }
@@ -64,10 +66,9 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
       }
     }
 
-    const res = await (typeof customFetch === "function" ? customFetch : fetch)(input, {
-      ...opts,
-      timeout: false,
-    } as RequestInit)
+    const send: FetchLike = typeof customFetch === "function" ? (customFetch as FetchLike) : fetch
+    const requestInit = { ...opts, timeout: false } as RequestInit
+    const res = await (pinConsoleUserAgent ? fetchOpenCodeConsole(input, requestInit, send) : send(input, requestInit))
     if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
     return wrapSSE(res, chunkTimeout, chunkAbortCtl)
   }

@@ -33,7 +33,7 @@ export function inspectWorkspacePresence(input: {
   }
 
   if (!existsSync(workspacePath) && workspaceID) {
-    const matches = findWorkspaceMatchesByID(workspaceID, [path.dirname(workspacePath), ...searchRoots])
+    const matches = findWorkspaceMatchesByID(workspaceID, searchRoots)
     if (matches.length === 1) {
       return {
         indexedPath: workspacePath,

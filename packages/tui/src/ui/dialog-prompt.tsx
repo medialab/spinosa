@@ -2,7 +2,7 @@ import { TextareaRenderable, TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { Show, createEffect, createSignal, onMount, type JSX } from "solid-js"
-import { Spinner } from "../component/spinner"
+import { WaveSpinner } from "../component/wave-spinner"
 import { useTuiConfig } from "../config"
 import { useBindings, useCommandShortcut } from "../keymap"
 import { HoverLabel } from "./hover-press"
@@ -97,7 +97,7 @@ export function DialogPrompt(props: DialogPromptProps) {
           cursorColor={props.busy ? theme.backgroundElement : theme.text}
         />
         <Show when={props.busy}>
-          <Spinner color={theme.textMuted}>{props.busyText ?? "Working..."}</Spinner>
+          <WaveSpinner color={theme.textMuted}>{props.busyText ?? "Working..."}</WaveSpinner>
         </Show>
       </box>
       <box paddingBottom={1} gap={1} flexDirection="row">

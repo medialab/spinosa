@@ -159,15 +159,24 @@ export function loadManifest(logsDir: string): { records: Map<string, ManifestRe
   } catch {
     return { records, corruptLines }
   }
+  let lineCount = 0
   for (const line of text.split("\n")) {
     const trimmed = line.trim()
     if (!trimmed) continue
+    lineCount++
     const record = parseRecordLine(trimmed)
     if (!record) {
       corruptLines++
       continue
     }
     records.set(record.rel, record)
+  }
+  if (lineCount > records.size * 3 && records.size > 0) {
+    try {
+      const lines: string[] = []
+      for (const record of records.values()) lines.push(JSON.stringify(record))
+      writeFileSync(file, lines.length > 0 ? `${lines.join("\n")}\n` : "")
+    } catch {}
   }
   return { records, corruptLines }
 }

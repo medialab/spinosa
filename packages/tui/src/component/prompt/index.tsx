@@ -873,7 +873,6 @@ export function Prompt(props: PromptProps) {
     )
   }
 
-  const EXTMARK_SYNC_MS = 16
   let extmarkSyncTimer: ReturnType<typeof setTimeout> | undefined
   const flushExtmarkSync = () => {
     if (extmarkSyncTimer !== undefined) {
@@ -883,11 +882,7 @@ export function Prompt(props: PromptProps) {
     if (input && !input.isDestroyed) syncExtmarksWithPromptParts()
   }
   const scheduleExtmarkSync = () => {
-    if (extmarkSyncTimer !== undefined) return
-    extmarkSyncTimer = setTimeout(() => {
-      extmarkSyncTimer = undefined
-      if (input && !input.isDestroyed) syncExtmarksWithPromptParts()
-    }, EXTMARK_SYNC_MS)
+    flushExtmarkSync()
   }
   onCleanup(() => {
     if (extmarkSyncTimer !== undefined) clearTimeout(extmarkSyncTimer)

@@ -1,6 +1,13 @@
 import type { Auth } from "@/auth"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
+import {
+  asFetch,
+  fetchOpenCodeConsole,
+  isOpenCodeProviderID,
+  openCodeUserAgent,
+  type FetchLike,
+} from "@spinosa/kernel-core/installation/opencode-compat"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 import { asSchema, type ModelMessage, type Tool } from "ai"
@@ -98,7 +105,11 @@ export function stream(input: StreamInput): StreamResult {
     topK: input.topK,
     maxOutputTokens: input.maxOutputTokens,
     providerOptions: ProviderTransform.providerOptions(input.model, input.providerOptions ?? {}),
-    headers: { ...providerHeaders(input.provider.options.headers), ...input.headers },
+    headers: {
+      ...providerHeaders(input.provider.options.headers),
+      ...input.headers,
+      ...(isOpenCodeProviderID(input.model.providerID) ? { "User-Agent": openCodeUserAgent() } : {}),
+    },
   })
   const stream = Stream.scoped(
     Stream.unwrap(
@@ -145,11 +156,14 @@ export function stream(input: StreamInput): StreamResult {
   }
 }
 
-function providerFetch(input: Pick<StreamInput, "provider" | "auth">): typeof globalThis.fetch | undefined {
-  if (input.provider.id !== "openai" || input.auth?.type !== "oauth") return undefined
-  const value: unknown = input.provider.options.fetch
-  if (typeof value !== "function") return undefined
-  return value as typeof globalThis.fetch
+function providerFetch(input: Pick<StreamInput, "provider" | "auth" | "model">): typeof globalThis.fetch | undefined {
+  const oauthFetch: FetchLike | undefined =
+    input.provider.id === "openai" && input.auth?.type === "oauth" && typeof input.provider.options.fetch === "function"
+      ? (input.provider.options.fetch as FetchLike)
+      : undefined
+  if (!isOpenCodeProviderID(input.model.providerID)) return oauthFetch ? asFetch(oauthFetch) : undefined
+  const base = oauthFetch ?? fetch
+  return asFetch((request, init) => fetchOpenCodeConsole(request, init, base))
 }
 
 function providerHeaders(value: unknown): Record<string, string> | undefined {

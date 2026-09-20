@@ -1,5 +1,6 @@
 import { Npm } from "@spinosa/kernel-core/npm"
 import { Hash } from "@spinosa/kernel-core/util/hash"
+import { fetchOpenCodeConsole, isOpenCodeProviderID } from "@spinosa/kernel-core/installation/opencode-compat"
 import { pathToFileURL } from "url"
 import { Effect } from "effect"
 import { iife } from "@/util/iife"
@@ -216,7 +217,7 @@ export async function resolveProviderSDK(
 
     options["fetch"] = async (input: RequestInfo | URL, init?: BunFetchRequestInit) => {
       const fetchFn = customFetch ?? fetch
-      const opts = init ?? {}
+      const opts = { ...(init ?? {}) }
       const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
       const headerTimeoutMs = headerTimeout === false ? undefined : headerTimeout
       const headerTimeoutCtl = typeof headerTimeoutMs === "number" ? timeoutController(headerTimeoutMs) : undefined
@@ -230,8 +231,12 @@ export async function resolveProviderSDK(
 
       const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
       if (combined) opts.signal = combined
+      const send = isOpenCodeProviderID(model.providerID)
+        ? (next: RequestInfo | URL, nextInit?: BunFetchRequestInit) =>
+            fetchOpenCodeConsole(next, nextInit, fetchFn)
+        : fetchFn
 
-      const res = await fetchFn(input, {
+      const res = await send(input, {
         ...opts,
         // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
         timeout: false,

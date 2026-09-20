@@ -49,6 +49,7 @@ import { SessionRunState } from "./run-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@spinosa/kernel-core/database/database"
+import { NotFoundError } from "@/storage/storage"
 import { ModelV2 } from "@spinosa/kernel-core/model"
 import { ProviderV2 } from "@spinosa/kernel-core/provider"
 import { eq } from "drizzle-orm"
@@ -1044,7 +1045,7 @@ const layer = Layer.effect(
       }
 
       yield* sessions.updateMessage(info)
-      for (const part of parts) yield* sessions.updatePart(part)
+      yield* sessions.updateParts(parts)
 
       return { info, parts }
     }, Effect.scoped)
@@ -1107,13 +1108,26 @@ const layer = Layer.effect(
             }
           | undefined
 
+        let compactedMsgs: SessionV1.WithParts[] | undefined
+
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
 
-          let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
-            Effect.provideService(Database.Service, database),
-          )
+          if (!compactedMsgs) {
+            compactedMsgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+              Effect.provideService(Database.Service, database),
+            )
+          } else {
+            const latest = yield* MessageV2.page({ sessionID, limit: 50 }).pipe(
+              Effect.catchIf(NotFoundError.isInstance, () =>
+                Effect.succeed({ items: [] as SessionV1.WithParts[], more: false, cursor: undefined }),
+              ),
+              Effect.provideService(Database.Service, database),
+            )
+            compactedMsgs = MessageV2.mergeLatestMessages(compactedMsgs, latest.items)
+          }
+          let msgs = compactedMsgs
 
           const { user: lastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
 
@@ -1176,6 +1190,7 @@ const layer = Layer.effect(
               auto: task.auto,
               overflow: task.overflow,
             })
+            compactedMsgs = undefined
             if (result === "stop") break
             continue
           }
@@ -1186,6 +1201,7 @@ const layer = Layer.effect(
             (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
           ) {
             yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+            compactedMsgs = undefined
             continue
           }
 
@@ -1293,7 +1309,7 @@ const layer = Layer.effect(
             }
 
             if (step === 1)
-              yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
+              yield* summary.summarize({ sessionID, messageID: lastUser.id, messages: msgs }).pipe(Effect.ignore, Effect.forkIn(scope))
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 

@@ -567,7 +567,18 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   const now = Math.floor(Date.now() / 1000)
 
   const cache = readVersionCache(channel)
-  if (cache?.version && now - cache.timestamp < versionCacheTtlSec(channel)) {
+  const refresh = () =>
+    resolveReleaseVersionForChannel(channel, {
+      timeoutMs: LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
+    })
+      .then((latest) => {
+        if (latest) writeVersionCache(channel, latest)
+      })
+      .catch(() => {})
+
+  if (cache?.version) {
+    const stale = now - cache.timestamp >= versionCacheTtlSec(channel)
+    if (stale) void refresh()
     const latestCmp = compareFrameworkVersions(cache.version, installedVersion)
     const available = latestCmp !== undefined && latestCmp > 0
     return {
@@ -577,26 +588,6 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
     }
   }
 
-  let latest: string | undefined
-  try {
-    latest = await resolveReleaseVersionForChannel(channel, {
-      timeoutMs: LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
-    })
-  } catch {
-    return { available: false }
-  }
-  if (!latest) {
-    return { available: false }
-  }
-
-  const latestCmp = compareFrameworkVersions(latest, installedVersion)
-  const available = latestCmp !== undefined && latestCmp > 0
-
-  writeVersionCache(channel, latest)
-
-  return {
-    available,
-    currentVersion: installedVersion,
-    latestVersion: available ? latest : undefined,
-  }
+  void refresh()
+  return { available: false, currentVersion: installedVersion }
 }

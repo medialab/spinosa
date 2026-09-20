@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
 import {
@@ -54,11 +54,22 @@ import type { FrameworkReleaseStream } from "@spinosa/core/types"
 
 // --- Inline functions not yet in spinosa-core ---
 
+const rawMarkdownCountCache = new Map<string, { mtimeMs: number; count: number }>()
+
 export async function countRawMarkdownFiles(rootDir: string) {
   if (!existsSync(rootDir)) return 0
+  let mtimeMs = 0
+  try {
+    mtimeMs = statSync(rootDir).mtimeMs
+  } catch {
+    return 0
+  }
+  const hit = rawMarkdownCountCache.get(rootDir)
+  if (hit && hit.mtimeMs === mtimeMs) return hit.count
   let count = 0
   const glob = new Bun.Glob("**/*.md")
   for await (const _ of glob.scan({ cwd: rootDir, onlyFiles: true })) count++
+  rawMarkdownCountCache.set(rootDir, { mtimeMs, count })
   return count
 }
 

@@ -1,4 +1,3 @@
-import path from "node:path"
 import { cleanupStaleInstallDirectories, type SpinosaCleanupResult } from "./maintenance"
 import {
   loadRegistry,
@@ -7,7 +6,10 @@ import {
 } from "../workspace/registry"
 import { inspectWorkspacePresence, type WorkspacePresence } from "../workspace/presence"
 import { spinosaLogError, spinosaLogInfo, spinosaLogWarn } from "../utils/log"
-import { syncOpenCodeCompatVersion } from "@spinosa/kernel-core/installation/opencode-compat"
+import {
+  advertisedOpenCodeVersion,
+  syncOpenCodeCompatVersion,
+} from "@spinosa/kernel-core/installation/opencode-compat"
 
 export type SpinosaBootOperationStatus = "pending" | "running" | "complete" | "warning" | "error"
 
@@ -130,7 +132,7 @@ export async function runSpinosaBootHealth(input: {
       const presence = inspectWorkspacePresence({
         workspacePath: entry.path,
         workspaceID: entry.workspaceID,
-        searchRoots: [path.dirname(entry.path), ...(input.searchRoots ?? [])],
+        searchRoots: input.searchRoots ?? [],
       })
       workspaces.push({ ...presence, name: entry.name })
 
@@ -176,12 +178,19 @@ export async function runLaunchBootHealth(input: LaunchBootHealthInput = {}): Pr
   const err = input.err ?? ((message) => process.stderr.write(`${message}\n`))
   const runHealth = input.runHealth ?? runSpinosaBootHealth
   try {
-    const compat = await (input.syncOpenCodeCompat ?? syncOpenCodeCompatVersion)()
-    spinosaLogInfo("boot", `console user-agent opencode/${compat.version} source=${compat.source}`)
+    spinosaLogInfo("boot", `console user-agent opencode/${advertisedOpenCodeVersion()}`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     spinosaLogWarn("boot", `opencode compat probe failed: ${message}`)
   }
+  void (input.syncOpenCodeCompat ?? syncOpenCodeCompatVersion)()
+    .then((compat) => {
+      spinosaLogInfo("boot", `console user-agent refreshed opencode/${compat.version} source=${compat.source}`)
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      spinosaLogWarn("boot", `opencode compat probe failed: ${message}`)
+    })
   try {
     const health = await runHealth({
       searchRoots: input.searchRoots,

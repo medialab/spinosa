@@ -456,11 +456,17 @@ async function coverMaps(input: SpinosaMapInput): Promise<SpinosaMapResult> {
     const text = await readWorkspaceFile(input.workspacePath, mapPath)
     if (text) mapTexts.push(text)
   }
-  const joined = mapTexts.join("\n")
+  const linked = new Set<string>()
+  for (const text of mapTexts) {
+    for (const match of text.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)) {
+      const target = match[1]?.trim()
+      if (target) linked.add(target)
+    }
+  }
   const missing = needed.filter((file) => {
     const target = file.replace(/\.md$/i, "")
     const base = path.basename(target)
-    return !joined.includes(`[[${target}]]`) && !joined.includes(`[[${file}]]`) && !joined.includes(base)
+    return !linked.has(target) && !linked.has(file) && !linked.has(base)
   })
   if (missing.length > 0) {
     return ok("Coverage gaps", [

@@ -30,6 +30,19 @@ describe("LLM request User-Agent", () => {
   test("request prep binds Console User-Agent to advertised OpenCode version", async () => {
     const source = await Bun.file(new URL("../../src/session/llm/request.ts", import.meta.url)).text()
     expect(source).toContain("openCodeUserAgent()")
+    expect(source).toContain("openCodeConsoleHeaders")
     expect(source).not.toContain("opencode/${InstallationVersion}")
+  })
+
+  test("provider fetch wrapper pins Console User-Agent on the wire", async () => {
+    const source = await Bun.file(new URL("../../src/provider/loader.ts", import.meta.url)).text()
+    expect(source).toContain("fetchOpenCodeConsole")
+    expect(source).toContain("isOpenCodeProviderID")
+  })
+
+  test("native runtime uses the Console fetch wrapper", async () => {
+    const source = await Bun.file(new URL("../../src/session/llm/native-runtime.ts", import.meta.url)).text()
+    expect(source).toContain("fetchOpenCodeConsole")
+    expect(source).toContain("isOpenCodeProviderID")
   })
 })

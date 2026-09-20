@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { useTheme } from "../context/theme"
 import type { SpinosaBootOperation } from "@spinosa/core/system/boot"
-import { Spinner } from "./spinner"
+import { WaveSpinner } from "./wave-spinner"
 
 const MINIMUM_BOOT_DISPLAY_MS = 3_000
 
@@ -125,7 +125,7 @@ export function StartupLoading(props: {
     <Show when={show()}>
       <box position="absolute" zIndex={5000} left={0} right={0} top={0} bottom={0} justifyContent="center" alignItems="center">
         <box backgroundColor={theme.backgroundPanel} paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} flexDirection="column">
-          <Spinner color={theme.textMuted}>{text()}</Spinner>
+          <WaveSpinner color={theme.textMuted}>{text()}</WaveSpinner>
           <For each={props.operations?.().filter((operation) => operation.status !== "pending") ?? []}>
             {(operation) => (
               <text fg={operation.status === "error" ? theme.error : operation.status === "warning" ? theme.warning : theme.textMuted}>

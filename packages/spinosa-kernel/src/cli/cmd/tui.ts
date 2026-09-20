@@ -358,18 +358,22 @@ export const TuiThreadCommand = cmd({
         }
       }
 
-      // Console reads the worker's User-Agent. Set the floor (and npm latest
-      // when reachable) before spawn so the child inherits it.
-      try {
-        const compat = await syncOpenCodeCompatVersion()
-        bootLog("tui.boot.opencode", "console user-agent ready", {
-          version: compat.version,
-          source: compat.source,
-          advertised: advertisedOpenCodeVersion(),
+      // Disk cache is enough for the worker User-Agent. Refresh npm latest
+      // in the background so launch never waits on the network.
+      bootLog("tui.boot.opencode", "console user-agent ready", {
+        advertised: advertisedOpenCodeVersion(),
+      })
+      void syncOpenCodeCompatVersion()
+        .then((compat) => {
+          bootLog("tui.boot.opencode.refresh", "console user-agent refreshed", {
+            version: compat.version,
+            source: compat.source,
+            advertised: advertisedOpenCodeVersion(),
+          })
         })
-      } catch (error) {
-        bootLogError("tui.boot.opencode", error)
-      }
+        .catch((error) => {
+          bootLogError("tui.boot.opencode", error)
+        })
 
       // Spawn the worker during the update check. An accepted upgrade still
       // stops the worker so the previous install does not keep running.

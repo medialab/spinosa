@@ -14,6 +14,7 @@ import * as path from "node:path"
 import { hashSourceFile } from "./manifest"
 
 export const DEST_MAP_FILENAME = "dest-map.json"
+export const DEST_TAKEN_FILENAME = "dest-taken.json"
 
 export type DestAllocation = {
   rel: string
@@ -42,7 +43,30 @@ export function shouldSkipDestWalkDir(name: string): boolean {
   return DEST_WALK_SKIP.has(name)
 }
 
+function destTakenPath(workspaceDir: string): string {
+  return path.join(workspaceDir, ".logs", DEST_TAKEN_FILENAME)
+}
+
+function loadTakenIndex(workspaceDir: string): Set<string> | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(destTakenPath(workspaceDir), "utf-8")) as { taken?: unknown }
+    if (!Array.isArray(raw.taken)) return
+    return new Set(raw.taken.filter((value): value is string => typeof value === "string"))
+  } catch {
+    return
+  }
+}
+
+function persistTakenIndex(workspaceDir: string, taken: Set<string>): void {
+  try {
+    mkdirSync(path.dirname(destTakenPath(workspaceDir)), { recursive: true })
+    writeFileSync(destTakenPath(workspaceDir), `${JSON.stringify({ version: 1, taken: [...taken] })}\n`, "utf-8")
+  } catch {}
+}
+
 function collectWorkspaceFiles(workspaceDir: string, maxFiles = 20000): Set<string> {
+  const cached = loadTakenIndex(workspaceDir)
+  if (cached && cached.size > 0) return cached
   const taken = new Set<string>()
   const stack = [workspaceDir]
   let count = 0
@@ -174,6 +198,7 @@ export function allocateDestinationsStable(
       disambiguated,
     })
   }
+  persistTakenIndex(workspaceDir, new Set([...taken, ...claimed]))
   return out
 }
 

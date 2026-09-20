@@ -49,10 +49,18 @@ if (!isFastPath && isCompiledBinaryDistribution()) {
       error: error instanceof Error ? error.message : String(error),
     })
   }
-  const boot = bootstrapBinaryRuntime()
-  if (boot && !boot.ok) {
-    bootLog("kernel.template", "template bootstrap failed", { error: boot.error })
+  const cmd = args.find((arg) => !arg.startsWith("-"))
+  const needsTemplatesNow = Boolean(
+    cmd && ["new", "create", "add", "update", "import", "status"].includes(cmd),
+  )
+  const runTemplateBoot = () => {
+    const boot = bootstrapBinaryRuntime()
+    if (boot && !boot.ok) {
+      bootLog("kernel.template", "template bootstrap failed", { error: boot.error })
+    }
   }
+  if (needsTemplatesNow) runTemplateBoot()
+  else setImmediate(runTemplateBoot)
 }
 
 function show(out: string) {
