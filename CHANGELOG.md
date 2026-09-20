@@ -10,6 +10,50 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2-beta.1] — 2026-09-20
+
+### Security
+
+- The `/provider` and `/config/providers` responses no longer contain your provider API key.
+- Plugins no longer receive your API key in provider information.
+- All versions up to 1.2.1 sent the key to local HTTP clients and to plugins.
+- The server binds to loopback only, unless you set `SPINOSA_SERVER_PASSWORD`. This limited the exposure to your own machine.
+- Rotate your provider API keys if you used a non-loopback bind.
+- Rotate your provider API keys if you ran plugins or MCP servers that you do not trust.
+
+### Fixed
+
+- `spinosa_verify` reports `structure_ok` for structure checks. It no longer reports `pass`.
+- Only a verification artifact can produce a `pass` status.
+- `write_report` accepts the `draft` status only. The verifier promotes the status after it checks the sources.
+- A failed upgrade at launch no longer blocks launch. Spinosa prints the error and opens your workspace.
+- Spinosa restores your beta track after the installer runs. A failed install no longer moves you to stable.
+- `spinosa upgrade` and launch agree about the newest version. The command no longer refuses a false downgrade.
+- The release channel row in Settings reports a failed write.
+- The TUI reports a failed stop. It no longer implies that the agent stopped.
+
+### Changed
+
+- Spinosa keeps one model for the session. Sub-agents use the model of the orchestrator.
+- The model picker no longer stores a different model for each agent.
+- Spinosa remembers your model after you close the TUI. It no longer forgets your choice.
+- The `--model` option applies to one launch. It does not change your saved model.
+- Cheap work keeps the small model. Session titles do not use your main model.
+- The auto-approve permission command states that it applies to the current session.
+- One manifest lists every release-critical test. The `quality`, `test:core`, and `test:tui` commands read it.
+- The `quality` gate fails when the release workflow differs from the copy on the default branch.
+- The release documentation no longer lists OCR tools tarballs as published assets.
+
+## [1.2.1] — 2026-09-20
+
+### Changed
+
+- Stable release of the 1.2.0-beta.5 through 1.2.0-beta.12 line.
+- Numbered reports can include framed Unicode charts from `spinosa_figure`.
+- Launch uses a cached upgrade version. It does not wait on the network.
+- Console compact uses the OpenCode system prompt.
+- Stable tags use the same CI dry-run, promote, and publish path as beta.
+
 ## [1.2.0-beta.12] — 2026-09-20
 
 ### Added
@@ -169,6 +213,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 - Onboarding reuses the scan file list for classify and verify.
 - Import diagnostic NDJSON writes in batches.
 - Session import inserts messages and parts in chunks.
+
+## [1.2.0] — 2026-09-17
+
+### Changed
+
+- Stable release of the 1.2.0 beta line. It ships general-prompt TUI flow, Spinosa-only config paths, and 1.2.0-beta.1 logging and install layout changes.
 
 ## [1.2.0-beta.4] — 2026-09-17
 

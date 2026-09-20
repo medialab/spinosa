@@ -23,6 +23,18 @@ secrets.yml
 secrets.json
 .auth/
 .tokens/
+# Provider + MCP credential stores. These normally live in the data dir
+# (Global.Path.data), never in the repo — ignored so a debugging copy dragged
+# into the tree cannot be committed to a public repository.
+auth.json
+mcp-auth.json
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+# Spinosa home metadata copied in for debugging. Tests must build this in a
+# temp dir (SPINOSA_METADATA_DIR), not as a tracked fixture.
+metadata/config.yaml
 
 # OS junk
 .DS_Store

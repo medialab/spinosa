@@ -94,7 +94,11 @@ bun run lint:syncpack         # catalog version alignment
 bun run lint:shell            # shellcheck (requires: brew install shellcheck)
 bun run test:core             # version, preflight, upgrade, channels, fs
 bun run test:tui              # Spinosa TUI flow tests
+bun run test:kernel           # provider redaction, report tool schema
 bun run test:installer        # bats installer tests
+
+# Gate membership for all three lives in scripts/release/test-manifest.ts —
+# `bun run quality` reads the same lists, so they cannot drift apart.
 
 # Narrower TUI test run
 bun run --cwd packages/tui test:spinosa

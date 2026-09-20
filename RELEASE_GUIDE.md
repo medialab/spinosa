@@ -125,10 +125,13 @@ Three levels, in order — each catches a different failure class:
 
 | Release | Tag | Assets |
 | ------- | --- | ------ |
-| Immutable version | `vX.Y.Z` | `install.sh`, `spinosa-darwin-arm64`, `spinosa-darwin-x64`, `spinosa-linux-arm64`, `spinosa-linux-x64`, `spinosa-tools-darwin-arm64.tar.gz`, `spinosa-tools-darwin-x64.tar.gz`, `spinosa-tools-linux-arm64.tar.gz`, `spinosa-tools-linux-x64.tar.gz`, `checksums.txt`, `build-manifest.json` |
+| Immutable version | `vX.Y.Z` | `install.sh`, `spinosa-darwin-arm64`, `spinosa-darwin-x64`, `spinosa-linux-arm64`, `spinosa-linux-x64`, `checksums.txt`, `build-manifest.json` |
 | Rolling channel | `stable` or `beta` | `install.sh`, `checksums.txt` only |
 
-No `spinosa-v*.tar.gz` product archive.
+No `spinosa-v*.tar.gz` product archive, and no `spinosa-tools-*.tar.gz` OCR
+tarballs (see "OCR tools tarballs (removed)" below). The authoritative list is
+`expectedImmutableReleaseAssets` in
+`packages/spinosa-core/src/distribution/contract.ts`.
 
 ---
 
