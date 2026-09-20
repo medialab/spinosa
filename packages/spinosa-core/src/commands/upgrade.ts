@@ -16,7 +16,7 @@ import { discoverInstalledFramework, installedReleaseVersion, resolveFrameworkRo
 import { compareFrameworkVersions, isDowngrade } from "../utils/version"
 import { ensureGlobalMetadata } from "../workspace/registry"
 import { writeTextAtomic } from "../utils/fs"
-import { spinosaLogInfo } from "../utils/log"
+import { spinosaLogInfo, spinosaLogWarn } from "../utils/log"
 import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 const FETCH_TIMEOUT_MS = 15_000
@@ -46,6 +46,25 @@ export interface AutoUpgradeResult {
   available: boolean
   currentVersion?: string
   latestVersion?: string
+}
+
+export interface LaunchUpgradeTargetInput {
+  channel: ReleaseChannel
+  installed: string
+  betaLatest?: string
+  stableLatest?: string
+}
+
+/** Pick the launch-offered version without flipping the user's channel setting. */
+export function pickLaunchUpgradeTarget(input: LaunchUpgradeTargetInput): string | undefined {
+  const greater = (candidate: string | undefined): string | undefined => {
+    if (!candidate) return undefined
+    const cmp = compareFrameworkVersions(candidate, input.installed)
+    return cmp !== undefined && cmp > 0 ? candidate : undefined
+  }
+
+  if (input.channel === "stable") return greater(input.stableLatest)
+  return greater(input.betaLatest) ?? greater(input.stableLatest)
 }
 
 interface VersionCache {
@@ -243,8 +262,18 @@ export async function upgradeFramework(
     resolvedVersion = options.version
   } else {
     options.onPhase?.("resolve", `Resolving latest ${channel} version`)
-    const latest = await resolveReleaseVersionForChannel(channel)
-    if (!latest) {
+    const installed = readEffectiveInstalledVersion()
+    // An explicit --channel pins resolution to that channel. Without one, share
+    // one definition of "newer" with the launch probe: otherwise a beta user who
+    // accepted a newer stable is told "Refusing to downgrade" here while launch
+    // reports no updates available.
+    const crossChannel = !explicitChannel && !!installed
+    const [betaLatest, stableLatest] = await Promise.all([
+      channel === "beta" ? resolveReleaseVersionForChannel("beta") : Promise.resolve(undefined),
+      channel === "stable" || crossChannel ? resolveReleaseVersionForChannel("stable") : Promise.resolve(undefined),
+    ])
+    const channelLatest = channel === "beta" ? betaLatest : stableLatest
+    if (!channelLatest && !stableLatest) {
       const hint =
         channel === "stable"
           ? "No stable release has been published yet — use --channel beta"
@@ -253,7 +282,24 @@ export async function upgradeFramework(
       spinosaLogInfo("upgrade", error)
       return { success: false, workspaceUpgradesNeeded: [], error }
     }
-    resolvedVersion = latest
+
+    const target = crossChannel
+      ? pickLaunchUpgradeTarget({ channel, installed, betaLatest, stableLatest })
+      : channelLatest
+    if (target) {
+      resolvedVersion = target
+    } else if (options.reinstall) {
+      resolvedVersion = channelLatest ?? installed
+    } else {
+      // Installed is at or ahead of every candidate on this track.
+      options.onPhase?.("current", `Already at v${installed}`)
+      return {
+        success: true,
+        previousVersion: installed,
+        newVersion: installed,
+        workspaceUpgradesNeeded: [],
+      }
+    }
   }
 
   options.onPhase?.("resolve", `Target version: v${resolvedVersion}`)
@@ -269,10 +315,6 @@ export async function upgradeFramework(
       workspaceUpgradesNeeded: [],
     }
   }
-
-  const direction = effectiveInstalled
-    ? compareFrameworkVersions(effectiveInstalled, resolvedVersion)
-    : 1
 
   if (isDowngrade(effectiveInstalled, resolvedVersion) && !options.reinstall && !options.allowDowngrade) {
     const reason = `Refusing to downgrade from v${effectiveInstalled} to v${resolvedVersion}. Use --reinstall or --allow-downgrade to proceed.`
@@ -411,11 +453,29 @@ export async function upgradeFramework(
   if (options.yes) upgradeArgs.push("--yes")
   if (options.reinstall) upgradeArgs.push("--reinstall")
 
+  // Versioned stable installers rewrite beta: false from PINNED_TAG as soon as
+  // they write install metadata (install.sh), so this repair is keyed on "the
+  // installer ran", not on "the upgrade succeeded". A mid-flight failure must
+  // not silently move a beta user onto the stable track.
+  const restoreBetaTrack = async () => {
+    if (explicitChannel || channel !== "beta") return
+    try {
+      await setReleaseChannel("beta")
+      spinosaLogInfo("upgrade", `kept beta channel after running the v${resolvedVersion} installer`)
+    } catch (error) {
+      spinosaLogWarn(
+        "upgrade",
+        `could not restore beta channel after v${resolvedVersion}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
   const installerResult = await runInstallerWithTimeout(
     installerPath,
     upgradeArgs,
     options,
   )
+  await restoreBetaTrack()
   if (installerResult.status !== 0) {
     rmSync(tmpdir, { recursive: true, force: true })
     const detail =
@@ -541,6 +601,7 @@ async function runInstallerWithTimeout(
     })
   })
 }
+
 export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   spinosaLogInfo("upgrade", "checkUpgradeAvailable start")
   if (process.env.SPINOSA_NO_UPGRADE_CHECK === "1") {
@@ -565,29 +626,35 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
 
   const channel = await spinosaReleaseChannel()
   const now = Math.floor(Date.now() / 1000)
+  refreshIfStaleOrMissing(channel, now)
+  if (channel === "beta") refreshIfStaleOrMissing("stable", now)
 
-  const cache = readVersionCache(channel)
-  const refresh = () =>
-    resolveReleaseVersionForChannel(channel, {
-      timeoutMs: LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
-    })
-      .then((latest) => {
-        if (latest) writeVersionCache(channel, latest)
-      })
-      .catch(() => {})
-
-  if (cache?.version) {
-    const stale = now - cache.timestamp >= versionCacheTtlSec(channel)
-    if (stale) void refresh()
-    const latestCmp = compareFrameworkVersions(cache.version, installedVersion)
-    const available = latestCmp !== undefined && latestCmp > 0
-    return {
-      available,
-      currentVersion: installedVersion,
-      latestVersion: available ? cache.version : undefined,
-    }
+  const target = pickLaunchUpgradeTarget({
+    channel,
+    installed: installedVersion,
+    betaLatest: channel === "beta" ? readVersionCache("beta")?.version : undefined,
+    stableLatest: readVersionCache("stable")?.version,
+  })
+  return {
+    available: Boolean(target),
+    currentVersion: installedVersion,
+    latestVersion: target,
   }
+}
 
-  void refresh()
-  return { available: false, currentVersion: installedVersion }
+function refreshChannelCache(channel: ReleaseChannel): void {
+  void resolveReleaseVersionForChannel(channel, {
+    timeoutMs: LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
+  })
+    .then((latest) => {
+      if (latest) writeVersionCache(channel, latest)
+    })
+    .catch(() => {})
+}
+
+function refreshIfStaleOrMissing(channel: ReleaseChannel, now: number): void {
+  const cache = readVersionCache(channel)
+  if (!cache?.version || now - cache.timestamp >= versionCacheTtlSec(channel)) {
+    refreshChannelCache(channel)
+  }
 }
