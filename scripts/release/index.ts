@@ -223,8 +223,8 @@ async function commandPublish(version: string, options: CliOptions): Promise<voi
 /**
  * CI assemble: finish a tag-triggered release from matrix artifacts.
  *
- * The workflow downloads one product binary + one tools tarball per target
- * into dist/v{version}/ and stages build-manifest.json via
+ * The workflow downloads one product binary per target into dist/v{version}/
+ * and stages build-manifest.json via
   * build-release-binaries --manifest-only. This command verifies the tag
   * equals HEAD, finalizes dist/ (installers, manifest, checksums), then runs
   * structural verify-local only (no runtime smoke — the verify matrix smokes

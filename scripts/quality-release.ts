@@ -12,6 +12,8 @@
 import { $ } from "bun"
 import path from "node:path"
 import { fmtElapsed, timestamp } from "./release/log.ts"
+// Gate membership lives in one place — see scripts/release/test-manifest.ts.
+import { CORE_RELEASE_TESTS, KERNEL_RELEASE_TESTS, TUI_RELEASE_TESTS } from "./release/test-manifest.ts"
 
 const root = path.resolve(import.meta.dir, "..")
 
@@ -22,41 +24,6 @@ const PRODUCT_TYPECHECKS = [
   "packages/spinosa-runtime",
   "packages/tui",
   "packages/sdk",
-] as const
-
-const CORE_RELEASE_TESTS = [
-  "test/bun-launch.test.ts",
-  "test/checksums.test.ts",
-  "test/version.test.ts",
-  "test/preflight.test.ts",
-  "test/channels.test.ts",
-  "test/upgrade-errors.test.ts",
-  "test/upgrade-network.test.ts",
-  "test/uninstall.test.ts",
-  "test/version-cache.test.ts",
-  "test/distribution.test.ts",
-  "test/models.test.ts",
-  "../../scripts/release/github.test.ts",
-  "../../scripts/release/bump.test.ts",
-  "../../scripts/release/lib.test.ts",
-  "../../scripts/release/index.test.ts",
-  "../../scripts/release/promote.test.ts",
-  "../../scripts/set-version.test.ts",
-  "../../packages/core/test/sanitize-log.test.ts",
-  "../../packages/core/test/user-dirs.test.ts",
-  "../../packages/core/test/boot-log.test.ts",
-] as const
-
-const TUI_RELEASE_TESTS = [
-  "test/util/session.test.ts",
-  "test/spinosa/update-workspace.test.ts",
-  "test/spinosa/create-workspace.test.ts",
-  "test/spinosa/install-release.test.ts",
-  "test/spinosa/boot.test.ts",
-  "test/spinosa/preflight.test.ts",
-  "test/spinosa/entry.test.ts",
-  "test/spinosa/logging.test.ts",
-  "test/cli/cmd/tui/provider-options.test.ts",
 ] as const
 
 type JobResult = { label: string; ok: boolean; ms: number; detail?: string }
@@ -120,6 +87,12 @@ const wave1 = await wave("wave 1: typecheck + light checks", [
     const result = await $`bash scripts/lint-actions.sh`.cwd(root).nothrow()
     if (result.exitCode !== 0) throw new Error("actionlint failed")
   }),
+  // Tag releases run the DEFAULT BRANCH copy of the release workflow, so a
+  // divergent copy on this branch is reviewed but never shipped.
+  runJob("release workflow sync", async () => {
+    const result = await $`bun scripts/release/workflow-sync.ts`.cwd(root).nothrow()
+    if (result.exitCode !== 0) throw new Error("release workflow differs from the default branch")
+  }),
   runJob("core release unit tests", () =>
     bunTest(path.join(root, "packages/spinosa-core"), CORE_RELEASE_TESTS, 30_000),
   ),
@@ -153,6 +126,10 @@ const wave2 = await wave("wave 2: launch / workspace regressions", [
       ],
       30_000,
     ),
+  ),
+  // Provider key redaction + write_report status authority.
+  runJob("kernel release-critical", () =>
+    bunTest(path.join(root, "packages/spinosa-kernel"), KERNEL_RELEASE_TESTS, 60_000),
   ),
   runJob("tui release-critical", async () => {
     const result = await $`bun test --isolate --timeout 60000 ${TUI_RELEASE_TESTS}`
