@@ -129,6 +129,7 @@ describe("spinosa tool display", () => {
     expect(spinosaToolLabel("spinosa_gate")).toBe("Check coverage")
     expect(spinosaToolLabel("spinosa_verify")).toBe("Check the file")
     expect(spinosaToolLabel("spinosa_map")).toBe("Map sources")
+    expect(spinosaToolLabel("spinosa_figure")).toBe("Draw a chart")
     expect(spinosaToolLabel("spinosa_future_hook")).toBe("Spinosa future hook")
     expect(spinosaToolLabel("bash")).toBe("bash")
   })

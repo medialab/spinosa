@@ -136,6 +136,31 @@ describe("registry", () => {
       /not a research plan/,
     )
   })
+
+  test("census and comparative keep visualization on the numbered report", () => {
+    for (const strategy of ["corpus_census", "comparative_synthesis"] as const) {
+      const visual = decision({ strategy, outputs: ["report", "visualization"] })
+      const plan = defaultRegistry.resolve(visual).build({ runID: "r", decision: visual })
+      expect(plan.nodes.some((n) => n.id === "visualize")).toBe(false)
+      const write = plan.nodes.find((n) => n.kind === "agent" && n.id === "write")
+      expect(write?.kind).toBe("agent")
+      if (write?.kind !== "agent") throw new Error("expected write agent")
+      expect(write.dependsOn).not.toContain("visualize")
+      expect(write.expectedArtifacts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "report", validator: "report", pathTemplate: "agent_reports/NN_r.md" }),
+        expect.objectContaining({ kind: "visualization", validator: "visualization", pathTemplate: "agent_reports/NN_r.md" }),
+      ]))
+    }
+  })
+
+  test("census without visualization has no visualization expectation", () => {
+    const plain = decision({ strategy: "corpus_census", outputs: ["report"] })
+    const plan = defaultRegistry.resolve(plain).build({ runID: "r", decision: plain })
+    const write = plan.nodes.find((n) => n.kind === "agent" && n.id === "write")
+    expect(write?.kind).toBe("agent")
+    if (write?.kind !== "agent") throw new Error("expected write agent")
+    expect(write.expectedArtifacts.some((a) => a.validator === "visualization")).toBe(false)
+  })
 })
 
 describe("deterministic router", () => {

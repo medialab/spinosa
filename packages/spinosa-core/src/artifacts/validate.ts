@@ -7,6 +7,7 @@ import path from "node:path"
 import type { ArtifactValidatorID, ValidationResult } from "./contracts"
 import { parseVerificationStatus } from "./contracts"
 import { parseYamlFrontmatter } from "./parser"
+import { looksLikeMarkdownFigure } from "../application/markdown-figure"
 
 function contained(workspacePath: string, relative: string): boolean {
   const resolved = path.resolve(workspacePath, relative)
@@ -64,7 +65,13 @@ export async function validateArtifact(input: {
       return { ok: true }
     }
     case "visualization": {
-      if (!/chart|plot|graph|```/.test(text)) return { ok: false, error: "visualization has no chart", retryable: true }
+      if (!looksLikeMarkdownFigure(text)) {
+        return {
+          ok: false,
+          error: "visualization missing a fenced figure with caption, source, and units",
+          retryable: true,
+        }
+      }
       return { ok: true }
     }
     case "report": {

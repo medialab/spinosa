@@ -67,6 +67,7 @@ export * from "./commands/preflight"
 // --- application (kernel tools; no TUI workflow control plane)
 export * from "./application/agent-tools"
 export * from "./application/spinosa-map"
+export * from "./application/markdown-figure"
 export * from "./artifacts/contracts"
 export * from "./artifacts/validate"
 

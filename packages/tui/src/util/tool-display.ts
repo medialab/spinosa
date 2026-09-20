@@ -89,6 +89,7 @@ const SPINOSA_TOOL_LABELS: Record<string, string> = {
   spinosa_gate: "Check coverage",
   spinosa_verify: "Check the file",
   spinosa_map: "Map sources",
+  spinosa_figure: "Draw a chart",
 }
 
 export function isSpinosaTool(tool: string): boolean {

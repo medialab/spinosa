@@ -222,6 +222,7 @@ const VERIFY_VALIDATORS = [
   "analysis",
   "serendipity",
   "report",
+  "visualization",
   "verification",
   "evaluation",
   "extraction",

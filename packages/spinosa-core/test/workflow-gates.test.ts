@@ -70,6 +70,34 @@ describe("artifact validation", () => {
     // Sufficient search must never satisfy an exhaustive claim.
     expect(evidenceGate({ coverage: "exhaustive", sourceCount: 5, strataCovered: 0, strataTotal: 0, partitionsAccounted: 2, partitionsTotal: 5 }).pass).toBe(false)
   })
+
+  test("visualization requires a fenced figure with caption, source, and units", async () => {
+    const root = await workspace()
+    await Bun.write(
+      path.join(root, "agent_reports", "01_topic.md"),
+      "# Topic\n\nThis chart shows nothing.\n",
+    )
+    const missing = await validateArtifact({
+      workspacePath: root, relativePath: "agent_reports/01_topic.md", validator: "visualization",
+    })
+    expect(missing).toMatchObject({ ok: false, retryable: true })
+
+    const { spinosaFigure } = await import("../src/application/markdown-figure")
+    const figure = spinosaFigure({
+      kind: "bar",
+      title: "Counts",
+      caption: "Group A is larger.",
+      source: "maps/corpus_overview.md",
+      units: "files",
+      items: [{ label: "A", value: 4 }, { label: "B", value: 2 }],
+    })
+    if (!figure.ok) throw new Error(figure.reason)
+    await Bun.write(path.join(root, "agent_reports", "02_topic.md"), `# Topic\n\n${figure.markdown}`)
+    const present = await validateArtifact({
+      workspacePath: root, relativePath: "agent_reports/02_topic.md", validator: "visualization",
+    })
+    expect(present).toEqual({ ok: true })
+  })
 })
 
 describe("goal V2 round-trip", () => {

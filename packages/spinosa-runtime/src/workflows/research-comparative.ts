@@ -1,6 +1,5 @@
 // Built-in workflow: research.comparative_synthesis
-// design → cohort fanout (A/B) → balance gate → analyst → [visualizer] →
-// writer → verifier → evaluator.
+// design → cohort fanout (A/B) → balance gate → analyst → writer → verifier → evaluator.
 import type { OrchestratedDecision } from "../routing"
 import type { WorkflowDefinition, WorkflowPlan } from "../workflow"
 import { AGENT_CONTRACTS } from "../agent-contracts"
@@ -33,20 +32,16 @@ export const researchComparative: WorkflowDefinition = {
           expectedArtifacts: [{ kind: "analysis", pathTemplate: `agent_reports/analysis_${runID}.md`, required: true, validator: "analysis" }],
           retry: { maxAttempts: RETRY.maxAttempts, retryOn: [...RETRY.retryOn] }, timeoutMs: 120_000,
         },
-        ...(wantsVisual
-          ? [{
-              kind: "agent" as const, id: "visualize", agent: "spinosa-writer", dependsOn: ["compare"] as const,
-              visibility: "internal" as const, promptKey: "visualizer.chart",
-              toolPolicy: AGENT_CONTRACTS["spinosa-writer"]!.defaultToolPolicy,
-              expectedArtifacts: [{ kind: "visualization" as const, pathTemplate: `agent_reports/visualization_${runID}.md`, required: true, validator: "visualization" }],
-              retry: { maxAttempts: RETRY.maxAttempts, retryOn: [...RETRY.retryOn] }, timeoutMs: 120_000,
-            }]
-          : []),
         {
-          kind: "agent", id: "write", agent: "spinosa-writer", dependsOn: wantsVisual ? ["visualize"] : ["compare"],
+          kind: "agent", id: "write", agent: "spinosa-writer", dependsOn: ["compare"],
           visibility: "user", promptKey: "writer.report",
           toolPolicy: AGENT_CONTRACTS["spinosa-writer"]!.defaultToolPolicy,
-          expectedArtifacts: [{ kind: "report", pathTemplate: `agent_reports/NN_${runID}.md`, required: true, validator: "report" }],
+          expectedArtifacts: [
+            { kind: "report", pathTemplate: `agent_reports/NN_${runID}.md`, required: true, validator: "report" },
+            ...(wantsVisual
+              ? [{ kind: "visualization" as const, pathTemplate: `agent_reports/NN_${runID}.md`, required: true, validator: "visualization" }]
+              : []),
+          ],
           retry: { maxAttempts: RETRY.maxAttempts, retryOn: [...RETRY.retryOn] }, timeoutMs: 120_000,
         },
         {

@@ -45,7 +45,6 @@ These names are **machine-stable** — do not rename. Put human context in YAML 
 | Evaluator | `e_{session_id}.md` |
 | Overseer | `c_{session_id}.md` |
 | Janitor | `janitor_{session_id}.md` |
-| Visualizer | `chart_{session_id}.md`, `chart_{session_id}_{topic-slug}.md` |
 
 **Parallel search (same session):** `evidence_packet_{session_id}_{short-topic-slug}.md` — slug required when multiple searcher instances run (e.g. `_fisheries-policy`).
 

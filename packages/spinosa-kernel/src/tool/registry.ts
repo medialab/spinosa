@@ -23,6 +23,7 @@ import { SpinosaMintPathsTool } from "./spinosa-mint-paths"
 import { SpinosaGateTool } from "./spinosa-gate"
 import { SpinosaVerifyTool } from "./spinosa-verify"
 import { SpinosaMapTool } from "./spinosa-map"
+import { SpinosaFigureTool } from "./spinosa-figure"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@spinosa/plugin"
@@ -117,6 +118,7 @@ const layer = Layer.effect(
     const spinosagate = yield* SpinosaGateTool
     const spinosaverify = yield* SpinosaVerifyTool
     const spinosamap = yield* SpinosaMapTool
+    const spinosafigure = yield* SpinosaFigureTool
     const reporttool = yield* ReportTool
     const agent = yield* Agent.Service
 
@@ -227,6 +229,7 @@ const layer = Layer.effect(
           spinosagate: Tool.init(spinosagate),
           spinosaverify: Tool.init(spinosaverify),
           spinosamap: Tool.init(spinosamap),
+          spinosafigure: Tool.init(spinosafigure),
           report: Tool.init(reporttool),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
@@ -257,6 +260,7 @@ const layer = Layer.effect(
             tool.spinosagate,
             tool.spinosaverify,
             tool.spinosamap,
+            tool.spinosafigure,
             tool.patch,
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),

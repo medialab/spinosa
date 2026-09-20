@@ -1,0 +1,76 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`spinosaFigure snapshots each kind 1`] = `
+{
+  "markdown": 
+"\`\`\`text
+┌─ Coverage by group ──────────────────────────────┐
+│A          ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓          4│
+│B          ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░          2│
+└──────────────────────────────────────────────────┘
+\`\`\`
+
+North has the largest share of mapped files.
+
+Source: maps/corpus_overview.md. Units: file count.
+"
+,
+  "ok": true,
+}
+`;
+
+exports[`spinosaFigure snapshots each kind 2`] = `
+{
+  "markdown": 
+"\`\`\`text
+┌─ Coverage by group ──────────────────────────────┐
+│trend      ▁▅▃█                              1 → 5│
+└──────────────────────────────────────────────────┘
+\`\`\`
+
+North has the largest share of mapped files.
+
+Source: maps/corpus_overview.md. Units: file count.
+"
+,
+  "ok": true,
+}
+`;
+
+exports[`spinosaFigure snapshots each kind 3`] = `
+{
+  "markdown": 
+"\`\`\`text
+┌─ Coverage by group ──────────────────────────────┐
+│total      ███████████████████████████████▓▓▓▓▓▓▓▓│
+│grants:80% other:20%                              │
+└──────────────────────────────────────────────────┘
+\`\`\`
+
+North has the largest share of mapped files.
+
+Source: maps/corpus_overview.md. Units: file count.
+"
+,
+  "ok": true,
+}
+`;
+
+exports[`spinosaFigure snapshots each kind 4`] = `
+{
+  "markdown": 
+"\`\`\`text
+┌─ Coverage by group ──────────────────────────────┐
+│Maps Valid                                        │
+│North      ✓                  ◉                   │
+└──────────────────────────────────────────────────┘
+\`\`\`
+
+North has the largest share of mapped files.
+
+Source: maps/corpus_overview.md. Units: file count.
+"
+,
+  "ok": true,
+}
+`;

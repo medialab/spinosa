@@ -25,6 +25,7 @@ import { Parameters as SpinosaFrame } from "../../src/tool/spinosa-frame"
 import { Parameters as SpinosaGate } from "../../src/tool/spinosa-gate"
 import { Parameters as SpinosaMintPaths } from "../../src/tool/spinosa-mint-paths"
 import { Parameters as SpinosaMap } from "../../src/tool/spinosa-map"
+import { Parameters as SpinosaFigure } from "../../src/tool/spinosa-figure"
 import { Parameters as SpinosaRoute } from "../../src/tool/spinosa-route"
 import { Parameters as SpinosaVerify } from "../../src/tool/spinosa-verify"
 import { Parameters as Task } from "../../src/tool/task"
@@ -59,6 +60,7 @@ describe("tool parameters", () => {
     test("spinosa_gate", () => expect(toJsonSchema(SpinosaGate)).toMatchSnapshot())
     test("spinosa_mint_paths", () => expect(toJsonSchema(SpinosaMintPaths)).toMatchSnapshot())
     test("spinosa_map", () => expect(toJsonSchema(SpinosaMap)).toMatchSnapshot())
+    test("spinosa_figure", () => expect(toJsonSchema(SpinosaFigure)).toMatchSnapshot())
     test("spinosa_route", () => expect(toJsonSchema(SpinosaRoute)).toMatchSnapshot())
     test("spinosa_verify", () => expect(toJsonSchema(SpinosaVerify)).toMatchSnapshot())
     test("task", () => expect(toJsonSchema(Task)).toMatchSnapshot())
@@ -300,6 +302,26 @@ describe("tool parameters", () => {
     })
     test("rejects unknown action", () => {
       expect(accepts(SpinosaMap, { action: "explode" })).toBe(false)
+    })
+  })
+
+  describe("spinosa_figure", () => {
+    const meta = {
+      title: "Coverage",
+      caption: "North is larger.",
+      source: "maps/corpus_overview.md",
+      units: "files",
+    }
+    test("accepts a bar figure", () => {
+      const parsed = parse(SpinosaFigure, {
+        kind: "bar",
+        ...meta,
+        items: [{ label: "North", value: 4 }],
+      })
+      expect(parsed.kind).toBe("bar")
+    })
+    test("rejects an unknown kind", () => {
+      expect(accepts(SpinosaFigure, { kind: "timeline", ...meta })).toBe(false)
     })
   })
 

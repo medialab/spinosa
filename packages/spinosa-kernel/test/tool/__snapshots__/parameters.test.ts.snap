@@ -901,6 +901,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_verify 1`] = `
         "analysis",
         "serendipity",
         "report",
+        "visualization",
         "verification",
         "evaluation",
         "extraction",
@@ -1088,5 +1089,250 @@ exports[`tool parameters JSON Schema (wire shape) write 1`] = `
     "filePath",
   ],
   "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_figure 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "properties": {
+        "caption": {
+          "description": "Plain-language description after the fenced block",
+          "type": "string",
+        },
+        "items": {
+          "description": "Bars from labels and values. Empty array renders a ? placeholder.",
+          "items": {
+            "properties": {
+              "label": {
+                "description": "Category label",
+                "type": "string",
+              },
+              "value": {
+                "description": "Non-negative finite value",
+                "type": "number",
+              },
+            },
+            "required": [
+              "label",
+              "value",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "kind": {
+          "description": "Horizontal bars for category comparison or progress",
+          "enum": [
+            "bar",
+          ],
+          "type": "string",
+        },
+        "source": {
+          "description": "Source path or description",
+          "type": "string",
+        },
+        "title": {
+          "description": "Figure title inside the top border",
+          "type": "string",
+        },
+        "units": {
+          "description": "Units for the plotted values",
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "title",
+        "caption",
+        "source",
+        "units",
+        "items",
+      ],
+      "type": "object",
+    },
+    {
+      "properties": {
+        "caption": {
+          "description": "Plain-language description after the fenced block",
+          "type": "string",
+        },
+        "kind": {
+          "description": "Compact single-series trend",
+          "enum": [
+            "sparkline",
+          ],
+          "type": "string",
+        },
+        "label": {
+          "description": "Series label",
+          "type": "string",
+        },
+        "source": {
+          "description": "Source path or description",
+          "type": "string",
+        },
+        "title": {
+          "description": "Figure title inside the top border",
+          "type": "string",
+        },
+        "units": {
+          "description": "Units for the plotted values",
+          "type": "string",
+        },
+        "values": {
+          "description": "Ordered finite values",
+          "items": {
+            "type": "number",
+          },
+          "type": "array",
+        },
+      },
+      "required": [
+        "kind",
+        "title",
+        "caption",
+        "source",
+        "units",
+        "values",
+      ],
+      "type": "object",
+    },
+    {
+      "properties": {
+        "caption": {
+          "description": "Plain-language description after the fenced block",
+          "type": "string",
+        },
+        "kind": {
+          "description": "Part-to-whole composition, at most 4 segments",
+          "enum": [
+            "stacked_bar",
+          ],
+          "type": "string",
+        },
+        "segments": {
+          "description": "Segments from labels and values",
+          "items": {
+            "properties": {
+              "label": {
+                "description": "Segment label",
+                "type": "string",
+              },
+              "value": {
+                "description": "Non-negative finite value",
+                "type": "number",
+              },
+            },
+            "required": [
+              "label",
+              "value",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "source": {
+          "description": "Source path or description",
+          "type": "string",
+        },
+        "title": {
+          "description": "Figure title inside the top border",
+          "type": "string",
+        },
+        "units": {
+          "description": "Units for the plotted values",
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "title",
+        "caption",
+        "source",
+        "units",
+        "segments",
+      ],
+      "type": "object",
+    },
+    {
+      "properties": {
+        "caption": {
+          "description": "Plain-language description after the fenced block",
+          "type": "string",
+        },
+        "columns": {
+          "description": "Column headers",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "kind": {
+          "description": "Multi-variable health grid",
+          "enum": [
+            "status_matrix",
+          ],
+          "type": "string",
+        },
+        "rows": {
+          "description": "Rows of status cells matching columns",
+          "items": {
+            "properties": {
+              "cells": {
+                "description": "One cell per column",
+                "items": {
+                  "description": "pass, warning, fail, pending, or active",
+                  "enum": [
+                    "pass",
+                    "warning",
+                    "fail",
+                    "pending",
+                    "active",
+                  ],
+                  "type": "string",
+                },
+                "type": "array",
+              },
+              "label": {
+                "description": "Row label",
+                "type": "string",
+              },
+            },
+            "required": [
+              "label",
+              "cells",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "source": {
+          "description": "Source path or description",
+          "type": "string",
+        },
+        "title": {
+          "description": "Figure title inside the top border",
+          "type": "string",
+        },
+        "units": {
+          "description": "Units for the plotted values",
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "title",
+        "caption",
+        "source",
+        "units",
+        "columns",
+        "rows",
+      ],
+      "type": "object",
+    },
+  ],
 }
 `;

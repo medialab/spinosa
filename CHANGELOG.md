@@ -10,6 +10,21 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.0-beta.12] — 2026-09-20
+
+### Added
+
+- `spinosa_figure` draws framed Unicode charts from typed numbers.
+
+### Changed
+
+- Census and comparative runs put charts in the numbered report. They do not write a separate visualization file.
+- Visualization checks require a fenced figure with a caption, a source, and units.
+
+### Removed
+
+- Codex no longer registers the removed `spinosa-visualizer` agent.
+
 ## [1.2.0-beta.11] — 2026-09-20
 
 ### Changed
