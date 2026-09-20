@@ -334,6 +334,32 @@ describe("tool parameters", () => {
     })
   })
 
+  describe("write_report", () => {
+    const report = {
+      filename: "01_topic.md",
+      title: "T",
+      scope: "s",
+      pipeline: "searcher → writer",
+      query: "q",
+      goal: "g",
+      tldr: "t",
+      report: "body",
+      conclusions: "c",
+      reproducibility: { agents: "searcher → writer", sources: ["raw/a.pdf"] },
+    }
+
+    test("defaults status to draft", () => {
+      expect(parse(Report, report).status).toBe("draft")
+    })
+
+    // The writer authors; only the verifier may promote a status. Accepting a
+    // verdict here would let an agent self-declare verification.
+    test("rejects a self-declared verified status", () => {
+      expect(accepts(Report, { ...report, status: "pass" })).toBe(false)
+      expect(accepts(Report, { ...report, status: "pass_with_corrections" })).toBe(false)
+    })
+  })
+
   describe("spinosa_verify", () => {
     test("accepts relativePath + validator", () => {
       const parsed = parse(SpinosaVerify, { relativePath: "agent_reports/01_x.md", validator: "report" })

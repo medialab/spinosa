@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { spinosaVerify } from "@spinosa/core"
+import { spinosaVerify, STRUCTURE_OK_STATUS } from "@spinosa/core"
 import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./spinosa-verify.txt"
@@ -57,14 +57,21 @@ export const SpinosaVerifyTool = Tool.define(
               metadata: {} as Record<string, string>,
             }
           }
+          // Only the `verification` validator reads a verifier's verdict. Every
+          // other validator is structural, and must not be reported as verified.
+          const structural = checked.status === STRUCTURE_OK_STATUS
           return {
-            title: `Verified (${checked.status} → ${checked.action})`,
+            title: structural
+              ? `Structure checked (${params.validator})`
+              : `Verified (${checked.status} → ${checked.action})`,
             output: `<verification ok="true" status="${checked.status}" action="${checked.action}">${
-              checked.action === "complete"
-                ? "Mechanical checks pass. Quote-level truth against original sources remains your judgment."
-                : checked.action === "retry"
-                  ? "Verification is partial: address the gaps and re-verify."
-                  : "Verification blocks delivery: do not deliver this artifact."
+              structural
+                ? "Structure is valid. This is NOT a source verification: no claim was checked against any source. A verified status requires a verifier pass recorded in a verification artifact."
+                : checked.action === "complete"
+                  ? "Mechanical checks pass. Quote-level truth against original sources remains your judgment."
+                  : checked.action === "retry"
+                    ? "Verification is partial: address the gaps and re-verify."
+                    : "Verification blocks delivery: do not deliver this artifact."
             }</verification>`,
             metadata: {} as Record<string, string>,
           }

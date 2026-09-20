@@ -35,8 +35,11 @@ export const Parameters = Schema.Struct({
     description: "Agent chain, e.g. 'searcher → writer → verifier → evaluator'",
   }),
   query: Schema.String.annotate({ description: "Original user query" }),
-  status: Schema.Literals(["draft", "pass", "pass_with_corrections"])
-    .annotate({ description: "Verification status (default: draft)" })
+  // Authoring cannot award a verdict: the writer has not checked any claim
+  // against a source. Only the verifier promotes this, by editing the
+  // frontmatter after recording a verification artifact.
+  status: Schema.Literals(["draft"])
+    .annotate({ description: "Always 'draft' — only the verifier may promote a report's status" })
     .pipe(Schema.withDecodingDefault(Effect.succeed("draft" as const))),
   goal: Schema.String.annotate({ description: "What the research aimed to answer" }),
   tldr: Schema.String.annotate({ description: "Short natural-language answer, 1–3 sentences" }),

@@ -216,7 +216,7 @@ export type SpinosaVerifyResult =
     }
   | { ok: false; error: string; retryable: boolean }
 
-const VERIFY_VALIDATORS = [
+export const VERIFY_VALIDATORS = [
   "goal",
   "evidence_packet",
   "analysis",
@@ -232,6 +232,9 @@ const VERIFY_VALIDATORS = [
 ] as const
 
 export type VerifyValidator = (typeof VERIFY_VALIDATORS)[number]
+
+/** Shape-only outcome. Never `pass`: no claim was checked against a source. */
+export const STRUCTURE_OK_STATUS = "structure_ok"
 
 export async function spinosaVerify(input: {
   workspacePath: string
@@ -256,5 +259,8 @@ export async function spinosaVerify(input: {
     const status = parseVerificationStatus(text) ?? "fail"
     return { ok: true, status, action: verificationOutcome(status) }
   }
-  return { ok: true, status: "pass", action: "complete" }
+  // Every other validator is a shape check: nothing was compared against a
+  // source. `pass` is reserved for the verification branch so a structural
+  // check cannot be laundered into a verification verdict.
+  return { ok: true, status: STRUCTURE_OK_STATUS, action: "complete" }
 }

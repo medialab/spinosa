@@ -11,6 +11,8 @@ import {
   spinosaMintPaths,
   spinosaRoute,
   spinosaVerify,
+  STRUCTURE_OK_STATUS,
+  VERIFY_VALIDATORS,
 } from "../src/application/agent-tools"
 
 async function workspace(status = "workspace_started"): Promise<string> {
@@ -169,14 +171,44 @@ describe("spinosaVerify", () => {
     expect(checked.retryable).toBe(true)
   })
 
-  test("report without title fails; titled report passes", async () => {
+  test("report without title fails; titled report is structure_ok, never pass", async () => {
     const root = await workspace()
     await Bun.write(path.join(root, "agent_reports/01_x.md"), "no title here\n")
     const bad = await spinosaVerify({ workspacePath: root, relativePath: "agent_reports/01_x.md", validator: "report" })
     expect(bad.ok).toBe(false)
     await Bun.write(path.join(root, "agent_reports/02_x.md"), "# Titled\n\nBody.\n")
     const good = await spinosaVerify({ workspacePath: root, relativePath: "agent_reports/02_x.md", validator: "report" })
-    expect(good).toMatchObject({ ok: true, status: "pass", action: "complete" })
+    expect(good).toMatchObject({ ok: true, status: STRUCTURE_OK_STATUS, action: "complete" })
+  })
+
+  test("a structurally valid report full of fabricated claims is not reported as pass", async () => {
+    const root = await workspace()
+    await Bun.write(
+      path.join(root, "agent_reports/03_fabricated.md"),
+      "# Fabricated\n\nThe 1847 Treaty of Nowhere set the tariff at 92%.\n",
+    )
+    const checked = await spinosaVerify({
+      workspacePath: root,
+      relativePath: "agent_reports/03_fabricated.md",
+      validator: "report",
+    })
+    expect(checked.ok).toBe(true)
+    if (!checked.ok) throw new Error("expected structural success")
+    expect(checked.status).not.toBe("pass")
+    expect(checked.status).not.toBe("pass_with_corrections")
+    expect(checked.status).toBe(STRUCTURE_OK_STATUS)
+  })
+
+  test("only the verification validator can yield a pass status", async () => {
+    const root = await workspace()
+    const nonVerification = VERIFY_VALIDATORS.filter((validator) => validator !== "verification")
+    for (const validator of nonVerification) {
+      const relativePath = `agent_reports/10_${validator}.md`
+      await Bun.write(path.join(root, relativePath), "# Shape\n\nBody.\n")
+      const checked = await spinosaVerify({ workspacePath: root, relativePath, validator })
+      if (!checked.ok) continue
+      expect(checked.status).toBe(STRUCTURE_OK_STATUS)
+    }
   })
 
   test("verification status maps to actions", async () => {

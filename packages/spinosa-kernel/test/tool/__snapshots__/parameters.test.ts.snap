@@ -379,11 +379,9 @@ exports[`tool parameters JSON Schema (wire shape) write_report 1`] = `
       "type": "string",
     },
     "status": {
-      "description": "Verification status (default: draft)",
+      "description": "Always 'draft' — only the verifier may promote a report's status",
       "enum": [
         "draft",
-        "pass",
-        "pass_with_corrections",
       ],
       "type": "string",
     },
