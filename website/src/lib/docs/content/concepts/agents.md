@@ -50,3 +50,4 @@ Intermediate files can be cleaned up later. Final reports stay in `agent_reports
 - [Reports](/spinosa/docs/reports) — how to read the output
 - [Workspace](/spinosa/docs/workspace) — where files live on disk
 - [CLI Reference](/spinosa/docs/cli-reference) — commands for prepare, check, sync
+- [MCP for agents](/spinosa/docs/mcp) — use Spinosa from Claude, Codex, or Cursor without a nested Spinosa model

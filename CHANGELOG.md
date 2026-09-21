@@ -10,8 +10,24 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2-beta.2] — 2026-09-21
+
+### Added
+
+- `spinosa mcp-server` exposes Spinosa tools and skill resources over MCP stdio. The outer agent stays the LLM. No Spinosa model turn. The server starts unbound. Agents call `workspace_list` and `workspace_use`, then run tools.
+- `workspace_delete` (MCP) and `spinosa delete --yes` (CLI) trash or unregister a workspace.
+- Workspace CLI progress can emit JSON lines on stderr when you pass `--json`.
+- Agent guide: `docs/agents/external-agent-spinosa.md`.
+- Website docs page: `/docs/mcp` (MCP for agents).
+
+### Fixed
+
+- `spinosa mcp-server` stays running after connect. The CLI no longer exits before the MCP client disconnects.
+
 ### Changed
 
+- Global `--json` and `--quiet` work under the kernel CLI strict parser.
+- `spinosa new` defaults to `--launch copy` so headless and agent runs do not open an LLM CLI.
 - Web search asks for permission. You can allow or deny it for this session.
 - `write_report` is now `spinosa_report`. It is not the generic `write` tool.
 - `websearch` and `webfetch` are one `web` tool. Pass a query to search. Pass a URL to fetch.

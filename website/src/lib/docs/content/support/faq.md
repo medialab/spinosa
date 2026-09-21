@@ -53,6 +53,14 @@ This is a real signal, not decoration. `⚠ corrections` means verification foun
 **I know the answer is in my files, but Spinosa found nothing**
 Rephrase using alternative words, names, or dates. If it persists, try re-indexing: press `I` or run `spinosa add` on the same folder.
 
+## External agents (MCP)
+
+**Can I use Spinosa from Claude, Codex, or Cursor?**
+Yes. Run `spinosa mcp-server` as an MCP server. The host model stays the LLM; Spinosa exposes workspace tools and skills. See [MCP for agents](/spinosa/docs/mcp).
+
+**Does the MCP search my documents for me?**
+No. The host agent searches `raw/` with its own tools, guided by Spinosa skill playbooks. MCP provides workspace selection, skills, and checks such as `spinosa_gate` and `spinosa_verify`.
+
 ## Maintenance
 
 **How do I update Spinosa?**

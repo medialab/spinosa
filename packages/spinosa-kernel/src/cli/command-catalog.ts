@@ -43,6 +43,12 @@ export const CLI_COMMAND_CATALOG: readonly LazyCommandSpec[] = [
     load: () => import("./cmd/workspace-list").then((mod) => mod.WorkspaceListCommand),
   },
   {
+    command: "delete <path>",
+    describe: "Delete a Spinosa workspace (trash if present; unregister). Requires --yes",
+    aliases: ["rm"],
+    load: () => import("./cmd/workspace-delete").then((mod) => mod.WorkspaceDeleteCommand),
+  },
+  {
     command: "doctor",
     describe: "Diagnose Spinosa framework and workspace health",
     load: () => import("./cmd/doctor").then((mod) => mod.DoctorCommand),
@@ -62,6 +68,11 @@ export const CLI_COMMAND_CATALOG: readonly LazyCommandSpec[] = [
     command: "mcp <action> [id]",
     describe: "Browse and install curated third-party MCP servers for researchers",
     load: () => import("./cmd/mcp").then((mod) => mod.McpCommand),
+  },
+  {
+    command: "mcp-server",
+    describe: "MCP stdio: list/select workspaces, then Spinosa tools and skills (outer agent is the LLM)",
+    load: () => import("./cmd/mcp-server").then((mod) => mod.McpServerCommand),
   },
   {
     command: "upgrade [target]",

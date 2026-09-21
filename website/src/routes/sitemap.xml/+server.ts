@@ -9,6 +9,7 @@ const pages = [
 	{ path: '/docs/workspace', priority: '0.7', changefreq: 'monthly' },
 	{ path: '/docs/reports', priority: '0.7', changefreq: 'monthly' },
 	{ path: '/docs/cli-reference', priority: '0.6', changefreq: 'monthly' },
+	{ path: '/docs/mcp', priority: '0.6', changefreq: 'monthly' },
 	{ path: '/docs/glossary', priority: '0.6', changefreq: 'monthly' },
 	{ path: '/docs/faq', priority: '0.6', changefreq: 'monthly' },
 	{ path: '/casestudies', priority: '0.5', changefreq: 'monthly' },

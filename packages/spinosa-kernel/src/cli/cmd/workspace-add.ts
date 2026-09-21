@@ -3,7 +3,7 @@ import { existsSync, statSync } from "node:fs"
 import type { Argv, CommandModule } from "yargs"
 import { addFiles } from "@spinosa/core/commands/add"
 import { isSpinosaWorkspace } from "@spinosa/core/workspace/meta"
-import { getFormat, log, emitResult, type OutputFormat } from "../output"
+import { getFormat, logProgress, emitResult, type OutputFormat } from "../output"
 
 interface AddArgs {
   source?: string
@@ -44,7 +44,14 @@ export const WorkspaceAddCommand = {
       sourceIsDir,
       extensions: args.extensions,
       overwrite: Boolean(args.overwrite),
-      onProgress: (message: string) => log(fmt, message),
+      onProgress: (message: string) => logProgress(fmt, "add", message),
+      onFileProgress: (phase, current, total, relPath, status) =>
+        logProgress(fmt, phase, `${current}/${total} ${relPath}${status ? ` (${status})` : ""}`, {
+          current,
+          total,
+          path: relPath,
+          status,
+        }),
     })
     const delivered = result.copied + result.mdConverted + result.ocrConverted
     const skipped = result.skipped + result.mdSkipped + result.ocrSkipped

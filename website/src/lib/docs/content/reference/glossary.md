@@ -9,6 +9,7 @@
 | **Orchestrator** | The coordinator that decides which agents to run for your question |
 | **Pipeline** | The sequence of agent steps used to answer a request |
 | **Sub-agent** | A specialized helper (Searcher, Analyst, Writer, Verifier, etc.) |
+| **MCP** | Model Context Protocol — how external agents (Claude, Codex, Cursor) load Spinosa tools without a nested Spinosa model |
 
 ## TUI terms
 
@@ -52,4 +53,5 @@
 - [Workspace Structure](/spinosa/docs/workspace) — file layout
 - [Agents](/spinosa/docs/agents) — agent names and responsibilities
 - [Reports](/spinosa/docs/reports) — report anatomy and statuses
+- [MCP for agents](/spinosa/docs/mcp) — external-agent tools over MCP
 - [FAQ](/spinosa/docs/faq) — troubleshooting

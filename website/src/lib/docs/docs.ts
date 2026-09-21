@@ -103,6 +103,17 @@ const docRegistry: DocPage[] = [
 		pageOrder: 10
 	},
 	{
+		title: 'MCP for agents',
+		slug: 'mcp',
+		description:
+			'Use Spinosa from Claude, Codex, or Cursor over MCP: choose a workspace, load skills, run gate and verify tools.',
+		sourcePath: 'reference/mcp.md',
+		groupId: 'reference',
+		groupTitle: 'Reference',
+		groupOrder: 30,
+		pageOrder: 15
+	},
+	{
 		title: 'Glossary',
 		slug: 'glossary',
 		description: "Plain-English definitions of terms you'll encounter in Spinosa.",

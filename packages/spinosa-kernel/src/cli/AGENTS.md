@@ -45,7 +45,8 @@ Upgrade logic lives in `@spinosa/core/commands/upgrade`. Do not duplicate it in 
 | `spinosa attach` | `cmd/attach.ts` | Full TUI unless `--mini` |
 | `spinosa --mini` | `cmd/run.ts` | Lightweight split-footer mode |
 | `spinosa run` | `cmd/run.ts` | Batch or mini interactive |
-| `spinosa serve` | `cmd/serve.ts` | Headless API server |
+| `spinosa serve` | `cmd/serve.ts` | Headless API server (not registered in catalog today) |
+| `spinosa mcp-server` | `cmd/mcp-server.ts` | MCP stdio: unbound → list/use workspace → Spinosa tools/skills; outer agent is the LLM |
 
 ## Host adapters (stay in kernel)
 
@@ -64,13 +65,15 @@ From repo root:
 
 ```bash
 bun run dev              # same launch path as installed spinosa
-bun run dev serve        # headless API
+bun run dev serve        # headless API (if registered)
+bun run dev mcp-server   # MCP stdio for external agents (unbound; workspace_use then tools)
 ```
 
-`bun run dev` sets `SPINOSA_TEMPLATE_ROOT` to the repo root. Preflight compares root `package.json` to the remote channel.
+External agents: create/import with the workspace CLI (`spinosa new … --json`), attach `spinosa mcp-server` (starts unbound), then `workspace_list` → `workspace_use` → mechanism tools. Optional `--workspace` / `SPINOSA_WORKSPACE` only pre-selects. Full contract: `docs/agents/external-agent-spinosa.md`.
 
 ## Related docs
 
+- `docs/agents/external-agent-spinosa.md` — CLI + MCP workflow for host agents
 - `packages/tui/AGENTS.md` — terminal application
 - `packages/spinosa-core/AGENTS.md` — upgrade engine and preflight
 - `RELEASE_GUIDE.md` — maintainer release pipeline

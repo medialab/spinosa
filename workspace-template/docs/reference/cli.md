@@ -212,3 +212,14 @@ PDFs are automatically classified as text-based (routed to MarkItDown) or image-
 | `SPINOSA_HOME` | Override the installation directory (default: `~/.spinosa`) |
 | `SPINOSA_BIN_DIR` | Override the shim directory on PATH (default: `~/.local/bin`) |
 | `SPINOSA_NO_UPGRADE_CHECK=1` | Skip launch-time upgrade checks |
+| `SPINOSA_WORKSPACE` | Optional initial workspace for `spinosa mcp-server` |
+
+## External agents (`spinosa mcp-server`)
+
+Host agents (Claude, Codex, Cursor) can use Spinosa without a nested Spinosa model:
+
+1. Create a workspace with `spinosa new … --launch copy --json`.
+2. Attach MCP: `{ "command": "spinosa", "args": ["mcp-server"] }` (starts unbound).
+3. Call `workspace_list` → `workspace_use` → tools (`spinosa_gate`, `spinosa_verify`, `spinosa_figure`, `spinosa_map`) and skills.
+
+Full contract: framework repo `docs/agents/external-agent-spinosa.md`.

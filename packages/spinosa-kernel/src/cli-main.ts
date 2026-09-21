@@ -98,6 +98,14 @@ const cli = yargs(args)
     describe: "run without external plugins",
     type: "boolean",
   })
+  .option("json", {
+    describe: "machine-readable output (progress on stderr, final result on stdout)",
+    type: "boolean",
+  })
+  .option("quiet", {
+    describe: "suppress output; exit code only",
+    type: "boolean",
+  })
   .middleware(async (opts) => {
     if (opts.printLogs) process.env.SPINOSA_PRINT_LOGS = "1"
     if (opts.logLevel) process.env.SPINOSA_LOG_LEVEL = opts.logLevel
