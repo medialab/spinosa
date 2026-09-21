@@ -32,6 +32,7 @@ import { Parameters as Task } from "../../src/tool/task"
 import { Parameters as Todo } from "../../src/tool/todo"
 import { Parameters as WebFetch } from "../../src/tool/webfetch"
 import { Parameters as WebSearch } from "../../src/tool/websearch"
+import { Parameters as Web } from "../../src/tool/web"
 import { Parameters as Write } from "../../src/tool/write"
 
 const parse = <S extends Schema.Decoder<unknown>>(schema: S, input: unknown): S["Type"] =>
@@ -54,7 +55,7 @@ describe("tool parameters", () => {
     test("plan", () => expect(toJsonSchema(Plan)).toMatchSnapshot())
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
-    test("write_report", () => expect(toJsonSchema(Report)).toMatchSnapshot())
+    test("spinosa_report", () => expect(toJsonSchema(Report)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
     test("spinosa_frame", () => expect(toJsonSchema(SpinosaFrame)).toMatchSnapshot())
     test("spinosa_gate", () => expect(toJsonSchema(SpinosaGate)).toMatchSnapshot())
@@ -67,6 +68,7 @@ describe("tool parameters", () => {
     test("todo", () => expect(toJsonSchema(Todo)).toMatchSnapshot())
     test("webfetch", () => expect(toJsonSchema(WebFetch)).toMatchSnapshot())
     test("websearch", () => expect(toJsonSchema(WebSearch)).toMatchSnapshot())
+    test("web", () => expect(toJsonSchema(Web)).toMatchSnapshot())
     test("write", () => expect(toJsonSchema(Write)).toMatchSnapshot())
 
     test("inlines named child schemas for provider compatibility", () => {
@@ -334,7 +336,7 @@ describe("tool parameters", () => {
     })
   })
 
-  describe("write_report", () => {
+  describe("spinosa_report", () => {
     const report = {
       filename: "01_topic.md",
       title: "T",
@@ -414,6 +416,23 @@ describe("tool parameters", () => {
       expect(parse(WebSearch, { query: "opencode" }).query).toBe("opencode")
     })
   })
+
+  describe("web", () => {
+    test("accepts query (search mode)", () => {
+      const value = parse(Web, { query: "opencode" })
+      expect("query" in value && value.query).toBe("opencode")
+    })
+    test("accepts url (fetch mode)", () => {
+      expect(parse(Web, { url: "https://example.com" })).toMatchObject({
+        url: "https://example.com",
+        format: "markdown",
+      })
+    })
+    test("rejects empty object", () => {
+      expect(accepts(Web, {})).toBe(false)
+    })
+  })
+
 
   describe("write", () => {
     test("accepts content + filePath", () => {

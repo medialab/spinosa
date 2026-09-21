@@ -10,6 +10,13 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Changed
+
+- Web search asks for permission. You can allow or deny it for this session.
+- `write_report` is now `spinosa_report`. It is not the generic `write` tool.
+- `websearch` and `webfetch` are one `web` tool. Pass a query to search. Pass a URL to fetch.
+- `spinosa_gate` covers evidence counts. `spinosa_verify` covers artifact shape. Keep them separate.
+
 ## [1.2.2-beta.1] — 2026-09-20
 
 ### Security
@@ -25,7 +32,7 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 - `spinosa_verify` reports `structure_ok` for structure checks. It no longer reports `pass`.
 - Only a verification artifact can produce a `pass` status.
-- `write_report` accepts the `draft` status only. The verifier promotes the status after it checks the sources.
+- `spinosa_report` accepts the `draft` status only. The verifier promotes the status after it checks the sources.
 - A failed upgrade at launch no longer blocks launch. Spinosa prints the error and opens your workspace.
 - Spinosa restores your beta track after the installer runs. A failed install no longer moves you to stable.
 - `spinosa upgrade` and launch agree about the newest version. The command no longer refuses a false downgrade.

@@ -6,6 +6,7 @@ import DESCRIPTION from "./websearch.txt"
 import { checksum } from "@spinosa/kernel-core/util/encode"
 import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { ProviderV2 } from "@spinosa/kernel-core/provider"
 
 export const Parameters = Schema.Struct({
   query: Schema.String.annotate({ description: "Websearch query" }),
@@ -24,8 +25,14 @@ export const Parameters = Schema.Struct({
   }),
 })
 
+export type Parameters = Schema.Schema.Type<typeof Parameters>
+
 const WebSearchProviderSchema = Schema.Literals(["exa", "parallel"])
 export type WebSearchProvider = Schema.Schema.Type<typeof WebSearchProviderSchema>
+
+export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
+  return providerID === ProviderV2.ID.opencode || flags.exa || flags.parallel
+}
 
 export function selectWebSearchProvider(sessionID: string, flags = { exa: false, parallel: false }): WebSearchProvider {
   const override = process.env.SPINOSA_WEBSEARCH_PROVIDER
@@ -96,6 +103,48 @@ function callProvider(
   )
 }
 
+export function executeWebSearch(
+  http: HttpClient.HttpClient,
+  params: Parameters,
+  ctx: Tool.Context,
+  permission: string = "websearch",
+  provider?: WebSearchProvider,
+) {
+  return Effect.gen(function* () {
+    const resolved =
+      provider ??
+      selectWebSearchProvider(ctx.sessionID, {
+        exa: false,
+        parallel: false,
+      })
+    const title = webSearchProviderLabel(resolved)
+
+    yield* ctx.ask({
+      permission,
+      patterns: [params.query],
+      always: ["*"],
+      metadata: {
+        query: params.query,
+        numResults: params.numResults,
+        livecrawl: params.livecrawl,
+        type: params.type,
+        contextMaxCharacters: params.contextMaxCharacters,
+        provider: resolved,
+        mode: "search",
+      },
+    })
+
+    const result = yield* callProvider(http, resolved, params, ctx)
+
+    return {
+      output: result ?? "No search results found. Please try a different query.",
+      title: `${title}: ${params.query}`,
+      metadata: { provider: resolved, mode: "search" as const },
+    }
+  }).pipe(Effect.orDie)
+}
+
+/** @deprecated Prefer the unified `web` tool (`query` mode). Kept for unit tests. */
 export const WebSearchTool = Tool.define(
   "websearch",
   Effect.gen(function* () {
@@ -107,7 +156,7 @@ export const WebSearchTool = Tool.define(
         return DESCRIPTION.replace("{{year}}", new Date().getFullYear().toString())
       },
       parameters: Parameters,
-      execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
+      execute: (params: Parameters, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const provider = selectWebSearchProvider(ctx.sessionID, {
             exa: flags.enableExa,
@@ -115,28 +164,7 @@ export const WebSearchTool = Tool.define(
           })
           const title = webSearchProviderLabel(provider)
           yield* ctx.metadata({ title: `${title} "${params.query}"`, metadata: { provider } })
-
-          yield* ctx.ask({
-            permission: "websearch",
-            patterns: [params.query],
-            always: ["*"],
-            metadata: {
-              query: params.query,
-              numResults: params.numResults,
-              livecrawl: params.livecrawl,
-              type: params.type,
-              contextMaxCharacters: params.contextMaxCharacters,
-              provider,
-            },
-          })
-
-          const result = yield* callProvider(http, provider, params, ctx)
-
-          return {
-            output: result ?? "No search results found. Please try a different query.",
-            title: `${title}: ${params.query}`,
-            metadata: { provider },
-          }
+          return yield* executeWebSearch(http, params, ctx, "websearch", provider)
         }).pipe(Effect.orDie),
     }
   }),

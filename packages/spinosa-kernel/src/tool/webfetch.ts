@@ -21,136 +21,149 @@ export const Parameters = Schema.Struct({
   timeout: Schema.optional(Schema.Number).annotate({ description: "Optional timeout in seconds (max 120)" }),
 })
 
+export type Parameters = Schema.Schema.Type<typeof Parameters>
+
+export function executeWebFetch(
+  http: HttpClient.HttpClient,
+  params: Parameters,
+  ctx: Tool.Context,
+  permission: string = "webfetch",
+) {
+  const httpOk = HttpClient.filterStatusOk(http)
+
+  return Effect.gen(function* () {
+    if (!params.url.startsWith("http://") && !params.url.startsWith("https://")) {
+      throw new Error("URL must start with http:// or https://")
+    }
+
+    yield* ctx.ask({
+      permission,
+      patterns: [params.url],
+      always: ["*"],
+      metadata: {
+        url: params.url,
+        format: params.format,
+        timeout: params.timeout,
+        mode: "fetch",
+      },
+    })
+
+    const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
+
+    // Build Accept header based on requested format with q parameters for fallbacks
+    let acceptHeader = "*/*"
+    switch (params.format) {
+      case "markdown":
+        acceptHeader = "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, */*;q=0.1"
+        break
+      case "text":
+        acceptHeader = "text/plain;q=1.0, text/markdown;q=0.9, text/html;q=0.8, */*;q=0.1"
+        break
+      case "html":
+        acceptHeader =
+          "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1"
+        break
+      default:
+        acceptHeader =
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+    }
+    const headers = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+      Accept: acceptHeader,
+      "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    const request = HttpClientRequest.get(params.url).pipe(HttpClientRequest.setHeaders(headers))
+
+    // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
+    const response = yield* httpOk.execute(request).pipe(
+      Effect.catchIf(
+        (err) =>
+          err.reason._tag === "StatusCodeError" &&
+          err.reason.response.status === 403 &&
+          err.reason.response.headers["cf-mitigated"] === "challenge",
+        () =>
+          httpOk.execute(
+            HttpClientRequest.get(params.url).pipe(
+              HttpClientRequest.setHeaders({ ...headers, "User-Agent": "spinosa" }),
+            ),
+          ),
+      ),
+      Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.die(new Error("Request timed out")) }),
+    )
+
+    // Check content length
+    const contentLength = response.headers["content-length"]
+    if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
+      throw new Error("Response too large (exceeds 5MB limit)")
+    }
+
+    const arrayBuffer = yield* response.arrayBuffer
+    if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE) {
+      throw new Error("Response too large (exceeds 5MB limit)")
+    }
+
+    const contentType = response.headers["content-type"] || ""
+    const mime = contentType.split(";")[0]?.trim().toLowerCase() || ""
+    const title = `${params.url} (${contentType})`
+
+    if (isImageAttachment(mime)) {
+      const base64Content = Buffer.from(arrayBuffer).toString("base64")
+      return {
+        title,
+        output: "Image fetched successfully",
+        metadata: { mode: "fetch" as const },
+        attachments: [
+          {
+            type: "file" as const,
+            mime,
+            url: `data:${mime};base64,${base64Content}`,
+          },
+        ],
+      }
+    }
+
+    const content = new TextDecoder().decode(arrayBuffer)
+
+    // Handle content based on requested format and actual content type
+    switch (params.format) {
+      case "markdown":
+        if (contentType.includes("text/html")) {
+          const markdown = convertHTMLToMarkdown(content)
+          return {
+            output: markdown,
+            title,
+            metadata: { mode: "fetch" as const },
+          }
+        }
+        return { output: content, title, metadata: { mode: "fetch" as const } }
+
+      case "text":
+        if (contentType.includes("text/html")) {
+          return { output: extractTextFromHTML(content), title, metadata: { mode: "fetch" as const } }
+        }
+        return { output: content, title, metadata: { mode: "fetch" as const } }
+
+      case "html":
+        return { output: content, title, metadata: { mode: "fetch" as const } }
+
+      default:
+        return { output: content, title, metadata: { mode: "fetch" as const } }
+    }
+  }).pipe(Effect.orDie)
+}
+
+/** @deprecated Prefer the unified `web` tool (`url` mode). Kept for unit tests. */
 export const WebFetchTool = Tool.define(
   "webfetch",
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
-    const httpOk = HttpClient.filterStatusOk(http)
 
     return {
       description: DESCRIPTION,
       parameters: Parameters,
-      execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
-        Effect.gen(function* () {
-          if (!params.url.startsWith("http://") && !params.url.startsWith("https://")) {
-            throw new Error("URL must start with http:// or https://")
-          }
-
-          yield* ctx.ask({
-            permission: "webfetch",
-            patterns: [params.url],
-            always: ["*"],
-            metadata: {
-              url: params.url,
-              format: params.format,
-              timeout: params.timeout,
-            },
-          })
-
-          const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
-
-          // Build Accept header based on requested format with q parameters for fallbacks
-          let acceptHeader = "*/*"
-          switch (params.format) {
-            case "markdown":
-              acceptHeader = "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, */*;q=0.1"
-              break
-            case "text":
-              acceptHeader = "text/plain;q=1.0, text/markdown;q=0.9, text/html;q=0.8, */*;q=0.1"
-              break
-            case "html":
-              acceptHeader =
-                "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1"
-              break
-            default:
-              acceptHeader =
-                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-          }
-          const headers = {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-            Accept: acceptHeader,
-            "Accept-Language": "en-US,en;q=0.9",
-          }
-
-          const request = HttpClientRequest.get(params.url).pipe(HttpClientRequest.setHeaders(headers))
-
-          // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
-          const response = yield* httpOk.execute(request).pipe(
-            Effect.catchIf(
-              (err) =>
-                err.reason._tag === "StatusCodeError" &&
-                err.reason.response.status === 403 &&
-                err.reason.response.headers["cf-mitigated"] === "challenge",
-              () =>
-                httpOk.execute(
-                  HttpClientRequest.get(params.url).pipe(
-                    HttpClientRequest.setHeaders({ ...headers, "User-Agent": "spinosa" }),
-                  ),
-                ),
-            ),
-            Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.die(new Error("Request timed out")) }),
-          )
-
-          // Check content length
-          const contentLength = response.headers["content-length"]
-          if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
-            throw new Error("Response too large (exceeds 5MB limit)")
-          }
-
-          const arrayBuffer = yield* response.arrayBuffer
-          if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE) {
-            throw new Error("Response too large (exceeds 5MB limit)")
-          }
-
-          const contentType = response.headers["content-type"] || ""
-          const mime = contentType.split(";")[0]?.trim().toLowerCase() || ""
-          const title = `${params.url} (${contentType})`
-
-          if (isImageAttachment(mime)) {
-            const base64Content = Buffer.from(arrayBuffer).toString("base64")
-            return {
-              title,
-              output: "Image fetched successfully",
-              metadata: {},
-              attachments: [
-                {
-                  type: "file" as const,
-                  mime,
-                  url: `data:${mime};base64,${base64Content}`,
-                },
-              ],
-            }
-          }
-
-          const content = new TextDecoder().decode(arrayBuffer)
-
-          // Handle content based on requested format and actual content type
-          switch (params.format) {
-            case "markdown":
-              if (contentType.includes("text/html")) {
-                const markdown = convertHTMLToMarkdown(content)
-                return {
-                  output: markdown,
-                  title,
-                  metadata: {},
-                }
-              }
-              return { output: content, title, metadata: {} }
-
-            case "text":
-              if (contentType.includes("text/html")) {
-                return { output: extractTextFromHTML(content), title, metadata: {} }
-              }
-              return { output: content, title, metadata: {} }
-
-            case "html":
-              return { output: content, title, metadata: {} }
-
-            default:
-              return { output: content, title, metadata: {} }
-          }
-        }).pipe(Effect.orDie),
+      execute: (params: Parameters, ctx: Tool.Context) => executeWebFetch(http, params, ctx, "webfetch"),
     }
   }),
 )

@@ -10,7 +10,7 @@ import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
-export const name = "write_report"
+export const name = "spinosa_report"
 
 export const Reproducibility = Schema.Struct({
   mapsAccessed: Schema.optional(Schema.Number).annotate({ description: "Number of maps accessed" }),

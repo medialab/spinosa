@@ -32,6 +32,7 @@ import type { TaskTool } from "@/tool/task"
 import type { TodoWriteTool } from "@/tool/todo"
 import type { WebFetchTool } from "@/tool/webfetch"
 import { webSearchProviderLabel, type WebSearchTool } from "@/tool/websearch"
+import type { WebTool } from "@/tool/web"
 import type { WriteTool } from "@/tool/write"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import * as Locale from "@/util/locale"
@@ -108,6 +109,7 @@ type ToolDefs = {
   lsp: typeof LspTool
   webfetch: typeof WebFetchTool
   websearch: typeof WebSearchTool
+  web: typeof WebTool
   skill: typeof SkillTool
   plan_exit: typeof PlanExitTool
 }
@@ -1003,6 +1005,24 @@ function permWebSearch(p: ToolPermissionProps<typeof WebSearchTool>): ToolPermis
   }
 }
 
+function runWeb(p: ToolProps<typeof WebTool>): ToolInline {
+  const input = p.input as { url?: string; query?: string }
+  if (input.url) return runWebfetch(p as unknown as ToolProps<typeof WebFetchTool>)
+  return runWebSearch(p as unknown as ToolProps<typeof WebSearchTool>)
+}
+
+function scrollWebStart(p: ToolProps<typeof WebTool>): string {
+  const input = p.input as { url?: string; query?: string }
+  if (input.url) return scrollWebfetchStart(p as unknown as ToolProps<typeof WebFetchTool>)
+  return scrollWebSearchStart(p as unknown as ToolProps<typeof WebSearchTool>)
+}
+
+function permWeb(p: ToolPermissionProps<typeof WebTool>): ToolPermissionInfo {
+  const input = p.input as { url?: string; query?: string }
+  if (input.url) return permWebfetch(p as unknown as ToolPermissionProps<typeof WebFetchTool>)
+  return permWebSearch(p as unknown as ToolPermissionProps<typeof WebSearchTool>)
+}
+
 function permLsp(p: ToolPermissionProps<typeof LspTool>): ToolPermissionInfo {
   const file = p.input.filePath || ""
   const line = typeof p.input.line === "number" ? p.input.line : undefined
@@ -1208,6 +1228,17 @@ const TOOL_RULES = {
       start: scrollWebSearchStart,
     },
     permission: permWebSearch,
+  },
+  web: {
+    view: {
+      output: false,
+      final: false,
+    },
+    run: runWeb,
+    scroll: {
+      start: scrollWebStart,
+    },
+    permission: permWeb,
   },
   skill: {
     view: {

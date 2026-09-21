@@ -135,16 +135,16 @@ function renderReport(params: Parameters): string {
 }
 
 export const ReportTool = Tool.define<typeof Parameters, Metadata, FSUtil.Service>(
-  "write_report",
+  "spinosa_report",
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
 
     return {
-      description: `Write a structured Spinosa report to agent_reports/ following the canonical report template. You provide the content for each section as free text; the tool assembles the YAML frontmatter, section headers, separators, and reproducibility table.
+      description: `Assemble a structured Spinosa report under agent_reports/ using the canonical report template. You provide section content as free text; the tool builds YAML frontmatter, section headers, separators, and the reproducibility table.
 
-The report template includes: YAML frontmatter (type, dates, status, scope, pipeline, query), H1 title, Goal, TLDR, Report, Conclusions, optional Serendipity, and Reproducibility table with sources.
+Not a generic file write — use the write tool for arbitrary files. This tool only produces numbered agent_reports/NN_topic-slug.md reports.
 
-Use this tool to produce numbered agent_reports/NN_topic-slug.md files. Every required section must be non-empty. The filename must start with a 2-digit number followed by an underscore (e.g. 05_coastal-erosion.md).`,
+Every required section must be non-empty. The filename must start with a 2-digit number followed by an underscore (e.g. 05_coastal-erosion.md).`,
       parameters: Parameters,
       execute: (params: Parameters, ctx: Tool.Context<Metadata>) =>
         Effect.gen(function* () {

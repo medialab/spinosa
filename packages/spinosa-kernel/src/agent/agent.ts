@@ -125,6 +125,8 @@ const layer = Layer.effect(
         const defaults = Permission.fromConfig({
           "*": "allow",
           doom_loop: "ask",
+          // Outbound web (search or fetch) leaves the corpus. Prompt once per session.
+          web: "ask",
           external_directory: {
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
@@ -209,8 +211,7 @@ const layer = Layer.effect(
                 glob: "allow",
                 list: "allow",
                 bash: "allow",
-                webfetch: "allow",
-                websearch: "allow",
+                web: "ask",
                 read: "allow",
                 external_directory: readonlyExternalDirectory,
               }),

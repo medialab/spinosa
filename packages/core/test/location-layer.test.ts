@@ -117,7 +117,7 @@ describe("LocationServiceMap", () => {
             "webfetch",
             "websearch",
             "write",
-            "write_report",
+            "spinosa_report",
           ])
           const allowedState = yield* update(allowed.path)
           expect(allowedState.providers.some((provider) => provider.id === ProviderV2.ID.make("test"))).toBe(true)
@@ -135,7 +135,7 @@ describe("LocationServiceMap", () => {
             "webfetch",
             "websearch",
             "write",
-            "write_report",
+            "spinosa_report",
           ])
         }),
       ),

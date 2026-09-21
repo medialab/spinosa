@@ -69,6 +69,8 @@ export function DialogToolDetail(props: { part: ToolDetailPart; workdir?: string
       cmd = `curl ${String(inp.url ?? "")}`
     } else if (tool() === "websearch") {
       cmd = `# search: ${String(inp.query ?? "")}`
+    } else if (tool() === "web") {
+      cmd = inp.url ? `curl ${String(inp.url)}` : `# search: ${String(inp.query ?? "")}`
     } else if (tool() === "write") {
       cmd = `# write: ${String(inp.filePath ?? inp.file_path ?? "")}`
     } else {

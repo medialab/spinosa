@@ -1,6 +1,6 @@
 # Report Template
 
-The **`write_report` tool** is the canonical way to produce numbered reports. It handles YAML frontmatter, section headers, separators, and the reproducibility table. Use this template as a content reference for what goes in each field.
+The **`spinosa_report` tool** is the canonical way to produce numbered reports. It handles YAML frontmatter, section headers, separators, and the reproducibility table. Use this template as a content reference for what goes in each field.
 
 ## File Naming Convention
 
@@ -121,7 +121,7 @@ Full evidence set for the main report. The main report's `## Report` section con
 
 ## Unicode charts
 
-Call **`spinosa_figure`** for quantitative charts (`bar`, `sparkline`, `stacked_bar`, `status_matrix`). Paste the returned Markdown into the `report` field of `write_report`. Do not hand-draw bar lengths or sparklines.
+Call **`spinosa_figure`** for quantitative charts (`bar`, `sparkline`, `stacked_bar`, `status_matrix`). Paste the returned Markdown into the `report` field of `spinosa_report`. Do not hand-draw bar lengths or sparklines.
 
 Chooser, 52-character width, glyphs, and accessibility: [[.agents/references/chart-rendering.md]].
 

@@ -1,3 +1,7 @@
-Evaluate the Spinosa evidence-sufficiency gate for a coverage contract.
+Evaluate evidence-sufficiency coverage for a Spinosa coverage contract.
 
-Use before delivering any source-grounded claim: pass means the denominator is covered for the claimed coverage, fail names exactly what is missing. Deterministic arithmetic — never eyeball coverage yourself when this tool can decide it.
+Gate answers: "is the claimed coverage denominator covered?" Pass means counts meet the contract. Fail names exactly what is missing.
+
+Deterministic arithmetic only — never eyeball coverage when this tool can decide it.
+
+Not the same as spinosa_verify: gate checks coverage counts; verify checks artifact shape (and verification-status mapping). Use gate before source-grounded claims; use verify before treating a report or packet as structurally complete.

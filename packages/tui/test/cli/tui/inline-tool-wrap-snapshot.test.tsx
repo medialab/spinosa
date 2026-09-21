@@ -282,6 +282,7 @@ describe("TUI inline tool wrapping", () => {
       command: '"Session" in /repo/src',
     })
 
+
     expect(
       buildToolCalloutSummary(
         "task",

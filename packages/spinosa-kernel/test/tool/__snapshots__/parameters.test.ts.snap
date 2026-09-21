@@ -281,7 +281,7 @@ exports[`tool parameters JSON Schema (wire shape) read 1`] = `
 }
 `;
 
-exports[`tool parameters JSON Schema (wire shape) write_report 1`] = `
+exports[`tool parameters JSON Schema (wire shape) spinosa_report 1`] = `
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
@@ -832,264 +832,6 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_map 1`] = `
 }
 `;
 
-exports[`tool parameters JSON Schema (wire shape) spinosa_route 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "command": {
-      "description": "Slash command name without leading slash, if any",
-      "type": "string",
-    },
-    "explicitAgent": {
-      "description": "User-selected agent, if any",
-      "type": "string",
-    },
-    "fileCount": {
-      "description": "Attached file count",
-      "type": "number",
-    },
-    "fileNames": {
-      "description": "Attached file names",
-      "items": {
-        "type": "string",
-      },
-      "type": "array",
-    },
-    "setupStatus": {
-      "description": "Workspace setup status from .spinosa/workspace",
-      "enum": [
-        "not_started",
-        "importing",
-        "cli_started",
-        "workspace_started",
-        "unknown",
-      ],
-      "type": "string",
-    },
-    "text": {
-      "description": "The user request to classify",
-      "type": "string",
-    },
-  },
-  "required": [
-    "text",
-    "setupStatus",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) spinosa_verify 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "relativePath": {
-      "description": "Artifact path relative to the workspace root",
-      "type": "string",
-    },
-    "runID": {
-      "description": "Run ID for linkage checks",
-      "type": "string",
-    },
-    "validator": {
-      "description": "Artifact kind to check against",
-      "enum": [
-        "goal",
-        "evidence_packet",
-        "analysis",
-        "serendipity",
-        "report",
-        "visualization",
-        "verification",
-        "evaluation",
-        "extraction",
-        "map",
-        "coverage",
-        "cleanup",
-      ],
-      "type": "string",
-    },
-    "workspacePath": {
-      "description": "Workspace root override (defaults to session directory)",
-      "type": "string",
-    },
-  },
-  "required": [
-    "relativePath",
-    "validator",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) task 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "background": {
-      "description": "Run the agent in the background. You will be notified when it completes. DO NOT sleep, poll, or proactively check on its progress",
-      "type": "boolean",
-    },
-    "command": {
-      "description": "The command that triggered this task",
-      "type": "string",
-    },
-    "description": {
-      "description": "A short (3-5 words) description of the task",
-      "type": "string",
-    },
-    "prompt": {
-      "description": "The task for the agent to perform",
-      "type": "string",
-    },
-    "subagent_type": {
-      "description": "The type of specialized agent to use for this task",
-      "type": "string",
-    },
-    "task_id": {
-      "description": "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
-      "type": "string",
-    },
-  },
-  "required": [
-    "description",
-    "prompt",
-    "subagent_type",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "todos": {
-      "description": "The updated todo list",
-      "items": {
-        "properties": {
-          "content": {
-            "description": "Brief description of the task",
-            "type": "string",
-          },
-          "priority": {
-            "description": "Priority level of the task: high, medium, low",
-            "type": "string",
-          },
-          "status": {
-            "description": "Current status of the task: pending, in_progress, completed, cancelled",
-            "type": "string",
-          },
-        },
-        "required": [
-          "content",
-          "status",
-          "priority",
-        ],
-        "type": "object",
-      },
-      "type": "array",
-    },
-  },
-  "required": [
-    "todos",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) webfetch 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "format": {
-      "default": "markdown",
-      "description": "The format to return the content in (text, markdown, or html). Defaults to markdown.",
-      "enum": [
-        "text",
-        "markdown",
-        "html",
-      ],
-      "type": "string",
-    },
-    "timeout": {
-      "description": "Optional timeout in seconds (max 120)",
-      "type": "number",
-    },
-    "url": {
-      "description": "The URL to fetch content from",
-      "type": "string",
-    },
-  },
-  "required": [
-    "url",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) websearch 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "contextMaxCharacters": {
-      "description": "Maximum characters for context string optimized for LLMs (default: 10000)",
-      "type": "number",
-    },
-    "livecrawl": {
-      "description": "Live crawl mode - 'fallback': use live crawling as backup if cached content unavailable, 'preferred': prioritize live crawling (default: 'fallback')",
-      "enum": [
-        "fallback",
-        "preferred",
-      ],
-      "type": "string",
-    },
-    "numResults": {
-      "description": "Number of search results to return (default: 8)",
-      "type": "number",
-    },
-    "query": {
-      "description": "Websearch query",
-      "type": "string",
-    },
-    "type": {
-      "description": "Search type - 'auto': balanced search (default), 'fast': quick results, 'deep': comprehensive search",
-      "enum": [
-        "auto",
-        "fast",
-        "deep",
-      ],
-      "type": "string",
-    },
-  },
-  "required": [
-    "query",
-  ],
-  "type": "object",
-}
-`;
-
-exports[`tool parameters JSON Schema (wire shape) write 1`] = `
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "properties": {
-    "content": {
-      "description": "The content to write to the file",
-      "type": "string",
-    },
-    "filePath": {
-      "description": "The absolute path to the file to write (must be absolute, not relative)",
-      "type": "string",
-    },
-  },
-  "required": [
-    "content",
-    "filePath",
-  ],
-  "type": "object",
-}
-`;
-
 exports[`tool parameters JSON Schema (wire shape) spinosa_figure 1`] = `
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1332,5 +1074,336 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_figure 1`] = `
       "type": "object",
     },
   ],
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_route 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "command": {
+      "description": "Slash command name without leading slash, if any",
+      "type": "string",
+    },
+    "explicitAgent": {
+      "description": "User-selected agent, if any",
+      "type": "string",
+    },
+    "fileCount": {
+      "description": "Attached file count",
+      "type": "number",
+    },
+    "fileNames": {
+      "description": "Attached file names",
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "setupStatus": {
+      "description": "Workspace setup status from .spinosa/workspace",
+      "enum": [
+        "not_started",
+        "importing",
+        "cli_started",
+        "workspace_started",
+        "unknown",
+      ],
+      "type": "string",
+    },
+    "text": {
+      "description": "The user request to classify",
+      "type": "string",
+    },
+  },
+  "required": [
+    "text",
+    "setupStatus",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) spinosa_verify 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "relativePath": {
+      "description": "Artifact path relative to the workspace root",
+      "type": "string",
+    },
+    "runID": {
+      "description": "Run ID for linkage checks",
+      "type": "string",
+    },
+    "validator": {
+      "description": "Artifact kind to check against",
+      "enum": [
+        "goal",
+        "evidence_packet",
+        "analysis",
+        "serendipity",
+        "report",
+        "visualization",
+        "verification",
+        "evaluation",
+        "extraction",
+        "map",
+        "coverage",
+        "cleanup",
+      ],
+      "type": "string",
+    },
+    "workspacePath": {
+      "description": "Workspace root override (defaults to session directory)",
+      "type": "string",
+    },
+  },
+  "required": [
+    "relativePath",
+    "validator",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) task 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "background": {
+      "description": "Run the agent in the background. You will be notified when it completes. DO NOT sleep, poll, or proactively check on its progress",
+      "type": "boolean",
+    },
+    "command": {
+      "description": "The command that triggered this task",
+      "type": "string",
+    },
+    "description": {
+      "description": "A short (3-5 words) description of the task",
+      "type": "string",
+    },
+    "prompt": {
+      "description": "The task for the agent to perform",
+      "type": "string",
+    },
+    "subagent_type": {
+      "description": "The type of specialized agent to use for this task",
+      "type": "string",
+    },
+    "task_id": {
+      "description": "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
+      "type": "string",
+    },
+  },
+  "required": [
+    "description",
+    "prompt",
+    "subagent_type",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) todo 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "todos": {
+      "description": "The updated todo list",
+      "items": {
+        "properties": {
+          "content": {
+            "description": "Brief description of the task",
+            "type": "string",
+          },
+          "priority": {
+            "description": "Priority level of the task: high, medium, low",
+            "type": "string",
+          },
+          "status": {
+            "description": "Current status of the task: pending, in_progress, completed, cancelled",
+            "type": "string",
+          },
+        },
+        "required": [
+          "content",
+          "status",
+          "priority",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+  },
+  "required": [
+    "todos",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) webfetch 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "format": {
+      "default": "markdown",
+      "description": "The format to return the content in (text, markdown, or html). Defaults to markdown.",
+      "enum": [
+        "text",
+        "markdown",
+        "html",
+      ],
+      "type": "string",
+    },
+    "timeout": {
+      "description": "Optional timeout in seconds (max 120)",
+      "type": "number",
+    },
+    "url": {
+      "description": "The URL to fetch content from",
+      "type": "string",
+    },
+  },
+  "required": [
+    "url",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) websearch 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "contextMaxCharacters": {
+      "description": "Maximum characters for context string optimized for LLMs (default: 10000)",
+      "type": "number",
+    },
+    "livecrawl": {
+      "description": "Live crawl mode - 'fallback': use live crawling as backup if cached content unavailable, 'preferred': prioritize live crawling (default: 'fallback')",
+      "enum": [
+        "fallback",
+        "preferred",
+      ],
+      "type": "string",
+    },
+    "numResults": {
+      "description": "Number of search results to return (default: 8)",
+      "type": "number",
+    },
+    "query": {
+      "description": "Websearch query",
+      "type": "string",
+    },
+    "type": {
+      "description": "Search type - 'auto': balanced search (default), 'fast': quick results, 'deep': comprehensive search",
+      "enum": [
+        "auto",
+        "fast",
+        "deep",
+      ],
+      "type": "string",
+    },
+  },
+  "required": [
+    "query",
+  ],
+  "type": "object",
+}
+`;
+
+exports[`tool parameters JSON Schema (wire shape) web 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "properties": {
+        "contextMaxCharacters": {
+          "description": "Maximum characters for context string optimized for LLMs (default: 10000)",
+          "type": "number",
+        },
+        "livecrawl": {
+          "description": "Live crawl mode - 'fallback': use live crawling as backup if cached content unavailable, 'preferred': prioritize live crawling (default: 'fallback')",
+          "enum": [
+            "fallback",
+            "preferred",
+          ],
+          "type": "string",
+        },
+        "numResults": {
+          "description": "Number of search results to return (default: 8)",
+          "type": "number",
+        },
+        "query": {
+          "description": "Websearch query",
+          "type": "string",
+        },
+        "type": {
+          "description": "Search type - 'auto': balanced search (default), 'fast': quick results, 'deep': comprehensive search",
+          "enum": [
+            "auto",
+            "fast",
+            "deep",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "query",
+      ],
+      "type": "object",
+    },
+    {
+      "properties": {
+        "format": {
+          "default": "markdown",
+          "description": "The format to return the content in (text, markdown, or html). Defaults to markdown.",
+          "enum": [
+            "text",
+            "markdown",
+            "html",
+          ],
+          "type": "string",
+        },
+        "timeout": {
+          "description": "Optional timeout in seconds (max 120)",
+          "type": "number",
+        },
+        "url": {
+          "description": "The URL to fetch content from",
+          "type": "string",
+        },
+      },
+      "required": [
+        "url",
+      ],
+      "type": "object",
+    },
+  ],
+  "description": "Pass exactly one of query (search) or url (fetch).",
+}
+`;
+
+
+exports[`tool parameters JSON Schema (wire shape) write 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "content": {
+      "description": "The content to write to the file",
+      "type": "string",
+    },
+    "filePath": {
+      "description": "The absolute path to the file to write (must be absolute, not relative)",
+      "type": "string",
+    },
+  },
+  "required": [
+    "content",
+    "filePath",
+  ],
+  "type": "object",
 }
 `;

@@ -318,7 +318,7 @@ Canonical agent definitions: [[.agents/agents/]]. Agent vendor mirrors are pre-b
 ## Global Rules
 
 - Never read, list, or index `.DS_Store` or `._*` files. Always skip them in glob, find, ls, and read operations.
-- **Workspace boundary:** You are confined to `{{WORKSPACE_PATH}}`. You must never read, write, edit, or list files outside this directory. If a task requires external data, use the `webfetch` tool instead — never access files outside the workspace.
+- **Workspace boundary:** You are confined to `{{WORKSPACE_PATH}}`. You must never read, write, edit, or list files outside this directory. If a task requires external data, use the `web` tool instead — never access files outside the workspace.
   - **Exception (post-startup only):** when `spinosa-overseer` is explicitly dispatched for a coverage audit after `setup_status: workspace_started`, it may optionally read host session logs for forensics. This exception does **not** apply during `cli_started` / startup, and never authorizes the orchestrator or other agents to leave the workspace.
 - No fixed set of maps is required. Maps can be created and enriched as needed.
 - Report blockers honestly. Never invent support.

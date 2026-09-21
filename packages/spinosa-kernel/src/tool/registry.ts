@@ -13,8 +13,8 @@ import { ReportTool } from "./report"
 import { TaskTool } from "./task"
 import { Database } from "@spinosa/kernel-core/database/database"
 import { TodoWriteTool } from "./todo"
-import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
+import { WebTool } from "./web"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { SpinosaRouteTool } from "./spinosa-route"
@@ -33,7 +33,7 @@ import z from "zod"
 import { Plugin } from "../plugin"
 import { Provider } from "@/provider/provider"
 
-import { WebSearchTool } from "./websearch"
+import { webSearchEnabled } from "./websearch"
 import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
@@ -60,9 +60,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@spinosa/kernel-core/provider"
 import { ModelV2 } from "@spinosa/kernel-core/model"
 
-export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
-  return providerID === ProviderV2.ID.opencode || flags.exa || flags.parallel
-}
+export { webSearchEnabled }
 
 type TaskDef = Tool.InferDef<typeof TaskTool>
 type ReadDef = Tool.InferDef<typeof ReadTool>
@@ -103,8 +101,7 @@ const layer = Layer.effect(
     const todo = yield* TodoWriteTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
-    const webfetch = yield* WebFetchTool
-    const websearch = yield* WebSearchTool
+    const web = yield* WebTool
     const shell = yield* ShellTool
     const globtool = yield* GlobTool
     const writetool = yield* WriteTool
@@ -219,9 +216,8 @@ const layer = Layer.effect(
           edit: Tool.init(edit),
           write: Tool.init(writetool),
           task: Tool.init(task),
-          fetch: Tool.init(webfetch),
+          web: Tool.init(web),
           todo: Tool.init(todo),
-          search: Tool.init(websearch),
           skill: Tool.init(skilltool),
           spinosaroute: Tool.init(spinosaroute),
           spinosaframe: Tool.init(spinosaframe),
@@ -250,9 +246,8 @@ const layer = Layer.effect(
             tool.edit,
             tool.write,
             tool.task,
-            tool.fetch,
+            tool.web,
             tool.todo,
-            tool.search,
             tool.skill,
             tool.spinosaroute,
             tool.spinosaframe,
@@ -296,11 +291,9 @@ const layer = Layer.effect(
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
+      // `web` stays available for URL fetch even when search providers are off.
+      // Search mode checks webSearchEnabled at execute time.
       const filtered = (yield* all()).filter((tool) => {
-        if (tool.id === WebSearchTool.id) {
-          return webSearchEnabled(input.providerID, { exa: flags.enableExa, parallel: flags.enableParallel })
-        }
-
         const usePatch =
           input.modelID.includes("gpt-") && !input.modelID.includes("oss") && !input.modelID.includes("gpt-4")
         if (tool.id === ApplyPatchTool.id) return usePatch

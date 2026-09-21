@@ -573,7 +573,7 @@ const resolveExportPath = (filename: string): string => {
       const tag = count > 1 ? `${summary.tag} x${count}` : summary.tag
       const commands = count > 1 ? group.parts.map((p) => buildCopyCommand(p.tool, p.state.input ?? {}, { tag: summary.tag, command: summary.command })) : undefined
       const groupSummary: ToolCalloutSummary = { tag, command: summary.command, commands }
-      const side = ["bash", "read", "grep", "glob", "webfetch", "websearch"].includes(group.display) ? "left" : "right"
+      const side = ["bash", "read", "grep", "glob", "webfetch", "websearch", "web"].includes(group.display) ? "left" : "right"
       const offsetTop = side === "left" ? leftHeight : rightHeight
       sides.set(first.callID, { side, offsetTop, summary: groupSummary })
       const height = estimateToolCalloutHeight(groupSummary, layout.railWidth, first.tool, first.state.status === "pending" ? {} : (first.state.metadata ?? {}), first.state.input ?? {})
@@ -1762,6 +1762,7 @@ const toolCalloutColor = (tool: string, theme: ReturnType<typeof useTheme>["them
     glob: theme.warning,
     webfetch: theme.info,
     websearch: theme.info,
+    web: theme.info,
     write: theme.accent,
     edit: theme.accent,
     apply_patch: theme.error,
@@ -1895,9 +1896,9 @@ function buildCopyCommand(tool: string, input: Record<string, unknown>, summary:
     const url = stringValue(input.url)
     return url ? `curl -sL "${url}"` : summary.command
   }
-  if (display === "websearch") {
+  if (display === "websearch" || display === "web") {
     const url = stringValue(input.url)
-    if (url) return url
+    if (url) return `curl -sL "${url}"`
     const query = stringValue(input.query)
     return query ? `search: ${query}` : summary.command
   }
@@ -2638,6 +2639,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
           <Match when={display() === "websearch"}>
             <WebSearch {...toolprops} />
           </Match>
+          <Match when={display() === "web"}>
+            <Web {...toolprops} />
+          </Match>
           <Match when={display() === "write"}>
             <Write {...toolprops} />
           </Match>
@@ -2718,6 +2722,15 @@ export function buildToolCalloutSummary(
   if (display === "websearch") {
     return {
       tag: webSearchProviderLabel(metadata.provider).toUpperCase(),
+      command: stringValue(inputValue.query) ?? "Search",
+    }
+  }
+  if (display === "web") {
+    if (stringValue(inputValue.url)) {
+      return { tag: "WEB", command: stringValue(inputValue.url) ?? "Fetch" }
+    }
+    return {
+      tag: "WEB",
       command: stringValue(inputValue.query) ?? "Search",
     }
   }
@@ -3276,6 +3289,11 @@ function WebSearch(props: ToolProps) {
   )
 }
 
+function Web(props: ToolProps) {
+  if (stringValue(props.input.url)) return <WebFetch {...props} />
+  return <WebSearch {...props} />
+}
+
 function Task(props: ToolProps) {
   const { theme } = useTheme()
   const { navigate } = useRoute()
@@ -3645,6 +3663,7 @@ const toolDisplays = new Set([
   "grep",
   "webfetch",
   "websearch",
+  "web",
   "write",
   "edit",
   "task",

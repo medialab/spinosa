@@ -127,7 +127,7 @@ const wave2 = await wave("wave 2: launch / workspace regressions", [
       30_000,
     ),
   ),
-  // Provider key redaction + write_report status authority.
+  // Provider key redaction + spinosa_report status authority.
   runJob("kernel release-critical", () =>
     bunTest(path.join(root, "packages/spinosa-kernel"), KERNEL_RELEASE_TESTS, 60_000),
   ),

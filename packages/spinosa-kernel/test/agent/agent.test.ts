@@ -466,18 +466,40 @@ it.instance("Agent.get returns undefined for non-existent agent", () =>
   }),
 )
 
-it.instance("default permission includes doom_loop and external_directory as ask", () =>
+it.instance("default permission includes doom_loop, web, and external_directory as ask", () =>
   Effect.gen(function* () {
     const build = yield* load((svc) => svc.get("build"))
     expect(evalPerm(build, "doom_loop")).toBe("ask")
+    expect(evalPerm(build, "web")).toBe("ask")
     expect(evalPerm(build, "external_directory")).toBe("ask")
   }),
 )
 
-it.instance("webfetch is allowed by default", () =>
+it.instance("explore agent asks before web", () =>
+  Effect.gen(function* () {
+    const explore = yield* load((svc) => svc.get("explore"))
+    expect(evalPerm(explore, "web")).toBe("ask")
+  }),
+)
+
+it.instance("user config can allow or deny web", () =>
   Effect.gen(function* () {
     const build = yield* load((svc) => svc.get("build"))
-    expect(evalPerm(build, "webfetch")).toBe("allow")
+    expect(evalPerm(build, "web")).toBe("deny")
+  }),
+  {
+    config: {
+      permission: {
+        web: "deny",
+      },
+    },
+  },
+)
+
+it.instance("web asks by default", () =>
+  Effect.gen(function* () {
+    const build = yield* load((svc) => svc.get("build"))
+    expect(evalPerm(build, "web")).toBe("ask")
   }),
 )
 

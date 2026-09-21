@@ -1,5 +1,5 @@
 Mechanically verify a Spinosa workspace artifact: existence, non-emptiness, kind-specific structure, and (for verification artifacts) status mapping to complete / retry / block.
 
-Use to truth-check report structure before delivery. This covers the mechanical half of verification only — quote-level truth against original sources remains the calling agent's judgment.
+Not the same as spinosa_gate: verify checks artifact shape; gate checks evidence-coverage counts. Use verify to truth-check report structure before delivery. Quote-level truth against original sources remains the calling agent's judgment.
 
-Status semantics: every validator except `verification` is structural and returns `structure_ok`, which means "shape is valid", not "claims were checked". Only `verification` returns a verification verdict (pass / pass_with_corrections / partial / fail), read from the verifier's own artifact.
+Status semantics: every validator except `verification` is structural and returns `structure_ok` ("shape is valid", not "claims were checked"). Only `verification` returns a verification verdict (pass / pass_with_corrections / partial / fail), read from the verifier's own artifact.

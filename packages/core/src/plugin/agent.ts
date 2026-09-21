@@ -112,6 +112,7 @@ export const Plugin = define({
     const defaults: PermissionV2.Ruleset = [
       { action: "*", resource: "*", effect: "allow" },
       ...readonlyExternalDirectory,
+      { action: "web", resource: "*", effect: "ask" },
       { action: "question", resource: "*", effect: "deny" },
       { action: "plan_enter", resource: "*", effect: "deny" },
       { action: "plan_exit", resource: "*", effect: "deny" },
@@ -172,8 +173,7 @@ export const Plugin = define({
               { action: "*", resource: "*", effect: "deny" },
               { action: "grep", resource: "*", effect: "allow" },
               { action: "glob", resource: "*", effect: "allow" },
-              { action: "webfetch", resource: "*", effect: "allow" },
-              { action: "websearch", resource: "*", effect: "allow" },
+              { action: "web", resource: "*", effect: "ask" },
               { action: "read", resource: "*", effect: "allow" },
             ],
             readonlyExternalDirectory,

@@ -23,7 +23,7 @@ const READ_ONLY: readonly ToolRule[] = [
 
 const WRITER: readonly ToolRule[] = [
   ...READ_ONLY,
-  { tool: "write_report", resource: "*", effect: "allow" },
+  { tool: "spinosa_report", resource: "*", effect: "allow" },
   { tool: "spinosa_figure", resource: "*", effect: "allow" },
 ]
 
