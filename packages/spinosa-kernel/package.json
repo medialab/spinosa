@@ -95,7 +95,7 @@
     "@pierre/diffs": "catalog:",
     "@silvia-odwyer/photon-node": "0.3.4",
     "@solid-primitives/event-bus": "1.1.2",
-    "@solid-primitives/scheduled": "1.5.2",
+    "@solid-primitives/scheduled": "1.5.3",
     "@spinosa/core": "workspace:*",
     "@spinosa/llm": "workspace:*",
     "@spinosa/markitdown": "workspace:*",

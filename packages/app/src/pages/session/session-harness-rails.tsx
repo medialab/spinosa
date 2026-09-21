@@ -1,0 +1,200 @@
+import { For, Show, createMemo, type Accessor, type JSX } from "solid-js"
+import { useNavigate, useParams } from "@solidjs/router"
+import type { Message, ToolPart } from "@spinosa/sdk/v2"
+import { useLanguage } from "@/context/language"
+import { useLocal } from "@/context/local"
+import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
+import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/session-route"
+
+type ToolSummary = {
+  tool: string
+  count: number
+  active: boolean
+  errors: number
+}
+
+type SubagentRun = {
+  id: string
+  description: string
+  status: ToolPart["state"]["status"]
+  childID?: string
+}
+
+function useAssistantToolParts(messages: Accessor<Message[]>) {
+  const sync = useSync()
+  return createMemo(() => {
+    const parts: ToolPart[] = []
+    for (const message of messages()) {
+      if (message.role !== "assistant") continue
+      for (const part of sync().data.part[message.id] ?? []) {
+        if (part.type === "tool") parts.push(part)
+      }
+    }
+    return parts
+  })
+}
+
+function statusDot(status: ToolPart["state"]["status"]) {
+  if (status === "running" || status === "pending") return "bg-icon-warning-base animate-pulse"
+  if (status === "error") return "bg-icon-critical-base"
+  return "bg-icon-success-base"
+}
+
+function RailSection(props: { title: string; children: JSX.Element }) {
+  return (
+    <section class="flex min-w-0 flex-col gap-1">
+      <div class="px-1.5 text-12-regular text-text-weak">{props.title}</div>
+      {props.children}
+    </section>
+  )
+}
+
+// Left column of the conversation: every tool used in this session,
+// mirroring the TUI transcript tool callouts.
+export function SessionToolsRail(props: { messages: Accessor<Message[]> }) {
+  const language = useLanguage()
+  const toolParts = useAssistantToolParts(props.messages)
+  const tools = createMemo<ToolSummary[]>(() => {
+    const summaries = new Map<string, ToolSummary>()
+    for (const part of toolParts()) {
+      const summary = summaries.get(part.tool) ?? { tool: part.tool, count: 0, active: false, errors: 0 }
+      summary.count += 1
+      if (part.state.status === "running" || part.state.status === "pending") summary.active = true
+      if (part.state.status === "error") summary.errors += 1
+      summaries.set(part.tool, summary)
+    }
+    return [...summaries.values()]
+  })
+
+  return (
+    <aside
+      data-component="session-harness-tools"
+      class="hidden min-h-0 w-52 shrink-0 flex-col gap-4 overflow-y-auto p-2 xl:flex"
+    >
+      <RailSection title={language.t("session.harness.tools")}>
+        <Show
+          when={tools().length > 0}
+          fallback={<div class="px-1.5 text-12-regular text-text-weak">{language.t("session.harness.empty")}</div>}
+        >
+          <For each={tools()}>
+            {(summary) => (
+              <div class="flex min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-1">
+                <span
+                  class={`size-2 shrink-0 rounded-full ${summary.active ? "bg-icon-warning-base animate-pulse" : summary.errors > 0 ? "bg-icon-critical-base" : "bg-icon-success-base"}`}
+                />
+                <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-12-regular text-text-base">
+                  {summary.tool}
+                </span>
+                <span class="shrink-0 text-12-regular text-text-weak">×{summary.count}</span>
+              </div>
+            )}
+          </For>
+        </Show>
+      </RailSection>
+    </aside>
+  )
+}
+
+// Right column of the conversation: subagent runs plus the run metadata a
+// user cannot replicate by hand, mirroring the TUI subagent footer.
+export function SessionSubagentsRail(props: {
+  messages: Accessor<Message[]>
+  sessionID: Accessor<string | undefined>
+}) {
+  const language = useLanguage()
+  const local = useLocal()
+  const sdk = useSDK()
+  const navigate = useNavigate()
+  const params = useParams<{ serverKey?: string }>()
+  const toolParts = useAssistantToolParts(props.messages)
+
+  const runs = createMemo<SubagentRun[]>(() => {
+    const sessionID = props.sessionID()
+    const list: SubagentRun[] = []
+    for (const part of toolParts()) {
+      if (part.tool !== "task") continue
+      const input = part.state.input
+      const description = typeof input.description === "string" && input.description ? input.description : part.callID
+      const metadata = part.state.status === "pending" ? undefined : part.state.metadata
+      const child = metadata?.sessionId
+      list.push({
+        id: part.callID,
+        description,
+        status: part.state.status,
+        childID: typeof child === "string" && child !== sessionID ? child : undefined,
+      })
+    }
+    return list
+  })
+
+  const agent = () => local.agent.current()?.name
+  const model = () => local.model.current()
+  const userTurns = createMemo(() => props.messages().filter((message) => message.role === "user").length)
+
+  function openSubagent(childID: string) {
+    if (params.serverKey) {
+      navigate(sessionHref(requireServerKey(params.serverKey), childID))
+      return
+    }
+    navigate(legacySessionHref(sdk().directory, childID))
+  }
+
+  return (
+    <aside
+      data-component="session-harness-subagents"
+      class="hidden min-h-0 w-60 shrink-0 flex-col gap-4 overflow-y-auto p-2 xl:flex"
+    >
+      <RailSection title={language.t("session.harness.subagents")}>
+        <Show
+          when={runs().length > 0}
+          fallback={<div class="px-1.5 text-12-regular text-text-weak">{language.t("session.harness.empty")}</div>}
+        >
+          <For each={runs()}>
+            {(run) => (
+              <button
+                type="button"
+                disabled={!run.childID}
+                class="flex min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-1 text-left transition-colors hover:bg-surface-base-hover disabled:cursor-default disabled:hover:bg-transparent"
+                onClick={() => run.childID && openSubagent(run.childID)}
+                title={language.t(`session.harness.status.${run.status}`)}
+              >
+                <span class={`size-2 shrink-0 rounded-full ${statusDot(run.status)}`} />
+                <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-12-regular text-text-base">
+                  {run.description}
+                </span>
+              </button>
+            )}
+          </For>
+        </Show>
+      </RailSection>
+      <RailSection title={language.t("session.harness.system")}>
+        <Show when={agent()}>
+          {(name) => (
+            <div class="flex min-w-0 items-center gap-2 px-1.5 py-1">
+              <span class="shrink-0 text-12-regular text-text-weak">{language.t("session.harness.agent")}</span>
+              <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-right text-12-regular text-text-base">
+                {name()}
+              </span>
+            </div>
+          )}
+        </Show>
+        <Show when={model()}>
+          {(current) => (
+            <div class="flex min-w-0 items-center gap-2 px-1.5 py-1">
+              <span class="shrink-0 text-12-regular text-text-weak">{language.t("session.harness.model")}</span>
+              <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-right text-12-regular text-text-base">
+                {current().provider.id}/{current().id}
+              </span>
+            </div>
+          )}
+        </Show>
+        <div class="flex min-w-0 items-center gap-2 px-1.5 py-1">
+          <span class="shrink-0 text-12-regular text-text-weak">×{userTurns()}</span>
+          <span class="shrink-0 text-12-regular text-text-weak">·</span>
+          <span class="shrink-0 text-12-regular text-text-weak">×{toolParts().length}</span>
+        </div>
+      </RailSection>
+    </aside>
+  )
+}

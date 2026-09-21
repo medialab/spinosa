@@ -30,6 +30,32 @@
     "packages/llm": {
       "entry": ["scripts/recording-cost-report.ts"]
     },
+    "packages/app": {
+      "entry": [
+        "src/entry.tsx",
+        "e2e/**/*.ts",
+        "e2e/**/*.tsx",
+        "playwright.config.ts",
+        "src/**/*.stories.tsx",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx",
+        "test-browser/**/*.ts"
+      ]
+    },
+    "packages/desktop": {
+      "entry": [
+        "src/main/index.ts",
+        "src/main/sidecar.ts",
+        "src/preload/index.ts",
+        "src/renderer/index.tsx",
+        "src/renderer/cli.ts",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx",
+        "scripts/*.ts",
+        "electron-builder.config.ts",
+        "electron-builder.config.test.ts"
+      ]
+    },
     "packages/spinosa-kernel": {
       "entry": [
         "scripts/bench-search.ts",
