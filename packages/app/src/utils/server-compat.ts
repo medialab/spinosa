@@ -17,6 +17,7 @@ import type {
   CommandListOutput,
   IntegrationGetOutput,
   IntegrationListOutput,
+  IntegrationMethod,
   IntegrationOauthConnectOutput,
   IntegrationOauthStatusOutput,
   ModelInfo,
@@ -579,15 +580,33 @@ function directoryHeaders(directory?: string): Record<string, Record<string, str
   return { headers: { "x-spinosa-directory": encodeURIComponent(directory) } }
 }
 
-/** Active (connected) provider IDs from the served config endpoint. */
+/**
+ * Active (connected) provider IDs: the union of the V1 auth universe
+ * (GET /config/providers, auth.json) and the V2 credential universe
+ * (GET /api/integration connections). Neither bridge exists kernel-side, so
+ * both legs must be read. A V1 failure propagates (the call site degrades to
+ * all-on); a V2 failure degrades to the V1 set alone.
+ */
 export async function fetchActiveProviderIDs(
   raw: GeneratedClient,
   directory?: string,
 ): Promise<Array<string>> {
-  const body = (await unwrapEnvelope(
-    await lowClientOf(raw).get({ url: "/config/providers", ...directoryHeaders(directory) }),
-  )) as { providers?: Array<{ id: string }> }
-  return (body?.providers ?? []).map((provider) => provider.id)
+  const client = lowClientOf(raw)
+  const headers = directoryHeaders(directory)
+  const config = (await unwrapEnvelope(await client.get({ url: "/config/providers", ...headers }))) as {
+    providers?: Array<{ id: string }>
+  }
+  const v1 = (config?.providers ?? []).map((provider) => provider.id)
+  const integrations = await client
+    .get({ url: "/api/integration", ...headers })
+    .then((response) => unwrapEnvelope(response) as { data?: Array<{ id: string; connections?: unknown[] }> })
+    .then((body) =>
+      (body?.data ?? [])
+        .filter((item) => Array.isArray(item.connections) && item.connections.length > 0)
+        .map((item) => item.id),
+    )
+    .catch(() => [] as string[])
+  return [...new Set([...v1, ...integrations])]
 }
 
 type CatalogResource = {
@@ -642,7 +661,8 @@ function toLegacyCatalogProvider(provider: V1Provider): ProviderListOutput["data
   }
 }
 
-function toLegacyModel(model: ModelV2Info): ModelInfo {  const api = model.api.type === "aisdk" ? model.api : undefined
+function toLegacyModel(model: ModelV2Info): ModelInfo {
+  const api = model.api.type === "aisdk" ? model.api : undefined
   return {
     id: model.id,
     modelID: model.id,
@@ -662,6 +682,109 @@ function toLegacyModel(model: ModelV2Info): ModelInfo {  const api = model.api.t
     enabled: model.enabled,
     limit: model.limit,
   }
+}
+
+/** V1 catalog model as served by GET /provider (kernel Provider.Model). */
+type V1CatalogModel = {
+  id: string
+  providerID?: string
+  name?: string
+  family?: string
+  api?: { id?: string; url?: string; npm?: string }
+  capabilities?: {
+    toolcall?: boolean
+    input?: Record<string, boolean>
+    output?: Record<string, boolean>
+  }
+  cost?: { input?: number; output?: number; cache?: { read?: number; write?: number } }
+  limit?: { context?: number; input?: number; output?: number }
+  status?: string
+  options?: Record<string, unknown>
+  headers?: Record<string, string>
+  release_date?: string
+  variants?: Record<string, Record<string, unknown>>
+}
+
+type V1CatalogProvider = {
+  id: string
+  models?: Record<string, V1CatalogModel>
+}
+
+const modalityList = (value?: Record<string, boolean>) =>
+  Object.entries(value ?? {})
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => name)
+
+/** Maps a V1 catalog model to the legacy ModelInfo contract. */
+function toLegacyV1Model(model: V1CatalogModel, providerID: string): ModelInfo {
+  const released = Date.parse(model.release_date ?? "")
+  return {
+    id: model.id,
+    modelID: model.id,
+    providerID: model.providerID ?? providerID,
+    family: model.family,
+    name: model.name ?? model.id,
+    package: model.api?.npm,
+    settings: model.options as ModelInfo["settings"],
+    headers: model.headers,
+    capabilities: {
+      tools: model.capabilities?.toolcall ?? false,
+      input: modalityList(model.capabilities?.input),
+      output: modalityList(model.capabilities?.output),
+    },
+    variants: Object.entries(model.variants ?? {}).map(([id, settings]) => ({
+      id,
+      settings: settings as ModelInfo["variants"][number]["settings"],
+    })),
+    time: { released: Number.isFinite(released) ? released : 0 },
+    cost: [
+      {
+        input: model.cost?.input ?? 0,
+        output: model.cost?.output ?? 0,
+        cache: { read: model.cost?.cache?.read ?? 0, write: model.cost?.cache?.write ?? 0 },
+      },
+    ],
+    status: (model.status ?? "active") as ModelInfo["status"],
+    enabled: true,
+    limit: {
+      context: model.limit?.context ?? 0,
+      input: model.limit?.input,
+      output: model.limit?.output ?? 0,
+    },
+  }
+}
+
+type V1AuthMethod = {
+  type: "oauth" | "api"
+  label: string
+  prompts?: Extract<IntegrationMethod, { type: "oauth" }>["prompts"]
+}
+
+/**
+ * Merges V1 provider.auth methods into the V2 integration methods. V1 oauth
+ * methods get `v1:{index}` ids (routed to auth.json — the universe the V1
+ * session LLM reads) and win label duplicates against V2 oauth methods; V1
+ * api methods are dropped when a V2 key method exists.
+ */
+function mergeIntegrationMethods(v2Methods: IntegrationMethod[], v1Methods: V1AuthMethod[]): IntegrationMethod[] {
+  const merged: IntegrationMethod[] = [...v2Methods]
+  v1Methods.forEach((method, index) => {
+    if (method.type === "api") {
+      if (merged.some((entry) => entry.type === "key")) return
+      merged.push({ type: "key", label: method.label })
+      return
+    }
+    const entry: IntegrationMethod = {
+      type: "oauth",
+      id: `v1:${index}`,
+      label: method.label,
+      prompts: method.prompts,
+    }
+    const duplicate = merged.findIndex((value) => value.type === "oauth" && value.label === method.label)
+    if (duplicate >= 0) merged[duplicate] = entry
+    else merged.push(entry)
+  })
+  return merged
 }
 
 function toLegacyAgent(agent: { id: string } & Omit<AgentInfo, "id" | "name">): AgentInfo {
@@ -712,6 +835,52 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
     const directory = directoryOf(location) || undefined
     return { directory, workspace: location?.workspace }
   }
+  // V1 methods for one provider, or [] when the endpoint fails. Used to merge
+  // oauth methods the V2 integration registry does not carry (copilot, gitlab,
+  // poe, xai, azure, ... — see desktop-parity-audit).
+  const v1AuthMethods = async (location: V2Location | undefined, integrationID: string) => {
+    try {
+      const methods = (await root(location).provider.auth()).data as Record<string, V1AuthMethod[]> | undefined
+      return methods?.[integrationID] ?? []
+    } catch {
+      return []
+    }
+  }
+  // Models from the V1 catalog (GET /provider carries full models for every
+  // provider). Falls back to V2 /api/model when the V1 catalog yields none.
+  const v1CatalogModels = async (location: V2Location | undefined) => {
+    const result = await root(location).provider.list(flat(location))
+    const providers = ((result.data as { all?: V1CatalogProvider[] } | undefined)?.all ?? []) as V1CatalogProvider[]
+    return providers.flatMap((provider) =>
+      Object.values(provider.models ?? {}).map((model) => toLegacyV1Model(model, provider.id)),
+    )
+  }
+  const v2ModelList = async (
+    location: V2Location | undefined,
+  ): Promise<{ location: LocationInfo; data: ModelInfo[] }> => {
+    const body = unwrapEnvelope(await v2.model.list(at(location))) as {
+      location: LocationInfo
+      data: Array<ModelV2Info>
+    }
+    return { location: body.location, data: body.data.map(toLegacyModel) }
+  }
+  const v1OrV2Models = async (location: V2Location | undefined): Promise<{ location: LocationInfo; data: ModelInfo[] }> => {
+    try {
+      const models = await v1CatalogModels(location)
+      if (models.length > 0) {
+        return {
+          location: {
+            directory: directoryOf(location),
+            project: { id: "", directory: directoryOf(location) },
+          },
+          data: models,
+        }
+      }
+    } catch {
+      // fall through to V2
+    }
+    return v2ModelList(location)
+  }
 
   return {
     ...base,
@@ -730,11 +899,7 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
     }),
     model: override({} as ServerApi["model"], {
       async list(value) {
-        const body = unwrapEnvelope(await v2.model.list(at(value?.location))) as {
-          location: LocationInfo
-          data: Array<ModelV2Info>
-        }
-        return { location: body.location, data: body.data.map(toLegacyModel) }
+        return v1OrV2Models(value?.location)
       },
       async default(value) {
         // No V2 default-model endpoint exists. The TUI resolves launch >
@@ -747,13 +912,10 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
         const [providerID, ...rest] = (config.model ?? "").split("/")
         const modelID = rest.join("/")
         if (!providerID || !modelID) return located(null, value?.location)
-        const body = unwrapEnvelope(await v2.model.list(at(value?.location))) as {
-          location: LocationInfo
-          data: Array<ModelV2Info>
-        }
+        const body = await v1OrV2Models(value?.location)
         const match = body.data.find((item) => item.providerID === providerID && item.id === modelID)
         if (!match) return { location: body.location, data: null }
-        return { location: body.location, data: toLegacyModel(match) }
+        return { location: body.location, data: match }
       },
     }),
     agent: override({} as ServerApi["agent"], {
@@ -770,22 +932,53 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
         return unwrapEnvelope(await v2.integration.list(at(value?.location))) as IntegrationListOutput
       },
       async get(value): Promise<IntegrationGetOutput> {
-        return unwrapEnvelope(
-          await v2.integration.get({ integrationID: value.integrationID, ...at(value?.location) }),
-        ) as IntegrationGetOutput
+        const [result, v1Methods] = await Promise.all([
+          v2.integration.get({ integrationID: value.integrationID, ...at(value?.location) }).then((response) =>
+            unwrapEnvelope(response),
+          ) as Promise<IntegrationGetOutput>,
+          v1AuthMethods(value.location, value.integrationID),
+        ])
+        if (!result.data) return result
+        return { ...result, data: { ...result.data, methods: mergeIntegrationMethods(result.data.methods, v1Methods) } }
       },
       connect: {
         key: async (value) => {
+          // Dual-write: V2 first (surfaces missing-integration 400 before
+          // touching auth.json), then V1 auth.set so the session LLM and
+          // /config/providers see the key. Awaited; retry is idempotent. No
+          // dispose — Spinosa's authSet handler reloads providers.
           await v2.integration.connect.key({
             integrationID: value.integrationID,
             key: value.key,
             label: value.label,
             ...at(value?.location),
           })
+          await root(value.location).auth.set({
+            providerID: value.integrationID,
+            auth: { type: "api", key: value.key },
+          })
         },
       },
       oauth: {
         connect: async (value): Promise<IntegrationOauthConnectOutput> => {
+          if (value.methodID.startsWith("v1:")) {
+            const method = Number(value.methodID.slice("v1:".length))
+            const result = await root(value.location).provider.oauth.authorize(
+              { providerID: value.integrationID, method, inputs: value.inputs },
+              { throwOnError: true },
+            )
+            if (!result.data) throw new Error("Failed to start OAuth authorization")
+            return located(
+              {
+                attemptID: `v1:${value.integrationID}:${method}`,
+                url: result.data.url,
+                instructions: result.data.instructions,
+                mode: result.data.method,
+                time: { created: Date.now(), expires: Date.now() + 10 * 60 * 1000 },
+              },
+              value.location,
+            )
+          }
           return unwrapEnvelope(
             await v2.integration.connect.oauth({
               integrationID: value.integrationID,
@@ -797,11 +990,32 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
           ) as IntegrationOauthConnectOutput
         },
         status: async (value): Promise<IntegrationOauthStatusOutput> => {
+          if (value.attemptID.startsWith("v1:")) {
+            const method = Number(value.attemptID.split(":").at(-1))
+            // Blocking callback then complete: Spinosa's V1 callback handler
+            // reloads providers, so no dispose.
+            await root(value.location).provider.oauth.callback(
+              { providerID: value.integrationID, method },
+              { throwOnError: true },
+            )
+            return located(
+              { status: "complete" as const, time: { created: Date.now(), expires: Date.now() } },
+              value.location,
+            )
+          }
           return unwrapEnvelope(
             await v2.integration.attempt.status({ attemptID: value.attemptID, ...at(value?.location) }),
           ) as IntegrationOauthStatusOutput
         },
         complete: async (value) => {
+          if (value.attemptID.startsWith("v1:")) {
+            const method = Number(value.attemptID.split(":").at(-1))
+            await root(value.location).provider.oauth.callback(
+              { providerID: value.integrationID, method, code: value.code },
+              { throwOnError: true },
+            )
+            return
+          }
           await v2.integration.attempt.complete({
             attemptID: value.attemptID,
             code: value.code,
@@ -809,6 +1023,7 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
           })
         },
         cancel: async (value) => {
+          if (value.attemptID.startsWith("v1:")) return
           await v2.integration.attempt.cancel({ attemptID: value.attemptID, ...at(value?.location) })
         },
       },

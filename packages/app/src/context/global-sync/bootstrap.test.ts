@@ -287,7 +287,11 @@ describe("query keys", () => {
     const legacy = {
       client: {
         get: async (options: unknown) => {
-          calls.push(["active", (options as { headers?: unknown }).headers])
+          const url = String((options as { url?: string }).url ?? "")
+          calls.push(["active", url, (options as { headers?: unknown }).headers])
+          if (url.includes("/api/integration")) {
+            return { data: { location: {}, data: [] }, request: {}, response: {} }
+          }
           return {
             data: { providers: [{ id: "openai" }], default: {} },
             request: {},
@@ -301,9 +305,56 @@ describe("query keys", () => {
       loadProvidersQuery(ServerScope.local, "/repo", api, legacy, Promise.resolve("v2")),
     )
 
-    expect(calls).toEqual([["active", { "x-spinosa-directory": "%2Frepo" }]])
+    expect(calls).toEqual([
+      ["active", "/config/providers", { "x-spinosa-directory": "%2Frepo" }],
+      ["active", "/api/integration", { "x-spinosa-directory": "%2Frepo" }],
+    ])
     expect([...result.all.keys()]).toEqual(["openai", "anthropic"])
     expect(result.connected).toEqual(["openai"])
+  })
+
+  test("unions V1 and V2 connected providers when both legs succeed", async () => {
+    const api = {
+      provider: {
+        list: async () => ({
+          location: {},
+          data: [
+            { id: "openai", name: "OpenAI", package: "" },
+            { id: "anthropic", name: "Anthropic", package: "" },
+            { id: "github-copilot", name: "GitHub Copilot", package: "" },
+          ],
+        }),
+      },
+      model: {
+        list: async () => ({ location: {}, data: [] }),
+        default: async () => ({ location: {}, data: null }),
+      },
+    } as unknown as CatalogApi
+    const legacy = {
+      client: {
+        get: async (options: unknown) => {
+          const url = String((options as { url?: string }).url ?? "")
+          if (url.includes("/api/integration")) {
+            return {
+              data: { location: {}, data: [{ id: "github-copilot", connections: [{ type: "oauth" }] }] },
+              request: {},
+              response: {},
+            }
+          }
+          return {
+            data: { providers: [{ id: "openai" }], default: {} },
+            request: {},
+            response: {},
+          }
+        },
+      },
+    } as unknown as OpencodeClient
+
+    const result = await new QueryClient().fetchQuery(
+      loadProvidersQuery(ServerScope.local, "/repo", api, legacy, Promise.resolve("v2")),
+    )
+
+    expect(result.connected.sort()).toEqual(["github-copilot", "openai"])
   })
 
   test("loads agents from the current location-scoped endpoint", async () => {

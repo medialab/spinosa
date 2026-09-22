@@ -2,9 +2,18 @@ import { describe, expect, test } from "bun:test"
 import { createSpinosaClient } from "@spinosa/sdk/v2/client"
 import { createApiForServer, createSdkForServer } from "./server"
 import { adaptToLegacy, unwrapEnvelope } from "./legacy-api"
-import { createCompatibleApi } from "./server-compat"
+import { createCompatibleApi, fetchActiveProviderIDs } from "./server-compat"
 
 function setup(
+  protocol: "v1" | "v2" | Promise<"v1" | "v2">,
+  responses?: { vcs?: { branch: string; default_branch: string } },
+  routes?: Record<string, (request: Request) => Response>,
+) {
+  const { api, requests, raw } = setupWithRaw(protocol, responses, routes)
+  return { api, requests, raw }
+}
+
+function setupWithRaw(
   protocol: "v1" | "v2" | Promise<"v1" | "v2">,
   responses?: { vcs?: { branch: string; default_branch: string } },
   routes?: Record<string, (request: Request) => Response>,
@@ -49,14 +58,15 @@ function setup(
     { preconnect: globalThis.fetch.preconnect },
   )
   const server = { url: "http://localhost:4096" }
+  const raw = createSpinosaClient({ baseUrl: server.url, fetch: fetcher, throwOnError: true })
   const api = createCompatibleApi({
     protocol: typeof protocol === "string" ? Promise.resolve(protocol) : protocol,
     current: createApiForServer({ server, fetch: fetcher }),
-    raw: createSpinosaClient({ baseUrl: server.url, fetch: fetcher, throwOnError: true }),
+    raw,
     legacy: (directory) => createSdkForServer({ server, fetch: fetcher, directory, throwOnError: true }),
     directory: "/repo",
   })
-  return { api, requests }
+  return { api, requests, raw }
 }
 
 describe("createCompatibleApi", () => {
@@ -444,8 +454,9 @@ describe("createCompatibleApi V2 namespaces", () => {
   test("maps V2 models to the legacy ModelInfo contract", async () => {
     const { api, requests } = setup("v2", undefined, v2Routes)
     const result = await api.model.list({ location: { directory: "/repo" } })
-    expect(pathOf(requests[0]!.url)).toBe("/api/model")
-    expect(locationOf(requests[0]!.url)).toBe("/repo")
+    expect(requests.map((request) => pathOf(request.url))).toEqual(["/provider", "/api/model"])
+    expect(pathOf(requests[1]!.url)).toBe("/api/model")
+    expect(locationOf(requests[1]!.url)).toBe("/repo")
     expect(result.location).toEqual(v2Location)
     expect(result.data).toHaveLength(1)
     expect(result.data[0]).toMatchObject({
@@ -462,10 +473,56 @@ describe("createCompatibleApi V2 namespaces", () => {
     expect(result.data[0]!.variants).toEqual([{ id: "fast" }])
   })
 
+  test("prefers V1 catalog models over the V2 list", async () => {
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "GET /provider": () =>
+        Response.json({
+          all: [
+            {
+              id: "anthropic",
+              name: "Anthropic",
+              options: {},
+              models: {
+                "claude-4": {
+                  id: "claude-4",
+                  name: "Claude 4",
+                  family: "claude",
+                  capabilities: { toolcall: true, input: { text: true }, output: { text: true } },
+                  cost: { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } },
+                  limit: { context: 200000, output: 64000 },
+                  options: {},
+                  release_date: "2025-06-01",
+                },
+              },
+            },
+          ],
+          default: {},
+        }),
+    })
+    const result = await api.model.list({ location: { directory: "/repo" } })
+    expect(requests.map((request) => pathOf(request.url))).toEqual(["/provider"])
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0]).toMatchObject({
+      id: "claude-4",
+      modelID: "claude-4",
+      providerID: "anthropic",
+      name: "Claude 4",
+      family: "claude",
+      package: undefined,
+      capabilities: { tools: true, input: ["text"], output: ["text"] },
+      cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3.75 } }],
+      limit: { context: 200000, input: undefined, output: 64000 },
+      enabled: true,
+      status: "active",
+    })
+    expect(result.data[0]!.time.released).toBe(Date.parse("2025-06-01"))
+  })
+
   test("resolves model.default from config.model", async () => {
     const { api, requests } = setup("v2", undefined, v2Routes)
     const result = await api.model.default({ location: { directory: "/repo" } })
-    expect(requests.map((request) => pathOf(request.url))).toEqual(["/config", "/api/model"])
+    expect(requests.map((request) => pathOf(request.url))).toEqual(["/config", "/provider", "/api/model"])
     expect(result.data).toMatchObject({ id: "gpt-4", providerID: "openai" })
   })
 
@@ -483,14 +540,50 @@ describe("createCompatibleApi V2 namespaces", () => {
     expect(result.data).toMatchObject([{ id: "build", name: "build", mode: "primary" }])
   })
 
-  test("routes integration get through .v2", async () => {
-    const { api, requests } = setup("v2", undefined, v2Routes)
+  test("routes integration get through .v2 and merges V1 methods", async () => {
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "GET /provider/auth": () =>
+        Response.json({
+          openai: [
+            { type: "oauth", label: "ChatGPT" },
+            { type: "api", label: "API key" },
+          ],
+          "github-copilot": [{ type: "oauth", label: "GitHub" }],
+        }),
+    })
     const result = await api.integration.get({ integrationID: "openai", location: { directory: "/repo" } })
-    expect(pathOf(requests[0]!.url)).toBe("/api/integration/openai")
-    expect(result.data).toMatchObject({ id: "openai", methods: [{ type: "key" }] })
+    expect(requests.map((request) => pathOf(request.url)).sort()).toEqual(
+      ["/api/integration/openai", "/provider/auth"].sort(),
+    )
+    expect(result.data).toMatchObject({ id: "openai" })
+    expect(result.data!.methods).toEqual([
+      { type: "key" },
+      { type: "oauth", id: "v1:0", label: "ChatGPT", prompts: undefined },
+    ])
   })
 
-  test("connects provider keys through .v2 without instance disposal", async () => {
+  test("serves V1-only oauth methods with v1-prefixed attempt ids", async () => {
+    const { api } = setup("v2", undefined, {
+      ...v2Routes,
+      "GET /provider/auth": () =>
+        Response.json({
+          "github-copilot": [{ type: "oauth", label: "GitHub" }],
+        }),
+      "GET /api/integration/github-copilot": () =>
+        Response.json({
+          location: v2Location,
+          data: { id: "github-copilot", name: "GitHub Copilot", methods: [], connections: [] },
+        }),
+    })
+    const result = await api.integration.get({
+      integrationID: "github-copilot",
+      location: { directory: "/repo" },
+    })
+    expect(result.data!.methods).toEqual([{ type: "oauth", id: "v1:0", label: "GitHub", prompts: undefined }])
+  })
+
+  test("connects provider keys through .v2 and dual-writes V1 auth", async () => {
     const { api, requests } = setup("v2", undefined, v2Routes)
     await api.integration.connect.key({
       integrationID: "openai",
@@ -499,8 +592,11 @@ describe("createCompatibleApi V2 namespaces", () => {
     })
     expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
       "POST /api/integration/openai/connect/key",
+      "PUT /auth/openai",
     ])
     expect(await requests[0]!.json()).toMatchObject({ key: "secret" })
+    expect(await requests[1]!.json()).toMatchObject({ type: "api", key: "secret" })
+    expect(requests[1]!.headers.get("x-spinosa-directory")).toBe("%2Frepo")
   })
 
   test("surfaces key validation failures instead of swallowing them", async () => {
@@ -536,6 +632,60 @@ describe("createCompatibleApi V2 namespaces", () => {
     ])
     expect(await requests[0]!.json()).toMatchObject({ methodID: "default", inputs: {} })
     expect(result.data).toMatchObject({ attemptID: "openai:0", url: "https://example.com/auth" })
+  })
+
+  test("routes V1 oauth methods through the kernel authorize/callback", async () => {
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "POST /provider/openai/oauth/authorize": () =>
+        Response.json({ url: "https://chatgpt.com/authorize", method: 0, instructions: "open the URL" }),
+      "POST /provider/openai/oauth/callback": () => new Response(undefined, { status: 204 }),
+    })
+    const connect = await api.integration.oauth.connect({
+      integrationID: "openai",
+      methodID: "v1:0",
+      inputs: {},
+      location: { directory: "/repo" },
+    })
+    expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
+      "POST /provider/openai/oauth/authorize",
+    ])
+    expect(await requests[0]!.json()).toMatchObject({ method: 0, inputs: {} })
+    expect(connect.data).toMatchObject({
+      attemptID: "v1:openai:0",
+      url: "https://chatgpt.com/authorize",
+      mode: 0,
+    })
+
+    requests.length = 0
+    await api.integration.oauth.status({
+      integrationID: "openai",
+      attemptID: "v1:openai:0",
+      location: { directory: "/repo" },
+    })
+    expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
+      "POST /provider/openai/oauth/callback",
+    ])
+
+    requests.length = 0
+    await api.integration.oauth.complete({
+      integrationID: "openai",
+      attemptID: "v1:openai:0",
+      code: "code",
+      location: { directory: "/repo" },
+    })
+    expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
+      "POST /provider/openai/oauth/callback",
+    ])
+    expect(await requests[0]!.json()).toMatchObject({ method: 0, code: "code" })
+
+    requests.length = 0
+    await api.integration.oauth.cancel({
+      integrationID: "openai",
+      attemptID: "v1:openai:0",
+      location: { directory: "/repo" },
+    })
+    expect(requests).toHaveLength(0)
   })
 
   test("polls OAuth attempts through .v2 status", async () => {
@@ -635,5 +785,34 @@ describe("createCompatibleApi directory isolation", () => {
     const { api, requests } = setup("v2", undefined, v2Routes)
     await api.provider.list()
     expect(locationOf(requests[0]!.url)).toBe("/repo")
+  })
+})
+
+describe("fetchActiveProviderIDs", () => {
+  test("unions V1 config.providers with V2 integration connections", async () => {
+    const { raw } = setupWithRaw("v2", undefined, {
+      ...v2Routes,
+      "GET /config/providers": () => Response.json({ providers: [{ id: "openai" }], default: {} }),
+      "GET /api/integration": () =>
+        Response.json({
+          location: v2Location,
+          data: [
+            { id: "openai", connections: [] },
+            { id: "anthropic", connections: [{ type: "api" }] },
+          ],
+        }),
+    })
+    const active = await fetchActiveProviderIDs(raw, "/repo")
+    expect(active.sort()).toEqual(["anthropic", "openai"])
+  })
+
+  test("keeps the V1 set when the V2 leg fails", async () => {
+    const { raw } = setupWithRaw("v2", undefined, {
+      ...v2Routes,
+      "GET /config/providers": () => Response.json({ providers: [{ id: "openai" }], default: {} }),
+      "GET /api/integration": () => Response.json({ error: "boom" }, { status: 500 }),
+    })
+    const active = await fetchActiveProviderIDs(raw, "/repo")
+    expect(active).toEqual(["openai"])
   })
 })
