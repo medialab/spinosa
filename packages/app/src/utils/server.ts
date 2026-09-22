@@ -45,12 +45,14 @@ export function createSdkForServer({
 export function createApiForServer(input: {
   server: ServerConnection.HttpBase
   fetch?: typeof globalThis.fetch
+  directory?: string
 }): OpenCodeClient {
   return adaptToLegacy(
     createSpinosaClient({
       baseUrl: input.server.url,
       fetch: input.fetch,
       throwOnError: true,
+      directory: input.directory,
       headers: input.server.password
         ? {
             Authorization: `Basic ${authTokenFromCredentials({

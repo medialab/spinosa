@@ -369,6 +369,7 @@ const main = Effect.gen(function* () {
       url,
       username: "spinosa",
       password,
+      homeDirectory: homedir(),
     })
 
     if (process.platform === "win32") {

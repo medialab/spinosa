@@ -121,6 +121,14 @@ type PlatformBase = {
 
   /** Record a fatal renderer error in platform logs (desktop only) */
   recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
+
+  /**
+   * Ambient filesystem directory for server-global requests (desktop only).
+   * The Spinosa kernel routes every request through a workspace directory;
+   * calls without a project context (event stream, catalog loads, home)
+   * use this directory purely for routing. Set once from sidecar init data.
+   */
+  homeDirectory?: string | null
 }
 
 export type Platform = PlatformBase &

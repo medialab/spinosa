@@ -199,11 +199,14 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     }
   })()
 
-  const eventApi = createApiForServer({ server: server.http, fetch: eventFetch })
+  const ambientDirectory = () => platform.homeDirectory ?? undefined
+
+  const eventApi = createApiForServer({ server: server.http, fetch: eventFetch, directory: ambientDirectory() })
   const eventSdk = createSdkForServer({
     signal: abort.signal,
     fetch: eventFetch,
     server: server.http,
+    directory: ambientDirectory(),
   })
   const protocol = detectServerProtocol(server.http, platform.fetch ?? globalThis.fetch)
   const [protocolKind] = createResource(
@@ -337,8 +340,13 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     server: server.http,
     fetch: platform.fetch,
     throwOnError: true,
+    directory: ambientDirectory(),
   })
-  const currentApi: ServerApi = createApiForServer({ server: server.http, fetch: platform.fetch })
+  const currentApi: ServerApi = createApiForServer({
+    server: server.http,
+    fetch: platform.fetch,
+    directory: ambientDirectory(),
+  })
   const legacy = (directory?: string) =>
     createSdkForServer({
       server: server.http,

@@ -360,6 +360,10 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
     )
     const servers = createMemo(() => {
       const data = initializationData(sidecar)
+      // Ambient routing directory for server-global kernel calls (event
+      // stream, catalog loads). Assigned here (not in an effect) so SDKs
+      // created under AppInterface in this same pass already observe it.
+      if (data?.homeDirectory) platform.homeDirectory = data.homeDirectory
       const list: ServerConnection.Any[] = []
       if (data) {
         list.push({

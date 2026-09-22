@@ -20,6 +20,8 @@ export type ServerReadyData = {
   url: string
   username: string | null
   password: string | null
+  /** OS home directory: ambient routing directory for server-global calls. */
+  homeDirectory: string | null
 }
 
 export type WslServersAPI = WslServersPlatform
