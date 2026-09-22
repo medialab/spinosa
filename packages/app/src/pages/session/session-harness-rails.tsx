@@ -67,17 +67,16 @@ export function SessionToolsRail(props: { messages: Accessor<Message[]> }) {
     return [...summaries.values()]
   })
 
+  // No placeholder rails: an empty conversation shows no side columns at all.
+  if (tools().length === 0) return null
+
   return (
     <aside
       data-component="session-harness-tools"
       class="hidden min-h-0 w-52 shrink-0 flex-col gap-4 overflow-y-auto p-2 xl:flex"
     >
       <RailSection title={language.t("session.harness.tools")}>
-        <Show
-          when={tools().length > 0}
-          fallback={<div class="px-1.5 text-12-regular text-text-weak">{language.t("session.harness.empty")}</div>}
-        >
-          <For each={tools()}>
+        <For each={tools()}>
             {(summary) => (
               <div class="flex min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-1">
                 <span
@@ -90,7 +89,6 @@ export function SessionToolsRail(props: { messages: Accessor<Message[]> }) {
               </div>
             )}
           </For>
-        </Show>
       </RailSection>
     </aside>
   )
@@ -132,6 +130,10 @@ export function SessionSubagentsRail(props: {
   const model = () => local.model.current()
   const userTurns = createMemo(() => props.messages().filter((message) => message.role === "user").length)
 
+  // No placeholder rails: without subagent runs the whole column (including
+  // the system summary) stays hidden instead of occupying space.
+  if (runs().length === 0) return null
+
   function openSubagent(childID: string) {
     if (params.serverKey) {
       navigate(sessionHref(requireServerKey(params.serverKey), childID))
@@ -146,11 +148,7 @@ export function SessionSubagentsRail(props: {
       class="hidden min-h-0 w-60 shrink-0 flex-col gap-4 overflow-y-auto p-2 xl:flex"
     >
       <RailSection title={language.t("session.harness.subagents")}>
-        <Show
-          when={runs().length > 0}
-          fallback={<div class="px-1.5 text-12-regular text-text-weak">{language.t("session.harness.empty")}</div>}
-        >
-          <For each={runs()}>
+        <For each={runs()}>
             {(run) => (
               <button
                 type="button"
@@ -166,7 +164,6 @@ export function SessionSubagentsRail(props: {
               </button>
             )}
           </For>
-        </Show>
       </RailSection>
       <RailSection title={language.t("session.harness.system")}>
         <Show when={agent()}>
