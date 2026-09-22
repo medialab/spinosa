@@ -226,6 +226,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API သော့",
   "provider.connect.apiKey.placeholder": "API သော့",
   "provider.connect.apiKey.required": "API ကီး လိုအပ်သည်။",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen သည် သင့်အား coding အေးဂျင့်များအတွက် ယုံကြည်စိတ်ချရသော အကောင်းဆုံးပုံစံများဖြင့် စုစည်းထားသော မော်ဒယ်များကို ဝင်ရောက်ခွင့်ပေးသည်။",
   "provider.connect.opencodeZen.line2":

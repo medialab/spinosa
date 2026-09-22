@@ -132,6 +132,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}}-API-avain",
   "provider.connect.apiKey.placeholder": "API-avain",
   "provider.connect.apiKey.required": "API-avain vaaditaan",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen antaa sinulle pääsyn kuratoituun joukkoon luotettavia optimoituja malleja koodausagenteille.",
   "provider.connect.opencodeZen.line2":

@@ -228,6 +228,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API ކީ އެވެ",
   "provider.connect.apiKey.placeholder": "API ކީ އެވެ",
   "provider.connect.apiKey.required": "API ކީ ބޭނުންވެއެވެ",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen އިން ކޯޑިންގ އޭޖެންޓުންނަށް އިތުބާރު ހުރި އޮޕްޓިމައިޒްޑް މޮޑެލްތަކުގެ ކިއުރެޓެޑް ސެޓަކަށް އެކްސެސް ލިބިގެންދެއެވެ.",
   "provider.connect.opencodeZen.line2":

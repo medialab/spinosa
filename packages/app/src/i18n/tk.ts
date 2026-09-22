@@ -225,6 +225,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API açary",
   "provider.connect.apiKey.placeholder": "API açary",
   "provider.connect.apiKey.required": "API açary talap edilýär",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen kodlaşdyrmak serişdeleri üçin ygtybarly optimallaşdyrylan modelleriň toplumyna girmäge mümkinçilik berýär.",
   "provider.connect.opencodeZen.line2":

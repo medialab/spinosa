@@ -225,6 +225,7 @@ export const dict: Record<string, string> = {
   "provider.connect.apiKey.label": "{{provider}} API कुञ्जी",
   "provider.connect.apiKey.placeholder": "API कुञ्जी",
   "provider.connect.apiKey.required": "API कुञ्जी आवश्यक छ",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen ले तपाईंलाई कोडिङ एजेन्टहरूका लागि भरपर्दो अनुकूलित मोडेलहरूको क्युरेट गरिएको सेटमा पहुँच दिन्छ।",
   "provider.connect.opencodeZen.line2":

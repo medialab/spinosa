@@ -226,6 +226,7 @@ export const dict = {
   "provider.connect.apiKey.label": "Tecla {{provider}} API.",
   "provider.connect.apiKey.placeholder": "tecla API.",
   "provider.connect.apiKey.required": "La clau API és necessària",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen us ofereix accés a un conjunt seleccionat de models optimitzats fiables per a agents de codificació.",
   "provider.connect.opencodeZen.line2":

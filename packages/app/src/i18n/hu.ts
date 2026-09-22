@@ -228,6 +228,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API kulcs",
   "provider.connect.apiKey.placeholder": "API kulcs",
   "provider.connect.apiKey.required": "API kulcs szükséges",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "A OpenCode Zen hozzáférést biztosít a kódoló ügynökök számára megbízható, optimalizált modellek válogatott készletéhez.",
   "provider.connect.opencodeZen.line2":

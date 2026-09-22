@@ -226,6 +226,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API kaliti",
   "provider.connect.apiKey.placeholder": "API kaliti",
   "provider.connect.apiKey.required": "API kaliti talab qilinadi",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen sizga kodlash agentlari uchun ishonchli optimallashtirilgan modellar to'plamiga kirish imkonini beradi.",
   "provider.connect.opencodeZen.line2":

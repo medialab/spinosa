@@ -228,6 +228,7 @@ export const dict: Record<string, string> = {
   "provider.connect.apiKey.label": "{{provider}} APIལྡེ་མིག།",
   "provider.connect.apiKey.placeholder": "APIལྡེ་མིག།",
   "provider.connect.apiKey.required": "APIལྡེ་མིག་དགོས་མཁོ་ཡོད།",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode ཟེན་གྱིས་ཁྱོད་ལུ་ གསང་ཡིག་ལས་ཚབ་ཚུ་གི་དོན་ལུ་ བློ་གཏད་ཅན་གྱི་ཡར་འཕེལ་ཅན་གྱི་དཔེ་ཚད་ཚུ་གི་ བཀོད་སྒྲིག་འབད་ཡོད་པའི་ཆ་ཚན་ཅིག་ལུ་འཛུལ་སྤྱོད་བྱིནམ་ཨིན།",
   "provider.connect.opencodeZen.line2":

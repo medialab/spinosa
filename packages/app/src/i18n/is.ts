@@ -228,6 +228,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API lykill",
   "provider.connect.apiKey.placeholder": "API lykill",
   "provider.connect.apiKey.required": "API lykill er nauðsynlegur",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen veitir þér aðgang að safni af áreiðanlegum og fínstilltum gerðum fyrir kóðunarmiðla.",
   "provider.connect.opencodeZen.line2":

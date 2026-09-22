@@ -228,6 +228,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API raktas",
   "provider.connect.apiKey.placeholder": "API raktas",
   "provider.connect.apiKey.required": "Reikalingas API raktas",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen suteikia prieigą prie kuruojamo patikimų optimizuotų kodavimo agentų modelių rinkinio.",
   "provider.connect.opencodeZen.line2":

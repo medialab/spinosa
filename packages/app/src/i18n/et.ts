@@ -224,6 +224,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API klahv",
   "provider.connect.apiKey.placeholder": "API klahv",
   "provider.connect.apiKey.required": "Klahv API on nõutav",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen annab teile juurdepääsu kodeerimisagentide usaldusväärsete optimeeritud mudelite kureeritud komplektile.",
   "provider.connect.opencodeZen.line2":

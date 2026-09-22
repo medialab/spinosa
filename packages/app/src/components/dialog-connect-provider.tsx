@@ -828,11 +828,19 @@ function ProviderConnection(props: {
       }
 
       setFormStore("error", undefined)
-      await serverSDK().api.integration.connect.key({
-        integrationID: props.provider,
-        location: location(),
-        key: apiKey,
-      })
+      try {
+        await serverSDK().api.integration.connect.key({
+          integrationID: props.provider,
+          location: location(),
+          key: apiKey,
+        })
+      } catch (error) {
+        // Invalid credentials and network failures keep the form (and the
+        // entered key) in place with an actionable message instead of
+        // rejecting into the dialog runtime.
+        setFormStore("error", formatError(error, language.t("provider.connect.apiKey.invalid")))
+        return
+      }
       await complete()
     }
 

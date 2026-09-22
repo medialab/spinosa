@@ -224,6 +224,7 @@ export const dict: Record<string, string> = {
   "provider.connect.apiKey.label": "{{provider}} API යතුර",
   "provider.connect.apiKey.placeholder": "API යතුර",
   "provider.connect.apiKey.required": "API යතුර අවශ්‍යයි",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen ඔබට කේතීකරණ නියෝජිතයන් සඳහා විශ්වාසදායක ප්‍රශස්ත මාදිලි සමූහයකට ප්‍රවේශය ලබා දෙයි.",
   "provider.connect.opencodeZen.line2":

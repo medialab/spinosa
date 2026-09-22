@@ -224,6 +224,7 @@ export const dict = {
   "provider.connect.apiKey.label": "API kľúč {{provider}}",
   "provider.connect.apiKey.placeholder": "API kľúč",
   "provider.connect.apiKey.required": "API kľúč je povinný",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen vám poskytuje prístup k vybraným spoľahlivým optimalizovaným modelom pre kódovacích agentov.",
   "provider.connect.opencodeZen.line2":

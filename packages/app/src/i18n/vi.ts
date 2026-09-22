@@ -232,6 +232,7 @@ export const dict = {
   "provider.connect.apiKey.label": "Khóa API {{provider}}",
   "provider.connect.apiKey.placeholder": "khóa API",
   "provider.connect.apiKey.required": "Cần có khóa API",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen cho phép bạn truy cập một bộ mô hình được tuyển chọn, tối ưu hóa và đáng tin cậy dành cho tác nhân lập trình.",
   "provider.connect.opencodeZen.line2":

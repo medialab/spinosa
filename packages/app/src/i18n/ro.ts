@@ -224,6 +224,7 @@ export const dict = {
   "provider.connect.apiKey.label": "Cheie API {{provider}}",
   "provider.connect.apiKey.placeholder": "Cheie API",
   "provider.connect.apiKey.required": "Cheia API este obligatorie",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen îți oferă acces la un set selectat de modele optimizate și fiabile pentru agenți de programare.",
   "provider.connect.opencodeZen.line2":

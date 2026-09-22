@@ -225,6 +225,7 @@ export const dict = {
   "provider.connect.apiKey.label": "{{provider}} API калид",
   "provider.connect.apiKey.placeholder": "API калид",
   "provider.connect.apiKey.required": "API калид лозим аст",
+  "provider.connect.apiKey.invalid": "That key was rejected. Check the key and try again.",
   "provider.connect.opencodeZen.line1":
     "OpenCode Zen ба шумо дастрасӣ ба маҷмӯи мураттабшудаи моделҳои боэътимоди оптимизатсияшуда барои агентҳои рамзгузориро медиҳад.",
   "provider.connect.opencodeZen.line2":
