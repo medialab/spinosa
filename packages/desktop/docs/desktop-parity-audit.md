@@ -1,7 +1,7 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `02e62207`
-(`feat(app): wire V2 message paths and harden PTY directory transport`).
+Source of truth: branch `spinosa-desktop-wiring` at `3e405e9c`
+(`fix(app): bind ambient directory on the global compat facade`).
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -72,10 +72,24 @@ Regression (`fixture-tested`): `scripts/sqlite-array-mode.test.ts`, 5/5 —
 native passthrough, default object mode, array mapping for `all`/`get`/
 `iterate`, flag-off restore, null/empty handling.
 
-UI gate (Task 1 fully closed only on pixels): the dialog's exact data
-pipeline is `runtime-verified` headless against the live kernel (44/44,
-§4–5 below) and the renderer `vite build` is clean; Electron pixel
-observation stays pending — no display server in this environment.
+UI gate (Task 1 CLOSED on pixels `3e405e9c`): CDP-driven run of the real
+Electron app — home → workspace → composer's "Connect to 75+ providers"
+renders Popular (OpenCode Zen/Go, Anthropic, OpenAI, Google, OpenRouter,
+Vercel AI Gateway) + Other (Custom, 302.AI, Abacus, …); model selector
+offers catalog models (e.g. Nemotron 3 Ultra Free); recent-projects and
+workspace views load. The failure it closed: the global compat facade was
+created without `directory`, so every ambient V1-shim call (`provider.list`,
+`session.status`, …) went out header-less and the sidecar answered 400
+`Missing workspace directory`, leaving only the hardcoded Custom entry.
+One-line fix in `server-sdk.tsx` (pass `directory: ambientDirectory()`,
+like the sibling `sdk`/`currentApi` clients); verified by fresh
+`GET /provider?directory=…` → 200 with the full catalog in the running app.
+Logging setup kept for further UI work: `/tmp/cdp-logger.ts` (bun CDP:
+renderer console + page exceptions + sidecar request/response bodies →
+`/tmp/spinosa-cdp-console.log`, `/tmp/spinosa-cdp-network.log`),
+`browser-use --cdp-url http://127.0.0.1:9222 --session electron` for
+state/click/eval/screenshot (close the session before each command —
+daemon keying quirk; text-based `eval` clicks beat shifting indices).
 
 Upstream report (kernel owner, NOT implemented here): guard the
 `setReturnArrays` call in `packages/core/src/database/sqlite.node.ts`
@@ -173,7 +187,7 @@ migration validates `false` → result `invalid`; same owner.
 
 | Surface | UI entrypoint | App method | SDK method | HTTP | Dir behavior | Events | Status | Next |
 |---|---|---|---|---|---|---|---|---|
-| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | compat `provider.list/model.list/model.default` + `fetchActiveProviderIDs` | V1 `GET /provider`, V1 `GET /provider/auth` (merged), V2 `/api/model` fallback, `/config/providers` + `/api/integration` union | bound default, explicit wins (A/B live) | `integration.connection.updated` | facade `runtime-verified` (live-check 44/44 headless dialog pipeline), pixels pending | §3 |
+| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | compat `provider.list/model.list/model.default` + `fetchActiveProviderIDs` | V1 `GET /provider`, V1 `GET /provider/auth` (merged), V2 `/api/model` fallback, `/config/providers` + `/api/integration` union | bound default, explicit wins (A/B live) | `integration.connection.updated` | facade `runtime-verified` (live-check 44/44 headless dialog pipeline) + pixel-verified in Electron (Popular/Other render) | §3 |
 | Key connect | `dialog-connect-provider` | compat `integration.connect.key` dual-write | `.v2.integration.connect.key` then V1 `auth.set` | `POST /api/integration/{id}/connect/key` + `PUT /auth/{id}` | V2 first (400 surfaces before auth.json), then V1; no dispose | refresh; V1 leg flips `config.providers`, V2 leg flips SQLite connections | `fixture-tested` + `runtime-verified` (live dual-write flips active/config.providers) | §3 |
 | OAuth connect/status/complete | same dialog | compat `integration.oauth.*` routes on `v1:` prefix | V2: `.v2.integration.connect.oauth`/`.attempt.*`; V1: `provider.oauth.authorize/callback` | V2: `/api/integration/...`; V1: `POST /provider/{id}/oauth/authorize|callback` | V1 attemptID = `v1:{integrationID}:{method}`; no dispose (kernel reloads) | same | `fixture-tested` (unit: authorize/callback/cancel routing) + method merge live | §3 |
 | Method merge (dialog methods) | `dialog-connect-provider` methods memo | `integration.get` | V2 `.v2.integration.get` ∥ V1 `provider.auth` | `/api/integration/{id}` + `/provider/auth` | V1 oauth → `id: v1:{index}` wins label dups; V1 api dropped when V2 key exists | — | `fixture-tested` + `runtime-verified` (openai + github-copilot `v1:` oauth live) | §3 |
