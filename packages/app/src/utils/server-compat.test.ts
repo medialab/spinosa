@@ -591,6 +591,34 @@ describe("createCompatibleApi V2 namespaces", () => {
     expect(new URL(requests[0]!.url).searchParams.get("directory")).toBe("/repo")
   })
 
+  test("lists permission requests through the V1 root with legacy envelope", async () => {
+    // Bootstrap permission warmup calls api.permission.request.list; the
+    // generated root client only has the flat permission.list.
+    const item = { id: "perm_1", sessionID: "ses_1", permission: "read", patterns: ["*"], metadata: {}, always: [] }
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "GET /permission": () => Response.json([item]),
+    })
+    const result = await api.permission.request.list({ location: { directory: "/repo" } })
+    expect(requests[0]!.method).toBe("GET")
+    expect(pathOf(requests[0]!.url)).toBe("/permission")
+    expect(new URL(requests[0]!.url).searchParams.get("directory")).toBe("/repo")
+    expect(result.location.directory).toBe("/repo")
+    expect(result.data).toMatchObject([{ id: "perm_1", sessionID: "ses_1" }])
+  })
+
+  test("lists question requests through the V1 root with legacy envelope", async () => {
+    const item = { id: "q_1", sessionID: "ses_1", questions: [], tool: undefined }
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "GET /question": () => Response.json([item]),
+    })
+    const result = await api.question.request.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/question")
+    expect(result.location.directory).toBe("/repo")
+    expect(result.data).toEqual([item])
+  })
+
   test("routes integration get through .v2 and merges V1 methods", async () => {
     const { api, requests } = setup("v2", undefined, {
       ...v2Routes,

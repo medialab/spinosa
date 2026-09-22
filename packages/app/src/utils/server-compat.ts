@@ -21,6 +21,7 @@ import type {
   IntegrationOauthConnectOutput,
   IntegrationOauthStatusOutput,
   ModelInfo,
+  PermissionV2Request,
   Project,
   ProjectCurrent,
   ProviderGetOutput,
@@ -546,6 +547,19 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
     },
     permission: {
       ...input.current.permission,
+      request: {
+        async list(value?: Parameters<ServerApi["permission"]["request"]["list"]>[0]) {
+          // The generated root client exposes a flat permission.list
+          // returning a bare array; the app consumes request.list with the
+          // legacy {location, data} envelope (bootstrap permission warmup).
+          const result = await legacy(value?.location).permission.list({
+            directory: directory(value?.location),
+          })
+          // Passthrough: every consumer normalizes immediately
+          // (normalizePermissionRequest accepts the SDK flat shape).
+          return located((result.data ?? []) as unknown as PermissionV2Request[], value?.location)
+        },
+      },
       async reply(value: Parameters<ServerApi["permission"]["reply"]>[0] & { location?: { directory?: string } }) {
         await legacy(value.location).permission.respond({
           sessionID: value.sessionID,
@@ -557,6 +571,14 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
     },
     question: {
       ...input.current.question,
+      request: {
+        async list(value?: Parameters<ServerApi["question"]["request"]["list"]>[0]) {
+          const result = await legacy(value?.location).question.list({
+            directory: directory(value?.location),
+          })
+          return located(result.data ?? [], value?.location)
+        },
+      },
       async reply(value: Parameters<ServerApi["question"]["reply"]>[0]) {
         await legacy().question.reply({
           requestID: value.requestID,

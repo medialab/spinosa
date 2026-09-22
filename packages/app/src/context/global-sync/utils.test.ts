@@ -41,6 +41,38 @@ describe("normalizeAgentList", () => {
       },
     ])
   })
+
+  test("tolerates V2 agents without request.settings", () => {
+    // Served /api/agent items carry request:{headers,body} with no settings;
+    // the directory bootstrap must not crash on them.
+    const result = normalizeAgentList([
+      {
+        id: "build",
+        mode: "primary",
+        hidden: false,
+        permissions: [],
+        request: { headers: {}, body: {} },
+      },
+    ] as unknown as AgentListOutput["data"])
+
+    expect(result).toEqual([
+      {
+        name: "build",
+        description: undefined,
+        mode: "primary",
+        hidden: false,
+        temperature: undefined,
+        topP: undefined,
+        color: undefined,
+        permission: [],
+        model: undefined,
+        variant: undefined,
+        prompt: undefined,
+        options: {},
+        steps: undefined,
+      },
+    ])
+  })
 })
 
 describe("normalizePermissionRequest", () => {

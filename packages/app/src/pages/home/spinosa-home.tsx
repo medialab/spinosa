@@ -70,8 +70,11 @@ export function SpinosaHome() {
       title: language.t("command.project.open"),
       multiple: true,
       onSelect: (result) => {
-        const ctx = global.ensureServerCtx(conn)
-        for (const directory of homeProjectDirectories(result)) ctx.projects.open(directory)
+        // Pick means open: register each directory and raise a draft tab for
+        // it, mirroring a new workspace. Registering alone leaves the home
+        // screen unchanged (recent projects come from the server list), which
+        // reads as "nothing happens".
+        for (const directory of homeProjectDirectories(result)) openNewSession(conn, directory)
       },
     })
   }
