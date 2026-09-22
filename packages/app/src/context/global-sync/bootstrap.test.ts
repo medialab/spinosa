@@ -267,6 +267,45 @@ describe("query keys", () => {
     expect(result.connected).toEqual(["openai"])
   })
 
+  test("marks only active providers connected from config.providers", async () => {
+    const calls: unknown[] = []
+    const api = {
+      provider: {
+        list: async () => ({
+          location: {},
+          data: [
+            { id: "openai", name: "OpenAI", package: "" },
+            { id: "anthropic", name: "Anthropic", package: "" },
+          ],
+        }),
+      },
+      model: {
+        list: async () => ({ location: {}, data: [] }),
+        default: async () => ({ location: {}, data: null }),
+      },
+    } as unknown as CatalogApi
+    const legacy = {
+      client: {
+        get: async (options: unknown) => {
+          calls.push(["active", (options as { headers?: unknown }).headers])
+          return {
+            data: { providers: [{ id: "openai" }], default: {} },
+            request: {},
+            response: {},
+          }
+        },
+      },
+    } as unknown as OpencodeClient
+
+    const result = await new QueryClient().fetchQuery(
+      loadProvidersQuery(ServerScope.local, "/repo", api, legacy, Promise.resolve("v2")),
+    )
+
+    expect(calls).toEqual([["active", { "x-spinosa-directory": "%2Frepo" }]])
+    expect([...result.all.keys()]).toEqual(["openai", "anthropic"])
+    expect(result.connected).toEqual(["openai"])
+  })
+
   test("loads agents from the current location-scoped endpoint", async () => {
     const calls: unknown[] = []
     const api = {

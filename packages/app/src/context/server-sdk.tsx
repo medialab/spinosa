@@ -5,6 +5,7 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { type Accessor, batch, createMemo, createResource, onCleanup, onMount } from "solid-js"
 import { createApiForServer, createSdkForServer, type ServerApi } from "@/utils/server"
+import { adaptToLegacy } from "@/utils/legacy-api"
 import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { ServerConnection, useServer } from "./server"
@@ -279,7 +280,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
           const events =
             kind === "v1"
               ? (await eventSdk.global.event({ signal: attempt.signal })).stream
-              : eventApi.event.subscribe({ signal: attempt.signal })
+              : await eventApi.event.subscribe({ signal: attempt.signal })
           let yielded = Date.now()
           for await (const event of events) {
             streamErrorLogged = false
@@ -354,7 +355,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
       throwOnError: true,
       directory,
     })
-  const api = createCompatibleApi({ protocol, current: currentApi, legacy })
+  const api = createCompatibleApi({ protocol, current: currentApi, raw: sdk, legacy })
 
   return {
     server,
@@ -422,6 +423,11 @@ function createDirSdkContext(directory: string, serverSDK: ServerSDKBase) {
     directory,
     throwOnError: true,
   })
+  // Directory-bound adapted facade: the server-global currentApi would route
+  // default calls to the ambient home directory, silently crossing workspace
+  // boundaries. Explicit per-call locations still win (query-first).
+  const current = adaptToLegacy(client) as unknown as ServerApi
+  const raw = client as unknown as Parameters<typeof createCompatibleApi>[0]["raw"]
 
   const emitter = createGlobalEmitter<SDKEventMap>()
 
@@ -437,7 +443,8 @@ function createDirSdkContext(directory: string, serverSDK: ServerSDKBase) {
     client,
     api: createCompatibleApi({
       protocol: serverSDK.protocol,
-      current: serverSDK.currentApi,
+      current,
+      raw,
       legacy: (next) => serverSDK.createClient({ directory: next ?? directory, throwOnError: true }),
       directory,
     }),

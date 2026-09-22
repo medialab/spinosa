@@ -54,6 +54,7 @@ export function normalizeProviderList(
   providers: ProviderListOutput["data"] | ProviderListResponse,
   models?: ModelListOutput["data"],
   defaultModel?: ModelDefaultOutput["data"],
+  connected?: Array<string>,
 ): NormalizedProviderListResponse {
   if (!Array.isArray(providers)) {
     return {
@@ -138,7 +139,10 @@ export function normalizeProviderList(
 
   return {
     all,
-    connected: providers.map((provider) => provider.id),
+    // The facade serves the full catalog here, so connected must come from
+    // the server's active set (config.providers); without it every catalog
+    // entry would look connected.
+    connected: connected ?? [...all.keys()],
     defaultModel: defaultModel ? { providerID: defaultModel.providerID, modelID: defaultModel.id } : null,
     default: Object.fromEntries(
       providers.flatMap((provider) => {

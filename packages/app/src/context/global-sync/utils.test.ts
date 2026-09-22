@@ -118,6 +118,32 @@ describe("normalizeProviderList", () => {
   test("preserves an empty current default", () => {
     expect(normalizeProviderList([] as ProviderListOutput["data"], [], null).defaultModel).toBeNull()
   })
+
+  test("marks only the active set connected across a full catalog", () => {
+    const result = normalizeProviderList(
+      [
+        { id: "openai", name: "OpenAI", package: "" },
+        { id: "anthropic", name: "Anthropic", package: "" },
+      ] as ProviderListOutput["data"],
+      [],
+      null,
+      ["openai"],
+    )
+
+    expect(result.connected).toEqual(["openai"])
+    expect([...result.all.keys()]).toEqual(["openai", "anthropic"])
+  })
+
+  test("falls back to all-listed when the active set is missing", () => {
+    const result = normalizeProviderList(
+      [{ id: "openai", name: "OpenAI", package: "" }] as ProviderListOutput["data"],
+      [],
+      null,
+      undefined,
+    )
+
+    expect(result.connected).toEqual(["openai"])
+  })
 })
 
 describe("directoryKey", () => {

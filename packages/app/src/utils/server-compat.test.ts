@@ -1,16 +1,22 @@
 import { describe, expect, test } from "bun:test"
+import { createSpinosaClient } from "@spinosa/sdk/v2/client"
 import { createApiForServer, createSdkForServer } from "./server"
+import { adaptToLegacy, unwrapEnvelope } from "./legacy-api"
 import { createCompatibleApi } from "./server-compat"
 
 function setup(
   protocol: "v1" | "v2" | Promise<"v1" | "v2">,
   responses?: { vcs?: { branch: string; default_branch: string } },
+  routes?: Record<string, (request: Request) => Response>,
 ) {
   const requests: Request[] = []
   const fetcher = Object.assign(
     async (input: string | URL | Request, init?: RequestInit) => {
       const request = new Request(input, init)
       requests.push(request)
+      // Mirror production routing: path parameters arrive URL-encoded.
+      const pathname = decodeURIComponent(pathOf(request.url))
+      if (routes?.[`${request.method} ${pathname}`]) return routes[`${request.method} ${pathname}`]!(request)
       if (request.method === "PATCH") {
         return Response.json({
           id: "ses_1",
@@ -35,7 +41,7 @@ function setup(
           delivery: "steer",
         })
       }
-      if (request.method === "GET" && new URL(request.url).pathname === "/vcs")
+      if (request.method === "GET" && pathOf(request.url) === "/vcs")
         return Response.json(responses?.vcs ?? {})
       if (request.method === "GET") return Response.json([])
       return new Response(undefined, { status: 204 })
@@ -46,6 +52,7 @@ function setup(
   const api = createCompatibleApi({
     protocol: typeof protocol === "string" ? Promise.resolve(protocol) : protocol,
     current: createApiForServer({ server, fetch: fetcher }),
+    raw: createSpinosaClient({ baseUrl: server.url, fetch: fetcher, throwOnError: true }),
     legacy: (directory) => createSdkForServer({ server, fetch: fetcher, directory, throwOnError: true }),
     directory: "/repo",
   })
@@ -80,7 +87,7 @@ describe("createCompatibleApi", () => {
       ],
     })
 
-    expect(new URL(requests[0]!.url).pathname).toBe("/session/ses_1/prompt_async")
+    expect(pathOf(requests[0]!.url)).toBe("/session/ses_1/prompt_async")
     const body = await requests[0]!.json()
     expect(body).toMatchObject({
       messageID: "msg_1",
@@ -152,7 +159,7 @@ describe("createCompatibleApi", () => {
     const { api, requests } = setup("v2")
     await api.session.archive({ sessionID: "ses_1" })
 
-    expect(new URL(requests[0]!.url).pathname).toBe("/api/session/ses_1/archive")
+    expect(pathOf(requests[0]!.url)).toBe("/api/session/ses_1/archive")
     expect(requests[0]!.method).toBe("POST")
   })
   */
@@ -161,7 +168,7 @@ describe("createCompatibleApi", () => {
     const { api, requests } = setup("v1")
     await api.session.list({ parentID: null, search: "session", limit: 50 })
 
-    expect(new URL(requests[0]!.url).pathname).toBe("/experimental/session")
+    expect(pathOf(requests[0]!.url)).toBe("/experimental/session")
   })
 
   /*
@@ -193,7 +200,7 @@ describe("createCompatibleApi", () => {
       location: { directory: "/other" },
     })
 
-    expect(new URL(requests[0]!.url).pathname).toBe("/session/ses_1/permissions/permission_1")
+    expect(pathOf(requests[0]!.url)).toBe("/session/ses_1/permissions/permission_1")
     expect(new URL(requests[0]!.url).searchParams.get("directory")).toBe("/other")
   })
 
@@ -206,7 +213,7 @@ describe("createCompatibleApi", () => {
       location: { directory: "/repo" },
     })
 
-    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+    expect(requests.map((request) => pathOf(request.url))).toEqual([
       "/auth/openrouter",
       "/instance/dispose",
       "/instance/dispose",
@@ -225,12 +232,408 @@ describe("createCompatibleApi", () => {
       location: { directory: "/repo" },
     })
 
-    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+    expect(requests.map((request) => pathOf(request.url))).toEqual([
       "/provider/openrouter/oauth/callback",
       "/instance/dispose",
       "/instance/dispose",
     ])
     expect(requests[1]!.headers.get("x-spinosa-directory")).toBe("%2Frepo")
     expect(requests[2]!.headers.get("x-spinosa-directory")).toBeNull()
+  })
+})
+
+const locationOf = (url: string) => {
+  const params = new URL(url).searchParams
+  return (
+    params.get("directory") ??
+    params.get("location[directory]") ??
+    params.get("location.directory") ??
+    undefined
+  )
+}
+
+// Path parameters arrive URL-encoded; assertions compare decoded forms.
+const pathOf = (url: string) => decodeURIComponent(new URL(url).pathname)
+
+const v2Location = { directory: "/repo", project: { id: "", directory: "/repo" } }
+
+const modelV2 = {
+  id: "gpt-4",
+  providerID: "openai",
+  family: "gpt",
+  name: "GPT-4",
+  api: { id: "gpt-4", type: "aisdk", package: "@ai-sdk/openai", url: "https://api.openai.com/v1" },
+  capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
+  request: { headers: { "x-test": "1" }, body: { temperature: 0.5 } },
+  variants: [{ id: "fast", headers: {}, body: {} }],
+  time: { released: 1700000000000 },
+  cost: [{ input: 1, output: 2, cache: { read: 0.5, write: 1 } }],
+  status: "active",
+  enabled: true,
+  limit: { context: 8000, output: 4000 },
+}
+
+const catalogProviders = [
+  { id: "openai", name: "OpenAI", source: "api", env: [], options: { baseURL: "https://api.openai.com" }, models: {} },
+  { id: "anthropic", name: "Anthropic", source: "api", env: [], options: {}, models: {} },
+]
+
+const v2Routes = {
+  // Full catalog: the V1 root list serves connected AND available providers.
+  "GET /provider": () => Response.json({ all: catalogProviders, default: {} }),
+  "GET /config/providers": () =>
+    Response.json({ providers: [{ id: "openai" }], default: { openai: "gpt-4" } }),
+  "GET /api/model": () => Response.json({ location: v2Location, data: [modelV2] }),
+  "GET /api/agent": () =>
+    Response.json({
+      location: v2Location,
+      data: [{ id: "build", mode: "primary", hidden: false, permissions: [], request: { settings: {} } }],
+    }),
+  "GET /config": () => Response.json({ model: "openai/gpt-4" }),
+  "GET /api/integration": () => Response.json({ location: v2Location, data: [] }),
+  "GET /api/integration/openai": () =>
+    Response.json({
+      location: v2Location,
+      data: { id: "openai", name: "OpenAI", methods: [{ type: "key" }], connections: [] },
+    }),
+  "POST /api/integration/openai/connect/key": () => new Response(undefined, { status: 204 }),
+  "POST /api/integration/openai/connect/oauth": () =>
+    Response.json({
+      location: v2Location,
+      data: {
+        attemptID: "openai:0",
+        url: "https://example.com/auth",
+        instructions: "code: 123",
+        mode: "code",
+        time: { created: 1, expires: 2 },
+      },
+    }),
+  "GET /api/integration/attempt/openai:0": () =>
+    Response.json({ location: v2Location, data: { status: "pending", time: { created: 1, expires: 2 } } }),
+  "POST /api/integration/attempt/openai:0/complete": () => new Response(undefined, { status: 204 }),
+  "DELETE /api/integration/attempt/openai:0": () => new Response(undefined, { status: 204 }),
+  "GET /api/reference": () =>
+    Response.json({ location: v2Location, data: [{ name: "r", path: "/r", source: "file" }] }),
+  "GET /command": () =>
+    Response.json([{ name: "init", template: "x", model: "openai/gpt-4", subtask: false }]),
+  "GET /mcp": () => Response.json({ docs: { status: "connected" } }),
+  "GET /experimental/resource": () =>
+    Response.json({
+      "docs:readme": { client: "docs", name: "readme", uri: "docs:readme", description: "d", mimeType: "text/plain" },
+    }),
+} satisfies Record<string, (request: Request) => Response>
+
+describe("unwrapEnvelope", () => {
+  test("unwraps the V2 transport envelope to bare data", () => {
+    expect(unwrapEnvelope({ data: [1], request: {}, response: {} })).toEqual([1])
+    expect(unwrapEnvelope({ data: null, request: {}, response: {} })).toBeNull()
+    expect(unwrapEnvelope({ data: 42, request: {}, response: {} })).toBe(42)
+    expect(unwrapEnvelope({ data: "x", request: {}, response: {} })).toBe("x")
+  })
+
+  test("unwraps the legacy data/error envelope", () => {
+    expect(unwrapEnvelope({ data: { a: 1 }, error: undefined })).toEqual({ a: 1 })
+  })
+
+  test("throws envelope errors instead of returning them", () => {
+    const failure = { code: "bad" }
+    for (const envelope of [
+      { error: failure, request: {}, response: {} },
+      { data: undefined, error: failure },
+    ]) {
+      try {
+        unwrapEnvelope(envelope)
+        expect.unreachable()
+      } catch (error) {
+        expect(error).toBe(failure)
+      }
+    }
+  })
+
+  test("passes primitives, null, arrays, and void markers through", () => {
+    expect(unwrapEnvelope(undefined)).toBeUndefined()
+    expect(unwrapEnvelope(null)).toBeNull()
+    expect(unwrapEnvelope(0)).toBe(0)
+    expect(unwrapEnvelope("")).toBe("")
+    expect(unwrapEnvelope([1])).toEqual([1])
+    expect(unwrapEnvelope({})).toEqual({})
+  })
+
+  test("extracts subscription streams instead of burying them in promises", () => {
+    async function* gen() {
+      yield 1
+    }
+    const stream = gen()
+    expect(unwrapEnvelope({ stream })).toBe(stream)
+  })
+
+  test("does not mistake domain payloads for envelopes", () => {
+    const payload = { location: v2Location, data: [1] }
+    expect(unwrapEnvelope(payload)).toBe(payload)
+    const attempt = { attemptID: "a", url: "u" }
+    expect(unwrapEnvelope(attempt)).toBe(attempt)
+  })
+
+  test("preserves async iterables returned directly", async () => {
+    async function* gen() {
+      yield 1
+    }
+    const stream = gen()
+    expect(unwrapEnvelope(stream)).toBe(stream)
+    const seen: unknown[] = []
+    for await (const item of unwrapEnvelope(stream) as AsyncIterable<unknown>) seen.push(item)
+    expect(seen).toEqual([1])
+  })
+})
+
+describe("adaptToLegacy subscriptions", () => {
+  test("reproduces the server-sdk consumer pattern: await then for-await", async () => {
+    const events = [{ id: "1" }, { id: "2" }]
+    let received: unknown
+    const fake = {
+      event: {
+        subscribe: async (options: unknown) => {
+          received = options
+          return {
+            stream: (async function* () {
+              yield* events
+            })(),
+          }
+        },
+      },
+    }
+    const adapted = adaptToLegacy(fake) as typeof fake
+    const signal = new AbortController().signal
+    // Runtime contract: the adapter extracts { stream } to the iterable
+    // itself (the legacy type still declares the envelope).
+    const stream = (await adapted.event.subscribe({ signal })) as unknown as AsyncIterable<unknown>
+    const seen: unknown[] = []
+    for await (const event of stream) seen.push(event)
+    expect(seen).toEqual(events)
+    expect(received).toEqual({ signal })
+  })
+})
+
+describe("createCompatibleApi V2 namespaces", () => {
+  test("serves the full catalog from the V1 root list", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.provider.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/provider")
+    expect(requests[0]!.method).toBe("GET")
+    expect(locationOf(requests[0]!.url)).toBe("/repo")
+    expect(result.location.directory).toBe("/repo")
+    expect(result.data).toMatchObject([
+      { id: "openai", name: "OpenAI", package: "", settings: { baseURL: "https://api.openai.com" } },
+      { id: "anthropic", name: "Anthropic", package: "" },
+    ])
+  })
+
+  test("resolves single providers from the catalog, including unconnected ones", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.provider.get({ providerID: "anthropic" })
+    expect(pathOf(requests[0]!.url)).toBe("/provider")
+    expect(result.location.directory).toBe("/repo")
+    expect(result.data).toMatchObject({ id: "anthropic", name: "Anthropic" })
+  })
+
+  test("rejects unknown provider IDs", async () => {
+    const { api } = setup("v2", undefined, v2Routes)
+    await expect(api.provider.get({ providerID: "nope" })).rejects.toThrow("Provider not found: nope")
+  })
+
+  test("maps V2 models to the legacy ModelInfo contract", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.model.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/api/model")
+    expect(locationOf(requests[0]!.url)).toBe("/repo")
+    expect(result.location).toEqual(v2Location)
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0]).toMatchObject({
+      id: "gpt-4",
+      modelID: "gpt-4",
+      providerID: "openai",
+      name: "GPT-4",
+      package: "@ai-sdk/openai",
+      headers: { "x-test": "1" },
+      body: { temperature: 0.5 },
+      status: "active",
+      enabled: true,
+    })
+    expect(result.data[0]!.variants).toEqual([{ id: "fast" }])
+  })
+
+  test("resolves model.default from config.model", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.model.default({ location: { directory: "/repo" } })
+    expect(requests.map((request) => pathOf(request.url))).toEqual(["/config", "/api/model"])
+    expect(result.data).toMatchObject({ id: "gpt-4", providerID: "openai" })
+  })
+
+  test("reports null default when config.model is unset", async () => {
+    const { api } = setup("v2", undefined, { ...v2Routes, "GET /config": () => Response.json({}) })
+    const result = await api.model.default({ location: { directory: "/repo" } })
+    expect(result.data).toBeNull()
+  })
+
+  test("maps V2 agents, synthesizing the legacy name", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.agent.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/api/agent")
+    expect(result.location).toEqual(v2Location)
+    expect(result.data).toMatchObject([{ id: "build", name: "build", mode: "primary" }])
+  })
+
+  test("routes integration get through .v2", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.integration.get({ integrationID: "openai", location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/api/integration/openai")
+    expect(result.data).toMatchObject({ id: "openai", methods: [{ type: "key" }] })
+  })
+
+  test("connects provider keys through .v2 without instance disposal", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.integration.connect.key({
+      integrationID: "openai",
+      key: "secret",
+      location: { directory: "/repo" },
+    })
+    expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
+      "POST /api/integration/openai/connect/key",
+    ])
+    expect(await requests[0]!.json()).toMatchObject({ key: "secret" })
+  })
+
+  test("surfaces key validation failures instead of swallowing them", async () => {
+    const { api } = setup("v2", undefined, {
+      ...v2Routes,
+      "POST /api/integration/openai/connect/key": () =>
+        Response.json({ name: "InvalidRequestError", data: { message: "bad key" } }, { status: 400 }),
+    })
+    // The SDK wraps non-2xx bodies into Errors carrying the parsed body and
+    // status under .cause; the dialog formats .message for the form.
+    const error = await api
+      .integration.connect.key({ integrationID: "openai", key: "bad" })
+      .then(() => undefined)
+      .catch((value: unknown) => value)
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe("bad key")
+    expect((error as Error).cause).toMatchObject({
+      body: { name: "InvalidRequestError", data: { message: "bad key" } },
+      status: 400,
+    })
+  })
+
+  test("starts OAuth through .v2 connect", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.integration.oauth.connect({
+      integrationID: "openai",
+      methodID: "default",
+      inputs: {},
+      location: { directory: "/repo" },
+    })
+    expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
+      "POST /api/integration/openai/connect/oauth",
+    ])
+    expect(await requests[0]!.json()).toMatchObject({ methodID: "default", inputs: {} })
+    expect(result.data).toMatchObject({ attemptID: "openai:0", url: "https://example.com/auth" })
+  })
+
+  test("polls OAuth attempts through .v2 status", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.integration.oauth.status({
+      integrationID: "openai",
+      attemptID: "openai:0",
+      location: { directory: "/repo" },
+    })
+    expect(pathOf(requests[0]!.url)).toBe("/api/integration/attempt/openai:0")
+    expect(result.data).toMatchObject({ status: "pending" })
+  })
+
+  test("completes OAuth through .v2 attempt completion", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.integration.oauth.complete({
+      integrationID: "openai",
+      attemptID: "openai:0",
+      code: "code",
+      location: { directory: "/repo" },
+    })
+    expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
+      "POST /api/integration/attempt/openai:0/complete",
+    ])
+    expect(await requests[0]!.json()).toMatchObject({ code: "code" })
+  })
+
+  test("cancels OAuth attempts", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.integration.oauth.cancel({
+      integrationID: "openai",
+      attemptID: "openai:0",
+      location: { directory: "/repo" },
+    })
+    expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
+      "DELETE /api/integration/attempt/openai:0",
+    ])
+  })
+
+  test("wraps V1 command items in the legacy location envelope", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.command.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/command")
+    expect(result.location.directory).toBe("/repo")
+    expect(result.data).toMatchObject([{ name: "init", model: "openai/gpt-4" }])
+  })
+
+  test("routes reference lists through .v2", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.reference.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/api/reference")
+    expect(result.data).toMatchObject([{ name: "r", path: "/r" }])
+  })
+
+  test("synthesizes MCP servers from V1 status", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.mcp.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/mcp")
+    expect(result.location.directory).toBe("/repo")
+    expect(result.data).toMatchObject([{ name: "docs", status: { status: "connected" } }])
+  })
+
+  test("maps MCP connect/disconnect server arguments to V1 names", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.mcp.connect({ server: "docs", location: { directory: "/repo" } })
+    await api.mcp.disconnect({ server: "docs", location: { directory: "/repo" } })
+    const paths = requests.map((request) => `${request.method} ${pathOf(request.url)}`)
+    expect(paths).toEqual(["POST /mcp/docs/connect", "POST /mcp/docs/disconnect"])
+    expect(locationOf(requests[0]!.url)).toBe("/repo")
+  })
+
+  test("reads MCP resource catalogs from the experimental endpoint", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    const result = await api.mcp.resource.catalog({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/experimental/resource")
+    expect(result.data.resources).toEqual([
+      {
+        server: "docs",
+        name: "readme",
+        uri: "docs:readme",
+        description: "d",
+        mimeType: "text/plain",
+      },
+    ])
+    expect(result.data.templates).toEqual([])
+  })
+})
+
+describe("createCompatibleApi directory isolation", () => {
+  test("explicit locations win over the bound workspace", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.provider.list({ location: { directory: "/other" } })
+    expect(locationOf(requests[0]!.url)).toBe("/other")
+  })
+
+  test("unlocated calls default to the bound workspace", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.provider.list()
+    expect(locationOf(requests[0]!.url)).toBe("/repo")
   })
 })

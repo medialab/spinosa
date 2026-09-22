@@ -83,44 +83,60 @@ Related read-only finding: `packages/core/src/global.ts validateSqliteFiles`
 imports `bun:sqlite` in try/catch, so under Node every legacy-path SQLite
 migration validates `false` → result `invalid`; same owner.
 
-## Shared API boundary (§2) — in progress
+## Shared API boundary (§2) — implemented, fixture-tested, live-verified
 
-- `packages/app/src/utils/legacy-api.ts` unwraps only `{data, error}`
-  envelopes. The generated hey-api client (`packages/sdk/src/v2/gen/client/
-  client.gen.ts`) resolves `{data, request, response}` on success and
-  `{error, request, response}` on non-throwing failure (`throwOnError: true`
-  throws instead). `source-verified`: V2 calls through the adapter return
-  whole envelopes, not bare data.
-- Namespace mismatch `source-verified`: generated root client exposes V1
-  namespaces plus `.v2` (`integration.connect.key/oauth`,
-  `integration.attempt.cancel/status/complete`, ...); the app consumes
-  `integration.oauth.connect/status/complete` and `integration.connect.key`.
-  `createApiForServer` casts without mapping; the V1 shim in
-  `server-compat.ts` is shape-only for the selected V2 implementation.
-- Stream `source-verified`: `sse.get` resolves `{stream: AsyncGenerator}`
-  (`gen/core/serverSentEvents.gen.ts`); the adapter wraps results in a
-  `Promise`, so `for await` in `context/server-sdk.tsx:282` iterates a
-  `Promise`. Boundary must preserve an async iterable (or the consumer must
-  await + extract).
-- Directory defaults `source-verified`: `createDirSdkContext` passes the
-  ambient-bound `currentApi` as `current`; explicit `location` args work but
-  default isolation is not established. Test plan: workspaces A/B + distinct
-  home, precedence explicit > bound > ambient.
-- Catalog path note `source-verified`: `global-sync/bootstrap.ts`
-  `loadProvidersQuery` calls the RAW sdk (`sdk.provider.list(location)` with
-  a nested `{location:{directory}}` arg the generated root `Provider.list`
-  does not declare — it takes flat `{directory, workspace}`), bypassing the
-  adapter; ambient `x-spinosa-directory` header currently masks the shape
-  error for the global query. Per-directory provider queries need the flat
-  shape.
+- Envelopes `runtime-verified`: `legacy-api.ts unwrapEnvelope` strips exactly
+  one transport layer — `{data,request,response}` → data (V2 success),
+  `{error,...}` → throw (defensive; `throwOnError` throws first),
+  legacy `{data,error}` preserved, `{stream}` single-key results extracted
+  to the async iterable, domain payloads (incl. `{location,data}` bodies)
+  untouched. 36 contract tests in `server-compat.test.ts` pass; app suite
+  757 tests with only the known ICU failure.
+- Namespaces `runtime-verified` against a live kernel from source via
+  `createCompatibleApi` over HTTP (15/16 live checks; the one miss is a
+  count threshold on a still-warming catalog, mapping fields passed):
+  `provider.list/get` from the V1 full catalog mapped to flat legacy items
+  (the V2 list is active-only and would hide unconnected providers);
+  `model.list/default` (V2 → legacy `ModelInfo`; default honors
+  `config.model`, else null); `agent.list` (V2, `name` synthesized from
+  `id`); `integration.*` (V2: get/list/key/oauth/start/status/complete/
+  cancel — replaces the V1 shim that hardcoded OAuth completion and
+  fabricated method indexes); `command.list` (V1 tree, legacy string-model
+  shape); `reference.list` (V2, identical shapes); `mcp.list` (V1 status
+  synthesized), `mcp.connect/disconnect` (server/location arg mapping),
+  `mcp.resource.catalog` (low-level shared hey-api client to served
+  `GET /experimental/resource`, the first generated-client gap).
+  `session/project/file/vcs/pty/permission/question` stay on the V1-shim
+  HTTP implementations for both protocols (served, legacy-correct).
+  Receivers are explicit (never proxied class instances).
+- Connected set `runtime-verified`: `fetchActiveProviderIDs` reads served
+  `GET /config/providers`; `loadProvidersQuery` passes it to
+  `normalizeProviderList`, which no longer marks the whole catalog
+  connected. `live-check` A/B workspaces isolate correctly.
+- Stream `fixture-tested`: the adapter resolves subscriptions to the
+  iterable; `server-sdk.tsx` awaits before `for-await`. Live SSE pending
+  with the running app (§3–4).
+- Directory defaults `fixture-tested` + live A/B: explicit location >
+  bound workspace > ambient home; `createDirSdkContext` builds a
+  directory-bound adapted facade instead of reusing the global one.
+- No consumed method relies on an unimplemented cast (verified by usage
+  inventory): `integration.command.*` and `wellknown.add` have no app
+  consumers and stay unmapped.
+- Catalog warmth finding: `/api/model` (and agent/integration lists) return
+  partial/empty arrays while the models.dev catalog loads asynchronously
+  (0 → 32 → 7987 across identical calls); success-shaped empties do NOT
+  trigger query retries. Connect flows must tolerate cold catalogs (§3).
+- Upstream notes (kernel owner): `sqlite.node.ts setReturnArrays` (Task 1),
+  `validateSqliteFiles` bun-only import, `Experimental`/`V2.config` missing
+  generated methods (`experimental.resource.list`, `v2.config.providers`).
 
 ## Feature matrix (all rows: not yet verified unless noted)
 
 | Surface | UI entrypoint | App method | SDK method | HTTP | Dir behavior | Events | Status | Next |
 |---|---|---|---|---|---|---|---|---|
-| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | `sdk.provider.list/model.list/model.default` | root `Provider.list`, `Model.list/default` | `GET /provider`, `/api/model` | ambient (arg shape wrong) | `integration.connection.updated` | backend `runtime-verified`, UI pending | §2–3 |
-| Key connect | `dialog-connect-provider` | compat `integration.connect.key` | `.v2.integration.connect.key` | `POST /api/integration/{id}/connect/key` | mapped | refresh+dispose (verify!) | `source-verified` | §3 |
-| OAuth connect/status/complete | same dialog | compat `integration.oauth.*` | `.v2.integration.connect.oauth`, `.attempt.*` | `POST/GET /api/integration/...` | mapped | same | `source-verified` | §3 |
+| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | compat `provider.list/model.list/model.default` + `fetchActiveProviderIDs` | V1 `GET /provider`, V2 `/api/model`, `/config/providers` | bound default, explicit wins (A/B live) | `integration.connection.updated` | facade `runtime-verified`, UI pending | §3 |
+| Key connect | `dialog-connect-provider` | compat `integration.connect.key` | `.v2.integration.connect.key` | `POST /api/integration/{id}/connect/key` | mapped, no dispose | refresh (verify!) | `fixture-tested`, live pending | §3 |
+| OAuth connect/status/complete | same dialog | compat `integration.oauth.*` | `.v2.integration.connect.oauth`, `.attempt.*` | `POST/GET /api/integration/...` | mapped | same | `fixture-tested`, live pending | §3 |
 | Sessions list/create/message | home, tabs, session views | compat `session.*` (V1 shim impls call raw V1 root methods) | root `Session2.*` | `/session*` | explicit+ambient | `session.*.delta` stream | `source-verified` | §4 |
 | Agents/models | agents panel, model selector | `sdk` list queries | `Agent.list`, `Model.*` | `/agent`, `/api/model` | tbd | — | probe 200 only | §5 |
 | MCP | mcp dialogs | compat passthrough | root `Mcp.*` | tbd | tbd | — | todo | §5 |
