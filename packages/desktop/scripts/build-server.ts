@@ -12,6 +12,7 @@ const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 process.chdir(dir)
 
 const jsoncEsm = fileURLToPath(import.meta.resolve("jsonc-parser/lib/esm/main.js"))
+const sqliteShim = path.resolve(dir, "scripts/sqlite-node-shim.ts")
 
 const result = await Bun.build({
   target: "node",
@@ -28,6 +29,13 @@ const result = await Bun.build({
       name: "spinosa:jsonc-esm",
       setup(build) {
         build.onResolve({ filter: /^jsonc-parser$/ }, () => ({ path: jsoncEsm }))
+        // node:sqlite StatementSync lacks setReturnArrays (bun:sqlite API
+        // the kernel's Node driver calls). Route the builtin through the
+        // desktop-owned interop shim; the shim's own import stays external.
+        // See scripts/sqlite-node-shim.ts.
+        build.onResolve({ filter: /^node:sqlite$/ }, (args) =>
+          args.importer.endsWith("sqlite-node-shim.ts") ? { external: true } : { path: sqliteShim },
+        )
       },
     },
   ],
