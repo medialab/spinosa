@@ -540,6 +540,57 @@ describe("createCompatibleApi V2 namespaces", () => {
     expect(result.data).toMatchObject([{ id: "build", name: "build", mode: "primary" }])
   })
 
+  test("serves V2 projected message pages for the session store", async () => {
+    const userMessage = { id: "msg_1", type: "user" as const, text: "hi", time: { created: 1 } }
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "GET /api/session/ses_1/message": () => Response.json({ data: [userMessage], cursor: { next: null } }),
+    })
+    // The generated root client has no top-level message namespace, so the
+    // facade must define api.message or server-session's V2 branch stays dead.
+    const result = await api.message.list({ sessionID: "ses_1", limit: 20, order: "desc" })
+    expect(pathOf(requests[0]!.url)).toBe("/api/session/ses_1/message")
+    expect(requests[0]!.method).toBe("GET")
+    expect(result.data).toEqual([userMessage])
+    expect(result.cursor.next).toBeNull()
+  })
+
+  test("serves single V2 projected messages for hydration", async () => {
+    const userMessage = { id: "msg_1", type: "user" as const, text: "hi", time: { created: 1 } }
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "GET /api/session/ses_1/message/msg_1": () => Response.json({ data: userMessage }),
+    })
+    const result = await api.session.message({ sessionID: "ses_1", messageID: "msg_1" })
+    expect(pathOf(requests[0]!.url)).toBe("/api/session/ses_1/message/msg_1")
+    expect(result).toEqual(userMessage)
+  })
+
+  test("sends explicit directory on pty create for non-GET routing", async () => {
+    // PTY stays on the V1 shim for both protocols; non-GET instance routes
+    // must carry ?directory= explicitly instead of relying on header-only
+    // transport (stripped by some fetch wrappers).
+    const { api, requests } = setup("v2", undefined, {
+      ...v2Routes,
+      "POST /pty": () => Response.json({ id: "pty_1", title: "probe" }),
+    })
+    const result = await api.pty.create({ location: { directory: "/repo" }, command: "true", title: "probe" })
+    expect(requests[0]!.method).toBe("POST")
+    expect(pathOf(requests[0]!.url)).toBe("/pty")
+    expect(new URL(requests[0]!.url).searchParams.get("directory")).toBe("/repo")
+    expect(await requests[0]!.json()).toMatchObject({ command: "true", title: "probe" })
+    expect(result.data).toMatchObject({ id: "pty_1" })
+    expect(result.location.directory).toBe("/repo")
+  })
+
+  test("sends explicit directory on pty remove", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.pty.remove({ ptyID: "pty_1", location: { directory: "/repo" } })
+    expect(requests[0]!.method).toBe("DELETE")
+    expect(pathOf(requests[0]!.url)).toBe("/pty/pty_1")
+    expect(new URL(requests[0]!.url).searchParams.get("directory")).toBe("/repo")
+  })
+
   test("routes integration get through .v2 and merges V1 methods", async () => {
     const { api, requests } = setup("v2", undefined, {
       ...v2Routes,

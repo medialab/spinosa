@@ -32,6 +32,7 @@ import type {
   SessionCompactInput,
   SessionCompactOutput,
   SessionInfo,
+  SessionMessageInfo,
   SessionPromptInput,
   SessionPromptOutput,
   SessionShellInput,
@@ -196,8 +197,13 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         return { data: (result.data ?? []).map(sessionInfo), cursor: {} }
       },
       async create(value?: Parameters<ServerApi["session"]["create"]>[0]) {
-        const result = await legacy(value?.location ?? undefined).session.create({
-          directory: directory(value?.location ?? undefined),
+        // Resolve once: the client header and the body directory must agree
+        // (V1 Session.list is scoped to the instance's project, so an
+        // ambient-bound client creating a body-directory session files it
+        // under a project no directory-bound list will ever return).
+        const location = value?.location ?? (input.directory ? { directory: input.directory } : undefined)
+        const result = await legacy(location).session.create({
+          directory: directory(location),
         })
         if (!result.data) throw new Error("Failed to create session")
         return sessionInfo(result.data)
@@ -499,6 +505,9 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
       },
       async create(value?: Parameters<ServerApi["pty"]["create"]>[0]) {
         const result = await legacy(value?.location).pty.create({
+          // Explicit query directory: non-GET instance routes must not rely
+          // on header-only transport (stripped by some fetch wrappers).
+          directory: directory(value?.location),
           command: value?.command,
           args: value?.args ? [...value.args] : undefined,
           cwd: value?.cwd,
@@ -509,13 +518,17 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         return located(result.data, value?.location)
       },
       async get(value: Parameters<ServerApi["pty"]["get"]>[0]) {
-        const result = await legacy(value.location).pty.get({ ptyID: value.ptyID })
+        const result = await legacy(value.location).pty.get({
+          ptyID: value.ptyID,
+          directory: directory(value.location),
+        })
         if (!result.data) throw new Error(`Terminal not found: ${value.ptyID}`)
         return located(result.data, value.location)
       },
       async update(value: Parameters<ServerApi["pty"]["update"]>[0]) {
         const result = await legacy(value.location).pty.update({
           ptyID: value.ptyID,
+          directory: directory(value.location),
           title: value.title,
           size: value.size,
         })
@@ -523,7 +536,7 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         return located(result.data, value.location)
       },
       async remove(value: Parameters<ServerApi["pty"]["remove"]>[0]) {
-        await legacy(value.location).pty.remove({ ptyID: value.ptyID })
+        await legacy(value.location).pty.remove({ ptyID: value.ptyID, directory: directory(value.location) })
       },
       // async connectToken(value: Parameters<ServerApi["pty"]["connectToken"]>[0]) {
       //   const result = await legacy(value.location).pty.connectToken({ ptyID: value.ptyID })
@@ -798,11 +811,12 @@ function toLegacyAgent(agent: { id: string } & Omit<AgentInfo, "id" | "name">): 
  * by the kernel's V1 tree (session, project, file, pty, permission,
  * question, ...): those implementations are plain HTTP calls and therefore
  * protocol-independent. Namespaces absent from the generated root client
- * (`integration`, `model`, `agent`) or whose legacy contract is V2-native
- * (`provider`, `command`, `reference`, `mcp`) are mapped explicitly to the
- * generated `.v2` methods with forwarding receivers (never through the
- * adapting proxy: spreading or re-calling proxied class instances loses the
- * prototype receiver and risks double-unwrapping domain payloads).
+ * (`integration`, `model`, `agent`, `message`) or whose legacy contract is
+ * V2-native (`provider`, `command`, `reference`, `mcp`, `session.message`)
+ * are mapped explicitly to the generated `.v2` methods with forwarding
+ * receivers (never through the adapting proxy: spreading or re-calling
+ * proxied class instances loses the prototype receiver and risks
+ * double-unwrapping domain payloads).
  */
 function createV2Api(input: CompatibleInput): CompatibleApi {
   const base = createV1Api(input)
@@ -925,6 +939,35 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
           data: Array<Parameters<typeof toLegacyAgent>[0]>
         }
         return { location: body.location, data: body.data.map(toLegacyAgent) }
+      },
+    }),
+    session: override(base.session, {
+      async message(value) {
+        // V2 projected single message: server-session's V2 paths
+        // (fetchMessage, hydrateV2Message) feed it to
+        // normalizeSessionMessages/projectV2, which consume the projected
+        // SessionMessageInfo shape — not the V1-root single-message union.
+        const body = unwrapEnvelope(
+          await v2.session.message({ sessionID: value.sessionID, messageID: value.messageID }),
+        ) as { data: SessionMessageInfo }
+        return body.data
+      },
+    }),
+    message: override({} as ServerApi["message"], {
+      async list(value) {
+        // V2 projected pages ({data, cursor}) for server-session's V2
+        // fetchMessages; the generated root client has no top-level
+        // `message` namespace, so without this mapping `api.message` is
+        // undefined and the V2 branches stay dormant. V2 session lookup is
+        // global: no directory/location wrapper is sent.
+        return unwrapEnvelope(
+          await v2.session.messages({
+            sessionID: value.sessionID,
+            limit: value.limit,
+            order: value.order,
+            cursor: value.cursor ?? undefined,
+          }),
+        ) as Awaited<ReturnType<ServerApi["message"]["list"]>>
       },
     }),
     integration: override(base.integration, {
