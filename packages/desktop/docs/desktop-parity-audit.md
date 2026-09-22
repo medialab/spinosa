@@ -1,7 +1,7 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `80697495`
-(`fix(desktop): bundle jsonc-parser ESM into sidecar server`).
+Source of truth: branch `spinosa-desktop-wiring` at `16127b7a`
+(`feat(app): dual-write provider auth and merge V1 methods in V2 facade`).
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -13,10 +13,10 @@ Status vocabulary: `source-verified` (read, not run), `fixture-tested`
 owner/spec pointer). The user's reported starting state is NOT marked
 verified anywhere below.
 
-## Baseline gates (main checkout, pre-change)
+## Baseline gates (main checkout, at `16127b7a`)
 
 - `typecheck` for `app`, `session-ui`, `desktop`, `ui`: all exit 0.
-- `packages/app test:unit`: 724 pass / 1 fail — the fail is the known
+- `packages/app test:unit`: 762 pass / 1 fail — the fail is the known
   pre-existing ICU case `desktop native locale detection > uses Unicode
   likely subtags for script-sensitive bundles`.
 - `packages/session-ui test`: 83 pass / 0 fail.
@@ -26,7 +26,7 @@ verified anywhere below.
   desktop code. A fresh worktree at HEAD additionally fails
   `electron vite publicDir` because gitignored `packages/app/public/*`
   build output exists only in the main checkout.
-- `bun run lint:deps`: clean (3759 modules).
+- `bun run lint:deps`: clean (3760 modules).
 - Investigation ZIP from the brief is absent from this environment; fixtures
   below were reconstructed from source.
 
@@ -93,26 +93,30 @@ migration validates `false` → result `invalid`; same owner.
   untouched. 36 contract tests in `server-compat.test.ts` pass; app suite
   757 tests with only the known ICU failure.
 - Namespaces `runtime-verified` against a live kernel from source via
-  `createCompatibleApi` over HTTP (15/16 live checks; the one miss is a
-  count threshold on a still-warming catalog, mapping fields passed):
+  `createCompatibleApi` over HTTP (live-check 25/25 PASS at `16127b7a`):
   `provider.list/get` from the V1 full catalog mapped to flat legacy items
   (the V2 list is active-only and would hide unconnected providers);
-  `model.list/default` (V2 → legacy `ModelInfo`; default honors
-  `config.model`, else null); `agent.list` (V2, `name` synthesized from
-  `id`); `integration.*` (V2: get/list/key/oauth/start/status/complete/
-  cancel — replaces the V1 shim that hardcoded OAuth completion and
-  fabricated method indexes); `command.list` (V1 tree, legacy string-model
-  shape); `reference.list` (V2, identical shapes); `mcp.list` (V1 status
-  synthesized), `mcp.connect/disconnect` (server/location arg mapping),
+  `model.list/default` (V1 `/provider` catalog preferred, V2 `/api/model`
+  fallback; default honors `config.model`, else null); `agent.list` (V2,
+  `name` synthesized from `id`); `integration.*` (get merges V1 methods
+  as `v1:` ids live for openai + github-copilot; key dual-writes and flips
+  both `config.providers` and `fetchActiveProviderIDs`; oauth start/
+  status/complete/cancel with V1 `v1:` routing fixture-tested);
+  `command.list` (V1 tree, legacy string-model shape); `reference.list`
+  (V2, identical shapes); `mcp.list` (V1 status synthesized),
+  `mcp.connect/disconnect` (server/location arg mapping),
   `mcp.resource.catalog` (low-level shared hey-api client to served
   `GET /experimental/resource`, the first generated-client gap).
   `session/project/file/vcs/pty/permission/question` stay on the V1-shim
   HTTP implementations for both protocols (served, legacy-correct).
   Receivers are explicit (never proxied class instances).
-- Connected set `runtime-verified`: `fetchActiveProviderIDs` reads served
-  `GET /config/providers`; `loadProvidersQuery` passes it to
+- Connected set `runtime-verified`: `fetchActiveProviderIDs` unions V1
+  `GET /config/providers` (auth.json universe, failure propagates →
+  all-on) with V2 `GET /api/integration` connections (failure → V1 set
+  alone); `loadProvidersQuery` passes the union to
   `normalizeProviderList`, which no longer marks the whole catalog
-  connected. `live-check` A/B workspaces isolate correctly.
+  connected. Unit: both-leg union and V2-leg-failure degrade.
+  `live-check` A/B workspaces isolate correctly.
 - Stream `fixture-tested`: the adapter resolves subscriptions to the
   iterable; `server-sdk.tsx` awaits before `for-await`. Live SSE pending
   with the running app (§3–4).
@@ -134,9 +138,12 @@ migration validates `false` → result `invalid`; same owner.
 
 | Surface | UI entrypoint | App method | SDK method | HTTP | Dir behavior | Events | Status | Next |
 |---|---|---|---|---|---|---|---|---|
-| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | compat `provider.list/model.list/model.default` + `fetchActiveProviderIDs` | V1 `GET /provider`, V2 `/api/model`, `/config/providers` | bound default, explicit wins (A/B live) | `integration.connection.updated` | facade `runtime-verified`, UI pending | §3 |
-| Key connect | `dialog-connect-provider` | compat `integration.connect.key` | `.v2.integration.connect.key` | `POST /api/integration/{id}/connect/key` | mapped, no dispose | refresh (verify!) | `fixture-tested`, live pending | §3 |
-| OAuth connect/status/complete | same dialog | compat `integration.oauth.*` | `.v2.integration.connect.oauth`, `.attempt.*` | `POST/GET /api/integration/...` | mapped | same | `fixture-tested`, live pending | §3 |
+| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | compat `provider.list/model.list/model.default` + `fetchActiveProviderIDs` | V1 `GET /provider`, V1 `GET /provider/auth` (merged), V2 `/api/model` fallback, `/config/providers` + `/api/integration` union | bound default, explicit wins (A/B live) | `integration.connection.updated` | facade `runtime-verified` (live-check 25/25), UI pending | §3 |
+| Key connect | `dialog-connect-provider` | compat `integration.connect.key` dual-write | `.v2.integration.connect.key` then V1 `auth.set` | `POST /api/integration/{id}/connect/key` + `PUT /auth/{id}` | V2 first (400 surfaces before auth.json), then V1; no dispose | refresh; V1 leg flips `config.providers`, V2 leg flips SQLite connections | `fixture-tested` + `runtime-verified` (live dual-write flips active/config.providers) | §3 |
+| OAuth connect/status/complete | same dialog | compat `integration.oauth.*` routes on `v1:` prefix | V2: `.v2.integration.connect.oauth`/`.attempt.*`; V1: `provider.oauth.authorize/callback` | V2: `/api/integration/...`; V1: `POST /provider/{id}/oauth/authorize|callback` | V1 attemptID = `v1:{integrationID}:{method}`; no dispose (kernel reloads) | same | `fixture-tested` (unit: authorize/callback/cancel routing) + method merge live | §3 |
+| Method merge (dialog methods) | `dialog-connect-provider` methods memo | `integration.get` | V2 `.v2.integration.get` ∥ V1 `provider.auth` | `/api/integration/{id}` + `/provider/auth` | V1 oauth → `id: v1:{index}` wins label dups; V1 api dropped when V2 key exists | — | `fixture-tested` + `runtime-verified` (openai + github-copilot `v1:` oauth live) | §3 |
+| Connected set (union) | bootstrap `loadProvidersQuery` | `fetchActiveProviderIDs` | V1 `GET /config/providers` ∪ V2 `GET /api/integration` connections | V1 fail propagates → all-on; V2 fail → V1 set alone | directory headers on both legs | — | `fixture-tested` + `runtime-verified` | §3 |
+| V1 catalog models | model selector | `model.list`/`model.default` | V1 `GET /provider` models → `toLegacyV1Model`, empty → V2 `/api/model` | V1 full catalog (223 providers, kernel Model shape) | bound directory | — | `fixture-tested` (mapping incl. release_date/cost/capabilities) + live fallback | §3 |
 | Sessions list/create/message | home, tabs, session views | compat `session.*` (V1 shim impls call raw V1 root methods) | root `Session2.*` | `/session*` | explicit+ambient | `session.*.delta` stream | `source-verified` | §4 |
 | Agents/models | agents panel, model selector | `sdk` list queries | `Agent.list`, `Model.*` | `/agent`, `/api/model` | tbd | — | probe 200 only | §5 |
 | MCP | mcp dialogs | compat passthrough | root `Mcp.*` | tbd | tbd | — | todo | §5 |
@@ -149,6 +156,33 @@ migration validates `false` → result `invalid`; same owner.
 | Doctor/upgrade/preflight | TUI route only | — | — | gap suspected | — | — | todo | §6 |
 | Markdown→PDF export | TUI route only | — | — | gap suspected | — | — | todo | §6 |
 | Workspace registry | TUI route only | — | — | gap suspected | — | — | todo | §6 |
+
+### Dual auth-universe findings (isolated live matrix, isolated homes)
+
+- V1 universe: kernel `Auth.Service` → auth.json. Feeds `/config/providers`,
+  V1 `/provider.connected`, V1 session LLM (`spinosa-kernel/src/session/llm.ts`
+  `auth.get`), desktop conversation path (V1 loop → auth.json).
+  `control.authSet` = `auth.set` + `provider.reload()` (`PUT /auth/:id`).
+- V2 universe: core `Credential.Service` → SQLite `credential` table. Feeds
+  `Catalog.available()` → `/api/model` and the V2 session runner.
+- **No bridge**: no credential-read API, no auth.json mirror, V1 LLM never
+  reads SQLite; `Catalog.available()` never reads auth.json. Each universe
+  alone is incomplete (V2 key → models 93/61 openai but config_active
+  unchanged; V1 auth → config_active + v1_connected but anthropic_models 0).
+  Dual-write (the facade) is required for key connect to wire chat + model
+  list together.
+- OAuth routing: V1 authorize/callback when a V1 oauth method exists
+  (writes auth.json → chat + connected ✓); V2 attempt only otherwise.
+  `opencode` device oauth is V2-only (zen already config_active by default;
+  chat through V1 stays a documented gap when the method is V2-only).
+- V1 `GET /provider/auth` non-empty for: `openai` (oauth + api),
+  `github-copilot`, `gitlab`, `poe`, `cloudflare-workers-ai`,
+  `cloudflare-ai-gateway`, `azure`, `digitalocean`, `snowflake-cortex`,
+  `xai`. **No `opencode` entry.** V2 oauth methods: only `openai`
+  (`chatgpt-browser`, `chatgpt-headless`) and `opencode` (device).
+- Kernel gaps to report upstream (not fixed here): `Catalog.available()`
+  ignores auth.json; V1 session LLM ignores SQLite credentials; no OAuth
+  token readback API; opencode-device oauth is V2-only (chat gap).
 
 ## Packaging (§7) — not started
 
