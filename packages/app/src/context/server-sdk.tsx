@@ -355,7 +355,7 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
       throwOnError: true,
       directory,
     })
-  const api = createCompatibleApi({ protocol, current: currentApi, raw: sdk, legacy })
+  const api = createCompatibleApi({ protocol, current: currentApi, raw: sdk, legacy, directory: ambientDirectory() })
 
   return {
     server,
