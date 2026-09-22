@@ -1,7 +1,7 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `3e405e9c`
-(`fix(app): bind ambient directory on the global compat facade`).
+Source of truth: branch `spinosa-desktop-wiring` at `19ce1c03`
+(`fix(app): permission/question request lists, settings-less agents, pick-opens-workspace`).
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -16,7 +16,7 @@ verified anywhere below.
 ## Baseline gates (main checkout, at `02e62207`)
 
 - `typecheck` for `app`, `session-ui`, `desktop`, `ui`: all exit 0.
-- `packages/app test:unit`: 766 pass / 1 fail — the fail is the known
+- `packages/app test:unit`: 769 pass / 1 fail — the fail is the known
   pre-existing ICU case `desktop native locale detection > uses Unicode
   likely subtags for script-sensitive bundles`.
 - `packages/session-ui test`: 83 pass / 0 fail.
@@ -105,10 +105,10 @@ migration validates `false` → result `invalid`; same owner.
   `{error,...}` → throw (defensive; `throwOnError` throws first),
   legacy `{data,error}` preserved, `{stream}` single-key results extracted
   to the async iterable, domain payloads (incl. `{location,data}` bodies)
-  untouched. All 46 tests in `server-compat.test.ts` pass; app suite
-  766 pass with only the known ICU failure.
+  untouched. All 48 tests in `server-compat.test.ts` pass; app suite
+  769 pass with only the known ICU failure.
 - Namespaces `runtime-verified` against a live kernel from source via
-  `createCompatibleApi` over HTTP (live-check 44/44 PASS at `02e62207`):
+  `createCompatibleApi` over HTTP (live-check 46/46 PASS at `19ce1c03`):
   `provider.list/get` from the V1 full catalog mapped to flat legacy items
   (the V2 list is active-only and would hide unconnected providers);
   `model.list/default` (V1 `/provider` catalog preferred, V2 `/api/model`
@@ -161,14 +161,27 @@ migration validates `false` → result `invalid`; same owner.
   assertions. Live: pty create/get/list/update/remove + `file.list/find`
   pass; V2 `/api/pty/{id}/connect` socket URL is served (source-verified
   against the generated surface).
+- §6 workspace-open fixes (`19ce1c03`, `fixture-tested` + `runtime-verified`,
+  found via CDP-driven Electron run):
+  `api.permission.request` / `api.question.request` were `undefined` (the
+  generated root client only has flat `permission.list`/`question.list`
+  returning bare arrays) so directory bootstrap crashed with "reading
+  'list'"; the facade now maps both to `{location, data}` envelopes.
+  `normalizeAgentList` crashed on served agents lacking
+  `request.settings` (V2 items carry only `{headers, body}`); now tolerant
+  with `options: {}` fallback — this crash had emptied the agents store,
+  which tripped the composer's "select an agent and model" guard on send.
+  "Pick a workspace" only registered directories without opening anything
+  (home recents come from the server list); it now opens a draft per
+  selected directory like New workspace. Unit: request-list routing,
+  settings-less agents. Live: permission/question envelopes 200.
 - Dialog pipeline `runtime-verified` headless: the exact data path
   `dialog-connect-provider` renders (`provider.list` + `model.list` +
   `model.default` + `fetchActiveProviderIDs` → `normalizeProviderList` +
   per-provider `integration.get`) driven against the live kernel — 223
   catalog entries, openai connected post-dual-write with models attached,
-  methods key + `v1:` oauth. Renderer `vite build` clean. Pixel observation
-  of the Electron dialog still pending: no display server/`agent-browser`
-  in this environment, so the Task 1 UI gate stays open on pixels only.
+  methods key + `v1:` oauth. Renderer `vite build` clean. Electron dialog
+  pixel-verified (Popular/Other render; Task 1 UI gate closed).
 - Directory defaults `fixture-tested` + live A/B: explicit location >
   bound workspace > ambient home; `createDirSdkContext` builds a
   directory-bound adapted facade instead of reusing the global one.
