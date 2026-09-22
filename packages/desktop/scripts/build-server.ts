@@ -11,13 +11,26 @@ import { fileURLToPath } from "node:url"
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 process.chdir(dir)
 
+const jsoncEsm = fileURLToPath(import.meta.resolve("jsonc-parser/lib/esm/main.js"))
+
 const result = await Bun.build({
   target: "node",
   entrypoints: ["./scripts/server-entry.ts"],
   outdir: "../spinosa-kernel/dist/node",
   format: "esm",
   sourcemap: "linked",
-  external: ["@lydell/node-pty", "@aws-sdk/client-s3", "jsonc-parser"],
+  // jsonc-parser ships UMD as main: bundling it breaks on its relative
+  // siblings and externalizing it breaks named ESM imports under plain
+  // Node (cjs-module-lexer misses the UMD factory). Alias the ESM build.
+  external: ["@lydell/node-pty", "@aws-sdk/client-s3"],
+  plugins: [
+    {
+      name: "spinosa:jsonc-esm",
+      setup(build) {
+        build.onResolve({ filter: /^jsonc-parser$/ }, () => ({ path: jsoncEsm }))
+      },
+    },
+  ],
 })
 
 if (!result.success) {
