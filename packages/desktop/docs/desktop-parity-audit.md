@@ -1,7 +1,7 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `3dd3830f`
-(`fix(desktop): make clean packaging reproducible`).
+Source of truth: branch `spinosa-desktop-wiring` at `dfe3406a`
+(`fix(desktop): load optional sentry plugin safely`).
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -292,12 +292,15 @@ Validated from a fresh worktree at `3dd3830f` after `bun install
 --frozen-lockfile`:
 
 - `packages/desktop bun run typecheck`: pass.
-- `bun test electron-builder.config.test.ts`: 4/4 tests, 25 expectations.
-- `bun test src/renderer/html.test.ts`: 4/4 tests, 11 expectations.
+- `bun test electron.vite.config.test.ts electron-builder.config.test.ts
+  src/renderer/html.test.ts`: 9/9 tests, 37 expectations, including the
+  credentialed Sentry config-load path.
 - `packages/desktop bun run build`: pass through server, main, preload, and
   renderer output. The clean build no longer fails on the optional Sentry
   plugin dependency graph, and the tracked `packages/app/public/oc-theme-preload.js`
-  keeps `publicDir` reproducible.
+  keeps `publicDir` reproducible. The optional credentialed Sentry path loads
+  through the CommonJS entrypoint, avoiding the repository-wide
+  `brace-expansion`/Sentry ESM incompatibility without changing the lockfile.
 - `bun run package -- --dir`: pass for macOS arm64 with Electron 42.3.3;
   `dist/mac-arm64/Spinosa Dev.app` contains the executable and `app.asar`.
 
