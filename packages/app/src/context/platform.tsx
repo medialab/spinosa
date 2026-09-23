@@ -47,6 +47,9 @@ type PlatformBase = {
   /** Restart the app  */
   restart(): Promise<void>
 
+  /** Quit the app (desktop only; absent on web) */
+  quit?(): Promise<void>
+
   /** Send a system notification */
   notify(title: string, description?: string, onClick?: () => void): Promise<void>
 

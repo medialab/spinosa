@@ -929,6 +929,7 @@ export default function LegacyLayout(props: ParentProps) {
         id: "provider.connect",
         title: language.t("command.provider.connect"),
         category: language.t("command.category.provider"),
+        slash: "connect",
         onSelect: () => connectProvider(),
       },
       {
@@ -942,7 +943,14 @@ export default function LegacyLayout(props: ParentProps) {
         title: language.t("command.settings.open"),
         category: language.t("command.category.settings"),
         keybind: "mod+comma",
+        slash: "settings",
         onSelect: () => openSettings(),
+      },
+      {
+        id: "app.exit",
+        title: language.t("command.app.exit"),
+        slash: "exit",
+        onSelect: () => void platform.quit?.(),
       },
       {
         id: "session.previous",

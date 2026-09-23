@@ -1138,12 +1138,47 @@ export default function Page() {
   }
 
   useComposerCommands()
-  useSessionCommands({
+  const sessionCommands = useSessionCommands({
     navigateMessageByOffset,
     setActiveMessage,
     focusInput,
     review: reviewTab,
     fileBrowser: () => newSessionDesign() && isDesktop() && !!params.id,
+  })
+
+  onMount(() => {
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+        return
+      const target = event.target instanceof Element ? event.target.closest("a[href]") : null
+      const href = target?.getAttribute("href")
+      if (!href) return
+      if (sessionCommands.openMarkdownHref(href)) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+    const onDragOver = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault()
+    }
+    const onDrop = (event: DragEvent) => {
+      const files = event.dataTransfer?.files
+      if (!files || files.length === 0) return
+      if (event.target instanceof Element && event.target.closest("[contenteditable],input,textarea")) return
+      const md = Array.from(files).find((file) => /\.markdown?$/i.test(file.name.trim()))
+      if (!md) return
+      event.preventDefault()
+      event.stopPropagation()
+      void sessionCommands.openDroppedMarkdown(md)
+    }
+    document.addEventListener("click", onClick, true)
+    document.addEventListener("dragover", onDragOver)
+    document.addEventListener("drop", onDrop, true)
+    onCleanup(() => {
+      document.removeEventListener("click", onClick, true)
+      document.removeEventListener("dragover", onDragOver)
+      document.removeEventListener("drop", onDrop, true)
+    })
   })
   command.register("session-palette", () => [
     {

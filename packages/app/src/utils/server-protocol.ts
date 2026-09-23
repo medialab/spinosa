@@ -38,9 +38,12 @@ export async function detectServerProtocol(
 
   const legacyHealthy = !!legacy && "healthy" in legacy && legacy.healthy === true
   const currentHealthy = !!current && "healthy" in current && current.healthy === true
-  // Spinosa serves both generations without a pid: the V2 client covers the
-  // full surface (V1 roots plus /api), so prefer it over the V1 shim.
-  if (legacyHealthy && currentHealthy) return "v2"
+  // Spinosa serves both generations without a pid, but its source of truth is
+  // the V1 conversation transport (the same one the TUI uses): V1 prompt
+  // submission, V1 message projection, auth.json credentials, and the full
+  // V1 provider catalog. Pin the desktop to V1 so every consumer reads one
+  // protocol instead of mixing V1 writes with V2 reads.
+  if (legacyHealthy && currentHealthy) return "v1"
   if (legacyHealthy) return "v1"
   if (currentHealthy) return "v1"
   return "v2"

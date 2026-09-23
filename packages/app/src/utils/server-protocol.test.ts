@@ -38,7 +38,7 @@ describe("detectServerProtocol", () => {
     expect(await detectServerProtocol(server, fetcher)).toBe("v1")
   })
 
-  test("prefers V2 for the Spinosa dual-stack health responses", async () => {
+  test("pins V1 for the Spinosa dual-stack health responses", async () => {
     const fetcher = mockFetch((input) => {
       const path = new URL(input instanceof Request ? input.url : input).pathname
       if (path === "/global/health")
@@ -46,6 +46,6 @@ describe("detectServerProtocol", () => {
       return Promise.resolve(json({ healthy: true }))
     })
 
-    expect(await detectServerProtocol(server, fetcher)).toBe("v2")
+    expect(await detectServerProtocol(server, fetcher)).toBe("v1")
   })
 })

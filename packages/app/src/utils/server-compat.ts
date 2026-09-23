@@ -170,6 +170,17 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
     data,
   })
 
+  // Models from the V1 provider catalog (GET /provider carries full models
+  // for every provider). Shared by model.list and model.default below.
+  const v1models = async (location?: { directory?: string }) => {
+    const result = await legacy(location).provider.list({ directory: directory(location) })
+    const providers = ((result.data as { all?: V1Provider[] } | undefined)?.all ?? []) as V1CatalogProvider[]
+    const data = providers.flatMap((provider) =>
+      Object.values(provider.models ?? {}).map((model) => toLegacyV1Model(model, provider.id)),
+    )
+    return located(data, location)
+  }
+
   return {
     ...input.current,
     session: {
@@ -339,6 +350,12 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         },
         commit: input.current.session.revert.commit,
       },
+      async message(value: Parameters<ServerApi["session"]["message"]>[0]) {
+        // V1 single-message read (GET /session/:id/message/:messageID), the
+        // same projection server-session's V1 fetchMessage path consumes.
+        const result = await legacy().session.message({ sessionID: value.sessionID, messageID: value.messageID })
+        return result.data as unknown as SessionMessageInfo
+      },
     },
     project: {
       ...input.current.project,
@@ -424,6 +441,12 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
       // root is absent, so spread defensively. The app only calls the
       // overridden get/connect/oauth methods below.
       ...(input.current.integration ?? {}),
+      async list(value): Promise<IntegrationListOutput> {
+        const location = value?.location?.directory ?? input.directory
+        return unwrapEnvelope(
+          await input.raw.v2.integration.list(location ? { location: { directory: location } } : undefined),
+        ) as IntegrationListOutput
+      },
       async get(value: Parameters<ServerApi["integration"]["get"]>[0]) {
         const methods = ((await legacy(value.location).provider.auth()).data?.[value.integrationID] ?? []).map(
           (method, index) =>
@@ -493,6 +516,16 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
             { status: "complete" as const, time: { created: Date.now(), expires: Date.now() } },
             value.location,
           )
+        },
+        cancel: async (value: Parameters<ServerApi["integration"]["oauth"]["cancel"]>[0]) => {
+          // V1 oauth attempts (v1:{id}:{method}) complete inline; only V2
+          // attempt IDs need explicit cancellation on the server.
+          if (value.attemptID.startsWith("v1:")) return
+          const location = value.location?.directory ?? input.directory
+          await input.raw.v2.integration.attempt.cancel({
+            attemptID: value.attemptID,
+            ...(location ? { location: { directory: location } } : {}),
+          })
         },
       },
     },
@@ -589,10 +622,248 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         await legacy().question.reject({ requestID: value.requestID })
       },
     },
+    // The namespaces below complete the V1 facade. The shape proxy in
+    // createCompatibleApi advertises every namespace the V2 facade defines,
+    // so each one must also resolve under v1 — otherwise merely accessing
+    // api.provider/api.message/... schedules an unhandled rejection against
+    // the v1 implementation. Reads prefer the V1 tree (the same transport as
+    // V1 prompt submission); only endpoints with no V1 equivalent call the
+    // served V2 roots directly.
+    provider: {
+      async list(value): Promise<ProviderListOutput> {
+        const result = await legacy(value?.location).provider.list({
+          directory: directory(value?.location),
+        })
+        const data = ((result.data as { all?: V1Provider[] } | undefined)?.all ?? []) as V1Provider[]
+        return located(data.map(toLegacyCatalogProvider), value?.location)
+      },
+      async get(value): Promise<ProviderGetOutput> {
+        const result = await legacy(value?.location).provider.list({
+          directory: directory(value?.location),
+        })
+        const found = (((result.data as { all?: V1Provider[] } | undefined)?.all ?? []) as V1Provider[]).find(
+          (item) => item.id === value.providerID,
+        )
+        if (!found) throw new Error(`Provider not found: ${value.providerID}`)
+        return located(toLegacyCatalogProvider(found), value?.location)
+      },
+    },
+    model: {
+      async list(value) {
+        return v1models(value?.location)
+      },
+      async default(value) {
+        // No V1 default-model endpoint exists: honor config.model and report
+        // null otherwise (same contract as the V2 mapping); consumers fall
+        // back to the first available model per provider.
+        const loc = value?.location?.directory ?? input.directory
+        const config = unwrapEnvelope(await input.raw.config.get(loc ? { directory: loc } : undefined)) as {
+          model?: string
+        }
+        const [providerID, ...rest] = (config.model ?? "").split("/")
+        const modelID = rest.join("/")
+        if (!providerID || !modelID) return located(null, value?.location)
+        const body = await v1models(value?.location)
+        const match = body.data.find((item) => item.providerID === providerID && item.id === modelID)
+        if (!match) return { location: body.location, data: null }
+        return { location: body.location, data: match }
+      },
+    },
+    agent: {
+      async list(value) {
+        // Same served set as the V2 mapping (verified identical membership
+        // against GET /agent); projected to the legacy agent shape here so
+        // the namespace resolves under v1 too.
+        const body = unwrapEnvelope(
+          await input.raw.v2.agent.list(
+            value?.location ? { location: value.location } : input.directory ? { location: { directory: input.directory } } : undefined,
+          ),
+        ) as {
+          location: LocationInfo
+          data: Array<Parameters<typeof toLegacyAgent>[0]>
+        }
+        return { location: body.location, data: body.data.map(toLegacyAgent) }
+      },
+    },
+    message: {
+      async list(value) {
+        // V1 projection (GET /session/:id/message), the same source the TUI
+        // reads. `cursor` is accepted for call-shape compatibility and used
+        // as the V1 `before` bound; `order` has no V1 equivalent
+        // (newest-first). The empty cursor terminates page walkers: V1 reads
+        // return the full projection, not pages.
+        const result = await legacy().session.messages({
+          sessionID: value.sessionID,
+          limit: value.limit,
+          before: (value as { before?: string }).before ?? value.cursor ?? undefined,
+        })
+        return {
+          data: (result.data ?? []) as unknown as SessionMessageInfo[],
+          cursor: { previous: null, next: null },
+        }
+      },
+    },
+    command: {
+      async list(value) {
+        // The V1 command tree serves legacy-shaped items (model as
+        // "provider/model"), matching what loadCommands splits.
+        const result = await legacy(value?.location).command.list({
+          directory: directory(value?.location),
+        })
+        const data = (result.data ?? []).map((command) => ({
+          name: command.name,
+          template: command.template,
+          description: command.description,
+          agent: command.agent,
+          model: command.model as unknown as CommandListOutput["data"][number]["model"],
+          subtask: command.subtask,
+        }))
+        return located(data, value?.location)
+      },
+    },
+    reference: {
+      async list(value): Promise<ReferenceListOutput> {
+        // No V1 reference endpoint exists; V2 items are structurally
+        // identical to the legacy ones.
+        return unwrapEnvelope(
+          await input.raw.v2.reference.list(value?.location ? { location: value.location } : undefined),
+        ) as ReferenceListOutput
+      },
+    },
+    mcp: {
+      async list(value) {
+        const result = await legacy(value?.location).mcp.status({
+          directory: directory(value?.location),
+        })
+        const data = result.data ?? {}
+        return located(
+          Object.entries(data).map(([name, status]) => ({ name, status })),
+          value?.location,
+        )
+      },
+      async add(value) {
+        await legacy(value?.location).mcp.add({
+          name: value.server,
+          config: value.config as { type: "local"; command: string[] } | { type: "remote"; url: string } | undefined,
+          directory: directory(value?.location),
+        })
+      },
+      async remove(value) {
+        // No V1 remove-server endpoint exists (servers are disconnected via
+        // disconnect and edited out of config); fail loudly instead of
+        // dangling like the pre-completion facade did.
+        throw new Error(`MCP server removal is not supported by the V1 API: ${value.server}`)
+      },
+      async connect(value) {
+        await legacy(value?.location).mcp.connect({
+          name: value.server,
+          directory: directory(value?.location),
+        })
+      },
+      async disconnect(value) {
+        await legacy(value?.location).mcp.disconnect({
+          name: value.server,
+          directory: directory(value?.location),
+        })
+      },
+      resource: {
+        async catalog(value) {
+          const resources = await fetchResourceCatalog(input.raw, directory(value?.location) || undefined)
+          return located({ resources, templates: [] }, value?.location)
+        },
+      },
+    },
   }
 }
 
 type V2Location = { directory?: string; workspace?: string }
+
+// Shared endpoint mappings used by both facades. Every mapping below is
+// plain HTTP against served endpoints (V1 tree or served V2 roots), so the
+// behavior is identical regardless of which protocol selected the facade.
+// The V1 facade prefers V1-tree reads for conversation state (session,
+// message, agent) to stay on the same transport as V1 prompt submission;
+// mappings with no V1 equivalent (reference, integration list) call the
+// served V2 endpoints directly.
+function sharedMappings(input: CompatibleInput) {
+  const directoryOf = (location?: V2Location) => location?.directory ?? input.directory ?? ""
+  const located = <T>(data: T, location?: V2Location) => ({
+    location: {
+      directory: directoryOf(location),
+      project: { id: "", directory: directoryOf(location) },
+    },
+    data,
+  })
+  const at = (location?: V2Location) => {
+    const directory = location?.directory ?? input.directory
+    if (!directory && !location?.workspace) return undefined
+    return { location: { directory, workspace: location?.workspace } }
+  }
+  const root = (location?: V2Location) => input.legacy(directoryOf(location))
+  const flat = (location?: V2Location) => {
+    const directory = directoryOf(location) || undefined
+    return { directory, workspace: location?.workspace }
+  }
+  // Preserve every adapted pass-through method of a namespace while
+  // replacing selected methods with explicit mappings. Missing roots
+  // (model/agent/reference have no V1 namespace) start from empty.
+  const override = <T extends object>(namespace: T | undefined, methods: Partial<T>): T =>
+    new Proxy((namespace ?? {}) as T, {
+      get(target, property, receiver) {
+        if (property in methods) return methods[property as keyof T]
+        return Reflect.get(target, property, receiver)
+      },
+    })
+  // V1 methods for one provider, or [] when the endpoint fails. Used to merge
+  // oauth methods the V2 integration registry does not carry (copilot, gitlab,
+  // poe, xai, azure, ... — see desktop-parity-audit).
+  const v1AuthMethods = async (location: V2Location | undefined, integrationID: string) => {
+    try {
+      const methods = (await root(location).provider.auth()).data as Record<string, V1AuthMethod[]> | undefined
+      return methods?.[integrationID] ?? []
+    } catch {
+      return []
+    }
+  }
+  // Models from the V1 catalog (GET /provider carries full models for every
+  // provider). Falls back to V2 /api/model when the V1 catalog yields none.
+  const v1CatalogModels = async (location: V2Location | undefined) => {
+    const result = await root(location).provider.list(flat(location))
+    const providers = ((result.data as { all?: V1CatalogProvider[] } | undefined)?.all ?? []) as V1CatalogProvider[]
+    return providers.flatMap((provider) =>
+      Object.values(provider.models ?? {}).map((model) => toLegacyV1Model(model, provider.id)),
+    )
+  }
+  const v2ModelList = async (
+    location: V2Location | undefined,
+  ): Promise<{ location: LocationInfo; data: ModelInfo[] }> => {
+    const body = unwrapEnvelope(await input.raw.v2.model.list(at(location))) as {
+      location: LocationInfo
+      data: Array<ModelV2Info>
+    }
+    return { location: body.location, data: body.data.map(toLegacyModel) }
+  }
+  const v1OrV2Models = async (location: V2Location | undefined): Promise<{ location: LocationInfo; data: ModelInfo[] }> => {
+    try {
+      const models = await v1CatalogModels(location)
+      if (models.length > 0) {
+        return {
+          location: {
+            directory: directoryOf(location),
+            project: { id: "", directory: directoryOf(location) },
+          },
+          data: models,
+        }
+      }
+    } catch {
+      // fall through to V2
+    }
+    return v2ModelList(location)
+  }
+  return { directoryOf, located, at, root, flat, override, v1AuthMethods, v1CatalogModels, v2ModelList, v1OrV2Models }
+}
+
+type SharedMappings = ReturnType<typeof sharedMappings>
 
 type RawLowClient = {
   get: (options: Record<string, unknown>) => Promise<unknown>
@@ -864,80 +1135,8 @@ function toLegacyAgent(agent: { id: string } & Omit<AgentInfo, "id" | "name">): 
 function createV2Api(input: CompatibleInput): CompatibleApi {
   const base = createV1Api(input)
   const v2 = input.raw.v2
-  const directoryOf = (location?: V2Location) => location?.directory ?? input.directory ?? ""
-  const located = <T>(data: T, location?: V2Location) => ({
-    location: {
-      directory: directoryOf(location),
-      project: { id: "", directory: directoryOf(location) },
-    },
-    data,
-  })
-  const at = (location?: V2Location) => {
-    const directory = location?.directory ?? input.directory
-    if (!directory && !location?.workspace) return undefined
-    return { location: { directory, workspace: location?.workspace } }
-  }
-  // Preserve every adapted pass-through method of a namespace while
-  // replacing selected methods with explicit V2 mappings. Missing roots
-  // (model/agent/reference have no V1 namespace) start from empty.
-  const override = <T extends object>(namespace: T | undefined, methods: Partial<T>): T =>
-    new Proxy((namespace ?? {}) as T, {
-      get(target, property, receiver) {
-        if (property in methods) return methods[property as keyof T]
-        return Reflect.get(target, property, receiver)
-      },
-    })
-  const root = (location?: V2Location) => input.legacy(directoryOf(location))
-  const flat = (location?: V2Location) => {
-    const directory = directoryOf(location) || undefined
-    return { directory, workspace: location?.workspace }
-  }
-  // V1 methods for one provider, or [] when the endpoint fails. Used to merge
-  // oauth methods the V2 integration registry does not carry (copilot, gitlab,
-  // poe, xai, azure, ... — see desktop-parity-audit).
-  const v1AuthMethods = async (location: V2Location | undefined, integrationID: string) => {
-    try {
-      const methods = (await root(location).provider.auth()).data as Record<string, V1AuthMethod[]> | undefined
-      return methods?.[integrationID] ?? []
-    } catch {
-      return []
-    }
-  }
-  // Models from the V1 catalog (GET /provider carries full models for every
-  // provider). Falls back to V2 /api/model when the V1 catalog yields none.
-  const v1CatalogModels = async (location: V2Location | undefined) => {
-    const result = await root(location).provider.list(flat(location))
-    const providers = ((result.data as { all?: V1CatalogProvider[] } | undefined)?.all ?? []) as V1CatalogProvider[]
-    return providers.flatMap((provider) =>
-      Object.values(provider.models ?? {}).map((model) => toLegacyV1Model(model, provider.id)),
-    )
-  }
-  const v2ModelList = async (
-    location: V2Location | undefined,
-  ): Promise<{ location: LocationInfo; data: ModelInfo[] }> => {
-    const body = unwrapEnvelope(await v2.model.list(at(location))) as {
-      location: LocationInfo
-      data: Array<ModelV2Info>
-    }
-    return { location: body.location, data: body.data.map(toLegacyModel) }
-  }
-  const v1OrV2Models = async (location: V2Location | undefined): Promise<{ location: LocationInfo; data: ModelInfo[] }> => {
-    try {
-      const models = await v1CatalogModels(location)
-      if (models.length > 0) {
-        return {
-          location: {
-            directory: directoryOf(location),
-            project: { id: "", directory: directoryOf(location) },
-          },
-          data: models,
-        }
-      }
-    } catch {
-      // fall through to V2
-    }
-    return v2ModelList(location)
-  }
+  const { directoryOf, located, at, root, flat, override, v1AuthMethods, v1CatalogModels, v2ModelList, v1OrV2Models } =
+    sharedMappings(input)
 
   return {
     ...base,

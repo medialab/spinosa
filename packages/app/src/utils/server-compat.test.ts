@@ -853,6 +853,89 @@ describe("createCompatibleApi V2 namespaces", () => {
   })
 })
 
+describe("createCompatibleApi V1 namespaces", () => {
+  // Under the Spinosa pin (detectServerProtocol → "v1") every namespace the
+  // shape proxy advertises must resolve against V1 reads. Before the V1
+  // completion, merely accessing api.provider/api.message/... scheduled an
+  // unhandled "API namespace unavailable" rejection against the v1
+  // implementation (seen live on load/session-nav).
+  const catalogWithModels = {
+    ...v2Routes,
+    "GET /provider": () =>
+      Response.json({
+        all: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            options: {},
+            models: {
+              "gpt-4": {
+                id: "gpt-4",
+                name: "GPT-4",
+                family: "gpt",
+                capabilities: { toolcall: true, input: { text: true }, output: { text: true } },
+                cost: { input: 1, output: 2, cache: { read: 0.5, write: 1 } },
+                limit: { context: 8000, output: 4000 },
+                options: {},
+              },
+            },
+          },
+        ],
+        default: {},
+      }),
+  }
+
+  test("resolves provider, model, and agent namespaces from V1 reads", async () => {
+    const { api, requests } = setup("v1", undefined, catalogWithModels)
+    const providers = await api.provider.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/provider")
+    expect(providers.data).toMatchObject([{ id: "openai", name: "OpenAI" }])
+    const single = await api.provider.get({ providerID: "openai" })
+    expect(single.data).toMatchObject({ id: "openai" })
+    await expect(api.provider.get({ providerID: "nope" })).rejects.toThrow("Provider not found: nope")
+    const models = await api.model.list({ location: { directory: "/repo" } })
+    expect(models.data).toMatchObject([{ id: "gpt-4", providerID: "openai" }])
+    const agents = await api.agent.list({ location: { directory: "/repo" } })
+    expect(agents.data).toMatchObject([{ id: "build", name: "build" }])
+  })
+
+  test("resolves model.default from config.model against the V1 catalog", async () => {
+    const { api } = setup("v1", undefined, catalogWithModels)
+    const result = await api.model.default({ location: { directory: "/repo" } })
+    expect(result.data).toMatchObject({ id: "gpt-4", providerID: "openai" })
+  })
+
+  test("reads messages through the V1 projection", async () => {
+    const userMessage = { id: "msg_1", sessionID: "ses_1", type: "user", text: "hi", time: { created: 1 } }
+    const { api, requests } = setup("v1", undefined, {
+      ...v2Routes,
+      "GET /session/ses_1/message": () => Response.json([userMessage]),
+      "GET /session/ses_1/message/msg_1": () => Response.json(userMessage),
+    })
+    const page = await api.message.list({ sessionID: "ses_1", limit: 20 })
+    expect(pathOf(requests[0]!.url)).toBe("/session/ses_1/message")
+    expect(page.data).toMatchObject([{ id: "msg_1" }])
+    expect(page.cursor).toEqual({ previous: null, next: null })
+    const single = await api.session.message({ sessionID: "ses_1", messageID: "msg_1" })
+    expect(single).toMatchObject({ id: "msg_1" })
+  })
+
+  test("resolves command, reference, mcp, and integration namespaces", async () => {
+    const { api, requests } = setup("v1", undefined, v2Routes)
+    const commands = await api.command.list({ location: { directory: "/repo" } })
+    expect(pathOf(requests[0]!.url)).toBe("/command")
+    expect(commands.data).toMatchObject([{ name: "init" }])
+    const refs = await api.reference.list({ location: { directory: "/repo" } })
+    expect(refs.data).toMatchObject([{ name: "r" }])
+    const mcps = await api.mcp.list({ location: { directory: "/repo" } })
+    expect(mcps.data).toMatchObject([{ name: "docs" }])
+    await api.mcp.connect({ server: "docs", location: { directory: "/repo" } })
+    await api.mcp.disconnect({ server: "docs", location: { directory: "/repo" } })
+    const integrations = await api.integration.list({ location: { directory: "/repo" } })
+    expect(integrations.data).toEqual([])
+  })
+})
+
 describe("createCompatibleApi directory isolation", () => {
   test("explicit locations win over the bound workspace", async () => {
     const { api, requests } = setup("v2", undefined, v2Routes)

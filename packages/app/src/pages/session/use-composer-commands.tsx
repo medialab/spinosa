@@ -56,6 +56,35 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
       onSelect: chooseModel,
     }),
     modelCommand({
+      id: "model.cycleRecent",
+      title: language.t("command.model.cycleRecent"),
+      keybind: "f2",
+      onSelect: () => model.cycle(1),
+    }),
+    modelCommand({
+      id: "model.cycleRecent.reverse",
+      title: language.t("command.model.cycleRecent"),
+      keybind: "shift+f2",
+      hidden: true,
+      onSelect: () => model.cycle(-1),
+    }),
+    modelCommand({
+      id: "dialog.variant",
+      title: language.t("dialog.variant.title"),
+      slash: "variant",
+      onSelect: () => {
+        void import("@/components/dialog-variant-picker").then((x) =>
+          dialog.show(() => (
+            <x.DialogVariantPicker
+              variants={model.variant.list()}
+              current={model.variant.current() ?? undefined}
+              onSelect={(variant) => model.variant.set(variant ?? undefined)}
+            />
+          )),
+        )
+      },
+    }),
+    modelCommand({
       id: "model.variant.cycle",
       title: language.t("command.model.variant.cycle"),
       description: language.t("command.model.variant.cycle.description"),
