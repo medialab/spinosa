@@ -1,6 +1,7 @@
 import { defineConfig } from "electron-vite"
 import appPlugin from "@spinosa/app/vite"
 import * as fs from "node:fs/promises"
+import { createRequire } from "node:module"
 
 const SPINOSA_SERVER_DIST = "../spinosa-kernel/dist/node"
 
@@ -12,13 +13,14 @@ const channel = (() => {
 })()
 
 const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.arch}`
+const require = createRequire(import.meta.url)
 
 const sentry = await (async () => {
   if (!process.env.SENTRY_AUTH_TOKEN || !process.env.SENTRY_ORG || !process.env.SENTRY_PROJECT) {
     return false
   }
 
-  const { sentryVitePlugin } = await import("@sentry/vite-plugin")
+  const { sentryVitePlugin } = require("@sentry/vite-plugin") as typeof import("@sentry/vite-plugin")
   return sentryVitePlugin({
     authToken: process.env.SENTRY_AUTH_TOKEN,
     org: process.env.SENTRY_ORG,
