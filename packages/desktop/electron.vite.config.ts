@@ -1,4 +1,3 @@
-import { sentryVitePlugin } from "@sentry/vite-plugin"
 import { defineConfig } from "electron-vite"
 import appPlugin from "@spinosa/app/vite"
 import * as fs from "node:fs/promises"
@@ -14,22 +13,26 @@ const channel = (() => {
 
 const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.arch}`
 
-const sentry =
-  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
-    ? sentryVitePlugin({
-        authToken: process.env.SENTRY_AUTH_TOKEN,
-        org: process.env.SENTRY_ORG,
-        project: process.env.SENTRY_PROJECT,
-        telemetry: false,
-        release: {
-          name: process.env.SENTRY_RELEASE ?? process.env.VITE_SENTRY_RELEASE,
-        },
-        sourcemaps: {
-          assets: "./out/renderer/**",
-          filesToDeleteAfterUpload: "./out/renderer/**/*.map",
-        },
-      })
-    : false
+const sentry = await (async () => {
+  if (!process.env.SENTRY_AUTH_TOKEN || !process.env.SENTRY_ORG || !process.env.SENTRY_PROJECT) {
+    return false
+  }
+
+  const { sentryVitePlugin } = await import("@sentry/vite-plugin")
+  return sentryVitePlugin({
+    authToken: process.env.SENTRY_AUTH_TOKEN,
+    org: process.env.SENTRY_ORG,
+    project: process.env.SENTRY_PROJECT,
+    telemetry: false,
+    release: {
+      name: process.env.SENTRY_RELEASE ?? process.env.VITE_SENTRY_RELEASE,
+    },
+    sourcemaps: {
+      assets: "./out/renderer/**",
+      filesToDeleteAfterUpload: "./out/renderer/**/*.map",
+    },
+  })
+})()
 
 export default defineConfig({
   main: {
