@@ -32,6 +32,11 @@ verified anywhere below.
   desktop SQLite array-mode regression suite is 5/5. Electron-builder output
   was not generated because packaging writes `packages/desktop/out`/`dist`,
   which remain outside this live-checkout pass.
+- Post-checkpoint gates: app unit is 772 pass / 1 known pre-existing ICU
+  locale failure, session-ui is 83 pass / 0 fail, and the running backend
+  `/global/health`, `/api/health`, and web app root each returned HTTP 200.
+  No Electron UI replay was run in this pass because the existing Electron
+  process was not active and the handoff forbids restarting the user stack.
 - Runtime follow-up: reproduce the silent sidecar loop exit in the running
   Electron stack, verify the new reconciliation and disconnect paths through
   the UI, then complete interrupt/reconnect, MCP permission/terminal, kernel
