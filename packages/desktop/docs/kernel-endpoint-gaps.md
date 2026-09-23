@@ -42,7 +42,31 @@ flush, or loop scheduling is the first fault.
    the Node SQLite utility-process configuration, then asserts the user row,
    parts, terminal event, and non-empty response are all observable.
 
-## 2. Credential-universe bridge
+## 2. PTY WebSocket close hardening
+
+Observed on 2026-09-23:
+
+- A direct Bun WebSocket probe against the V1 `/pty/:id/connect` route caused
+  the running sidecar to terminate after the client closed, with an unhandled
+  `read ECONNRESET` in the server process.
+- A separate isolated Node sidecar accepted PTY input, replayed its cursor
+  frame, returned terminal echo and command output, stayed healthy after a
+  normal `ws` close, and was then disposed cleanly.
+
+The evidence narrows the failure to an abrupt/client-specific socket-close
+boundary, but does not establish that every WebSocket close reproduces it. No
+kernel or core code is changed in the desktop migration.
+
+### Required kernel investigation
+
+1. Treat peer-reset/abrupt-close errors as connection teardown, not process-
+   fatal errors, at every WebSocket adapter boundary.
+2. Preserve PTY attachment cleanup when the peer resets before or during
+   replay, input, or output delivery.
+3. Add a regression fixture that covers cursor replay, text input, normal close,
+   abrupt close, and a health check proving the sidecar remains alive.
+
+## 3. Credential-universe bridge
 
 V2 stored credentials live in SQLite while the V1 session runner reads
 `auth.json`. There is no kernel bridge or credential readback contract. The
@@ -61,7 +85,7 @@ set on V1 `/config/providers`; this is intentionally temporary.
 - Resolve V2-only OAuth providers (currently including the device flow) for
   the desktop conversation path.
 
-## 3. Generated endpoint surface
+## 4. Generated endpoint surface
 
 Regenerate or explicitly document the protocol/client surface for endpoints
 already served but absent from the generated root client, including:

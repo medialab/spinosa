@@ -1,7 +1,7 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `73ef93f3`
-(`docs(desktop): record credentialed packaging path`).
+Source of truth: branch `spinosa-desktop-wiring` at `dc6ba26b`
+(`docs(desktop): record isolated runtime check`).
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -43,17 +43,28 @@ verified anywhere below.
   UI, returned initialized local sidecar credentials without exposing them,
   and answered authenticated `/global/health` with 200. This validates
   packaged startup only; it does not replace the live-user-stack replay.
+- Isolated PTY I/O (`runtime-verified`): a clean Node sidecar on port 4196
+  created a PTY, served the V1 `/pty/:id/connect` socket, replayed the cursor
+  frame, accepted `hello\n`, returned terminal echo plus `ECHO:hello`, and
+  remained healthy after a normal WebSocket close. This closes the server-side
+  PTY I/O fixture; live Electron terminal replay remains open.
+- PTY close transport finding (`source-verified` + isolated runtime): an
+  abrupt Bun WebSocket probe against the user backend terminated that process
+  with an unhandled `read ECONNRESET`; the isolated `ws` client with a normal
+  close was stable. No kernel change is made here. The finding is recorded as
+  upstream socket-close hardening, not as evidence that every client close
+  fails.
 - Read-only live HTTP matrix: the running backend returned 200 for the
   directory-scoped provider catalog/auth, config providers, commands, MCP,
   permission/question lists, experimental resources, sessions, projects, VCS,
   PTY listing, and file search endpoints. This validates transport reachability
-  only; interactive MCP, terminal I/O, permission reply, and command execution
-  still require a controlled UI or isolated server fixture.
+  only; interactive MCP, permission reply, and command execution still require
+  a controlled UI or isolated server fixture.
 - Runtime follow-up: reproduce the silent sidecar loop exit in the running
   Electron stack and verify the new reconciliation and disconnect paths through
-  the UI. Interrupt/reconnect, MCP permission/terminal, and kernel endpoint-gap
-  behavior remain open; kernel/core persistence remains read-only and any
-  confirmed cause belongs in the upstream report.
+  the UI. Interrupt/reconnect, MCP permission/terminal, live Electron PTY
+  replay, and kernel endpoint-gap behavior remain open; kernel/core persistence
+  remains read-only and any confirmed cause belongs in the upstream report.
 
 ## Baseline gates (main checkout, at `02e62207`)
 
@@ -254,7 +265,7 @@ migration validates `false` → result `invalid`; same owner.
 | Sessions list/create/message | home, tabs, session views | compat `session.*` (V1 shim) + V2 `message.list`/`session.message` | root `Session2.*`, V2 `Session3.messages/message` | `/session*`, `/api/session*` | explicit+ambient; create binds header=body | `session.*.delta` stream | facade `runtime-verified` (live create/get/root-list/V2 page/missing-rejects/remove) | §4 closed |
 | Agents/models | agents panel, model selector | `sdk` list queries | `Agent.list`, `Model.*` | `/agent`, `/api/model` | bound directory | — | `runtime-verified` (live lists) | §5 closed |
 | MCP | mcp dialogs | compat passthrough | root `Mcp.*` | `/mcp`, `/experimental/resource` | bound directory | — | list + resource catalog `runtime-verified`; connect/disconnect untested (no server configured) | §5 partial |
-| Terminal/PTY | terminal panel | compat `pty.*` (V1 root methods + explicit `?directory=`) | root `Pty.*`, V2 `Pty2` socket | `/pty`, `/api/pty` | explicit directory | socket (`/api/pty/{id}/connect` served) | `runtime-verified` (live create/get/list/update/remove; `file.list/find` live) | §5 closed |
+| Terminal/PTY | terminal panel | compat `pty.*` (V1 root methods + explicit `?directory=`) | root `Pty.*`, V2 `Pty2` socket | `/pty`, `/api/pty` | explicit directory | socket (`/api/pty/{id}/connect` served) | `runtime-verified` (live create/get/list/update/remove + file list/find; isolated socket replay/input/echo) | §5 closed |
 | Permissions/questions | docks | compat `permission.reply`, `question.*` | root + `Permission3/Question3` | tbd | tbd | `permission/question.v2.*` | `source-verified` (adapter exists) | §5 open |
 | Files/find/refs/commands | palettes, browser | compat `file.*` (V1 shim), V2 `reference`, V1 `command` tree | root `File/Find`, V2 `Reference`, V1 `Command` | `/file`, `/find`, `/api/reference`, `/command` | bound directory | — | `runtime-verified` (file list/find, reference, command lists live) | §5 closed |
 | Onboarding (11 steps) | TUI route only | — | — | — | — | — | triaged: no app consumer references it; absent by design, no wiring | §6 |
