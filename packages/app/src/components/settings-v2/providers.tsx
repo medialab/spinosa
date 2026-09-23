@@ -8,6 +8,7 @@ import { createMemo, type Accessor, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useServerProtocol, useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
+import { clearV2ProviderCredentials } from "@/utils/server-compat"
 import { DialogConnectProvider, useProviderConnectController } from "../dialog-connect-provider"
 import { DialogCustomProvider } from "../dialog-custom-provider"
 import { SettingsListV2 } from "./parts/list"
@@ -118,17 +119,19 @@ export const SettingsProvidersV2: Component<{
   }
 
   const disconnect = async (providerID: string, name: string) => {
+    const directory = props.directory?.()
+    const sdk = serverSdk()
+    const client = directory ? sdk.createClient({ directory }) : sdk.client
+    const removeV2 = protocol() === "v2" ? clearV2ProviderCredentials(client, providerID, directory) : Promise.resolve()
+    const removeV1 = client.auth.remove({ providerID })
     if (isConfigCustom(providerID)) {
-      await serverSdk()
-        .client.auth.remove({ providerID })
-        .catch(() => undefined)
+      await Promise.all([removeV1.catch(() => undefined), removeV2])
       await disableProvider(providerID, name)
       return
     }
-    await serverSdk()
-      .client.auth.remove({ providerID })
+    await Promise.all([removeV1, removeV2])
       .then(async () => {
-        await serverSdk().client.global.dispose()
+        await client.global.dispose()
         showToast({
           variant: "success",
           icon: "circle-check",

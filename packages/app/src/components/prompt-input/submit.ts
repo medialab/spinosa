@@ -68,6 +68,16 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
     input.serverSync.session.set("session_status", input.draft.sessionID, { type: "idle" })
   }
 
+  const reconcileBusy = async () => {
+    if (!input.optimisticBusy || typeof input.api.active !== "function") return
+    try {
+      const active = await input.api.active()
+      if (!active[input.draft.sessionID]) setIdle()
+    } catch {
+      // Keep the optimistic state when the status lookup fails; the event stream remains authoritative.
+    }
+  }
+
   const wait = async () => {
     const ok = await input.before?.()
     if (ok === false) return false
@@ -103,6 +113,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
           })),
         ),
       })
+      await reconcileBusy()
       return true
     } catch (err) {
       setIdle()
@@ -197,6 +208,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
           : [],
       ),
     })
+    await reconcileBusy()
     return true
   } catch (err) {
     batch(() => {

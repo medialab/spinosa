@@ -13,6 +13,31 @@ Status vocabulary: `source-verified` (read, not run), `fixture-tested`
 owner/spec pointer). The user's reported starting state is NOT marked
 verified anywhere below.
 
+## Continuation — 2026-09-23
+
+- Chat busy-state fix (`fixture-tested`): `sendFollowupDraft` now reconciles
+  the optimistic busy flag with `session.active()` after prompt and command
+  requests resolve. If the server is already idle, the composer is cleared;
+  a failed status lookup leaves the event stream authoritative. Prompt-submit
+  tests cover both idle and active responses (10/10).
+- Provider execution gate (`fixture-tested`): V2 bootstrap now uses only
+  `/config/providers` for the connected/runnable set. V2-only SQLite
+  credentials remain visible in the catalog but cannot make a model
+  selectable for the V1 desktop conversation path.
+- Provider disconnect (`fixture-tested`): V2 disconnect removes stored
+  credentials through `/api/credential/:credentialID` as well as V1
+  `auth.json`; environment-backed connections are preserved. Project-scoped
+  settings bind the cleanup client to the selected directory.
+- Clean-worktree validation: desktop and session-ui typechecks pass, and the
+  desktop SQLite array-mode regression suite is 5/5. Electron-builder output
+  was not generated because packaging writes `packages/desktop/out`/`dist`,
+  which remain outside this live-checkout pass.
+- Runtime follow-up: reproduce the silent sidecar loop exit in the running
+  Electron stack, verify the new reconciliation and disconnect paths through
+  the UI, then complete interrupt/reconnect, MCP permission/terminal, kernel
+  endpoint-gap, and clean packaging checks. Kernel/core persistence remains
+  read-only; any confirmed cause belongs in the upstream report.
+
 ## Baseline gates (main checkout, at `02e62207`)
 
 - `typecheck` for `app`, `session-ui`, `desktop`, `ui`: all exit 0.
@@ -126,13 +151,14 @@ migration validates `false` → result `invalid`; same owner.
    HTTP implementations for both protocols (served, legacy-correct), with
    two Step-4/5 corrections below. Receivers are explicit (never proxied
    class instances).
-- Connected set `runtime-verified`: `fetchActiveProviderIDs` unions V1
-  `GET /config/providers` (auth.json universe, failure propagates →
-  all-on) with V2 `GET /api/integration` connections (failure → V1 set
-  alone); `loadProvidersQuery` passes the union to
-  `normalizeProviderList`, which no longer marks the whole catalog
-  connected. Unit: both-leg union and V2-leg-failure degrade.
-  `live-check` A/B workspaces isolate correctly.
+- Connected set `fixture-tested`: `fetchActiveProviderIDs` still exposes the
+  union of V1 `GET /config/providers` (auth.json universe) and V2
+  `GET /api/integration` connections for callers that need the full stored
+  credential view, but `loadProvidersQuery` now passes the V1-only set to
+  `normalizeProviderList` because the desktop conversation path still runs
+  through the V1 session runner. Unit coverage includes both-leg union,
+  V2-leg-failure degradation, and rejection of a V2-only runnable badge.
+  Runtime verification remains open.
 - Stream `fixture-tested`: the adapter resolves subscriptions to the
   iterable; `server-sdk.tsx` awaits before `for-await`. Live SSE pending
   with the running app (§3–4).
@@ -194,17 +220,19 @@ migration validates `false` → result `invalid`; same owner.
   trigger query retries. Connect flows must tolerate cold catalogs (§3).
 - Upstream notes (kernel owner): `sqlite.node.ts setReturnArrays` (Task 1),
   `validateSqliteFiles` bun-only import, `Experimental`/`V2.config` missing
-  generated methods (`experimental.resource.list`, `v2.config.providers`).
+  generated methods (`experimental.resource.list`, `v2.config.providers`),
+  and the prompt persistence/terminal-event and credential-universe gaps in
+  [kernel-endpoint-gaps.md](kernel-endpoint-gaps.md).
 
 ## Feature matrix (all rows: not yet verified unless noted)
 
 | Surface | UI entrypoint | App method | SDK method | HTTP | Dir behavior | Events | Status | Next |
 |---|---|---|---|---|---|---|---|---|
-| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | compat `provider.list/model.list/model.default` + `fetchActiveProviderIDs` | V1 `GET /provider`, V1 `GET /provider/auth` (merged), V2 `/api/model` fallback, `/config/providers` + `/api/integration` union | bound default, explicit wins (A/B live) | `integration.connection.updated` | facade `runtime-verified` (live-check 44/44 headless dialog pipeline) + pixel-verified in Electron (Popular/Other render) | §3 |
+| Provider catalog | `dialog-connect-provider`, `use-providers`, bootstrap | compat `provider.list/model.list/model.default` + V1-runnable active set | V1 `GET /provider`, V1 `GET /provider/auth` (merged), V2 `/api/model` fallback, `/config/providers` for desktop execution; V2 integration list remains display-only | bound default, explicit wins (A/B live) | `integration.connection.updated` | facade `runtime-verified`; runnable gate `fixture-tested`, runtime recheck open | §3 |
 | Key connect | `dialog-connect-provider` | compat `integration.connect.key` dual-write | `.v2.integration.connect.key` then V1 `auth.set` | `POST /api/integration/{id}/connect/key` + `PUT /auth/{id}` | V2 first (400 surfaces before auth.json), then V1; no dispose | refresh; V1 leg flips `config.providers`, V2 leg flips SQLite connections | `fixture-tested` + `runtime-verified` (live dual-write flips active/config.providers) | §3 |
 | OAuth connect/status/complete | same dialog | compat `integration.oauth.*` routes on `v1:` prefix | V2: `.v2.integration.connect.oauth`/`.attempt.*`; V1: `provider.oauth.authorize/callback` | V2: `/api/integration/...`; V1: `POST /provider/{id}/oauth/authorize|callback` | V1 attemptID = `v1:{integrationID}:{method}`; no dispose (kernel reloads) | same | `fixture-tested` (unit: authorize/callback/cancel routing) + method merge live | §3 |
 | Method merge (dialog methods) | `dialog-connect-provider` methods memo | `integration.get` | V2 `.v2.integration.get` ∥ V1 `provider.auth` | `/api/integration/{id}` + `/provider/auth` | V1 oauth → `id: v1:{index}` wins label dups; V1 api dropped when V2 key exists | — | `fixture-tested` + `runtime-verified` (openai + github-copilot `v1:` oauth live) | §3 |
-| Connected set (union) | bootstrap `loadProvidersQuery` | `fetchActiveProviderIDs` | V1 `GET /config/providers` ∪ V2 `GET /api/integration` connections | V1 fail propagates → all-on; V2 fail → V1 set alone | directory headers on both legs | — | `fixture-tested` + `runtime-verified` | §3 |
+| Connected set | bootstrap `loadProvidersQuery` | `fetchV1ActiveProviderIDs` (runnable) / `fetchActiveProviderIDs` (full union) | V1 `GET /config/providers`; V2 `GET /api/integration` retained for full stored-connection views | V1 failure → all-on fallback; runnable set never gains V2-only IDs | directory headers | — | `fixture-tested`; runtime recheck open | §3 |
 | V1 catalog models | model selector | `model.list`/`model.default` | V1 `GET /provider` models → `toLegacyV1Model`, empty → V2 `/api/model` | V1 full catalog (223 providers, kernel Model shape) | bound directory | — | `fixture-tested` (mapping incl. release_date/cost/capabilities) + live fallback | §3 |
 | Sessions list/create/message | home, tabs, session views | compat `session.*` (V1 shim) + V2 `message.list`/`session.message` | root `Session2.*`, V2 `Session3.messages/message` | `/session*`, `/api/session*` | explicit+ambient; create binds header=body | `session.*.delta` stream | facade `runtime-verified` (live create/get/root-list/V2 page/missing-rejects/remove) | §4 closed |
 | Agents/models | agents panel, model selector | `sdk` list queries | `Agent.list`, `Model.*` | `/agent`, `/api/model` | bound directory | — | `runtime-verified` (live lists) | §5 closed |

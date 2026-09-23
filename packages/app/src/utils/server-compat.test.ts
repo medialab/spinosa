@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createSpinosaClient } from "@spinosa/sdk/v2/client"
 import { createApiForServer, createSdkForServer } from "./server"
 import { adaptToLegacy, unwrapEnvelope } from "./legacy-api"
-import { createCompatibleApi, fetchActiveProviderIDs } from "./server-compat"
+import { clearV2ProviderCredentials, createCompatibleApi, fetchActiveProviderIDs } from "./server-compat"
 
 function setup(
   protocol: "v1" | "v2" | Promise<"v1" | "v2">,
@@ -893,5 +893,35 @@ describe("fetchActiveProviderIDs", () => {
     })
     const active = await fetchActiveProviderIDs(raw, "/repo")
     expect(active).toEqual(["openai"])
+  })
+})
+
+describe("clearV2ProviderCredentials", () => {
+  test("removes stored credentials but preserves environment connections", async () => {
+    const { raw, requests } = setupWithRaw("v2", undefined, {
+      ...v2Routes,
+      "GET /api/integration/openai": () =>
+        Response.json({
+          location: v2Location,
+          data: {
+            id: "openai",
+            name: "OpenAI",
+            methods: [{ type: "key" }],
+            connections: [
+              { type: "credential", id: "cred_1", label: "API key" },
+              { type: "env", name: "OPENAI_API_KEY" },
+            ],
+          },
+        }),
+      "DELETE /api/credential/cred_1": () => new Response(undefined, { status: 204 }),
+    })
+
+    await clearV2ProviderCredentials(raw, "openai", "/repo")
+
+    expect(requests.map((request) => pathOf(request.url))).toEqual([
+      "/api/integration/openai",
+      "/api/credential/cred_1",
+    ])
+    expect(requests[1]!.method).toBe("DELETE")
   })
 })

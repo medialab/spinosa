@@ -38,7 +38,7 @@ import {
   normalizeProviderList,
 } from "./utils"
 import { formatServerError } from "@/utils/server-errors"
-import { fetchActiveProviderIDs } from "@/utils/server-compat"
+import { fetchV1ActiveProviderIDs } from "@/utils/server-compat"
 import { QueryClient, queryOptions } from "@tanstack/solid-query"
 import { loadMcpQuery, loadMcpResourcesQuery } from "../server-sync"
 import { NormalizedProviderListResponse } from "@spinosa/session-ui/context"
@@ -242,7 +242,7 @@ export const loadProvidersQuery = (
           // Active (connected) providers: the catalog lists everything while
           // only this set is connected. Degrades to all-on-missing like before.
           legacy
-            ? fetchActiveProviderIDs(legacy, directory ?? undefined).catch(() => undefined)
+            ? fetchV1ActiveProviderIDs(legacy, directory ?? undefined).catch(() => undefined)
             : undefined,
         ])
         return normalizeProviderList(providers.data, models.data, defaultModel.data, active)

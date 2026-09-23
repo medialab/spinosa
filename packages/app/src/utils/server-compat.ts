@@ -615,23 +615,25 @@ function directoryHeaders(directory?: string): Record<string, Record<string, str
   return { headers: { "x-spinosa-directory": encodeURIComponent(directory) } }
 }
 
-/**
- * Active (connected) provider IDs: the union of the V1 auth universe
- * (GET /config/providers, auth.json) and the V2 credential universe
- * (GET /api/integration connections). Neither bridge exists kernel-side, so
- * both legs must be read. A V1 failure propagates (the call site degrades to
- * all-on); a V2 failure degrades to the V1 set alone.
- */
-export async function fetchActiveProviderIDs(
-  raw: GeneratedClient,
-  directory?: string,
-): Promise<Array<string>> {
+/** Provider IDs available to the V1 session runner (GET /config/providers). */
+export async function fetchV1ActiveProviderIDs(raw: GeneratedClient, directory?: string): Promise<Array<string>> {
   const client = lowClientOf(raw)
   const headers = directoryHeaders(directory)
   const config = (await unwrapEnvelope(await client.get({ url: "/config/providers", ...headers }))) as {
     providers?: Array<{ id: string }>
   }
-  const v1 = (config?.providers ?? []).map((provider) => provider.id)
+  return (config?.providers ?? []).map((provider) => provider.id)
+}
+
+/**
+ * Active provider IDs across both credential universes. Keep this for callers
+ * that need to display every stored connection; model execution must use
+ * fetchV1ActiveProviderIDs until the kernel bridges V2 credentials.
+ */
+export async function fetchActiveProviderIDs(raw: GeneratedClient, directory?: string): Promise<Array<string>> {
+  const client = lowClientOf(raw)
+  const headers = directoryHeaders(directory)
+  const v1 = await fetchV1ActiveProviderIDs(raw, directory)
   const integrations = await client
     .get({ url: "/api/integration", ...headers })
     .then((response) => unwrapEnvelope(response) as { data?: Array<{ id: string; connections?: unknown[] }> })
@@ -642,6 +644,25 @@ export async function fetchActiveProviderIDs(
     )
     .catch(() => [] as string[])
   return [...new Set([...v1, ...integrations])]
+}
+
+/** Remove stored V2 credentials for a provider; environment connections stay untouched. */
+export async function clearV2ProviderCredentials(
+  raw: GeneratedClient,
+  providerID: string,
+  directory?: string,
+): Promise<void> {
+  const location = directory ? { directory } : undefined
+  const result = unwrapEnvelope(
+    await raw.v2.integration.get({ integrationID: providerID, location }),
+  ) as { data?: IntegrationInfo }
+  const credentials = (result.data?.connections ?? []).filter(
+    (connection): connection is Extract<IntegrationInfo["connections"][number], { type: "credential" }> =>
+      connection.type === "credential",
+  )
+  await Promise.all(
+    credentials.map((connection) => raw.v2.credential.remove({ credentialID: connection.id, location })),
+  )
 }
 
 type CatalogResource = {

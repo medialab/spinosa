@@ -307,13 +307,12 @@ describe("query keys", () => {
 
     expect(calls).toEqual([
       ["active", "/config/providers", { "x-spinosa-directory": "%2Frepo" }],
-      ["active", "/api/integration", { "x-spinosa-directory": "%2Frepo" }],
     ])
     expect([...result.all.keys()]).toEqual(["openai", "anthropic"])
     expect(result.connected).toEqual(["openai"])
   })
 
-  test("unions V1 and V2 connected providers when both legs succeed", async () => {
+  test("does not mark V2-only credentials runnable", async () => {
     const api = {
       provider: {
         list: async () => ({
@@ -354,7 +353,7 @@ describe("query keys", () => {
       loadProvidersQuery(ServerScope.local, "/repo", api, legacy, Promise.resolve("v2")),
     )
 
-    expect(result.connected.sort()).toEqual(["github-copilot", "openai"])
+    expect(result.connected).toEqual(["openai"])
   })
 
   test("loads agents from the current location-scoped endpoint", async () => {

@@ -4,6 +4,7 @@ import type { Prompt, PromptStore } from "@/context/prompt"
 import type { ModelSelection } from "@/context/local"
 
 let createPromptSubmit: typeof import("./submit").createPromptSubmit
+let sendFollowupDraft: typeof import("./submit").sendFollowupDraft
 
 const createdClients: string[] = []
 const createdSessions: string[] = []
@@ -134,6 +135,10 @@ beforeAll(async () => {
 
   mock.module("@spinosa/ui/toast", () => ({
     Toast: { Region: () => null },
+    showToast: () => 0,
+  }))
+
+  mock.module("@/utils/toast", () => ({
     showToast: () => 0,
   }))
 
@@ -276,6 +281,7 @@ beforeAll(async () => {
 
   const mod = await import("./submit")
   createPromptSubmit = mod.createPromptSubmit
+  sendFollowupDraft = mod.sendFollowupDraft
 })
 
 beforeEach(() => {
@@ -594,5 +600,47 @@ describe("prompt submit worktree selection", () => {
     expect(storedSessions["/repo/worktree-a"]).toHaveLength(1)
     expect(storedSessions["/repo/worktree-a"]?.[0]).toMatchObject({ id: "session-1", title: "New session 1" })
     expect(optimisticSeeded).toEqual([true])
+  })
+})
+
+describe("follow-up prompt status reconciliation", () => {
+  const draft = {
+    sessionID: "session-1",
+    sessionDirectory: "/repo/main",
+    prompt: [{ type: "text", content: "hello", start: 0, end: 5 }],
+    context: [],
+    agent: "agent",
+    model: { providerID: "provider", modelID: "model" },
+  } as const
+
+  const input = (active: () => Promise<Record<string, unknown>>) => {
+    const statusUpdates: unknown[][] = []
+    return {
+      value: {
+        api: { prompt: async () => undefined, active } as never,
+        serverSync: { session: { set: (...args: unknown[]) => statusUpdates.push(args) } } as never,
+        sync: { session: { optimistic: { add: () => undefined, remove: () => undefined } } } as never,
+        draft,
+        optimisticBusy: true,
+      } as never,
+      statusUpdates,
+    }
+  }
+
+  test("clears optimistic busy when the server is already idle", async () => {
+    const value = input(async () => ({}))
+
+    await expect(sendFollowupDraft(value.value)).resolves.toBe(true)
+    expect(value.statusUpdates).toEqual([
+      ["session_status", "session-1", { type: "busy" }],
+      ["session_status", "session-1", { type: "idle" }],
+    ])
+  })
+
+  test("keeps optimistic busy while the server reports the session active", async () => {
+    const value = input(async () => ({ "session-1": { type: "running" } }))
+
+    await expect(sendFollowupDraft(value.value)).resolves.toBe(true)
+    expect(value.statusUpdates).toEqual([["session_status", "session-1", { type: "busy" }]])
   })
 })

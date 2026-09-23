@@ -8,6 +8,7 @@ import { createMemo, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useServerProtocol, useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
+import { clearV2ProviderCredentials } from "@/utils/server-compat"
 import { DialogConnectProvider, useProviderConnectController } from "./dialog-connect-provider"
 import { DialogCustomProvider } from "./dialog-custom-provider"
 import { SettingsList } from "./settings-list"
@@ -121,17 +122,18 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
   }
 
   const disconnect = async (providerID: string, name: string) => {
+    const sdk = serverSDK()
+    const client = sdk.client
+    const removeV2 = protocol() === "v2" ? clearV2ProviderCredentials(client, providerID) : Promise.resolve()
+    const removeV1 = client.auth.remove({ providerID })
     if (isConfigCustom(providerID)) {
-      await serverSDK()
-        .client.auth.remove({ providerID })
-        .catch(() => undefined)
+      await Promise.all([removeV1.catch(() => undefined), removeV2])
       await disableProvider(providerID, name)
       return
     }
-    await serverSDK()
-      .client.auth.remove({ providerID })
+    await Promise.all([removeV1, removeV2])
       .then(async () => {
-        await serverSDK().client.global.dispose()
+        await client.global.dispose()
         showToast({
           variant: "success",
           icon: "circle-check",
