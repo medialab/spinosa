@@ -710,4 +710,12 @@ describe("follow-up prompt status reconciliation", () => {
     await expect(sendFollowupDraft(value.value)).resolves.toBe(true)
     expect(value.statusUpdates).toEqual([["session_status", "session-1", { type: "busy" }]])
   })
+
+  test("does not clear optimistic busy during prompt startup", async () => {
+    const responses: Record<string, unknown>[] = [{}, { "session-1": { type: "running" } }]
+    const value = input(async () => responses.shift() ?? {})
+
+    await expect(sendFollowupDraft(value.value)).resolves.toBe(true)
+    expect(value.statusUpdates).toEqual([["session_status", "session-1", { type: "busy" }]])
+  })
 })

@@ -31,6 +31,11 @@ type PendingPrompt = {
 
 const pending = new Map<string, PendingPrompt>()
 
+// V1 prompt_async returns before its forked loop publishes the first busy
+// status. Give that startup race a bounded window before treating an absent
+// session as a terminal (silent-exit) state.
+const PROMPT_STATUS_RECONCILIATION_DELAYS_MS = [100, 250, 500, 1_000] as const
+
 export type FollowupDraft = {
   sessionID: string
   sessionDirectory: string
@@ -68,9 +73,19 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
     input.serverSync.session.set("session_status", input.draft.sessionID, { type: "idle" })
   }
 
-  const reconcileBusy = async () => {
+  const reconcileBusy = async (options: { waitForPromptStartup?: boolean } = {}) => {
     if (!input.optimisticBusy || typeof input.api.active !== "function") return
     try {
+      if (options.waitForPromptStartup) {
+        for (const delay of PROMPT_STATUS_RECONCILIATION_DELAYS_MS) {
+          await new Promise<void>((resolve) => setTimeout(resolve, delay))
+          const active = await input.api.active()
+          if (active[input.draft.sessionID]) return
+        }
+        setIdle()
+        return
+      }
+
       const active = await input.api.active()
       if (!active[input.draft.sessionID]) setIdle()
     } catch {
@@ -208,7 +223,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
           : [],
       ),
     })
-    await reconcileBusy()
+    await reconcileBusy({ waitForPromptStartup: true })
     return true
   } catch (err) {
     batch(() => {
