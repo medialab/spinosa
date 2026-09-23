@@ -38,6 +38,11 @@ verified anywhere below.
   `/global/health`, `/api/health`, and web app root each returned HTTP 200.
   No Electron UI replay was run in this pass because the existing Electron
   process was not active and the handoff forbids restarting the user stack.
+- Isolated packaged runtime (`runtime-verified`): the clean macOS arm64 app
+  started with `SPINOSA_TEST_ONBOARDING=1` on CDP 9223, rendered the session
+  UI, returned initialized local sidecar credentials without exposing them,
+  and answered authenticated `/global/health` with 200. This validates
+  packaged startup only; it does not replace the live-user-stack replay.
 - Read-only live HTTP matrix: the running backend returned 200 for the
   directory-scoped provider catalog/auth, config providers, commands, MCP,
   permission/question lists, experimental resources, sessions, projects, VCS,
@@ -60,9 +65,9 @@ verified anywhere below.
 - `packages/desktop bun test src`: 64 pass / 1 fail / 1 error — both the
   fail and the error are `src/main/draft-store.test.ts`, caused by this
   Bun's missing `node:sqlite` builtin (`No such built-in module`), not by
-  desktop code. A fresh worktree at HEAD additionally fails
-  `electron vite publicDir` because gitignored `packages/app/public/*`
-  build output exists only in the main checkout.
+  desktop code. At that historical baseline, a fresh worktree also failed
+  `electron vite publicDir` because the theme preload artifact was ignored;
+  the current continuation tracks that required source artifact.
 - `bun run lint:deps`: clean (3760 modules).
 - Investigation ZIP from the brief is absent from this environment; fixtures
   below were reconstructed from source.
