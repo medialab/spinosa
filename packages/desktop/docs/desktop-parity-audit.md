@@ -18,8 +18,9 @@ verified anywhere below.
 - Chat busy-state fix (`fixture-tested`): `sendFollowupDraft` now reconciles
   the optimistic busy flag with `session.active()` after prompt and command
   requests resolve. If the server is already idle, the composer is cleared;
-  a failed status lookup leaves the event stream authoritative. Prompt-submit
-  tests cover both idle and active responses (10/10).
+  a failed status lookup leaves the event stream authoritative. The legacy
+  shell, direct-command, and interrupt/stop paths use the same reconciliation;
+  prompt-submit tests cover idle, active, command, and stop responses (12/12).
 - Provider execution gate (`fixture-tested`): V2 bootstrap now uses only
   `/config/providers` for the connected/runnable set. V2-only SQLite
   credentials remain visible in the catalog but cannot make a model

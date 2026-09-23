@@ -32,7 +32,10 @@ const promotedDrafts: Array<{ draftID: string; server: string; sessionId: string
 const sentPrompts: string[] = []
 const promptInputs: unknown[] = []
 const sentCommands: unknown[] = []
+const statusUpdates: unknown[][] = []
 const commands: Array<{ name: string }> = []
+let activeSessions: Record<string, unknown> = {}
+let sessionInterrupts = 0
 let serverSessionSyncs = 0
 
 let params: { id?: string } = {}
@@ -100,6 +103,10 @@ const clientFor = (directory: string) => {
         },
         command: async (input: unknown) => {
           sentCommands.push(input)
+        },
+        active: async () => activeSessions,
+        interrupt: async () => {
+          sessionInterrupts++
         },
         shell: async (input: { sessionID: string; id?: string; command: string }) => {
           sentShell.push(input)
@@ -241,7 +248,7 @@ beforeAll(async () => {
     useServerSync: () => () => ({
       session: {
         remember: () => undefined,
-        set: () => undefined,
+        set: (...args: unknown[]) => statusUpdates.push(args),
         sync: async () => {
           serverSessionSyncs++
         },
@@ -296,6 +303,7 @@ beforeEach(() => {
   sentPrompts.length = 0
   promptInputs.length = 0
   sentCommands.length = 0
+  statusUpdates.length = 0
   commands.length = 0
   promptValue = [{ type: "text", content: "ls", start: 0, end: 2 }]
   params = {}
@@ -306,6 +314,8 @@ beforeEach(() => {
   variant = undefined
   permissionServer = "server-a"
   createSessionGate = undefined
+  activeSessions = {}
+  sessionInterrupts = 0
   serverSessionSyncs = 0
   for (const key of Object.keys(storedSessions)) delete storedSessions[key]
 })
@@ -537,6 +547,63 @@ describe("prompt submit worktree selection", () => {
       },
     ])
     expect(serverSessionSyncs).toBe(0)
+  })
+
+  test("reconciles direct command completion with the server status", async () => {
+    params = { id: "session-1" }
+    commands.push({ name: "review" })
+    promptValue = [{ type: "text", content: "/review staged changes", start: 0, end: 22 }]
+
+    const submit = createPromptSubmit({
+      prompt,
+      info: () => ({ id: "session-1" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+    })
+
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    await Bun.sleep(0)
+
+    expect(statusUpdates).toContainEqual(["session_status", "session-1", { type: "busy" }])
+    expect(statusUpdates).toContainEqual(["session_status", "session-1", { type: "idle" }])
+  })
+
+  test("reconciles stop after an interrupt resolves", async () => {
+    params = { id: "session-1" }
+    promptValue = []
+
+    const submit = createPromptSubmit({
+      prompt,
+      info: () => ({ id: "session-1" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => true,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+    })
+
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    await Bun.sleep(0)
+
+    expect(sessionInterrupts).toBe(1)
+    expect(statusUpdates).toContainEqual(["session_status", "session-1", { type: "idle" }])
   })
 
   test("uses an injected model selection", async () => {

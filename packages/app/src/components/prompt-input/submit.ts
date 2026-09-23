@@ -268,6 +268,17 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     return language.t("common.requestFailed")
   }
 
+  const reconcileBusy = async (sessionID: string) => {
+    const active = sdk().api.session.active
+    if (typeof active !== "function") return
+    try {
+      const sessions = await active()
+      if (!sessions[sessionID]) serverSync().session.set("session_status", sessionID, { type: "idle" })
+    } catch {
+      // Keep the current state when the status lookup fails; server events remain authoritative.
+    }
+  }
+
   const abort = async () => {
     const sessionID = params.id
     if (!sessionID) return Promise.resolve()
@@ -287,6 +298,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     return sdk()
       .api.session.interrupt({ sessionID })
       .catch(() => {})
+      .then(() => reconcileBusy(sessionID))
   }
 
   const restoreCommentItems = (
@@ -511,6 +523,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           agent,
           model,
         })
+        .then(() => reconcileBusy(session.id))
         .catch((err) => {
           showToast({
             title: language.t("prompt.toast.shellSendFailed.title"),
@@ -544,6 +557,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
               })),
             ),
           })
+          .then(() => reconcileBusy(session.id))
           .catch((err) => {
             serverSync().session.set("session_status", session.id, { type: "idle" })
             showToast({
