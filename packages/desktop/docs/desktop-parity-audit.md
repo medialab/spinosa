@@ -1,7 +1,7 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `19ce1c03`
-(`fix(app): permission/question request lists, settings-less agents, pick-opens-workspace`).
+Source of truth: branch `spinosa-desktop-wiring` at `3dd3830f`
+(`fix(desktop): make clean packaging reproducible`).
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -30,9 +30,9 @@ verified anywhere below.
   `auth.json`; environment-backed connections are preserved. Project-scoped
   settings bind the cleanup client to the selected directory.
 - Clean-worktree validation: desktop and session-ui typechecks pass, and the
-  desktop SQLite array-mode regression suite is 5/5. Electron-builder output
-  was not generated because packaging writes `packages/desktop/out`/`dist`,
-  which remain outside this live-checkout pass.
+  desktop SQLite array-mode regression suite is 5/5. The final clean candidate
+  also passes the Spinosa electron-builder config tests (4/4) and renderer HTML
+  tests (4/4).
 - Post-checkpoint gates: app unit is 772 pass / 1 known pre-existing ICU
   locale failure, session-ui is 83 pass / 0 fail, and the running backend
   `/global/health`, `/api/health`, and web app root each returned HTTP 200.
@@ -45,10 +45,10 @@ verified anywhere below.
   only; interactive MCP, terminal I/O, permission reply, and command execution
   still require a controlled UI or isolated server fixture.
 - Runtime follow-up: reproduce the silent sidecar loop exit in the running
-  Electron stack, verify the new reconciliation and disconnect paths through
-  the UI, then complete interrupt/reconnect, MCP permission/terminal, kernel
-  endpoint-gap, and clean packaging checks. Kernel/core persistence remains
-  read-only; any confirmed cause belongs in the upstream report.
+  Electron stack and verify the new reconciliation and disconnect paths through
+  the UI. Interrupt/reconnect, MCP permission/terminal, and kernel endpoint-gap
+  behavior remain open; kernel/core persistence remains read-only and any
+  confirmed cause belongs in the upstream report.
 
 ## Baseline gates (main checkout, at `02e62207`)
 
@@ -286,9 +286,25 @@ migration validates `false` → result `invalid`; same owner.
   ignores auth.json; V1 session LLM ignores SQLite credentials; no OAuth
   token readback API; opencode-device oauth is V2-only (chat gap).
 
-## Packaging (§7) — not started
+## Packaging (§7) — clean candidate validated
 
-Three layers to validate on a clean candidate worktree: plain-Node bundle
-(done for Task 1), electron-vite utility-process sidecar, unpacked
-electron-builder app. Local-only unsigned override for notarization; no
-publish/tags/releases. Excluded: updater feed, artwork, translator review.
+Validated from a fresh worktree at `3dd3830f` after `bun install
+--frozen-lockfile`:
+
+- `packages/desktop bun run typecheck`: pass.
+- `bun test electron-builder.config.test.ts`: 4/4 tests, 25 expectations.
+- `bun test src/renderer/html.test.ts`: 4/4 tests, 11 expectations.
+- `packages/desktop bun run build`: pass through server, main, preload, and
+  renderer output. The clean build no longer fails on the optional Sentry
+  plugin dependency graph, and the tracked `packages/app/public/oc-theme-preload.js`
+  keeps `publicDir` reproducible.
+- `bun run package -- --dir`: pass for macOS arm64 with Electron 42.3.3;
+  `dist/mac-arm64/Spinosa Dev.app` contains the executable and `app.asar`.
+
+Known non-blocking local-build notes: electron-vite reports the missing root
+`@tsconfig/bun` base-config warning, plus existing server/eval/chunking
+warnings. Electron-builder reports the optional `packages/desktop/native/`
+resource directory absent and skips signing because this host has no valid
+Developer ID identity. Signed DMG/ZIP artifacts, notarization, other platform
+targets, updater feed, artwork, translator review, publish, tags, and releases
+remain intentionally unrun.
