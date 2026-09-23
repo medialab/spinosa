@@ -1,7 +1,8 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `a453e07c`
-(`fix(app): guard async prompt status startup`).
+Source of truth: branch `spinosa-desktop-wiring`, based at `7308123c`
+(`docs(desktop): record prompt startup validation`); later changes and evidence
+are recorded in the continuation section below.
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -15,6 +16,33 @@ verified anywhere below.
 
 ## Continuation — 2026-09-23
 
+- Chat protocol pairing (`runtime-verified` before the final refresh fix): an
+  isolated packaged Electron prompt returned `204` from V1
+  `/session/:id/prompt_async`; the V1 message API then contained the user
+  message and assistant `pong`, while V2 `/api/session/:id/message` returned
+  an empty page. The kernel had completed and persisted the answer; the desktop
+  had submitted through V1 but read through V2. `server-sync.tsx` now selects
+  the V1 message projection for the desktop's V1 prompt path. The earlier
+  kernel report's claim that V1 persistence was empty was incorrect and is
+  corrected in `kernel-endpoint-gaps.md`.
+- Chat terminal reconciliation (`fixture-tested`): after V1 prompt admission,
+  an idle status triggers a forced message refresh immediately; if status is
+  active or temporarily unavailable, a lightweight monitor waits for idle,
+  then refreshes. The optimistic user bubble is removed before the forced read
+  and restored if that read fails. Prompt-submit tests: 14/14; server-session
+  tests: 75/75; app typecheck passes.
+- Packaged build after these changes (`build-verified`): `bun run build` and
+  `bun run package -- --dir` pass from the clean candidate worktree for macOS
+  arm64. A post-change visual replay was stopped after the isolated test HOME
+  raised a macOS “Keychain Not Found” dialog for “Spinosa Dev Key”; no reset
+  action was taken and no provider credentials were configured. This replay
+  remains unverified; this appeared during a launch with a HOME lacking a
+  login keychain and is not yet attributable to the packaged app itself.
+- Broader package checks: app unit 777 pass / 1 known ICU locale failure
+  (`pa-PK` resolves to `en` under this runtime); session-ui 83/83; desktop
+  tests 64 pass with one known `node:sqlite` failure and one error in
+  `draft-store.test.ts`. The focused changed-path tests and app typecheck are
+  green.
 - Chat busy-state fix (`fixture-tested`): `sendFollowupDraft` now waits through
   the V1 `prompt_async` startup race before reconciling the optimistic busy flag
   with `session.active()`. A session that becomes active is left to the event
@@ -214,6 +242,10 @@ migration validates `false` → result `invalid`; same owner.
   header to the same value as the body (V1 `Session.list` is scoped to the
   instance's project, so an ambient-bound client creating a body-directory
   session filed it under a project no directory-bound list returns).
+  Follow-up mixed-protocol replay found that desktop prompts still use V1
+  `prompt_async`, so V2 message APIs are not authoritative for those turns.
+  Desktop session reads and terminal refresh now use the V1 projection until
+  prompt submission itself moves to V2.
 - §5 PTY transport hardening (`02e62207`, `fixture-tested` +
   `runtime-verified`): `pty.create/get/update/remove` now send `?directory=`
   explicitly instead of relying on header-only transport on non-GET calls.

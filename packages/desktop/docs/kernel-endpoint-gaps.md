@@ -4,43 +4,39 @@ This is an upstream handoff, not a kernel implementation. Desktop-owned code
 must remain defensive, but the fixes below require changes in the kernel/core
 boundary or regenerated protocol surface.
 
-## 1. V1 prompt persistence barrier and terminal event
+## 1. Mixed-protocol message projection and terminal event
 
 Observed in the Electron utility-process sidecar on 2026-09-23:
 
 - `POST /session/:id/prompt_async` returns `204` and the desktop renders the
   optimistic user message.
-- The sidecar logs the admitted message, selects the model, reaches loop step
-  1, then logs `exiting loop` without an error.
-- A subsequent status read is idle and the session message list is empty; no
-  terminal execution event reaches the desktop.
-- The same model/prompt succeeds through the plain-Node backend.
+- In an isolated packaged replay with a local OpenAI-compatible mock, V1
+  `GET /session/:id/message` returned both the user message and assistant
+  `pong`; V2 `GET /api/session/:id/message` returned an empty page. The session
+  was idle, and no terminal execution event reached the desktop.
+- The same model/prompt succeeds through the plain-Node backend. This replay
+  proves V1 persistence in the tested path; the earlier claim that the V1
+  message list was empty was based on reading the V2 projection and was
+  incorrect.
 
-The relevant path is `createUserMessage` → `sessions.updateMessage` and
-`sessions.updateParts` → the V1 event projector → `MessageTable`/`PartTable`.
-`runLoop` then reads `MessageV2.page` from those projected tables. The desktop
-sidecar uses the Node SQLite shim, while the plain-Node backend is the working
-comparison. The current evidence establishes a persistence/read visibility
-or event-ordering discrepancy, but does not prove whether the shim, projector
-flush, or loop scheduling is the first fault.
+The confirmed boundary is that the desktop admits prompts through the V1
+runner while its protocol detector can select V2 message reads. The desktop
+now pairs those operations with the V1 message projection and refreshes it
+when session status becomes idle. Whether the V2 message API should include V1
+prompt data is an API-contract decision, not evidence of failed V1 persistence.
 
 ### Required kernel investigation
 
-1. Add a persistence barrier or same-transaction read path so the user message
-   and parts written by `createUserMessage` are visible to the first
-   `MessageV2.page` in the same execution.
-2. Instrument the projector queue and the first loop read with message ID,
-   table row count, and projection sequence; do not log prompt contents or
-   credentials.
-3. Define the empty/stale-read behavior. A loop must not treat a previous
-   finished assistant as the current prompt's successful completion.
-4. Publish a terminal success, failure, or interrupted event for every loop
-   exit, including the no-op/early-exit path. The existing idle status is not
-   sufficient for clients that use execution events to reconcile optimistic
-   state.
-5. Add a regression test that runs prompt admission and the first loop read in
-   the Node SQLite utility-process configuration, then asserts the user row,
-   parts, terminal event, and non-empty response are all observable.
+1. Decide and document whether V2 message APIs must project V1 prompt data, or
+   whether clients must keep prompt submission and message reads on one
+   protocol until a complete V2 cutover.
+2. Publish a terminal success, failure, or interrupted event for every prompt
+   loop exit, including the no-op/early-exit path. The tested V1 path returned
+   idle status without a terminal event; desktop status polling is defensive
+   reconciliation, not a substitute for a documented event contract.
+3. Add a regression covering V1 `prompt_async` followed by both V1 and V2
+   message reads, plus the expected terminal event and idle status. Do not log
+   prompt contents or credentials.
 
 ## 2. PTY WebSocket close hardening
 
@@ -122,8 +118,8 @@ against the plain-Node and Electron utility-process servers.
 
 ## Acceptance criteria
 
-- A prompt admitted through `prompt_async` is persisted and readable before
-  the first loop decision in both server runtimes.
+- A prompt admitted through `prompt_async` is readable in its V1 message
+  projection in both server runtimes; mixed V1/V2 read behavior is documented.
 - Every execution reaches exactly one terminal event and idle status, even on
   early exit, provider failure, cancellation, or interruption.
 - Provider/model availability has one documented credential universe and

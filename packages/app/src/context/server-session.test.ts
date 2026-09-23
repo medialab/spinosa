@@ -267,6 +267,36 @@ describe("server session", () => {
     expect(store.data.message.root.map((message) => message.id)).toEqual([user.id, assistant.id])
   })
 
+  test("uses the legacy message projection when current prompts use V1 storage", async () => {
+    const user = userMessage("msg_user", { sessionID: "root" })
+    const assistant = assistantMessage("msg_assistant", user.id, { sessionID: "root" })
+    const client = messageClient(
+      response([
+        { info: user, parts: [textPart(user.id, { sessionID: "root" })] },
+        { info: assistant, parts: [textPart(assistant.id, { sessionID: "root", text: "pong" })] },
+      ]),
+    )
+    const currentRequests: unknown[] = []
+    const messageApi = {
+      list: async (input: unknown) => {
+        currentRequests.push(input)
+        return { data: [], cursor: { previous: null, next: null } }
+      },
+    } as unknown as MessageApi
+    const store = createServerSession(client, {} as SessionApi, messageApi, {
+      protocol: Promise.resolve("v2"),
+      messageSource: "legacy",
+    })
+    store.remember(session("root"))
+
+    await store.sync("root")
+
+    expect(client.requests).toEqual([{ sessionID: "root", limit: 20, before: undefined }])
+    expect(currentRequests).toEqual([])
+    expect(store.data.message.root.map((message) => message.id)).toEqual([user.id, assistant.id])
+    expect(store.data.part[assistant.id]?.[0]).toMatchObject({ text: "pong" })
+  })
+
   test("extends a current page to include the user for split assistant turns", async () => {
     const user = { id: "msg_1_user", type: "user", text: "hello", time: { created: 1 } } as const
     const assistant = (id: string, created: number) => ({

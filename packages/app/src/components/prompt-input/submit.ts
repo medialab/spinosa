@@ -35,6 +35,7 @@ const pending = new Map<string, PendingPrompt>()
 // status. Give that startup race a bounded window before treating an absent
 // session as a terminal (silent-exit) state.
 const PROMPT_STATUS_RECONCILIATION_DELAYS_MS = [100, 250, 500, 1_000] as const
+const PROMPT_COMPLETION_RECONCILIATION_INTERVAL_MS = 1_000
 
 export type FollowupDraft = {
   sessionID: string
@@ -80,14 +81,16 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
         for (const delay of PROMPT_STATUS_RECONCILIATION_DELAYS_MS) {
           await new Promise<void>((resolve) => setTimeout(resolve, delay))
           const active = await input.api.active()
-          if (active[input.draft.sessionID]) return
+          if (active[input.draft.sessionID]) return true
         }
         setIdle()
-        return
+        return false
       }
 
       const active = await input.api.active()
-      if (!active[input.draft.sessionID]) setIdle()
+      const isActive = !!active[input.draft.sessionID]
+      if (!isActive) setIdle()
+      return isActive
     } catch {
       // Keep the optimistic state when the status lookup fails; the event stream remains authoritative.
     }
@@ -177,6 +180,33 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       messageID,
     })
 
+  const refreshPromptMessages = async () => {
+    if (typeof input.sync.session.sync !== "function") return
+    remove()
+    try {
+      await input.sync.session.sync(input.draft.sessionID, { force: true })
+    } catch {
+      // Prompt submission succeeded; restore its optimistic bubble if the follow-up read fails.
+      add()
+    }
+  }
+
+  const monitorPromptCompletion = async () => {
+    if (typeof input.api.active !== "function" || typeof input.sync.session.sync !== "function") return
+    while (true) {
+      await new Promise<void>((resolve) => setTimeout(resolve, PROMPT_COMPLETION_RECONCILIATION_INTERVAL_MS))
+      try {
+        const active = await input.api.active()
+        if (active[input.draft.sessionID]) continue
+        setIdle()
+        await refreshPromptMessages()
+        return
+      } catch {
+        // Keep monitoring; a failed status request cannot establish that the prompt is terminal.
+      }
+    }
+  }
+
   batch(() => {
     setBusy()
     add()
@@ -223,7 +253,9 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
           : [],
       ),
     })
-    await reconcileBusy({ waitForPromptStartup: true })
+    const active = await reconcileBusy({ waitForPromptStartup: true })
+    if (active === false) await refreshPromptMessages()
+    else if (input.optimisticBusy && typeof input.api.active === "function") void monitorPromptCompletion()
     return true
   } catch (err) {
     batch(() => {

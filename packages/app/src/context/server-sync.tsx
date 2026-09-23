@@ -226,6 +226,9 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
 
   const session = createServerSession(serverSDK.client, serverSDK.api.session, serverSDK.api.message, {
     protocol: serverSDK.protocol,
+    // The desktop compatibility facade still admits prompts through V1
+    // prompt_async, so reads must use the matching V1 message projection.
+    messageSource: "legacy",
   })
   const queryOptionsApi = makeQueryOptionsApi(
     serverSDK.scope,

@@ -680,28 +680,41 @@ describe("follow-up prompt status reconciliation", () => {
     model: { providerID: "provider", modelID: "model" },
   } as const
 
-  const input = (active: () => Promise<Record<string, unknown>>) => {
+  const input = (active: () => Promise<Record<string, unknown>>, withSync = false) => {
     const statusUpdates: unknown[][] = []
+    const optimisticUpdates: string[] = []
+    const syncRequests: unknown[][] = []
+    const sessionSync = {
+      optimistic: {
+        add: () => optimisticUpdates.push("add"),
+        remove: () => optimisticUpdates.push("remove"),
+      },
+      ...(withSync ? { sync: async (...args: unknown[]) => syncRequests.push(args) } : {}),
+    }
     return {
       value: {
         api: { prompt: async () => undefined, active } as never,
         serverSync: { session: { set: (...args: unknown[]) => statusUpdates.push(args) } } as never,
-        sync: { session: { optimistic: { add: () => undefined, remove: () => undefined } } } as never,
+        sync: { session: sessionSync } as never,
         draft,
         optimisticBusy: true,
       } as never,
       statusUpdates,
+      optimisticUpdates,
+      syncRequests,
     }
   }
 
   test("clears optimistic busy when the server is already idle", async () => {
-    const value = input(async () => ({}))
+    const value = input(async () => ({}), true)
 
     await expect(sendFollowupDraft(value.value)).resolves.toBe(true)
     expect(value.statusUpdates).toEqual([
       ["session_status", "session-1", { type: "busy" }],
       ["session_status", "session-1", { type: "idle" }],
     ])
+    expect(value.syncRequests).toEqual([["session-1", { force: true }]])
+    expect(value.optimisticUpdates).toEqual(["add", "remove"])
   })
 
   test("keeps optimistic busy while the server reports the session active", async () => {
@@ -709,6 +722,24 @@ describe("follow-up prompt status reconciliation", () => {
 
     await expect(sendFollowupDraft(value.value)).resolves.toBe(true)
     expect(value.statusUpdates).toEqual([["session_status", "session-1", { type: "busy" }]])
+  })
+
+  test("refreshes persisted messages when active work reaches idle", async () => {
+    const responses: Record<string, unknown>[] = [
+      { "session-1": { type: "running" } },
+      {},
+    ]
+    const value = input(async () => responses.shift() ?? {}, true)
+
+    await expect(sendFollowupDraft(value.value)).resolves.toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+
+    expect(value.statusUpdates).toEqual([
+      ["session_status", "session-1", { type: "busy" }],
+      ["session_status", "session-1", { type: "idle" }],
+    ])
+    expect(value.syncRequests).toEqual([["session-1", { force: true }]])
+    expect(value.optimisticUpdates).toEqual(["add", "remove"])
   })
 
   test("does not clear optimistic busy during prompt startup", async () => {

@@ -183,7 +183,11 @@ function reconcileFetched<T extends { id: string }>(
   return options.compare ? items.sort(options.compare) : items
 }
 
-type ServerSessionOptions = { retry?: typeof retry; protocol?: Promise<"v1" | "v2"> }
+type ServerSessionOptions = {
+  retry?: typeof retry
+  protocol?: Promise<"v1" | "v2">
+  messageSource?: "legacy" | "current"
+}
 
 export function createServerSession(
   client: OpencodeClient,
@@ -232,6 +236,8 @@ export function createServerSession(
   const infoSeen = new Set<string>()
   const pinned = new Map<string, number>()
   const generations = new Map<string, object>()
+  const useCurrentMessageApi = async () =>
+    options?.messageSource !== "legacy" && (await options?.protocol) !== "v1"
   const generation = (sessionID: string) => {
     const current = generations.get(sessionID)
     if (current) return current
@@ -535,7 +541,7 @@ export function createServerSession(
     )
 
   const fetchMessages = async (sessionID: string, limit: number, before?: string, onAttempt?: () => void) => {
-    if (messageApi && (await options?.protocol) !== "v1") {
+    if (messageApi && (await useCurrentMessageApi())) {
       const request = (cursor?: string) =>
         (options?.retry ?? retry)(() => {
           onAttempt?.()
@@ -582,7 +588,7 @@ export function createServerSession(
   }
 
   const fetchMessage = async (sessionID: string, messageID: string, onAttempt?: () => void) => {
-    if (sessionApi && (await options?.protocol) !== "v1") {
+    if (sessionApi && (await useCurrentMessageApi())) {
       const response = await (options?.retry ?? retry)(() => {
         onAttempt?.()
         return sessionApi.message({ sessionID, messageID })
