@@ -38,6 +38,12 @@ verified anywhere below.
   `/global/health`, `/api/health`, and web app root each returned HTTP 200.
   No Electron UI replay was run in this pass because the existing Electron
   process was not active and the handoff forbids restarting the user stack.
+- Read-only live HTTP matrix: the running backend returned 200 for the
+  directory-scoped provider catalog/auth, config providers, commands, MCP,
+  permission/question lists, experimental resources, sessions, projects, VCS,
+  PTY listing, and file search endpoints. This validates transport reachability
+  only; interactive MCP, terminal I/O, permission reply, and command execution
+  still require a controlled UI or isolated server fixture.
 - Runtime follow-up: reproduce the silent sidecar loop exit in the running
   Electron stack, verify the new reconciliation and disconnect paths through
   the UI, then complete interrupt/reconnect, MCP permission/terminal, kernel
