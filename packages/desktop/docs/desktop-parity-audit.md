@@ -57,6 +57,10 @@ verified anywhere below.
   close was stable. No kernel change is made here. The finding is recorded as
   upstream socket-close hardening, not as evidence that every client close
   fails.
+- PTY auth fallback (`runtime-verified`): the packaged sidecar rejects the V1
+  no-ticket `auth_token` WebSocket fallback with 401, while the ticket-first
+  route used by the desktop renderer succeeds. The fallback remains an
+  upstream compatibility gap; it does not block the current packaged path.
 - Read-only live HTTP matrix: the running backend returned 200 for the
   directory-scoped provider catalog/auth, config providers, commands, MCP,
   permission/question lists, experimental resources, sessions, projects, VCS,

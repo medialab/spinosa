@@ -66,7 +66,30 @@ kernel or core code is changed in the desktop migration.
 3. Add a regression fixture that covers cursor replay, text input, normal close,
    abrupt close, and a health check proving the sidecar remains alive.
 
-## 3. Credential-universe bridge
+## 3. PTY WebSocket auth fallback
+
+Observed on 2026-09-23:
+
+- The packaged sidecar returned 401 for the V1
+  `/pty/:id/connect?...&auth_token=...` fallback used when no connect ticket is
+  available.
+- The same sidecar issued a connect ticket with the authenticated
+  `x-opencode-ticket` request and the packaged renderer connected successfully
+  with that ticket.
+
+The desktop's ticket-first path is therefore verified, but its retained V1
+no-ticket fallback is not compatible with the current server auth middleware.
+
+### Required kernel/API decision
+
+1. Either accept the documented `auth_token` query credential on the V1 PTY
+   upgrade route, or remove/deprecate that fallback in the generated client
+   contract.
+2. Keep the ticket path origin/CSRF checks intact; do not solve this by making
+   an authenticated PTY upgrade unauthenticated.
+3. Add a fixture covering ticket success and the chosen no-ticket behavior.
+
+## 4. Credential-universe bridge
 
 V2 stored credentials live in SQLite while the V1 session runner reads
 `auth.json`. There is no kernel bridge or credential readback contract. The
@@ -85,7 +108,7 @@ set on V1 `/config/providers`; this is intentionally temporary.
 - Resolve V2-only OAuth providers (currently including the device flow) for
   the desktop conversation path.
 
-## 4. Generated endpoint surface
+## 5. Generated endpoint surface
 
 Regenerate or explicitly document the protocol/client surface for endpoints
 already served but absent from the generated root client, including:
