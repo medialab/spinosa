@@ -1,7 +1,7 @@
 # Desktop parity audit
 
-Source of truth: branch `spinosa-desktop-wiring` at `dc6ba26b`
-(`docs(desktop): record isolated runtime check`).
+Source of truth: branch `spinosa-desktop-wiring` at `a453e07c`
+(`fix(app): guard async prompt status startup`).
 Base versions: Bun 1.3.14, Node v22.14.0, Electron 42.3.3.
 Checkout note: the working tree carries another contributor's uncommitted
 `jev` integration (35 dirty paths, `<<<<<<<` markers in 10 kernel/core
@@ -15,12 +15,13 @@ verified anywhere below.
 
 ## Continuation — 2026-09-23
 
-- Chat busy-state fix (`fixture-tested`): `sendFollowupDraft` now reconciles
-  the optimistic busy flag with `session.active()` after prompt and command
-  requests resolve. If the server is already idle, the composer is cleared;
-  a failed status lookup leaves the event stream authoritative. The legacy
-  shell, direct-command, and interrupt/stop paths use the same reconciliation;
-  prompt-submit tests cover idle, active, command, and stop responses (12/12).
+- Chat busy-state fix (`fixture-tested`): `sendFollowupDraft` now waits through
+  the V1 `prompt_async` startup race before reconciling the optimistic busy flag
+  with `session.active()`. A session that becomes active is left to the event
+  stream; a session that stays absent through the bounded startup window is
+  cleared as a terminal silent exit. The legacy shell, direct-command, and
+  interrupt/stop paths retain immediate reconciliation; prompt-submit tests
+  cover idle, active, startup-race, command, and stop responses (13/13).
 - Provider execution gate (`fixture-tested`): V2 bootstrap now uses only
   `/config/providers` for the connected/runnable set. V2-only SQLite
   credentials remain visible in the catalog but cannot make a model
@@ -311,9 +312,12 @@ migration validates `false` → result `invalid`; same owner.
 
 ## Packaging (§7) — clean candidate validated
 
-Validated from a fresh worktree at `dfe3406a` after `bun install
+Validated from a fresh worktree at `a453e07c` after `bun install
 --frozen-lockfile`:
 
+- `packages/app bun run typecheck`: pass. Focused prompt-submit regression:
+  13/13; server-compat: 49/49; bootstrap: 12/12. The full app unit suite is
+  775 pass / 1 known pre-existing ICU locale failure (`pa-PK`).
 - `packages/desktop bun run typecheck`: pass.
 - `bun test electron.vite.config.test.ts electron-builder.config.test.ts
   src/renderer/html.test.ts`: 9/9 tests, 37 expectations, including the
@@ -326,6 +330,9 @@ Validated from a fresh worktree at `dfe3406a` after `bun install
   `brace-expansion`/Sentry ESM incompatibility without changing the lockfile.
 - `bun run package -- --dir`: pass for macOS arm64 with Electron 42.3.3;
   `dist/mac-arm64/Spinosa Dev.app` contains the executable and `app.asar`.
+- Isolated packaged startup: the app rendered the Spinosa session UI and its
+  authenticated local sidecar returned `/global/health` 200. The app and
+  sidecar were stopped after the check.
 
 Known non-blocking local-build notes: electron-vite reports the missing root
 `@tsconfig/bun` base-config warning, plus existing server/eval/chunking
