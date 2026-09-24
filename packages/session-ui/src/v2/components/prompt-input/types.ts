@@ -92,6 +92,12 @@ export type PromptInputV2Option = {
   providerID?: string
 }
 
+export type PromptInputV2SuggestionSection = {
+  id: string
+  label: string
+  tag: string
+}
+
 export type PromptInputV2Suggestion = {
   id: string
   kind: "agent" | "command" | "file" | "reference" | "resource"
@@ -102,5 +108,6 @@ export type PromptInputV2Suggestion = {
   path?: string
   keybind?: string[]
   recent?: boolean
+  section?: PromptInputV2SuggestionSection
   mention?: PromptInputV2FilePart | PromptInputV2AgentPart
 }

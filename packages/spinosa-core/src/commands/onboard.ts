@@ -44,6 +44,8 @@ export interface OnboardingOptions {
   flagExtensions?: string
   flagCli?: string
   flagLaunch?: "copy" | "run"
+  /** Desktop owns the next step, so don't copy a CLI command or spawn a terminal. */
+  handoffMode?: "external" | "none"
   onPhase?: (phase: OnboardingPhase, message: string) => void
   onCopyProgress?: ImportProgressCallback
   shouldAbort?: () => boolean
@@ -232,18 +234,20 @@ export async function completeOnboarding(
   } catch (error) {
     throw new Error(`Failed to write startup prompt at ${startupPromptPath}`, { cause: error })
   }
-  const launchCommand = buildLaunchCommand(ctx.workspacePath, cli, startupPrompt)
-  const copiedPrompt = copyToClipboard(startupPrompt)
-
-  let handoffResult: OnboardingHandoffResult = copiedPrompt ? "prompt_copied" : "prompt_ready"
-  if (flagLaunch === "run" && cli !== "other") {
-    if (runCliWithPrompt(ctx.workspacePath, cli, startupPrompt)) {
-      handoffResult = "run_requested"
+  let handoffResult: OnboardingHandoffResult = "prompt_ready"
+  if (options.handoffMode !== "none") {
+    const launchCommand = buildLaunchCommand(ctx.workspacePath, cli, startupPrompt)
+    const copiedPrompt = copyToClipboard(startupPrompt)
+    handoffResult = copiedPrompt ? "prompt_copied" : "prompt_ready"
+    if (flagLaunch === "run" && cli !== "other") {
+      if (runCliWithPrompt(ctx.workspacePath, cli, startupPrompt)) {
+        handoffResult = "run_requested"
+      } else {
+        handoffResult = copyToClipboard(launchCommand) ? "run_failed_command_copied" : "run_failed_command_ready"
+      }
     } else {
-      handoffResult = copyToClipboard(launchCommand) ? "run_failed_command_copied" : "run_failed_command_ready"
+      handoffResult = copyToClipboard(launchCommand) ? "launch_command_copied" : "launch_command_ready"
     }
-  } else {
-    handoffResult = copyToClipboard(launchCommand) ? "launch_command_copied" : "launch_command_ready"
   }
 
   phase("complete", "Writing onboarding summary...")
@@ -262,7 +266,12 @@ export async function completeOnboarding(
       visionConverted: acc.vision?.converted ?? 0,
     } as never,
     cli: cliLabel,
-    handoffAction: flagLaunch === "run" ? "Run launch command now" : "Copy launch command",
+    handoffAction:
+      options.handoffMode === "none"
+        ? "Open in Spinosa Desktop"
+        : flagLaunch === "run"
+          ? "Run launch command now"
+          : "Copy launch command",
     handoffResult,
     toolStatus: ctx.toolStatus,
   })

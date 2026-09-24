@@ -44,6 +44,15 @@ export type FatalRendererError = {
   os?: string
 }
 
+export type RendererDiagnostic = {
+  event: string
+  level?: "debug" | "info" | "warn" | "error"
+  correlationID?: string
+  rendererID?: string
+  durationMs?: number
+  fields?: Record<string, unknown>
+}
+
 export type ElectronAPI = {
   killSidecar: () => Promise<void>
   installCli: () => Promise<string>
@@ -102,6 +111,7 @@ export type ElectronAPI = {
   setWindowFocus: () => Promise<void>
   showWindow: () => Promise<void>
   relaunch: () => void
+  quit: () => void
   getZoomFactor: () => Promise<number>
   setZoomFactor: (factor: number) => Promise<void>
   getPinchZoomEnabled: () => Promise<boolean>
@@ -114,5 +124,6 @@ export type ElectronAPI = {
   exportDebugLogs: () => Promise<string>
   setForceFocus: (enabled: boolean) => Promise<void>
   recordFatalRendererError: (error: FatalRendererError) => Promise<void>
+  recordRendererDiagnostic: (diagnostic: RendererDiagnostic) => Promise<void>
   setNativeTranslations: (bundle: DesktopNativeBundle) => Promise<void>
 }

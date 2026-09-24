@@ -57,6 +57,12 @@ const getBase = (appId: string): Configuration => ({
       to: "native/",
       filter: ["index.js", "index.d.ts", "build/Release/mac_window.node", "swift-build/**"],
     },
+    // Thin shell: Bun sidecar entry run via `bun` (dev) or a bundled bun
+    // binary (packaged follow-up via SPINOSA_BUN_BIN / resources/bun).
+    {
+      from: "scripts/serve-bun-sidecar.ts",
+      to: "spinosa-sidecar/serve-bun-sidecar.ts",
+    },
   ],
   mac: {
     category: "public.app-category.developer-tools",

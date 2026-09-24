@@ -136,6 +136,12 @@ function createServerCtx(
       .slice(0, RECENTLY_CLOSED_DISPLAY_LIMIT)
       .map((worktree) => enrich({ worktree, expanded: false }))
   })
+  const recentlyOpenedList = createMemo(() =>
+    projects.recentlyOpened().map(({ worktree, openedAt }) => ({
+      ...enrich({ worktree, expanded: false }),
+      openedAt,
+    })),
+  )
 
   const isLocal =
     (conn?.type === "sidecar" && conn.variant === "base") || (conn?.type === "http" && isLocalHost(conn.http.url))
@@ -149,6 +155,7 @@ function createServerCtx(
       ...projects,
       list: projectsList,
       recentlyClosed: recentlyClosedList,
+      recentlyOpened: recentlyOpenedList,
     },
   }
 }

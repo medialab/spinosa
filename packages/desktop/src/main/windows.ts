@@ -16,6 +16,7 @@ import { nativeT } from "./native-translations"
 import { createWindowRegistry } from "./window-registry"
 import { safeWindowURL } from "./window-state"
 import { resolveExternalURL, resolveLocalFilePath } from "./external-url"
+import { absoluteAppRelaunchArgs } from "./relaunch"
 
 const root = dirname(fileURLToPath(import.meta.url))
 const rendererRoot = join(root, "../renderer")
@@ -47,7 +48,7 @@ protocol.registerSchemesAsPrivileged([
 let backgroundColor: string | undefined
 let relaunchHandler = () => {
   setAppQuitting()
-  app.relaunch()
+  app.relaunch({ args: absoluteAppRelaunchArgs(process.argv, app.getAppPath()) })
   app.exit(0)
 }
 const titlebarThemes = new WeakMap<BrowserWindow, Partial<TitlebarTheme>>()

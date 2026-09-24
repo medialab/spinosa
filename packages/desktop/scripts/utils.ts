@@ -1,5 +1,3 @@
-import { $ } from "bun"
-
 export type Channel = "dev" | "beta" | "prod"
 
 export function resolveChannel(): Channel {
@@ -9,11 +7,10 @@ export function resolveChannel(): Channel {
 }
 
 /**
- * Build the embedded Spinosa kernel server bundle consumed by the Electron
- * sidecar (`virtual:spinosa-server` in `electron.vite.config.ts`). Replaces
- * the opencode `build-node` + CLI-download steps: the desktop always embeds
- * the kernel, there is no separate CLI binary to fetch.
+ * Thin shell: the kernel runs on Bun via `scripts/serve-bun-sidecar.ts`
+ * spawned by `src/main/server.ts`. No plain-Node server bundle is built —
+ * this is kept as a no-op so predev/prebuild imports keep working.
  */
 export async function buildServerBundle() {
-  await $`bun ./scripts/build-server.ts`
+  console.log("Thin shell: skipping plain-Node server bundle (Bun sidecar needs no build)")
 }

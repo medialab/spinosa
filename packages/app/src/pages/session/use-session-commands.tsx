@@ -6,12 +6,15 @@ import { useDialog } from "@spinosa/ui/context/dialog"
 import { previewSelectedLines } from "@spinosa/session-ui/pierre/selection-bridge"
 import { useFile, selectionFromLines, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { useLanguage } from "@/context/language"
+import { useGlobal } from "@/context/global"
 import { useLayout } from "@/context/layout"
 import { usePermission } from "@/context/permission"
 import { usePrompt } from "@/context/prompt"
 import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { useServer } from "@/context/server"
+import { useServerSync } from "@/context/server-sync"
+import { base64Encode } from "@spinosa/kernel-core/util/encode"
 import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
@@ -52,6 +55,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const prompt = usePrompt()
   const platform = usePlatform()
   const server = useServer()
+  const global = useGlobal()
+  const serverSync = useServerSync()
   const sdk = useSDK()
   const settings = useSettings()
   const sync = useSync()
@@ -439,21 +444,6 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     void openDialog(
       () => import("@/components/dialog-report"),
       (x) => dialog.show(() => <x.DialogReport issueUrl="https://github.com/medialab/spinosa/issues/new" />),
-    )
-  }
-
-  const openVariantPicker = () => {
-    const variants = local.model.variant.list()
-    void openDialog(
-      () => import("@/components/dialog-variant-picker"),
-      (x) =>
-        dialog.show(() => (
-          <x.DialogVariantPicker
-            variants={variants}
-            current={local.model.variant.current() ?? undefined}
-            onSelect={(variant) => local.model.variant.set(variant ?? undefined)}
-          />
-        )),
     )
   }
 
@@ -1264,6 +1254,41 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     )
   }
 
+  const openWorkspaceSwitch = () => {
+    const items = new Map<string, { worktree: string; name: string; detail: string }>()
+    const recent = server.current ? global.ensureServerCtx(server.current).projects.recentlyOpened() : []
+    for (const project of recent) {
+      items.set(project.worktree, {
+        worktree: project.worktree,
+        name: project.name || project.worktree.split("/").pop() || project.worktree,
+        detail: project.worktree,
+      })
+    }
+    for (const project of serverSync().data.project ?? []) {
+      if (items.has(project.worktree)) continue
+      items.set(project.worktree, {
+        worktree: project.worktree,
+        name: project.name || project.worktree.split("/").pop() || project.worktree,
+        detail: project.worktree,
+      })
+    }
+    void openDialog(
+      () => import("@/components/dialog-workspace-switch"),
+      (x) =>
+        dialog.show(() => (
+          <x.DialogWorkspaceSwitch
+            items={[...items.values()]}
+            currentDirectory={sdk().directory}
+            onSelect={(worktree) => navigate(`/${base64Encode(worktree)}/session`)}
+            onPickNew={() => {
+              dialog.close()
+              navigate("/")
+            }}
+          />
+        )),
+    )
+  }
+
   const toggleAutoAccept = () => {    const sessionID = params.id
     if (sessionID) permission.toggleAutoAccept(sessionID, sdk().directory)
     else permission.toggleAutoAcceptDirectory(sdk().directory)
@@ -1681,13 +1706,6 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       onSelect: openSessions,
     }),
     sessionCommand({
-      id: "dialog.variant",
-      title: language.t("dialog.variant.title"),
-      slash: "variant",
-      disabled: !params.id,
-      onSelect: openVariantPicker,
-    }),
-    sessionCommand({
       id: "dialog.export",
       title: language.t("dialog.export.title"),
       slash: "export",
@@ -1772,6 +1790,18 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("dialog.md.title"),
       slash: "view",
       onSelect: openViewPicker,
+    }),
+    sessionCommand({
+      id: "dialog.workspaces",
+      title: language.t("dialog.workspaces.title"),
+      slash: "workspaces",
+      onSelect: openWorkspaceSwitch,
+    }),
+    sessionCommand({
+      id: "session.warp",
+      title: language.t("dialog.workspaces.title"),
+      slash: "warp",
+      onSelect: openWorkspaceSwitch,
     }),
   ]
 

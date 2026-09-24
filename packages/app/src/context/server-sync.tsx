@@ -42,6 +42,7 @@ import { createSimpleContext } from "@spinosa/ui/context"
 import { NormalizedProviderListResponse } from "@spinosa/session-ui/context"
 import { createRefCountMap } from "@/utils/refcount"
 import { useGlobal } from "./global"
+import { usePlatform } from "./platform"
 import { ServerConnection, useServer } from "./server"
 import { retry } from "@spinosa/kernel-core/util/retry"
 import type { ServerScope } from "@/utils/server-scope"
@@ -153,11 +154,12 @@ export const loadLspQuery = (scope: ServerScope, directory: string, sdk: Opencod
 export const loadActiveSessionsQuery = (
   scope: ServerScope,
   api: SessionActiveApi,
+  enabled = true,
 ): ApiQueryOptions<SessionActiveOutput, readonly [ServerScope, "activeSessions"]> =>
   queryOptions<SessionActiveOutput, Error, SessionActiveOutput, readonly [ServerScope, "activeSessions"]>({
     queryKey: [scope, "activeSessions"] as const,
-    queryFn: () => api.active(),
-    enabled: true,
+    queryFn: () => (enabled ? api.active() : Promise.resolve({})),
+    enabled,
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: Number.POSITIVE_INFINITY,
     refetchOnMount: false,
@@ -204,6 +206,7 @@ export type QueryOptionsApi = ReturnType<typeof makeQueryOptionsApi>
 
 export function createServerSyncContextInner(serverSDK: ServerSDK) {
   const language = useLanguage()
+  const platform = usePlatform()
   const owner = getOwner()
   if (!owner) throw new Error("ServerSync must be created within owner")
 
@@ -239,7 +242,11 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
   )
 
   const [configQuery, providerQuery, pathQuery] = useQueries(() => ({
-    queries: [queryOptionsApi.globalConfig(), queryOptionsApi.providers(null), queryOptionsApi.path(null)],
+    queries: [
+      queryOptionsApi.globalConfig(),
+      { ...queryOptionsApi.providers(null), enabled: !!platform.homeDirectory },
+      { ...queryOptionsApi.path(null), enabled: !!platform.homeDirectory },
+    ],
   }))
   const activeSessionsQuery = useQuery(() =>
     loadActiveSessionsQuery(serverSDK.scope, {
@@ -263,7 +270,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
         }
         return active
       },
-    }),
+    }, !!platform.homeDirectory),
   )
 
   const [globalStore, setGlobalStore] = createStore<GlobalStore>({
@@ -327,6 +334,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
         serverSDK: serverSDK.client,
         serverAPI: serverSDK.api,
         protocol: serverSDK.protocol,
+        hasAmbientDirectory: !!platform.homeDirectory,
         scope: serverSDK.scope,
         requestFailedTitle: language.t("common.requestFailed"),
         translate: language.t,

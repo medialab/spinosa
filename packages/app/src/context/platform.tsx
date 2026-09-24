@@ -28,6 +28,15 @@ export type FatalRendererErrorLog = {
   os?: DesktopOS
 }
 
+export type RendererDiagnostic = {
+  event: string
+  level?: "debug" | "info" | "warn" | "error"
+  correlationID?: string
+  rendererID?: string
+  durationMs?: number
+  fields?: Record<string, unknown>
+}
+
 type PlatformBase = {
   /** App version */
   version?: string
@@ -124,6 +133,10 @@ type PlatformBase = {
 
   /** Record a fatal renderer error in platform logs (desktop only) */
   recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
+
+  recordRendererDiagnostic?(diagnostic: RendererDiagnostic): Promise<void>
+
+  rendererID?: string
 
   /**
    * Ambient filesystem directory for server-global requests (desktop only).

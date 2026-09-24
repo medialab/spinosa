@@ -70,6 +70,26 @@
     font-weight: var(--font-weight-regular);
   }
 
+  [data-slot="session-turn-thinking-content"] {
+    opacity: 0.8;
+
+    [data-component="markdown"] {
+      font-size: 11px;
+      line-height: 1.4;
+
+      :is(h1, h2, h3, h4, h5, h6) {
+        font-size: inherit;
+        font-weight: var(--font-weight-regular);
+        line-height: inherit;
+        margin: 0 0 4px;
+      }
+
+      p {
+        margin-bottom: 4px;
+      }
+    }
+  }
+
   .error-card {
     color: var(--v2-text-text-base);
     max-height: 240px;

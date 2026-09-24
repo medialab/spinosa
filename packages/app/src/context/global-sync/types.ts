@@ -19,6 +19,8 @@ import type { CommandInfo, McpResource, McpServer, SessionMessageInfo } from "@/
 import type { Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
 
+export type SyncedCommandInfo = CommandInfo & { source?: "command" | "mcp" | "skill" }
+
 export type ProjectMeta = {
   name?: string
   icon?: {
@@ -33,7 +35,7 @@ export type ProjectMeta = {
 export type State = {
   status: "loading" | "partial" | "complete"
   agent: Agent[]
-  command: CommandInfo[]
+  command: SyncedCommandInfo[]
   reference: ReferenceInfo[]
   project: string
   projectMeta: ProjectMeta | undefined

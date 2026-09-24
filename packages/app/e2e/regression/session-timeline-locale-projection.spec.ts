@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "../utils/diagnostic-test"
 import { assistantMessage, setupTimeline, toolPart, userMessage } from "../performance/timeline-stability/fixture"
 
 for (const profile of [

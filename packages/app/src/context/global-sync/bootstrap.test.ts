@@ -6,6 +6,7 @@ import type { AgentApi, CatalogApi, CommandApi, ReferenceApi } from "@/utils/leg
 import type { NormalizedProviderListResponse } from "@spinosa/session-ui/context"
 import {
   bootstrapDirectory,
+  bootstrapGlobal,
   loadAgentsQuery,
   loadCommands,
   loadGlobalConfigQuery,
@@ -180,6 +181,47 @@ describe("bootstrapDirectory", () => {
     await new Promise((resolve) => setTimeout(resolve, 80))
 
     expect(store.status).toBe("complete")
+  })
+})
+
+describe("bootstrapGlobal", () => {
+  test("skips workspace-scoped requests without an ambient directory", async () => {
+    const calls: string[] = []
+    const sdk = {
+      global: {
+        config: {
+          get: async () => {
+            calls.push("config")
+            return { data: {} }
+          },
+        },
+      },
+      path: { get: async () => calls.push("path") },
+    } as unknown as OpencodeClient
+    const serverAPI = {
+      provider: { list: async () => calls.push("provider") },
+      model: {
+        list: async () => calls.push("models"),
+        default: async () => calls.push("default-model"),
+      },
+      project: { list: async () => calls.push("projects") },
+    } as unknown as Parameters<typeof bootstrapGlobal>[0]["serverAPI"]
+    const [, setStore] = createStore({ project: [] as Project[] })
+
+    await bootstrapGlobal({
+      serverSDK: sdk,
+      serverAPI,
+      protocol: Promise.resolve("v1"),
+      hasAmbientDirectory: false,
+      scope: ServerScope.local,
+      requestFailedTitle: "Request failed",
+      translate: (key) => key,
+      formatMoreCount: (count) => `+${count}`,
+      setGlobalStore: setStore as unknown as Parameters<typeof bootstrapGlobal>[0]["setGlobalStore"],
+      queryClient: new QueryClient(),
+    })
+
+    expect(calls).toEqual(["config"])
   })
 })
 
@@ -378,7 +420,10 @@ describe("query keys", () => {
         calls.push(input)
         return {
           location: {},
-          data: [{ name: "review", template: "Review files" /* source: "command" as const */ }],
+          data: [
+            { name: "review", template: "Review files", source: "command" as const },
+            { name: "spinosa-mapper", template: "Map source files", source: "skill" as const },
+          ],
         }
       },
     } as unknown as CommandApi
@@ -386,7 +431,10 @@ describe("query keys", () => {
     const result = await loadCommands("/repo", api)
 
     expect(calls).toEqual([{ location: { directory: "/repo" } }])
-    expect(result).toEqual([{ name: "review", template: "Review files" /* source: "command" */ }])
+    expect(result).toEqual([
+      { name: "review", template: "Review files", source: "command" },
+      { name: "spinosa-mapper", template: "Map source files", source: "skill" },
+    ])
   })
 
   test("loads projects from the current endpoint", async () => {

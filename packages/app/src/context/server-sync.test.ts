@@ -83,6 +83,24 @@ describe("active session query", () => {
     expect([...options.queryKey]).toEqual([ServerScope.local, "activeSessions"])
   })
 
+  test("does not call the server when no ambient directory is available", async () => {
+    let calls = 0
+    const options = loadActiveSessionsQuery(
+      ServerScope.local,
+      {
+        active: async () => {
+          calls++
+          return { ses_running: { type: "running" } }
+        },
+      },
+      false,
+    )
+
+    expect(options.enabled).toBe(false)
+    expect(await new QueryClient().fetchQuery(options)).toEqual({})
+    expect(calls).toBe(0)
+  })
+
   test("does not overwrite statuses already written by events", () => {
     const session = createServerSession({} as OpencodeClient)
     session.set("session_status", "ses_retry", { type: "retry", attempt: 2, message: "retrying", next: 10 })

@@ -8,6 +8,7 @@ import { useDirectoryPicker } from "@/components/directory-picker"
 import { useGlobal } from "@/context/global"
 import { useLayout } from "@/context/layout"
 import { useLocal, type ModelSelection } from "@/context/local"
+import { usePlatform } from "@/context/platform"
 import type { QueryOptionsApi } from "@/context/server-sync"
 import { useServerSDK } from "@/context/server-sdk"
 import { serverName, ServerConnection, useServer } from "@/context/server"
@@ -24,13 +25,17 @@ export function createPromptInputController(input: {
   model?: ModelSelection
 }) {
   const layout = useLayout()
+  const platform = usePlatform()
   const local = useLocal()
   const sdk = useSDK()
   const sync = useSync()
   const providers = useProviders(() => sdk().directory)
   const view = layout.view(input.sessionKey)
   const agentsQuery = createQuery(() => input.queryOptions.agents(pathKey(sdk().directory)))
-  const globalProvidersQuery = createQuery(() => input.queryOptions.providers(null))
+  const globalProvidersQuery = createQuery(() => ({
+    ...input.queryOptions.providers(null),
+    enabled: !!platform.homeDirectory,
+  }))
   const providersQuery = createQuery(() => input.queryOptions.providers(pathKey(sdk().directory)))
 
   return createMemo<PromptInputControls>(() => {

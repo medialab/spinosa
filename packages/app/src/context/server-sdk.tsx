@@ -297,11 +297,20 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
         } catch (error) {
           if (!isStreamClosed(error, attempt?.signal) && !streamErrorLogged) {
             streamErrorLogged = true
-            console.error("[global-sdk] event stream failed", {
-              url: server.http.url,
-              fetch: eventFetch ? "platform" : "webview",
-              error,
-            })
+             const record = platform.recordRendererDiagnostic
+             if (record) {
+               void record({
+                 event: "server.event_stream.error",
+                 level: "error",
+                 rendererID: platform.rendererID,
+                 fields: {
+                   url: server.http.url,
+                   fetch: eventFetch ? "platform" : "webview",
+                   error,
+                 },
+               }).catch(() => undefined)
+             }
+
           }
         } finally {
           abort.signal.removeEventListener("abort", onAbort)

@@ -1,6 +1,7 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "../utils/diagnostic-test"
 import {
   assistantMessage,
+  partUpdated,
   reasoningPart,
   setupTimeline,
   status,
@@ -76,6 +77,64 @@ for (const profile of profiles) {
     }
   })
 }
+
+test("keeps expanded thinking markdown stable while reasoning streams", async ({ page }) => {
+  const reasoningID = "prt_reasoning_streaming_thinking"
+  const initial = "## Planning\n\nThe first thought is stable."
+  const timeline = await setupTimeline(page, {
+    messages: [userMessage(), assistantMessage([reasoningPart(reasoningID, initial)], { completed: false })],
+  })
+  await timeline.send(status("busy"), 150)
+
+  const row = page.locator('[data-timeline-row="Thinking"]')
+  await row.locator('button[aria-expanded="false"]').click()
+  const markdown = row.locator('[data-component="markdown"]')
+  const heading = markdown.locator("h2")
+  await expect(heading).toHaveText("Planning")
+  const presentation = await markdown.evaluate((root) => {
+    const content = root.parentElement!
+    const panel = content.parentElement!
+    return {
+      fontSize: getComputedStyle(root).fontSize,
+      headingFontSize: getComputedStyle(root.querySelector("h2")!).fontSize,
+      opacity: getComputedStyle(content).opacity,
+      paddingLeft: getComputedStyle(panel).paddingLeft,
+      marginLeft: getComputedStyle(panel).marginLeft,
+    }
+  })
+  expect(presentation).toEqual({
+    fontSize: "11px",
+    headingFontSize: "11px",
+    opacity: "0.8",
+    paddingLeft: "0px",
+    marginLeft: "0px",
+  })
+  await markdown.evaluate((root) => {
+    const heading = root.querySelector("h2")
+    if (!heading) throw new Error("missing rendered thinking heading")
+    const probe = { root, heading, replaced: false, observer: undefined as MutationObserver | undefined }
+    const observer = new MutationObserver(() => {
+      if (!root.contains(heading)) probe.replaced = true
+    })
+    probe.observer = observer
+    observer.observe(root, { childList: true, subtree: true })
+    ;(window as Window & { __thinkingMarkdownProbe?: typeof probe }).__thinkingMarkdownProbe = probe
+  })
+
+  const next = `${initial}\n\nThe next thought`
+  await timeline.send(partUpdated(reasoningPart(reasoningID, next)), 100)
+  await expect(markdown).toContainText("The next thought")
+  await timeline.send(partUpdated(reasoningPart(reasoningID, `${next} explains the plan."`)), 100)
+  await expect(markdown).toContainText("The next thought explains the plan.")
+
+  const headingWasReplaced = await page.evaluate(() => {
+    const probe = (window as Window & { __thinkingMarkdownProbe?: { root: Element; heading: Element; replaced: boolean; observer: MutationObserver } })
+      .__thinkingMarkdownProbe
+    probe?.observer.disconnect()
+    return probe?.replaced ?? true
+  })
+  expect(headingWasReplaced).toBe(false)
+})
 
 test("does not infer reasoning visibility from provider identity", async ({ page }) => {
   const timeline = await setupTimeline(page, {

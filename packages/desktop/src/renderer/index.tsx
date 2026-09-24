@@ -23,6 +23,7 @@ import { createEffect, createMemo, createResource, createSignal, Show } from "so
 import { render } from "solid-js/web"
 import pkg from "../../package.json"
 import { t } from "./i18n"
+import { sendRendererDiagnostic } from "./diagnostics"
 import { initializationData } from "./initialization"
 import { DesktopFirstLaunchOnboarding } from "./onboarding"
 import { resetZoom, setPinchZoomEnabled, webviewZoom, zoomIn, zoomOut } from "./webview-zoom"
@@ -91,6 +92,9 @@ function DesktopMemoryRouter(props: BaseRouterProps & { windowID: string }) {
 }
 
 const createPlatform = (windowState: DesktopWindowState): Platform => {
+  const rendererID = crypto.randomUUID()
+  const writeDiagnostic: NonNullable<Platform["recordRendererDiagnostic"]> = (diagnostic) =>
+    sendRendererDiagnostic(window.api, { ...diagnostic, rendererID })
   const attachmentPaths = new WeakMap<File, string>()
   const os = (() => {
     const ua = navigator.userAgent
@@ -231,6 +235,11 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       window.api.relaunch()
     },
 
+    quit: async () => {
+      await window.api.killSidecar().catch(() => undefined)
+      window.api.quit()
+    },
+
     notify: async (title, description, onClick) => {
       const focused = await window.api.getWindowFocused().catch(() => document.hasFocus())
       if (focused) return
@@ -246,10 +255,54 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       }
     },
 
-    fetch: (input, init) => {
-      if (input instanceof Request) return fetch(input)
-      return fetch(input, init)
+    rendererID,
+
+    async fetch(input, init) {
+      const requestID = crypto.randomUUID()
+      const headers = new Headers(input instanceof Request ? input.headers : undefined)
+      if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value))
+      const requestURL = (() => {
+        try {
+          return new URL(input instanceof Request ? input.url : input)
+        } catch {
+          return undefined
+        }
+      })()
+      const loopback = requestURL?.hostname === "localhost" || requestURL?.hostname === "127.0.0.1" || requestURL?.hostname === "::1" || requestURL?.hostname === "[::1]"
+      if (loopback) {
+        headers.set("x-spinosa-request-id", requestID)
+        headers.set("x-spinosa-renderer-id", rendererID)
+      }
+      const request = input instanceof Request
+        ? new Request(input, { headers })
+        : requestURL
+          ? new Request(input, { ...(init ?? {}), headers })
+          : input
+      const startedAt = Date.now()
+      const method = request instanceof Request ? request.method : init?.method ?? "GET"
+      const pathname = requestURL?.pathname ?? "$URL"
+      const record = (status: number, cause?: unknown) => {
+        if (status < 400 && method === "GET") return
+        void writeDiagnostic({
+          event: "http.request",
+          level: status >= 400 || cause ? "error" : "info",
+          correlationID: requestID,
+          rendererID,
+          durationMs: Date.now() - startedAt,
+          fields: { method, path: pathname, status, error: cause },
+        }).catch(() => undefined)
+      }
+      try {
+        const response = await fetch(request, request instanceof Request || requestURL ? undefined : init)
+        record(response.status)
+        return response
+      } catch (cause) {
+        record(500, cause)
+        throw cause
+      }
     },
+
+    recordRendererDiagnostic: writeDiagnostic,
 
     getDefaultServer: async () => {
       const url = await window.api.getDefaultServerUrl().catch(() => null)

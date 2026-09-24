@@ -53,6 +53,26 @@ export function createPromptInputV2State() {
   return createStore(createPromptInputV2InteractionState())
 }
 
+export function groupPromptInputV2Suggestions(items: PromptInputV2Suggestion[]) {
+  const groups = new Map<string, { id: string; label?: string; tag?: string; items: PromptInputV2Suggestion[] }>()
+  for (const item of items) {
+    const section = item.section
+    const id = section?.id ?? ""
+    const group = groups.get(id) ?? { id, label: section?.label, tag: section?.tag, items: [] }
+    group.items.push(item)
+    groups.set(id, group)
+  }
+  const order = ["commands", "skills"]
+  return [...groups.values()].sort((a, b) => {
+    const left = order.indexOf(a.id)
+    const right = order.indexOf(b.id)
+    if (left === -1 && right === -1) return 0
+    if (left === -1) return 1
+    if (right === -1) return -1
+    return left - right
+  })
+}
+
 export function createPromptInputV2Controller(input: {
   store: PromptInputV2StoreInput
   state?: ReturnType<typeof createPromptInputV2State>
@@ -134,9 +154,17 @@ export function createPromptInputV2Controller(input: {
     items: () => input.commands(),
     key: (item) => item.id,
     filterKeys: ["trigger", "title"],
+    groupBy: (item) => item.section?.id ?? "",
+    sortGroupsBy: (a, b) => {
+      const order = ["commands", "skills"]
+      return order.indexOf(a.category) - order.indexOf(b.category)
+    },
   })
   const list = () => (state.popover.type === "context" ? contextList : commandList)
-  const suggestions = () => list().flat()
+  const suggestions = () =>
+    state.popover.type === "context"
+      ? contextList.flat()
+      : groupPromptInputV2Suggestions(commandList.flat()).flatMap((group) => group.items)
 
   const execute = (command: PromptInputV2InteractionCommand) => {
     if (command.type === "draft.setText") {

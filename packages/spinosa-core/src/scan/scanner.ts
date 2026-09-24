@@ -47,6 +47,12 @@ export interface OnboardingPreviewRow {
   tone?: "ok" | "warn"
 }
 
+export interface ScanProgress {
+  filePath: string
+  current: number
+  total: number
+}
+
 type ScanSourceCache = {
   result: ScanCounts & ScanBytes & { files: string[] }
   batches: Array<{ ext: string; sz: number }>
@@ -56,6 +62,8 @@ const scanSourceCache = new Map<string, ScanSourceCache>()
 export async function scanSource(
   sourcePath: string,
   importBatches: ImportBatchManager,
+  onProgress?: (progress: ScanProgress) => void,
+  shouldAbort?: () => boolean,
 ): Promise<ScanCounts & ScanBytes & { files: string[] }> {
   const files: string[] = []
   const out = {
@@ -71,7 +79,13 @@ export async function scanSource(
     total: 0,
   } as ScanCounts & ScanBytes
 
-  const collected = findSourceFiles(sourcePath)
+  const collected = findSourceFiles(sourcePath, shouldAbort)
+  if (shouldAbort?.()) throw new DOMException("Source scan cancelled", "AbortError")
+  const reportProgress = (index: number) => onProgress?.({
+    filePath: collected[index]!,
+    current: index + 1,
+    total: collected.length,
+  })
   let dirMtime = 0
   try {
     dirMtime = statSync(sourcePath).mtimeMs
@@ -79,6 +93,10 @@ export async function scanSource(
   const cacheKey = `${sourcePath}\0${dirMtime}\0${collected.length}\0${collected[0] ?? ""}\0${collected.at(-1) ?? ""}`
   const cached = scanSourceCache.get(cacheKey)
   if (cached) {
+    for (let index = 0; index < collected.length; index++) {
+      if (shouldAbort?.()) throw new DOMException("Source scan cancelled", "AbortError")
+      reportProgress(index)
+    }
     for (const rec of cached.batches) importBatches.record(rec.ext, rec.sz)
     importBatches.sort()
     importBatches.selectAll()
@@ -86,7 +104,10 @@ export async function scanSource(
   }
   const batches: Array<{ ext: string; sz: number }> = []
 
-  for (const fp of collected) {
+  for (let index = 0; index < collected.length; index++) {
+    if (shouldAbort?.()) throw new DOMException("Source scan cancelled", "AbortError")
+    const fp = collected[index]!
+    reportProgress(index)
     files.push(fp)
     const klass = await classifySourceFile(fp)
 

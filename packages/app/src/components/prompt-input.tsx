@@ -1228,6 +1228,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       onSubmit: props.onSubmit,
       model: props.controls.model.selection,
     })
+  const unregisterSubmitter = prompt.registerSubmitter(() => void handleSubmit(new Event("submit")))
+  onCleanup(unregisterSubmitter)
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "u") {

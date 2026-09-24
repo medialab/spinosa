@@ -325,7 +325,7 @@ const v2Routes = {
   "GET /api/reference": () =>
     Response.json({ location: v2Location, data: [{ name: "r", path: "/r", source: "file" }] }),
   "GET /command": () =>
-    Response.json([{ name: "init", template: "x", model: "openai/gpt-4", subtask: false }]),
+    Response.json([{ name: "init", template: "x", model: "openai/gpt-4", subtask: false, source: "skill" }]),
   "GET /mcp": () => Response.json({ docs: { status: "connected" } }),
   "GET /experimental/resource": () =>
     Response.json({
@@ -809,7 +809,7 @@ describe("createCompatibleApi V2 namespaces", () => {
     const result = await api.command.list({ location: { directory: "/repo" } })
     expect(pathOf(requests[0]!.url)).toBe("/command")
     expect(result.location.directory).toBe("/repo")
-    expect(result.data).toMatchObject([{ name: "init", model: "openai/gpt-4" }])
+    expect(result.data).toMatchObject([{ name: "init", model: "openai/gpt-4", source: "skill" }])
   })
 
   test("routes reference lists through .v2", async () => {
@@ -924,7 +924,7 @@ describe("createCompatibleApi V1 namespaces", () => {
     const { api, requests } = setup("v1", undefined, v2Routes)
     const commands = await api.command.list({ location: { directory: "/repo" } })
     expect(pathOf(requests[0]!.url)).toBe("/command")
-    expect(commands.data).toMatchObject([{ name: "init" }])
+    expect(commands.data).toMatchObject([{ name: "init", source: "skill" }])
     const refs = await api.reference.list({ location: { directory: "/repo" } })
     expect(refs.data).toMatchObject([{ name: "r" }])
     const mcps = await api.mcp.list({ location: { directory: "/repo" } })

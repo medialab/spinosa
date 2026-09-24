@@ -3,13 +3,26 @@
 /**
  * JSON-friendly union that mirrors what Pinia Colada can hash.
  */
-export type JsonValue = null | string | number | boolean | JsonValue[] | { [key: string]: JsonValue }
+export type JsonValue =
+  | null
+  | string
+  | number
+  | boolean
+  | JsonValue[]
+  | { [key: string]: JsonValue }
 
 /**
  * Replacer that converts non-JSON values (bigint, Date, etc.) to safe substitutes.
  */
-export const queryKeyJsonReplacer = (_key: string, value: unknown) => {
-  if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+export const queryKeyJsonReplacer = (
+  _key: string,
+  value: unknown,
+): unknown | undefined => {
+  if (
+    value === undefined ||
+    typeof value === "function" ||
+    typeof value === "symbol"
+  ) {
     return undefined
   }
   if (typeof value === "bigint") {
@@ -51,7 +64,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
  * Turns URLSearchParams into a sorted JSON object for deterministic keys.
  */
 const serializeSearchParams = (params: URLSearchParams): JsonValue => {
-  const entries = Array.from(params.entries()).sort(([a], [b]) => a.localeCompare(b))
+  const entries = Array.from(params.entries()).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )
   const result: Record<string, JsonValue> = {}
 
   for (const [key, value] of entries) {
@@ -74,16 +89,26 @@ const serializeSearchParams = (params: URLSearchParams): JsonValue => {
 /**
  * Normalizes any accepted value into a JSON-friendly shape for query keys.
  */
-export const serializeQueryKeyValue = (value: unknown): JsonValue | undefined => {
+export const serializeQueryKeyValue = (
+  value: unknown,
+): JsonValue | undefined => {
   if (value === null) {
     return null
   }
 
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     return value
   }
 
-  if (value === undefined || typeof value === "function" || typeof value === "symbol") {
+  if (
+    value === undefined ||
+    typeof value === "function" ||
+    typeof value === "symbol"
+  ) {
     return undefined
   }
 
@@ -99,7 +124,10 @@ export const serializeQueryKeyValue = (value: unknown): JsonValue | undefined =>
     return stringifyToJsonValue(value)
   }
 
-  if (typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams) {
+  if (
+    typeof URLSearchParams !== "undefined" &&
+    value instanceof URLSearchParams
+  ) {
     return serializeSearchParams(value)
   }
 

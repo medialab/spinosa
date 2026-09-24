@@ -13,7 +13,7 @@ import {
 } from "../../src/spinosa/bug-report"
 
 describe("collectRecentErrorLogs", () => {
-  test("keeps recent boot and TUI lines, skips debug.ndjson", async () => {
+  test("keeps recent boot and TUI lines, skips debug.tui.ndjson", async () => {
     await using tmp = await tmpdir()
     const logDir = path.join(tmp.path, "logs")
     await mkdir(logDir, { recursive: true })
@@ -32,14 +32,14 @@ describe("collectRecentErrorLogs", () => {
       ].join("\n") + "\n",
     )
     await writeFile(
-      path.join(logDir, "boot.ndjson"),
+      path.join(logDir, "boot.tui.ndjson"),
       [
         JSON.stringify({ ts: now - 500, pid: 1, tag: "cli.start", msg: "starting tui" }),
         JSON.stringify({ ts: now, tag: "process.uncaughtException", msg: "boom", level: "error" }),
       ].join("\n") + "\n",
     )
     await writeFile(
-      path.join(logDir, "debug.ndjson"),
+      path.join(logDir, "debug.tui.ndjson"),
       JSON.stringify({ ts: new Date(now).toISOString(), level: "error", msg: "debug dump must stay local" }) + "\n",
     )
 
@@ -67,7 +67,7 @@ describe("collectRecentErrorLogs", () => {
       }),
     )
     await writeFile(
-      path.join(logDir, "boot.ndjson"),
+      path.join(logDir, "boot.tui.ndjson"),
       [
         JSON.stringify({ ts: now - 700, pid: 48198, tag: "bootstrap.run.done", msg: "InstanceBootstrap.run completed" }),
         ...fetches,
@@ -133,7 +133,7 @@ describe("collectRecentErrorLogs", () => {
     const home = homedir()
     const worktree = path.join(home, "Documents", "spinosa-desktop-worktree", "node_modules", "@effect", "NodeHttpServer.js")
     await writeFile(
-      path.join(logDir, "boot.ndjson"),
+      path.join(logDir, "boot.tui.ndjson"),
       [
         JSON.stringify({
           ts: now - 3 * 60 * 60 * 1000,

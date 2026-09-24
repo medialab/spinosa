@@ -197,6 +197,53 @@ describe("createServerProjects", () => {
       dispose()
     })
   })
+
+  test("tracks recently opened projects independently of sidebar order", () => {
+    createRoot((dispose) => {
+      const [scope] = createSignal(ServerScope.local)
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const projects = createServerProjects({ scope, store, setStore })
+
+      projects.open("/a")
+      projects.open("/b")
+      projects.touch("/a")
+
+      expect(projects.recentlyOpened().map((project) => project.worktree)).toEqual(["/a", "/b"])
+      expect(projects.recentlyOpened()[0]?.openedAt).toBeGreaterThan(0)
+
+      projects.move("/a", 1)
+      expect(projects.list().map((project) => project.worktree)).toEqual(["/b", "/a"])
+      expect(projects.recentlyOpened().map((project) => project.worktree)).toEqual(["/a", "/b"])
+      dispose()
+    })
+  })
+
+  test("keeps recently opened history within its retention limit", () => {
+    createRoot((dispose) => {
+      const [scope] = createSignal(ServerScope.local)
+      const [store, setStore] = createStore({ projects: {}, lastProject: {}, recentlyClosed: {} })
+      const projects = createServerProjects({ scope, store, setStore })
+
+      for (let i = 1; i <= 20; i++) projects.open(`/p${i}`)
+      expect(projects.recentlyOpened()).toHaveLength(16)
+      expect(projects.recentlyOpened()[0]?.worktree).toBe("/p20")
+      expect(projects.recentlyOpened().at(-1)?.worktree).toBe("/p5")
+      dispose()
+    })
+  })
+
+  test("migrates canonical server recent opens into local scope", () => {
+    expect(
+      migrateCanonicalLocalServerState(
+        {
+          recentlyOpened: {
+            "https://opencode.example.com": [{ worktree: "/remote", openedAt: 10 }],
+          },
+        },
+        ServerConnection.Key.make("https://opencode.example.com"),
+      ),
+    ).toEqual({ recentlyOpened: { local: [{ worktree: "/remote", openedAt: 10 }] } })
+  })
 })
 
 describe("migrateCanonicalLocalServerState", () => {

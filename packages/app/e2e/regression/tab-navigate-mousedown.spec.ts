@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test"
+import { expect, test, type Page, type Route } from "../utils/diagnostic-test"
 import { base64Encode } from "@spinosa/kernel-core/util/encode"
 import { currentSession } from "../utils/mock-server"
 
@@ -93,6 +93,8 @@ async function mockServer(page: Page) {
       return sse(route)
     if (url.pathname === "/global/health") return json(route, { healthy: true })
     if (url.pathname === "/api/session") return json(route, { data: sessions.map(currentSession), cursor: {} })
+    if (url.pathname === "/session") return json(route, sessions)
+    if (url.pathname === "/session/status") return json(route, {})
     if (url.pathname === "/api/session/active") return json(route, { data: {} })
     const currentSessionInfo = sessions.find((item) => url.pathname === `/api/session/${item.id}`)
     if (currentSessionInfo) return json(route, { data: currentSession(currentSessionInfo) })

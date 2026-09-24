@@ -6,7 +6,7 @@ import { Icon } from "@spinosa/ui/v2/icon"
 import { KeybindV2 } from "@spinosa/ui/v2/keybind-v2"
 import { TooltipV2 } from "@spinosa/ui/v2/tooltip-v2"
 import type { ReferenceInfo } from "@spinosa/sdk/v2/client"
-import { createEffect, createMemo, on, Show } from "solid-js"
+import { createEffect, createMemo, on, onCleanup, Show } from "solid-js"
 import { ModelSelectorPopoverV2 } from "@/components/dialog-select-model"
 import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
 import type { PromptInputProps } from "@/components/prompt-input/contracts"
@@ -295,6 +295,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       trigger: item.name,
       title: item.name,
       description: item.description,
+      source: item.source,
       type: "custom" as const,
     })),
     ...command.options
@@ -304,6 +305,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
         trigger: item.slash!,
         title: item.title,
         description: item.description,
+        source: "command" as const,
         type: "builtin" as const,
       })),
   ])
@@ -316,6 +318,18 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       title: item.title,
       description: item.description,
       keybind: command.keybindParts(item.id),
+      section:
+        item.source === "skill"
+          ? {
+              id: "skills",
+              label: language.t("dialog.skills.title"),
+              tag: language.t("prompt.suggestions.skillTag"),
+            }
+          : {
+              id: "commands",
+              label: language.t("prompt.suggestions.commands"),
+              tag: language.t("prompt.suggestions.commandTag"),
+            },
     })),
   )
   const variants = createMemo(() => ["default", ...props.controls.model.selection.variant.list()])
@@ -409,6 +423,8 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     },
   })
   Object.defineProperty(controller, "model", { get: () => props.controls.model })
+  const unregisterSubmitter = prompt.registerSubmitter(() => controller.submit())
+  onCleanup(unregisterSubmitter)
 
   command.register("prompt-input", () => [
     {

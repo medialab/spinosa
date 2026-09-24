@@ -81,6 +81,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
     const tabs = useTabs()
     const settings = useSettings()
     const cache = new Map<string, PromptCacheEntry>()
+    let submitter: (() => void) | undefined
 
     const disposeAll = () => {
       for (const entry of cache.values()) entry.dispose()
@@ -150,6 +151,13 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       current: withSuspense(() => session().current()),
       cursor: withSuspense(() => session().cursor()),
       dirty: withSuspense(() => session().dirty()),
+      submit: () => submitter?.(),
+      registerSubmitter: (next: () => void) => {
+        submitter = next
+        return () => {
+          if (submitter === next) submitter = undefined
+        }
+      },
       model: {
         current: withSuspense(() => session().model.current()),
         set: (model: PromptModel | undefined) => session().model.set(model),

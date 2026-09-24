@@ -710,14 +710,18 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         const result = await legacy(value?.location).command.list({
           directory: directory(value?.location),
         })
-        const data = (result.data ?? []).map((command) => ({
-          name: command.name,
-          template: command.template,
-          description: command.description,
-          agent: command.agent,
-          model: command.model as unknown as CommandListOutput["data"][number]["model"],
-          subtask: command.subtask,
-        }))
+        const data = (result.data ?? []).map((command) => {
+          const source = (command as typeof command & { source?: "command" | "mcp" | "skill" }).source
+          return {
+            name: command.name,
+            template: command.template,
+            description: command.description,
+            agent: command.agent,
+            model: command.model as unknown as CommandListOutput["data"][number]["model"],
+            subtask: command.subtask,
+            ...(source ? { source } : {}),
+          }
+        })
         return located(data, value?.location)
       },
     },
@@ -1237,7 +1241,7 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
             key: value.key,
             label: value.label,
             ...at(value?.location),
-          })
+          }, { throwOnError: true })
           await root(value.location).auth.set({
             providerID: value.integrationID,
             auth: { type: "api", key: value.key },
@@ -1321,14 +1325,18 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
         // legacy type claims ModelRef but the runtime contract (loadCommands)
         // splits a string, matching the V1 shape.
         const result = await root(value?.location).command.list(flat(value?.location))
-        const data = (result.data ?? []).map((command) => ({
-          name: command.name,
-          template: command.template,
-          description: command.description,
-          agent: command.agent,
-          model: command.model as unknown as CommandListOutput["data"][number]["model"],
-          subtask: command.subtask,
-        }))
+        const data = (result.data ?? []).map((command) => {
+          const source = (command as typeof command & { source?: "command" | "mcp" | "skill" }).source
+          return {
+            name: command.name,
+            template: command.template,
+            description: command.description,
+            agent: command.agent,
+            model: command.model as unknown as CommandListOutput["data"][number]["model"],
+            subtask: command.subtask,
+            ...(source ? { source } : {}),
+          }
+        })
         return located(data, value?.location)
       },
     }),

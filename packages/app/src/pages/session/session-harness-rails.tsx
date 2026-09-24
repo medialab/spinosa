@@ -96,19 +96,15 @@ export function SessionToolsRail(props: { messages: Accessor<Message[]> }) {
 
 // Right column of the conversation: subagent runs plus the run metadata a
 // user cannot replicate by hand, mirroring the TUI subagent footer.
-export function SessionSubagentsRail(props: {
-  messages: Accessor<Message[]>
-  sessionID: Accessor<string | undefined>
-}) {
-  const language = useLanguage()
+function useHarnessSummary(messages: Accessor<Message[]>, sessionID: Accessor<string | undefined>) {
   const local = useLocal()
   const sdk = useSDK()
   const navigate = useNavigate()
   const params = useParams<{ serverKey?: string }>()
-  const toolParts = useAssistantToolParts(props.messages)
+  const toolParts = useAssistantToolParts(messages)
 
   const runs = createMemo<SubagentRun[]>(() => {
-    const sessionID = props.sessionID()
+    const current = sessionID()
     const list: SubagentRun[] = []
     for (const part of toolParts()) {
       if (part.tool !== "task") continue
@@ -120,7 +116,7 @@ export function SessionSubagentsRail(props: {
         id: part.callID,
         description,
         status: part.state.status,
-        childID: typeof child === "string" && child !== sessionID ? child : undefined,
+        childID: typeof child === "string" && child !== current ? child : undefined,
       })
     }
     return list
@@ -128,11 +124,7 @@ export function SessionSubagentsRail(props: {
 
   const agent = () => local.agent.current()?.name
   const model = () => local.model.current()
-  const userTurns = createMemo(() => props.messages().filter((message) => message.role === "user").length)
-
-  // No placeholder rails: without subagent runs the whole column (including
-  // the system summary) stays hidden instead of occupying space.
-  if (runs().length === 0) return null
+  const userTurns = createMemo(() => messages().filter((message) => message.role === "user").length)
 
   function openSubagent(childID: string) {
     if (params.serverKey) {
@@ -141,6 +133,21 @@ export function SessionSubagentsRail(props: {
     }
     navigate(legacySessionHref(sdk().directory, childID))
   }
+
+  return { runs, agent, model, userTurns, toolCount: () => toolParts().length, openSubagent }
+}
+
+export function SessionSubagentsRail(props: {
+  messages: Accessor<Message[]>
+  sessionID: Accessor<string | undefined>
+}) {
+  const language = useLanguage()
+  const summary = useHarnessSummary(props.messages, props.sessionID)
+  const runs = summary.runs
+
+  // No placeholder rails: without subagent runs the whole column (including
+  // the system summary) stays hidden instead of occupying space.
+  if (runs().length === 0) return null
 
   return (
     <aside
@@ -154,7 +161,7 @@ export function SessionSubagentsRail(props: {
                 type="button"
                 disabled={!run.childID}
                 class="flex min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-1 text-left transition-colors hover:bg-surface-base-hover disabled:cursor-default disabled:hover:bg-transparent"
-                onClick={() => run.childID && openSubagent(run.childID)}
+                onClick={() => run.childID && summary.openSubagent(run.childID)}
                 title={language.t(`session.harness.status.${run.status}`)}
               >
                 <span class={`size-2 shrink-0 rounded-full ${statusDot(run.status)}`} />
@@ -166,7 +173,7 @@ export function SessionSubagentsRail(props: {
           </For>
       </RailSection>
       <RailSection title={language.t("session.harness.system")}>
-        <Show when={agent()}>
+        <Show when={summary.agent()}>
           {(name) => (
             <div class="flex min-w-0 items-center gap-2 px-1.5 py-1">
               <span class="shrink-0 text-12-regular text-text-weak">{language.t("session.harness.agent")}</span>
@@ -176,7 +183,7 @@ export function SessionSubagentsRail(props: {
             </div>
           )}
         </Show>
-        <Show when={model()}>
+        <Show when={summary.model()}>
           {(current) => (
             <div class="flex min-w-0 items-center gap-2 px-1.5 py-1">
               <span class="shrink-0 text-12-regular text-text-weak">{language.t("session.harness.model")}</span>
@@ -187,11 +194,63 @@ export function SessionSubagentsRail(props: {
           )}
         </Show>
         <div class="flex min-w-0 items-center gap-2 px-1.5 py-1">
-          <span class="shrink-0 text-12-regular text-text-weak">×{userTurns()}</span>
+          <span class="shrink-0 text-12-regular text-text-weak">×{summary.userTurns()}</span>
           <span class="shrink-0 text-12-regular text-text-weak">·</span>
-          <span class="shrink-0 text-12-regular text-text-weak">×{toolParts().length}</span>
+          <span class="shrink-0 text-12-regular text-text-weak">×{summary.toolCount()}</span>
         </div>
       </RailSection>
     </aside>
+  )
+}
+
+// Horizontal footer variant of the same stats, shown inside sub-agent
+// sessions instead of the side rails (which stay hidden at parent level).
+export function SessionSubagentsFooter(props: {
+  messages: Accessor<Message[]>
+  sessionID: Accessor<string | undefined>
+}) {
+  const language = useLanguage()
+  const summary = useHarnessSummary(props.messages, props.sessionID)
+
+  if (summary.runs().length === 0) return null
+
+  return (
+    <footer
+      data-component="session-harness-footer"
+      class="flex shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap px-3 py-1.5 text-12-regular text-text-weak"
+    >
+      <span class="shrink-0 uppercase">{language.t("session.harness.subagents")}</span>
+      <For each={summary.runs()}>
+        {(run) => (
+          <button
+            type="button"
+            disabled={!run.childID}
+            class="flex shrink-0 items-center gap-1.5 transition-colors hover:text-text-base disabled:cursor-default disabled:hover:text-text-weak"
+            onClick={() => run.childID && summary.openSubagent(run.childID)}
+            title={language.t(`session.harness.status.${run.status}`)}
+          >
+            <span class={`size-2 shrink-0 rounded-full ${statusDot(run.status)}`} />
+            <span class="max-w-48 overflow-hidden text-ellipsis">{run.description}</span>
+          </button>
+        )}
+      </For>
+      <Show when={summary.agent()}>
+        {(name) => (
+          <span class="shrink-0">
+            {language.t("session.harness.agent")}: {name()}
+          </span>
+        )}
+      </Show>
+      <Show when={summary.model()}>
+        {(current) => (
+          <span class="shrink-0">
+            {language.t("session.harness.model")}: {current().provider.id}/{current().id}
+          </span>
+        )}
+      </Show>
+      <span class="shrink-0">
+        ×{summary.userTurns()} · ×{summary.toolCount()}
+      </span>
+    </footer>
   )
 }

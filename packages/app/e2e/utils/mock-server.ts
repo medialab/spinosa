@@ -12,6 +12,7 @@ export interface MockServerConfig {
   directory: string
   project: unknown
   sessions: ({ id: string } & Record<string, unknown>)[]
+  registeredWorkspaces?: unknown[]
   pageMessages: (sessionId: string, limit: number, before?: string) => { items: unknown[]; cursor?: string }
   vcsDiff?: unknown[]
   messageDelay?: number
@@ -120,6 +121,8 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
         },
         data: [],
       })
+    if (path === "/global/spinosa/workspaces" || path === "/api/global/spinosa/workspaces")
+      return json(route, config.registeredWorkspaces ?? [])
     if (path === "/api/agent")
       return json(route, {
         location: location(config),

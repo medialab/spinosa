@@ -3,6 +3,7 @@ import path from "node:path"
 import { productLogDir, sanitizeLogText, sanitizeLogValue } from "./sanitize-log"
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024
+const MAX_ERROR_TEXT = 12_000
 let processHandlersInstalled = false
 
 function logDir(): string {
@@ -10,7 +11,7 @@ function logDir(): string {
 }
 
 function bootLogPath(): string {
-  return path.join(logDir(), "boot.ndjson")
+  return path.join(logDir(), "boot.tui.ndjson")
 }
 
 function ensureDir(dir: string): void {
@@ -76,10 +77,34 @@ export function bootLog(tag: string, message: string, extra?: Record<string, unk
   }
 }
 
+function serializeError(error: unknown, depth = 0, seen = new Set<unknown>()): Record<string, unknown> {
+  if (!(error instanceof Error)) return { message: String(error) }
+  if (seen.has(error)) return { message: "[Circular]" }
+  seen.add(error)
+  const result: Record<string, unknown> = { name: error.name, message: error.message.slice(0, MAX_ERROR_TEXT) }
+  if (error.stack) result.stack = error.stack.slice(0, MAX_ERROR_TEXT)
+  if (depth < 8 && error.cause !== undefined) result.cause = serializeError(error.cause, depth + 1, seen)
+  return result
+}
+
+function formatErrorChain(error: unknown, depth = 0, seen = new Set<unknown>()): string {
+  if (depth > 8) return "[error chain truncated]"
+  if (!(error instanceof Error)) return String(error)
+  if (seen.has(error)) return "[Circular]"
+  seen.add(error)
+  const lines = [`${error.name}: ${error.message}`]
+  if (error.stack) lines.push(error.stack)
+  if (error.cause !== undefined) lines.push(`Caused by:\n${formatErrorChain(error.cause, depth + 1, seen)}`)
+  return lines.join("\n").slice(0, MAX_ERROR_TEXT)
+}
+
 export function bootLogError(tag: string, error: unknown): void {
-  const msg = error instanceof Error ? error.message : String(error)
-  const stack = error instanceof Error ? error.stack : undefined
-  bootLog(tag, msg, { level: "error", ...(stack ? { stack } : {}) })
+  const normalized = error instanceof Error ? error : new Error(String(error))
+  bootLog(tag, normalized.message, {
+    level: "error",
+    ...serializeError(error),
+    errorChain: formatErrorChain(error),
+  })
 }
 
 /** Parent-process crash trail. The TUI worker installs its own handlers. */

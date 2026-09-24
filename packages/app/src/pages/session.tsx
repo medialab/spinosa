@@ -82,7 +82,7 @@ import {
   sessionPanelWidthMax,
 } from "@/pages/session/session-panel-width"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
-import { SessionSubagentsRail, SessionToolsRail } from "@/pages/session/session-harness-rails"
+import { SessionSubagentsFooter } from "@/pages/session/session-harness-rails"
 import { sessionPanelLayout } from "@/pages/session/session-panel-layout"
 import { SessionReviewEmptyChangesV2 } from "@spinosa/session-ui/v2/session-review-empty-changes-v2"
 import { SessionReviewEmptyNoGitV2 } from "@spinosa/session-ui/v2/session-review-empty-no-git-v2"
@@ -2101,9 +2101,6 @@ export default function Page() {
         {mobileTabs(true)}
       </Show>
       <div class="flex min-h-0 flex-1 gap-2">
-        <Show when={params.id}>
-          <SessionToolsRail messages={messages} />
-        </Show>
         <div class="flex min-w-0 flex-1 flex-col">
           <div class="flex-1 min-h-0 overflow-hidden">
             <Switch>
@@ -2283,8 +2280,8 @@ export default function Page() {
               )
             }}
           </Show>
-          <Show when={params.id}>
-            <SessionSubagentsRail messages={messages} sessionID={() => params.id} />
+          <Show when={params.id && !!info()?.parentID}>
+            <SessionSubagentsFooter messages={messages} sessionID={() => params.id} />
           </Show>
         </div>
       </div>

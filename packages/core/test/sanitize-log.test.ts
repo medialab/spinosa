@@ -6,23 +6,25 @@ import { sanitizeLogText, sanitizeLogValue } from "../src/observability/sanitize
 describe("sanitizeLogText", () => {
   test("keeps product log paths and strips user corpus paths", () => {
     const home = homedir()
-    const product = path.join(home, ".spinosa", "logs", "boot.ndjson")
+    const product = path.join(home, ".spinosa", "logs", "boot.tui.ndjson")
     const corpus = path.join(home, "Downloads", "ARCHIVE-GLOBAL-EL2MP", "notes.md")
     const text = sanitizeLogText(`boot ${product} scan ${corpus}`)
-    expect(text).toMatch(/~\/\.spinosa\/logs\/boot\.ndjson|\$SPINOSA_HOME\/logs\/boot\.ndjson/)
+    expect(text).toMatch(/~\/\.spinosa\/logs\/boot\.tui\.ndjson|\$SPINOSA_HOME\/logs\/boot\.tui\.ndjson/)
     expect(text).not.toContain("ARCHIVE-GLOBAL-EL2MP")
     expect(text).not.toContain(home)
     expect(text).toContain("$PATH.md")
   })
 
   test("redacts tokens, bearer secrets, and emails", () => {
-    const text = sanitizeLogText("token=private-value Bearer abcdefghijklmnop user@example.com sk-ant-abcdefghijk")
+    const text = sanitizeLogText("token=private-value Bearer abcdefghijklmnop Authorization: Bearer zyxwvu123456 user@example.com sk-ant-abcdefghijk")
     expect(text).toContain("token=[REDACTED]")
     expect(text).toContain("Bearer [REDACTED]")
+    expect(text).toContain("Authorization: Bearer [REDACTED]")
     expect(text).toContain("$EMAIL")
     expect(text).toContain("[REDACTED]")
     expect(text).not.toContain("private-value")
     expect(text).not.toContain("abcdefghijklmnop")
+    expect(text).not.toContain("zyxwvu123456")
     expect(text).not.toContain("user@example.com")
   })
 
@@ -56,6 +58,20 @@ describe("sanitizeLogValue", () => {
     expect(value.directory).toBe("$PATH")
     expect((value.nested as { password: string }).password).toBe("[REDACTED]")
     expect((value.nested as { ok: boolean }).ok).toBe(true)
+  })
+
+  test("redacts nested headers and prompt-like content", () => {
+    const value = sanitizeLogValue({
+      headers: { authorization: "Bearer secret", "set-cookie": "session=secret" },
+      prompt: "private prompt",
+      body: "source contents",
+      requestID: "req-1",
+    }, "") as Record<string, unknown>
+    expect((value.headers as Record<string, unknown>).authorization).toBe("[REDACTED]")
+    expect((value.headers as Record<string, unknown>)["set-cookie"]).toBe("[REDACTED]")
+    expect(value.prompt).toBe("[REDACTED]")
+    expect(value.body).toBe("[REDACTED]")
+    expect(value.requestID).toBe("req-1")
   })
 
   test("redacts worktree and projectName fields", () => {

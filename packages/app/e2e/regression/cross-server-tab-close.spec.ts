@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test"
+import { expect, test, type Page, type Route } from "../utils/diagnostic-test"
 import { base64Encode } from "@spinosa/kernel-core/util/encode"
 import { currentSession } from "../utils/mock-server"
 

@@ -28,7 +28,7 @@ import { getFilename } from "@spinosa/kernel-core/util/path"
 import { retry } from "@spinosa/kernel-core/util/retry"
 import { batch } from "solid-js"
 import { produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
-import type { State, VcsCache } from "./types"
+import type { State, SyncedCommandInfo, VcsCache } from "./types"
 import type { ServerSession } from "../server-session"
 import {
   cmp,
@@ -145,6 +145,7 @@ export async function bootstrapGlobal(input: {
   serverSDK: OpencodeClient
   serverAPI: CatalogApi & { readonly project: ProjectApi }
   protocol?: Promise<ServerProtocol>
+  hasAmbientDirectory: boolean
   scope: ServerScope
   requestFailedTitle: string
   translate: (key: string, vars?: Record<string, string | number>) => string
@@ -152,18 +153,22 @@ export async function bootstrapGlobal(input: {
   setGlobalStore: SetStoreFunction<GlobalStore>
   queryClient: QueryClient
 }) {
-  const slow = [
+  const slow: Array<() => Promise<unknown>> = [
     () => input.queryClient.fetchQuery(loadGlobalConfigQuery(input.scope, input.serverSDK, input.protocol)),
-    () =>
-      input.queryClient.fetchQuery(
-        loadProvidersQuery(input.scope, null, input.serverAPI, input.serverSDK, input.protocol),
-      ),
-    () => input.queryClient.fetchQuery(loadPathQuery(input.scope, null, input.serverSDK, input.protocol)),
-    () =>
-      input.queryClient
-        .fetchQuery(loadProjectsQuery(input.scope, input.serverAPI.project))
-        .then((data) => input.setGlobalStore("project", data)),
   ]
+  if (input.hasAmbientDirectory) {
+    slow.push(
+      () =>
+        input.queryClient.fetchQuery(
+          loadProvidersQuery(input.scope, null, input.serverAPI, input.serverSDK, input.protocol),
+        ),
+      () => input.queryClient.fetchQuery(loadPathQuery(input.scope, null, input.serverSDK, input.protocol)),
+      () =>
+        input.queryClient
+          .fetchQuery(loadProjectsQuery(input.scope, input.serverAPI.project))
+          .then((data) => input.setGlobalStore("project", data)),
+    )
+  }
   await runAll(slow)
   // showErrors({
   //   errors: errors(),
@@ -282,11 +287,12 @@ export const loadCommands = (
   api: CommandListApi,
   legacy?: OpencodeClient,
   protocol?: Promise<ServerProtocol>,
-): Promise<CommandInfo[]> =>
+): Promise<SyncedCommandInfo[]> =>
   retry(async () => {
     if ((await protocol) === "v1" && legacy) {
       return ((await legacy.command.list()).data ?? []).map((command) => {
         const [providerID, id] = command.model?.split("/") ?? []
+        const source = (command as typeof command & { source?: SyncedCommandInfo["source"] }).source
         return {
           name: command.name,
           template: command.template,
@@ -294,11 +300,11 @@ export const loadCommands = (
           agent: command.agent,
           model: providerID && id ? { providerID, id } : undefined,
           subtask: command.subtask,
-          // source: command.source === "skill" ? undefined : command.source,
-        }
+          ...(source ? { source } : {}),
+        } satisfies SyncedCommandInfo
       })
     }
-    return api.list({ location: { directory } }).then((result) => result.data)
+    return api.list({ location: { directory } }).then((result) => result.data as SyncedCommandInfo[])
   })
 
 export const loadPathQuery = (

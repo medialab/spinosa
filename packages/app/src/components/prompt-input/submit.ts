@@ -267,7 +267,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
 }
 
 type PromptSubmitInput = {
-  prompt: ReturnType<typeof usePrompt>
+  prompt: Omit<ReturnType<typeof usePrompt>, "submit" | "registerSubmitter">
   info: Accessor<{ id: string } | undefined>
   imageAttachments: Accessor<ImageAttachmentPart[]>
   commentCount: Accessor<number>

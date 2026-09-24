@@ -1,5 +1,5 @@
 import { base64Encode } from "@spinosa/kernel-core/util/encode"
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Page } from "../utils/diagnostic-test"
 import {
   assistantMessage,
   directory,

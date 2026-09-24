@@ -1,10 +1,17 @@
 import { MainLogger } from "electron-log"
 import log from "electron-log/main.js"
 import { app, crashReporter, netLog, shell } from "electron"
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { ZipWriter, BlobWriter, BlobReader } from "@zip.js/zip.js"
 import { dirname, join } from "node:path"
 import { homedir } from "node:os"
+import {
+  desktopServerLogRoots,
+  sanitizeDiagnosticExportData,
+  sanitizeDiagnosticExportValue,
+  sanitizeDiagnosticText,
+  sanitizeDiagnosticValue,
+} from "./diagnostics"
 
 const MAX_LOG_AGE_DAYS = 7
 const TAIL_LINES = 1000
@@ -25,7 +32,7 @@ export function initLogging() {
   log.transports.file.resolvePathFn = (_vars, message) =>
     join(
       run,
-      `${safeLogName(message?.scope ?? (message?.variables?.processType === "renderer" ? "renderer" : "main"))}.log`,
+      `${safeLogName(message?.scope ?? (message?.variables?.processType === "renderer" ? "renderer" : "main"))}.desktop.log`,
     )
   log.initialize({ preload: false, spyRendererConsole: true })
   initConsoleTransport()
@@ -43,7 +50,7 @@ export function initCrashReporter() {
 
 export async function startNetLog() {
   if (netLog.currentlyLogging) return
-  netLogPath = join(run, "network.netlog")
+  netLogPath = join(run, "network.desktop.netlog")
   await netLog.startLogging(netLogPath, { captureMode: "default", maxFileSize: NET_LOG_SIZE })
   write("network", "net log started", { path: netLogPath })
 }
@@ -54,11 +61,11 @@ export async function exportDebugLogs() {
     await netLog.stopLogging().catch((error) => write("network", "failed to stop net log", { error }))
   }
 
-  const output = join(app.getPath("downloads"), `opencode-debug-${stamp()}.zip`)
+  const output = join(app.getPath("downloads"), `spinosa-debug-${stamp()}.zip`)
   try {
     write("main", "exporting debug logs", { output })
     await writeZip(output, [
-      { name: "manifest.json", data: Buffer.from(JSON.stringify(manifest(), null, 2)) },
+      { name: "manifest.json", data: Buffer.from(JSON.stringify(sanitizeDiagnosticExportValue(manifest()), null, 2)) },
       ...collect(root, "desktop"),
       ...serverLogRoots().flatMap((dir, i) => collect(dir, `server-${i + 1}`)),
       ...collect(app.getPath("crashDumps"), "crashpad"),
@@ -76,15 +83,17 @@ export function write(
   name: string,
   message: string,
   extra?: Record<string, unknown>,
-  level: "info" | "warn" | "error" = "info",
+  level: "debug" | "info" | "warn" | "error" = "info",
 ) {
   if (!run) return
   const scoped = log.scope(safeLogName(name))
-  if (extra !== undefined) {
-    scoped[level](message, extra)
+  const safeMessage = sanitizeDiagnosticText(message)
+  const safeExtra = extra === undefined ? undefined : sanitizeDiagnosticValue(extra)
+  if (safeExtra !== undefined) {
+    scoped[level](safeMessage, safeExtra)
     return
   }
-  scoped[level](message)
+  scoped[level](safeMessage)
 }
 
 export function tail(): string {
@@ -150,8 +159,11 @@ function manifest() {
 }
 
 function serverLogRoots() {
-  const xdgData = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share")
-  return [...new Set([join(xdgData, "opencode", "log"), join(app.getPath("userData"), "opencode", "log")])]
+  return desktopServerLogRoots({
+    userDataPath: app.getPath("userData"),
+    xdgDataHome: process.env.XDG_DATA_HOME,
+    productHome: process.env.SPINOSA_HOME?.trim() || join(homedir(), ".spinosa"),
+  })
 }
 
 type Entry = { name: string; path?: string; data?: Buffer }
@@ -163,15 +175,18 @@ function collect(dir: string, prefix: string): Entry[] {
   const walk = (current: string) => {
     for (const entry of readdirSync(current)) {
       const file = join(current, entry)
-      const info = statSync(file)
+      const info = lstatSync(file)
+      if (info.isSymbolicLink()) continue
       if (info.isDirectory()) {
         walk(file)
         continue
       }
+
       if (info.mtimeMs < cutoff) continue
       if (info.size > MAX_EXPORT_FILE_SIZE) continue
       if (file.endsWith(".heapsnapshot")) continue
-      result.push({ name: join(prefix, file.slice(dir.length + 1)).replace(/\\/g, "/"), path: file })
+      const data = sanitizeDiagnosticExportData(file, readFileSync(file))
+      result.push({ name: join(prefix, file.slice(dir.length + 1)).replace(/\\/g, "/"), path: file, data })
     }
   }
   walk(dir)
@@ -181,7 +196,7 @@ function collect(dir: string, prefix: string): Entry[] {
 async function writeZip(output: string, entries: Entry[]) {
   const writer = new ZipWriter(new BlobWriter("application/zip"))
   for (const entry of entries) {
-    const data = entry.data ?? readFileSync(entry.path!)
+    const data = entry.data ?? sanitizeDiagnosticExportData(entry.path!, readFileSync(entry.path!))
     await writer.add(entry.name, new BlobReader(new Blob([new Uint8Array(data)])))
   }
   const zip = await writer.close()

@@ -112,6 +112,7 @@ const api: ElectronAPI = {
   setWindowFocus: () => ipcRenderer.invoke("set-window-focus"),
   showWindow: () => ipcRenderer.invoke("show-window"),
   relaunch: () => ipcRenderer.send("relaunch"),
+  quit: () => ipcRenderer.send("quit"),
   getZoomFactor: () => ipcRenderer.invoke("get-zoom-factor"),
   setZoomFactor: (factor) => ipcRenderer.invoke("set-zoom-factor", factor),
   getPinchZoomEnabled: () => ipcRenderer.invoke("get-pinch-zoom-enabled"),
@@ -132,6 +133,7 @@ const api: ElectronAPI = {
   exportDebugLogs: () => ipcRenderer.invoke("export-debug-logs"),
   setForceFocus: (enabled) => ipcRenderer.invoke("set-force-focus", enabled),
   recordFatalRendererError: (error) => ipcRenderer.invoke("record-fatal-renderer-error", error),
+  recordRendererDiagnostic: (diagnostic) => ipcRenderer.invoke("record-renderer-diagnostic", diagnostic),
   setNativeTranslations: (bundle) => ipcRenderer.invoke("set-native-translations", bundle),
 }
 

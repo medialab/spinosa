@@ -6,11 +6,13 @@ import { pathKey } from "@/utils/path-key"
 import { ServerScope } from "@/utils/server-scope"
 
 type StoredProject = { worktree: string; expanded: boolean }
+type StoredRecentlyOpenedProject = { worktree: string; openedAt: number }
 type StoredServer = string | ServerConnection.HttpBase | ServerConnection.Http
 type ServerProjectState = {
   projects: Record<string, StoredProject[]>
   lastProject: Record<string, string>
   recentlyClosed: Record<string, string[]>
+  recentlyOpened?: Record<string, StoredRecentlyOpenedProject[]>
 }
 const HEALTH_POLL_INTERVAL_MS = 10_000
 // The store retains more history than is displayed. Consumers filter recently closed entries
@@ -19,6 +21,7 @@ const HEALTH_POLL_INTERVAL_MS = 10_000
 // filtered out do not evict still-visible ones from the persisted store.
 const RECENTLY_CLOSED_HISTORY_LIMIT = 16
 export const RECENTLY_CLOSED_DISPLAY_LIMIT = 5
+export const RECENTLY_OPENED_HISTORY_LIMIT = 16
 
 export function normalizeServerUrl(input: string) {
   const trimmed = input.trim()
@@ -47,9 +50,16 @@ export function migrateCanonicalLocalServerState(value: unknown, canonicalLocalS
   if (!isRecord(value)) return value
   const projects = isRecord(value.projects) ? value.projects : undefined
   const lastProject = isRecord(value.lastProject) ? value.lastProject : undefined
+  const recentlyOpened = isRecord(value.recentlyOpened) ? value.recentlyOpened : undefined
   const previousProjects = projects?.[canonicalLocalServer]
   const previousLastProject = lastProject?.[canonicalLocalServer]
-  if (!Array.isArray(previousProjects) && typeof previousLastProject !== "string") return value
+  const previousRecentlyOpened = recentlyOpened?.[canonicalLocalServer]
+  if (
+    !Array.isArray(previousProjects) &&
+    typeof previousLastProject !== "string" &&
+    !Array.isArray(previousRecentlyOpened)
+  )
+    return value
 
   const next = { ...value }
   if (projects && Array.isArray(previousProjects)) {
@@ -73,6 +83,23 @@ export function migrateCanonicalLocalServerState(value: unknown, canonicalLocalS
     delete nextLastProject[canonicalLocalServer]
     next.lastProject = nextLastProject
   }
+  if (recentlyOpened && Array.isArray(previousRecentlyOpened)) {
+    const local = Array.isArray(recentlyOpened.local) ? recentlyOpened.local : []
+    const worktrees = new Set(
+      local.flatMap((project) =>
+        isRecord(project) && typeof project.worktree === "string" ? [pathKey(project.worktree)] : [],
+      ),
+    )
+    const migrated = previousRecentlyOpened.filter((project) => {
+      if (!isRecord(project) || typeof project.worktree !== "string") return true
+      const key = pathKey(project.worktree)
+      if (worktrees.has(key)) return false
+      worktrees.add(key)
+      return true
+    })
+    next.recentlyOpened = { ...recentlyOpened, local: [...local, ...migrated] }
+    delete (next.recentlyOpened as Record<string, unknown>)[canonicalLocalServer]
+  }
   return next
 }
 
@@ -84,6 +111,23 @@ export function createServerProjects<T extends ServerProjectState>(input: {
   const setStore = input.setStore as unknown as SetStoreFunction<ServerProjectState>
   const current = () => input.store.projects[input.scope()] ?? []
   const currentClosed = () => input.store.recentlyClosed?.[input.scope()] ?? []
+  const currentOpened = () => {
+    const opened =
+      input.store.recentlyOpened?.[input.scope()] ??
+      current()
+        .slice(0, RECENTLY_OPENED_HISTORY_LIMIT)
+        .map((project) => ({ worktree: project.worktree, openedAt: 0 }))
+    return opened.slice().sort((a, b) => b.openedAt - a.openedAt).slice(0, RECENTLY_OPENED_HISTORY_LIMIT)
+  }
+  const remember = (directory: string) => {
+    if (!input.store.recentlyOpened) setStore("recentlyOpened", {})
+    const key = pathKey(directory)
+    const opened = [
+      { worktree: directory, openedAt: Date.now() },
+      ...currentOpened().filter((project) => pathKey(project.worktree) !== key),
+    ].slice(0, RECENTLY_OPENED_HISTORY_LIMIT)
+    setStore("recentlyOpened", input.scope(), opened)
+  }
   const remove = (directory: string) => {
     setStore(
       "projects",
@@ -94,8 +138,10 @@ export function createServerProjects<T extends ServerProjectState>(input: {
   return {
     list: current,
     recentlyClosed: currentClosed,
+    recentlyOpened: currentOpened,
     remove,
     open(directory: string) {
+      remember(directory)
       const scope = input.scope()
       const key = pathKey(directory)
       const closed = currentClosed()
@@ -141,6 +187,7 @@ export function createServerProjects<T extends ServerProjectState>(input: {
     },
     touch(directory: string) {
       setStore("lastProject", input.scope(), directory)
+      remember(directory)
     },
   }
 }
@@ -270,6 +317,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         projects: {} as Record<string, StoredProject[]>,
         lastProject: {} as Record<string, string>,
         recentlyClosed: {} as Record<string, string[]>,
+        recentlyOpened: {} as Record<string, StoredRecentlyOpenedProject[]>,
       }),
     )
 

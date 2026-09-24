@@ -40,6 +40,7 @@ import { DialogFooter, DialogHeader, DialogTitleGroup, DialogV2 } from "@spinosa
 import { InlineInput } from "@spinosa/ui/inline-input"
 import { ButtonV2 } from "@spinosa/ui/v2/button-v2"
 import { SessionRetry } from "@spinosa/session-ui/session-retry"
+import { Markdown } from "@spinosa/session-ui/markdown"
 import { isScrollKeyTarget, scrollKey, scrollKeyOwner, ScrollView } from "@spinosa/ui/scroll-view"
 import { StickyAccordionHeader } from "@spinosa/ui/sticky-accordion-header"
 import { TextField } from "@spinosa/ui/text-field"
@@ -129,14 +130,55 @@ const markBoundaryGesture = (input: {
   }
 }
 
-function TimelineThinkingRow(props: { reasoningHeading?: string; showReasoningSummaries: boolean; showThinking: boolean }) {
+function TimelineThinkingRow(props: {
+  reasoningHeading?: string
+  reasoningText?: string
+  showReasoningSummaries: boolean
+  showThinking: boolean
+}) {
   const language = useLanguage()
+  const [open, setOpen] = createSignal(false)
+  const canOpen = () => !!props.reasoningText?.trim()
 
   return (
-    <div data-slot="session-turn-thinking">
-      <TextShimmer text={language.t("ui.sessionTurn.status.thinking")} />
-      <Show when={!props.showReasoningSummaries && props.showThinking}>
+    <div
+      data-slot="session-turn-thinking"
+      class="flex w-full min-w-0 flex-col items-stretch gap-1"
+    >
+      <Show
+        when={canOpen()}
+        fallback={<TextShimmer text={language.t("ui.sessionTurn.status.thinking")} />}
+      >
+        <button
+          type="button"
+          class="flex w-full items-center gap-1.5 text-left"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open()}
+          aria-label={open() ? language.t("common.collapse") : language.t("common.expand")}
+        >
+          <span
+            aria-hidden="true"
+            class="inline-block shrink-0 text-text-weak transition-transform"
+            classList={{ "rotate-90": open() }}
+          >
+            ▸
+          </span>
+          <span class="min-w-0 flex-1">
+            <TextShimmer text={language.t("ui.sessionTurn.status.thinking")} />
+          </span>
+        </button>
+      </Show>
+      <Show when={!props.showReasoningSummaries && props.showThinking && !open()}>
         <TextReveal text={props.reasoningHeading} class="session-turn-thinking-heading" travel={25} duration={700} />
+      </Show>
+      <Show when={open() && canOpen()}>
+        <div
+          class="min-w-0 self-stretch rounded-md bg-background-stronger py-1.5 pr-2.5"
+        >
+          <div data-slot="session-turn-thinking-content">
+            <Markdown text={props.reasoningText!} streaming />
+          </div>
+        </div>
       </Show>
     </div>
   )
@@ -1185,6 +1227,7 @@ export function MessageTimeline(props: {
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
               <TimelineThinkingRow
                 reasoningHeading={thinkingRow().reasoningHeading}
+                reasoningText={thinkingRow().reasoningText}
                 showReasoningSummaries={settings.general.showReasoningSummaries()}
                 showThinking={settings.general.showThinking()}
               />

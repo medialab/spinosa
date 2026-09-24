@@ -24,7 +24,7 @@ describe("Spinosa logging", () => {
 
       const tuiText = await Bun.file(path.join(process.env.SPINOSA_HOME, "logs", "tui.ndjson")).text()
       const coreText = await Bun.file(path.join(process.env.SPINOSA_HOME, "logs", "spinosa.log")).text()
-      const debugPath = path.join(process.env.SPINOSA_HOME, "logs", "debug.ndjson")
+      const debugPath = path.join(process.env.SPINOSA_HOME, "logs", "debug.tui.ndjson")
       const debugText = await Bun.file(debugPath).text()
       expect(tuiText).toContain('"$WORKSPACE"')
       expect(tuiText).not.toContain(workspace)

@@ -17,6 +17,8 @@ import { CHANNEL } from "./constants"
 import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
+import { formatDiagnosticErrorChain } from "./diagnostics"
+import { absoluteAppRelaunchArgs } from "./relaunch"
 import { createMenu } from "./menu"
 import {
   finishFirstLaunchOnboarding,
@@ -62,7 +64,6 @@ const APP_IDS: Record<string, string> = {
 const TEST_ONBOARDING = process.env.SPINOSA_TEST_ONBOARDING === "1"
 const jsCallStackFeature = "DocumentPolicyIncludeJSCallStacksInCrashReports"
 
-let logger: ReturnType<typeof initLogging>
 let server: SidecarListener | null = null
 
 const pendingDeepLinks: string[] = []
@@ -72,7 +73,7 @@ function useEnvProxy() {
     // Electron 41.2 runs Node 24.14.1; latest @types/node@24 is 24.12.2.
     ;(http as any).setGlobalProxyFromEnv()
   } catch (error) {
-    logger.warn("failed to load proxy environment", error)
+    writeLog("main", "failed to load proxy environment", { error }, "warn")
   }
 }
 
@@ -113,10 +114,13 @@ function ensureLoopbackNoProxy() {
 const main = Effect.gen(function* () {
   contextMenu({ showSaveImageAs: true, showLookUpSelection: false, showSearchWithGoogle: false })
 
-  // on macOS apps run in `/` which can cause issues with ripgrep
+  const cwdBeforeChdir = process.cwd()
+  let chdirError: unknown
   try {
     process.chdir(homedir())
-  } catch {}
+  } catch (error) {
+    chdirError = error
+  }
 
   process.env.SPINOSA_DISABLE_EMBEDDED_WEB_UI = "true"
 
@@ -144,21 +148,22 @@ const main = Effect.gen(function* () {
   )
   if (onboardingTestRoot) app.setPath("sessionData", join(onboardingTestRoot, "session"))
   initializeOldLayoutEligibility(app.getPath("userData"))
-  logger = initLogging()
+  initLogging()
+  if (chdirError) writeLog("main", "main working directory change failed", { cwdBeforeChdir, cwd: process.cwd(), error: chdirError }, "warn")
   initCrashReporter()
 
   const wslServers = createWslServersController(
     app.getVersion(),
     async (distro) => {
-      logger.log("spawning wsl sidecar", { distro })
+      writeLog("wsl", "spawning wsl sidecar", { distro })
       return spawnWslSidecar(distro, {
-        onLine: (line) => logger.log("wsl sidecar", { distro, stream: line.stream, text: line.text }),
+        onLine: (line) => writeLog("wsl", "wsl sidecar", { distro, stream: line.stream, text: line.text }),
       })
     },
     {
       logger: {
-        log: (message, meta) => logger.log(message, meta),
-        error: (message, meta) => logger.error(message, meta),
+        log: (message, meta) => writeLog("wsl", message, meta && typeof meta === "object" ? meta as Record<string, unknown> : { value: String(meta) }),
+        error: (message, meta) => writeLog("wsl", message, meta && typeof meta === "object" ? meta as Record<string, unknown> : { value: String(meta) }, "error"),
       },
     },
   )
@@ -169,20 +174,29 @@ const main = Effect.gen(function* () {
   const relaunch = () => {
     setAppQuitting()
     void stopSidecars().finally(() => {
-      app.relaunch()
+      app.relaunch({ args: absoluteAppRelaunchArgs(process.argv, app.getAppPath()) })
       app.quit()
     })
+  }
+  const quit = () => {
+    setAppQuitting()
+    void stopSidecars().finally(() => app.quit())
   }
 
   try {
     setDefaultCACertificates([...new Set([...getCACertificates("default"), ...getCACertificates("system")])])
   } catch (error) {
-    logger.warn("failed to load system certificates", error)
+    writeLog("main", "failed to load system certificates", { error }, "warn")
   }
 
-  logger.log("app starting", {
+  writeLog("main", "app starting", {
     version: app.getVersion(),
     packaged: app.isPackaged,
+    runtime: app.isPackaged ? "packaged" : "development",
+    cwdBeforeChdir,
+    cwd: process.cwd(),
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
     onboardingTest: Boolean(onboardingTestRoot),
   })
 
@@ -203,7 +217,7 @@ const main = Effect.gen(function* () {
   app.on("second-instance", (_event: Event, argv: string[]) => {
     const urls = argv.filter((arg: string) => arg.startsWith("spinosa://"))
     if (urls.length) {
-      logger.log("deep link received via second-instance", { urls })
+      writeLog("main", "deep link received via second-instance", { urls })
       emitDeepLinks(urls)
     }
     const win = getLastFocusedWindow()
@@ -215,7 +229,7 @@ const main = Effect.gen(function* () {
 
   app.on("open-url", (event: Event, url: string) => {
     event.preventDefault()
-    logger.log("deep link received via open-url", { url })
+    writeLog("main", "deep link received via open-url", { url })
     emitDeepLinks([url])
   })
 
@@ -257,15 +271,16 @@ const main = Effect.gen(function* () {
     Effect.tap((result) =>
       Effect.sync(() => {
         if (result.deleted.length === 0) return
-        logger.log("cleaned scoped store files", { count: result.deleted.length, scanned: result.scanned })
+        writeLog("main", "cleaned scoped store files", { count: result.deleted.length, scanned: result.scanned })
       }),
     ),
     Effect.catch((error) =>
       Effect.sync(() => {
-        logger.warn("failed to clean scoped store files", error)
+        writeLog("main", "failed to clean scoped store files", { error }, "warn")
       }),
     ),
   )
+
   app.setAsDefaultProtocolClient("spinosa")
   registerRendererProtocol()
   setDockIcon()
@@ -281,11 +296,12 @@ const main = Effect.gen(function* () {
   registerIpcHandlers({
     killSidecar: () => killSidecar(),
     relaunch,
+    quit,
     awaitInitialization: Effect.fnUntraced(
       function* () {
-        logger.log("awaiting server ready")
+        writeLog("main", "awaiting server ready")
         const res = yield* Deferred.await(serverReady)
-        logger.log("server ready", { url: res.url })
+        writeLog("main", "server ready", { url: res.url })
         return res
       },
       (e) => Effect.runPromise(e),
@@ -305,6 +321,10 @@ const main = Effect.gen(function* () {
     setBackgroundColor: (color) => setBackgroundColor(color),
     exportDebugLogs: () => exportDebugLogs(),
     recordFatalRendererError: (error) => writeLog("renderer", "fatal renderer error", { ...error }, "error"),
+    recordRendererDiagnostic: (diagnostic) => {
+      const { fields, ...metadata } = diagnostic
+      writeLog("renderer", diagnostic.event, { ...(fields ?? {}), ...metadata }, diagnostic.level)
+    },
     setNativeTranslations: (bundle) => {
       if (setNativeTranslations(bundle)) createMenu(menuDeps)
     },
@@ -317,14 +337,13 @@ const main = Effect.gen(function* () {
   yield* Effect.promise(() => startNetLog()).pipe(
     Effect.catch((error) =>
       Effect.sync(() => {
-        logger.warn("failed to start net log", error)
+        writeLog("network", "failed to start net log", { error }, "warn")
       }),
     ),
   )
 
   const loadingTask = yield* Effect.gen(function* () {
-    logger.log("spawning embedded spinosa sidecar")
-
+    writeLog("main", "spawning embedded spinosa sidecar")
     ensureLoopbackNoProxy()
     useEnvProxy()
 
@@ -355,13 +374,15 @@ const main = Effect.gen(function* () {
     const url = `http://${hostname}:${port}`
     const password = randomUUID()
 
-    logger.log("spawning sidecar", { url })
+    writeLog("main", "spawning sidecar", { url })
+
     const { listener, health } = yield* Effect.promise(() =>
       spawnLocalServer(hostname, port, password, {
         userDataPath: app.getPath("userData"),
         onStdout: (message) => writeLog("server", "stdout", { message }),
         onStderr: (message) => writeLog("server", "stderr", { message }, "warn"),
-        onExit: (code) => writeLog("utility", "sidecar exited", { code }, "warn"),
+        onExit: (code, signal) => writeLog("utility", "sidecar exited", { code, signal }, code === 0 ? "info" : "warn"),
+        onDiagnostic: (event, fields, level) => writeLog("server", event, fields, level),
       }),
     )
     server = listener
@@ -373,19 +394,19 @@ const main = Effect.gen(function* () {
     })
 
     if (process.platform === "win32") {
-      void wslServers.initialize().catch((error) => logger.error("wsl server initialization failed", error))
+      void wslServers.initialize().catch((error) => writeLog("wsl", "wsl server initialization failed", { error }, "error"))
     }
 
     yield* Effect.promise(() => health.wait).pipe(
       Effect.timeout("30 seconds"),
       Effect.catch((e) =>
         Effect.sync(() => {
-          logger.error("sidecar health check failed", e.toString())
+          writeLog("server", "sidecar health check failed", { error: e, detail: formatDiagnosticErrorChain(e) }, "error")
         }),
       ),
     )
 
-    logger.log("loading task finished")
+    writeLog("main", "loading task finished")
   }).pipe(forwardInitializationFailure(serverReady), Effect.forkChild)
 
   yield* Fiber.await(loadingTask)

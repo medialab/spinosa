@@ -21,7 +21,11 @@ import type {
   PromptInputV2Prompt,
   PromptInputV2Suggestion,
 } from "./types"
-import type { PromptInputV2Interaction, PromptInputV2SelectControl } from "./interaction"
+import {
+  groupPromptInputV2Suggestions,
+  type PromptInputV2Interaction,
+  type PromptInputV2SelectControl,
+} from "./interaction"
 import "./attachments.css"
 
 export type {
@@ -616,6 +620,8 @@ export function PromptInputV2Popover(props: {
   onActiveChange: (item: PromptInputV2Suggestion) => void
   onSelect: (item: PromptInputV2Suggestion) => void
 }) {
+  const groups = createMemo(() => groupPromptInputV2Suggestions(props.items))
+
   return (
     <div
       class="absolute inset-x-0 -top-2 z-40 flex max-h-80 -translate-y-full flex-col overflow-auto rounded-xl bg-v2-background-bg-base p-2 shadow-[var(--v2-elevation-raised)] no-scrollbar"
@@ -641,27 +647,46 @@ export function PromptInputV2Popover(props: {
         when={props.items.length > 0}
         fallback={<div class="px-2 py-1 text-v2-text-text-muted">{props.emptyLabel}</div>}
       >
-        <For each={props.items}>
-          {(item) => (
-            <button
-              type="button"
-              data-suggestion-id={item.id}
-              class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-start hover:bg-v2-overlay-simple-overlay-hover"
-              classList={{ "bg-v2-overlay-simple-overlay-hover": props.activeID === item.id }}
-              onPointerMove={() => props.onActiveChange(item)}
-              onClick={() => props.onSelect(item)}
-            >
-              <div class="flex min-w-0 flex-1 items-center gap-2">
-                <PromptInputV2SuggestionIcon item={item} />
-                <span class="shrink-0 text-v2-text-text-base">{item.label}</span>
-                <Show when={item.description}>
-                  <span class="min-w-0 truncate text-v2-text-text-muted">{item.description}</span>
-                </Show>
-              </div>
-              <Show when={item.keybind?.length}>
-                <span class="shrink-0 text-v2-text-text-muted">{item.keybind?.join("+")}</span>
+        <For each={groups()}>
+          {(group) => (
+            <>
+              <Show when={group.label}>
+                <div
+                  data-suggestion-section={group.id || undefined}
+                  class="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-v2-text-text-faint"
+                >
+                  {group.label}
+                </div>
               </Show>
-            </button>
+              <For each={group.items}>
+                {(item) => (
+                  <button
+                    type="button"
+                    data-suggestion-id={item.id}
+                    class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-start hover:bg-v2-overlay-simple-overlay-hover"
+                    classList={{ "bg-v2-overlay-simple-overlay-hover": props.activeID === item.id }}
+                    onPointerMove={() => props.onActiveChange(item)}
+                    onClick={() => props.onSelect(item)}
+                  >
+                    <div class="flex min-w-0 flex-1 items-center gap-2">
+                      <PromptInputV2SuggestionIcon item={item} />
+                      <span class="shrink-0 text-v2-text-text-base">{item.label}</span>
+                      <Show when={item.section?.tag}>
+                        <span class="shrink-0 rounded border border-v2-border-border-base px-1 text-[9px] leading-[14px] text-v2-text-text-muted">
+                          {item.section?.tag}
+                        </span>
+                      </Show>
+                      <Show when={item.description}>
+                        <span class="min-w-0 truncate text-v2-text-text-muted">{item.description}</span>
+                      </Show>
+                    </div>
+                    <Show when={item.keybind?.length}>
+                      <span class="shrink-0 text-v2-text-text-muted">{item.keybind?.join("+")}</span>
+                    </Show>
+                  </button>
+                )}
+              </For>
+            </>
           )}
         </For>
       </Show>

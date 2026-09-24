@@ -1,8 +1,11 @@
 import { useCommand, type CommandOption } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLocal, type ModelSelection } from "@/context/local"
+import { usePrompt } from "@/context/prompt"
+import { useSDK } from "@/context/sdk"
 import { useDialog } from "@spinosa/ui/context/dialog"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
+import { sdkResponseData } from "@/utils/sdk-response"
 import { useSessionLayout } from "./session-layout"
 import { createSessionOwnership } from "./session-ownership"
 
@@ -18,11 +21,38 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
   const dialog = useDialog()
   const language = useLanguage()
   const local = useLocal()
+  const prompt = usePrompt()
+  const sdk = useSDK()
   const { sessionKey } = useSessionLayout()
   const sessionOwnership = createSessionOwnership(sessionKey)
   const model = input.model ?? local.model
   const modelCommand = withCategory(language.t("command.category.model"))
   const agentCommand = withCategory(language.t("command.category.agent"))
+  const sessionCommand = withCategory(language.t("command.category.session"))
+
+  const runStartupBrief = async () => {
+    const owner = sessionOwnership.capture()
+    let brief: string | undefined
+    try {
+      const result = await sdk().client.file.read({ path: "startup-prompt.md" })
+      const data = sdkResponseData<{ type?: string; content?: string }>(result)
+      const content = data?.type === "text" ? data.content : undefined
+      if (content?.trim()) brief = content
+    } catch {
+      brief = undefined
+    }
+    owner.run(() => {
+      const text = brief ?? language.t("command.startup.fallback")
+      local.agent.set("build")
+      prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
+      queueMicrotask(() => {
+        if (!owner.current()) return
+        const editor = document.querySelector<HTMLElement>('[data-component="prompt-input"]')
+        editor?.focus()
+        prompt.submit()
+      })
+    })
+  }
 
   const chooseModel = async () => {
     const owner = sessionOwnership.capture()
@@ -107,6 +137,12 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
       keybind: "shift+mod+.",
       disabled: !local.agent.visible(),
       onSelect: () => local.agent.move(-1),
+    }),
+    sessionCommand({
+      id: "session.startup",
+      title: language.t("command.startup.title"),
+      slash: "startup",
+      onSelect: () => void runStartupBrief(),
     }),
   ])
 }

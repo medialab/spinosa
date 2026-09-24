@@ -12,6 +12,7 @@ import { disposeMiddleware } from "./routes/instance/httpapi/lifecycle"
 import { WebSocketTracker } from "./routes/instance/httpapi/websocket-tracker"
 import { PublicApi } from "./routes/instance/httpapi/public"
 import type { CorsOptions } from "@spinosa/server/cors"
+import { httpDiagnostic, logHttpFailure, logHttpFinish, logHttpStart } from "@/server/http-diagnostics"
 import { lazy } from "@/util/lazy"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
 
@@ -57,7 +58,19 @@ class ListenerServerService extends Context.Service<ListenerServerService, Liste
 export const Default = lazy(() => {
   const handler = HttpApiApp.webHandler().handler
   const app: ServerApp = {
-    fetch: (request: Request) => handler(request, HttpApiApp.context),
+    fetch: (request: Request) => {
+      const diagnostic = httpDiagnostic(request)
+      logHttpStart(diagnostic)
+      return Promise.resolve(handler(request, HttpApiApp.context))
+        .then((response) => {
+          logHttpFinish(diagnostic, response.status)
+          return response
+        })
+        .catch((cause) => {
+          logHttpFailure(diagnostic, cause)
+          throw cause
+        })
+    },
     request(input, init) {
       return app.fetch(input instanceof Request ? input : new Request(new URL(input, "http://localhost"), init))
     },

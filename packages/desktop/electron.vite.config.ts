@@ -1,9 +1,6 @@
 import { defineConfig } from "electron-vite"
 import appPlugin from "@spinosa/app/vite"
-import * as fs from "node:fs/promises"
 import { createRequire } from "node:module"
-
-const SPINOSA_SERVER_DIST = "../spinosa-kernel/dist/node"
 
 const channel = (() => {
   const raw = process.env.SPINOSA_CHANNEL
@@ -43,7 +40,7 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: { index: "src/main/index.ts", sidecar: "src/main/sidecar.ts" },
+        input: { index: "src/main/index.ts" },
         // Keep this identical to electron-vite's Node 20.11+ shim. Its regex insertion can
         // corrupt bundled TypeScript, while a Rollup banner places the shim safely.
         output: {
@@ -66,22 +63,6 @@ const require = __cjs_mod__.createRequire(import.meta.url);
           if (s === "@lydell/node-pty") return nodePtyPkg
         },
       },
-      {
-        name: "spinosa:virtual-server-module",
-        enforce: "pre",
-        resolveId(id) {
-          if (id === "virtual:spinosa-server") return this.resolve(`${SPINOSA_SERVER_DIST}/server-entry.js`)
-        },
-      },
-      {
-        name: "spinosa:copy-server-assets",
-        async writeBundle() {
-          for (const l of await fs.readdir(SPINOSA_SERVER_DIST)) {
-            if (!l.endsWith(".wasm")) continue
-            await fs.writeFile(`./out/main/chunks/${l}`, await fs.readFile(`${SPINOSA_SERVER_DIST}/${l}`))
-          }
-        },
-      },
     ],
   },
   preload: {
@@ -99,6 +80,11 @@ const require = __cjs_mod__.createRequire(import.meta.url);
     plugins: [appPlugin, sentry],
     publicDir: "../../../app/public",
     root: "src/renderer",
+    server: {
+      host: "127.0.0.1",
+      port: 53173,
+      strictPort: true,
+    },
     build: {
       sourcemap: true,
       rollupOptions: {

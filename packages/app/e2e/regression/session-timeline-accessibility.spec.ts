@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "../utils/diagnostic-test"
 import { assistantMessage, setupTimeline, shell, userMessage } from "../performance/timeline-stability/fixture"
 
 test("space activates a focused timeline button instead of scrolling", async ({ page }) => {

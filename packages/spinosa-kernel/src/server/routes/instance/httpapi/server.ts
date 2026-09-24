@@ -108,6 +108,7 @@ import { sessionLocationLayer } from "@spinosa/server/middleware/session-locatio
 import { PtyEnvironment } from "@spinosa/server/pty-environment"
 import { schemaErrorLayer as v2SchemaErrorLayer } from "@spinosa/server/middleware/schema-error"
 import { workspaceHandlers } from "./handlers/workspace"
+import { onboardingHandlers } from "./handlers/onboarding"
 import { instanceContextLayer } from "./middleware/instance-context"
 import { workspaceRoutingLayer } from "./middleware/workspace-routing"
 import { disposeMiddleware } from "./lifecycle"
@@ -174,6 +175,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     syncHandlers,
     tuiHandlers,
     workspaceHandlers,
+    onboardingHandlers,
   ]),
 )
 

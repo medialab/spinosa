@@ -6,7 +6,8 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
 import type { DesktopMenuAction } from "@spinosa/app/desktop-menu"
 import { parseDesktopNativeBundle, type DesktopNativeBundle } from "@spinosa/app/i18n/desktop-native"
 
-import type { FatalRendererError, ServerReadyData, TitlebarTheme } from "../preload/types"
+import type { FatalRendererError, RendererDiagnostic, ServerReadyData, TitlebarTheme } from "../preload/types"
+import { normalizeRendererDiagnostic } from "./diagnostics"
 import { runDesktopMenuAction } from "./desktop-menu-actions"
 import { setForceFocus } from "./debug"
 import { assertAttachmentBudget, createPickedFileAuthorizations } from "./attachment-picker"
@@ -35,6 +36,7 @@ const pickedFiles = createPickedFileAuthorizations()
 type Deps = {
   killSidecar: () => Promise<void> | void
   relaunch: () => void
+  quit: () => void
   awaitInitialization: () => Promise<ServerReadyData>
   consumeInitialDeepLinks: () => Promise<string[]> | string[]
   getDefaultServerUrl: () => Promise<string | null> | string | null
@@ -51,6 +53,7 @@ type Deps = {
   setBackgroundColor: (color: string) => void
   exportDebugLogs: () => Promise<string>
   recordFatalRendererError: (error: FatalRendererError) => Promise<void> | void
+  recordRendererDiagnostic: (diagnostic: RendererDiagnostic) => Promise<void> | void
   setNativeTranslations: (bundle: DesktopNativeBundle) => void
 }
 
@@ -102,6 +105,11 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("record-fatal-renderer-error", (_event: IpcMainInvokeEvent, error: FatalRendererError) =>
     deps.recordFatalRendererError(error),
   )
+  ipcMain.handle("record-renderer-diagnostic", (event: IpcMainInvokeEvent, value: unknown) => {
+    if (event.senderFrame !== event.sender.mainFrame) throw new Error("Invalid renderer diagnostic sender")
+    const diagnostic = normalizeRendererDiagnostic(value)
+    if (diagnostic) deps.recordRendererDiagnostic(diagnostic)
+  })
   ipcMain.handle("set-native-translations", (event: IpcMainInvokeEvent, value: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed() || win.webContents !== event.sender || event.senderFrame !== event.sender.mainFrame) {
@@ -273,6 +281,10 @@ export function registerIpcHandlers(deps: Deps) {
 
   ipcMain.on("relaunch", () => {
     deps.relaunch()
+  })
+
+  ipcMain.on("quit", () => {
+    deps.quit()
   })
 
   ipcMain.handle("get-zoom-factor", (event: IpcMainInvokeEvent) => event.sender.getZoomFactor())
