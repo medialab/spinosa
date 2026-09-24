@@ -10,6 +10,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Added
+
+- The `jev` tool screens grep hits. It scores which passages to read next.
+- Jev reads the TypeSafe key from the Spinosa auth store. Run `spinosa auth login --provider typesafe`.
+- The searcher screens grep hits with `jev`. It does not rank hits itself.
+
 ## [1.2.2-beta.2] — 2026-09-21
 
 ### Added

@@ -1,9 +1,27 @@
-import { createMemo, createSignal } from "solid-js"
+import { createMemo, createResource, createSignal } from "solid-js"
 import { useSDK } from "@/context/sdk"
-import { useServerSync } from "@/context/server-sync"
+import { useServerSDK } from "@/context/server-sdk"
 import { useSync } from "@/context/sync"
+import { useLanguage } from "@/context/language"
+import { pathKey } from "@/utils/path-key"
+import { showToast } from "@/utils/toast"
 
-const workspaceBarEnabled = import.meta.env.VITE_SPINOSA_CHANNEL !== "prod"
+type RegisteredWorkspace = {
+  path: string
+  projectName: string
+  presence: string
+}
+
+export function availableSpinosaWorkspaces(workspaces: readonly RegisteredWorkspace[] | undefined) {
+  const seen = new Set<string>()
+  return (workspaces ?? []).flatMap((workspace) => {
+    if (workspace.presence !== "present" && workspace.presence !== "legacy") return []
+    const key = pathKey(workspace.path)
+    if (!workspace.path || seen.has(key)) return []
+    seen.add(key)
+    return [{ path: workspace.path, name: workspace.projectName }]
+  })
+}
 
 export function resolveNewSessionWorktree(input: {
   enabled: boolean
@@ -22,36 +40,39 @@ export function normalizeNewSessionWorktree(value: string, directory: string, pr
   return value
 }
 
-export function resolveNewSessionBranch(input: {
-  worktree: string
-  local?: string
-  worktreeBranch: (worktree: string) => string | undefined
-}) {
-  if (input.worktree === "main" || input.worktree === "create") return input.local
-  return input.worktreeBranch(input.worktree) ?? input.local
-}
-
 export function createNewSessionWorkspaceController() {
   const sdk = useSDK()
   const sync = useSync()
-  const serverSync = useServerSync()
+  const serverSDK = useServerSDK()
+  const language = useLanguage()
   const [worktree, setWorktree] = createSignal<string>()
-  const visible = createMemo(() => workspaceBarEnabled && sync().project?.vcs === "git")
+  const [registered] = createResource(
+    () => serverSDK().client,
+    async (client) => {
+      try {
+        const result = await client.global.spinosa.workspaces.list()
+        return availableSpinosaWorkspaces(result.data)
+      } catch (error) {
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: error instanceof Error ? error.message : String(error),
+        })
+        return []
+      }
+    },
+    { initialValue: [] },
+  )
+  const projectRoot = createMemo(() => sync().project?.worktree ?? sdk().directory)
+  const workspaces = createMemo(() =>
+    (registered() ?? []).filter((workspace) => pathKey(workspace.path) !== pathKey(projectRoot())),
+  )
   const value = createMemo(() =>
     resolveNewSessionWorktree({
-      enabled: visible(),
+      enabled: true,
       selected: worktree(),
       directory: sdk().directory,
       projectWorktree: sync().project?.worktree,
-    }),
-  )
-  const projectRoot = createMemo(() => sync().project?.worktree ?? sdk().directory)
-  const localBranch = createMemo(() => serverSync().child(projectRoot())[0].vcs?.branch)
-  const branch = createMemo(() =>
-    resolveNewSessionBranch({
-      worktree: value(),
-      local: localBranch(),
-      worktreeBranch: (worktree) => serverSync().child(worktree)[0].vcs?.branch,
     }),
   )
 
@@ -64,12 +85,8 @@ export function createNewSessionWorkspaceController() {
     },
     project: {
       root: projectRoot,
-      workspaces: () => sync().project?.sandboxes ?? [],
+      workspaces,
       git: () => sync().project?.vcs === "git",
-    },
-    bar: {
-      visible,
-      branch,
     },
   }
 }

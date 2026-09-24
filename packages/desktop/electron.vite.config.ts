@@ -1,6 +1,7 @@
 import { defineConfig } from "electron-vite"
 import appPlugin from "@spinosa/app/vite"
 import { createRequire } from "node:module"
+import { fileURLToPath } from "node:url"
 
 const channel = (() => {
   const raw = process.env.SPINOSA_CHANNEL
@@ -84,6 +85,13 @@ const require = __cjs_mod__.createRequire(import.meta.url);
       host: "127.0.0.1",
       port: 53173,
       strictPort: true,
+      watch: {
+        // These workspace outputs sit outside the renderer root, so Vite does not ignore them automatically.
+        ignored: [
+          fileURLToPath(new URL("../app/dist", import.meta.url)),
+          fileURLToPath(new URL("./out", import.meta.url)),
+        ],
+      },
     },
     build: {
       sourcemap: true,

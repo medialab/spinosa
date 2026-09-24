@@ -165,6 +165,7 @@ export function createPromptInputV2Controller(input: {
     state.popover.type === "context"
       ? contextList.flat()
       : groupPromptInputV2Suggestions(commandList.flat()).flatMap((group) => group.items)
+  const loading = () => state.popover.type === "context" && contextList.loading()
 
   const execute = (command: PromptInputV2InteractionCommand) => {
     if (command.type === "draft.setText") {
@@ -321,6 +322,7 @@ export function createPromptInputV2Controller(input: {
     state,
     view: input.view,
     suggestions,
+    loading,
     dispatch,
     onKeyDown,
     value() {

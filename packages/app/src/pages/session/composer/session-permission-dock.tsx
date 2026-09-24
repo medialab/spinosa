@@ -11,6 +11,19 @@ export function SessionPermissionDock(props: {
   onDecide: (response: "once" | "always" | "reject") => void
 }) {
   const language = useLanguage()
+  const jev = () => {
+    if (props.request.permission !== "jev") return
+    const metadata = props.request.metadata ?? {}
+    return {
+      count: typeof metadata.count === "number" ? metadata.count : 0,
+      query: typeof metadata.query === "string" ? metadata.query : "",
+    }
+  }
+  const title = () => {
+    const context = jev()
+    if (context) return language.t("notification.permission.jev.title", { count: context.count })
+    return language.t("notification.permission.title")
+  }
 
   const toolDescription = () => {
     const key = `settings.permissions.tool.${props.request.permission}.description`
@@ -27,7 +40,7 @@ export function SessionPermissionDock(props: {
           <span data-slot="permission-icon">
             <Icon name="warning" size="normal" />
           </span>
-          <div data-slot="permission-header-title">{language.t("notification.permission.title")}</div>
+          <div data-slot="permission-header-title">{title()}</div>
         </div>
       }
       footer={
@@ -59,7 +72,22 @@ export function SessionPermissionDock(props: {
         </div>
       </Show>
 
-      <Show when={props.request.patterns.length > 0}>
+      <Show when={jev()}>
+        {(context) => (
+          <>
+            <Show when={context().query}>
+              <div data-slot="permission-row">
+                <span data-slot="permission-spacer" aria-hidden="true" />
+                <div data-slot="permission-hint">
+                  {language.t("notification.permission.jev.query", { query: context().query })}
+                </div>
+              </div>
+            </Show>
+          </>
+        )}
+      </Show>
+
+      <Show when={props.request.permission !== "jev" && props.request.patterns.length > 0}>
         <div data-slot="permission-row">
           <span data-slot="permission-spacer" aria-hidden="true" />
           <div data-slot="permission-patterns">

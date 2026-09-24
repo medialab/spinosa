@@ -21,6 +21,11 @@ const READ_ONLY: readonly ToolRule[] = [
   { tool: "write", resource: "agent_reports/*", effect: "allow" },
 ]
 
+const SEARCHER: readonly ToolRule[] = [
+  ...READ_ONLY,
+  { tool: "jev", resource: "*", effect: "ask" },
+]
+
 const WRITER: readonly ToolRule[] = [
   ...READ_ONLY,
   { tool: "spinosa_report", resource: "*", effect: "allow" },
@@ -33,7 +38,7 @@ export const AGENT_CONTRACTS: Record<string, AgentContract> = {
     capability: "evidence.retrieve",
     acceptedInputs: ["goal", "scope", "coverage", "artifact_paths"],
     outputs: ["evidence"],
-    defaultToolPolicy: READ_ONLY,
+    defaultToolPolicy: SEARCHER,
   },
   "spinosa-analyst": {
     id: "spinosa-analyst",

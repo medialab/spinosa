@@ -1,43 +1,28 @@
 import { describe, expect, test } from "bun:test"
-import {
-  normalizeNewSessionWorktree,
-  resolveNewSessionBranch,
-  resolveNewSessionWorktree,
-} from "./new-session-workspace-controller"
+import { availableSpinosaWorkspaces } from "./new-session-workspace-controller"
 
-describe("new session workspace selection", () => {
-  test("uses main when the workspace bar is unavailable", () => {
+describe("available Spinosa workspaces", () => {
+  test("uses registered metadata and excludes unavailable paths", () => {
     expect(
-      resolveNewSessionWorktree({
-        enabled: false,
-        selected: "/project/feature",
-        directory: "/project/feature",
-        projectWorktree: "/project",
-      }),
-    ).toBe("main")
+      availableSpinosaWorkspaces([
+        { path: "/repo/spinosa-main", projectName: "Spinosa source", presence: "invalid" },
+        { path: "/work/alpha", projectName: "Alpha", presence: "present" },
+        { path: "/work/beta", projectName: "Beta workspace", presence: "legacy" },
+        { path: "/work/moved", projectName: "Moved", presence: "moved" },
+        { path: "/work/unknown", projectName: "Unknown", presence: "unknown" },
+      ]),
+    ).toEqual([
+      { path: "/work/alpha", name: "Alpha" },
+      { path: "/work/beta", name: "Beta workspace" },
+    ])
   })
 
-  test("derives an existing worktree from the current directory", () => {
+  test("deduplicates paths from global registry metadata", () => {
     expect(
-      resolveNewSessionWorktree({ enabled: true, directory: "/project/feature", projectWorktree: "/project" }),
-    ).toBe("/project/feature")
-    expect(resolveNewSessionWorktree({ enabled: true, directory: "/project", projectWorktree: "/project" })).toBe(
-      "main",
-    )
-  })
-
-  test("normalizes main to the project root outside the main worktree", () => {
-    expect(normalizeNewSessionWorktree("main", "/project/feature", "/project")).toBe("/project")
-    expect(normalizeNewSessionWorktree("main", "/project", "/project")).toBe("main")
-  })
-
-  test("falls back to the local branch for main, create, and unknown worktrees", () => {
-    const branch = (worktree: string) => (worktree === "/project/feature" ? "feature" : undefined)
-    expect(resolveNewSessionBranch({ worktree: "main", local: "dev", worktreeBranch: branch })).toBe("dev")
-    expect(resolveNewSessionBranch({ worktree: "create", local: "dev", worktreeBranch: branch })).toBe("dev")
-    expect(resolveNewSessionBranch({ worktree: "/project/feature", local: "dev", worktreeBranch: branch })).toBe(
-      "feature",
-    )
-    expect(resolveNewSessionBranch({ worktree: "/missing", local: "dev", worktreeBranch: branch })).toBe("dev")
+      availableSpinosaWorkspaces([
+        { path: "/work/alpha", projectName: "Alpha", presence: "present" },
+        { path: "/work/alpha/", projectName: "Duplicate", presence: "legacy" },
+      ]),
+    ).toEqual([{ path: "/work/alpha", name: "Alpha" }])
   })
 })

@@ -17,6 +17,7 @@ import {
   previewOnboarding,
   resolveOnboardingJobAction,
   repairOnboardingTools,
+  startAddFilesJob,
   startOnboardingJob,
 } from "../onboarding-service"
 
@@ -102,6 +103,25 @@ export const onboardingHandlers = HttpApiBuilder.group(InstanceHttpApi, "onboard
       })
     })
 
+    const addFiles = Effect.fn("OnboardingHttpApi.addFiles")(function* (ctx) {
+      const request = yield* HttpServerRequest.HttpServerRequest
+      const id = requestID(request)
+      const directory = ctx.query.directory
+      if (!directory) {
+        logRejected("addFiles", id, "missing routed workspace directory")
+        return yield* new HttpApiError.BadRequest({})
+      }
+      return yield* Effect.tryPromise({
+        try: () => startAddFilesJob(
+          ctx.payload,
+          directory,
+          createProviderVisionTranscriber(provider, bridge),
+          { requestID: id },
+        ),
+        catch: (cause) => mapRequestError("addFiles", id, cause),
+      })
+    })
+
     const job = Effect.fn("OnboardingHttpApi.job")(function* (ctx) {
       const result = getOnboardingJob(ctx.params.jobID, ctx.query.directory)
       if (!result) return yield* new HttpApiError.NotFound({})
@@ -141,6 +161,7 @@ export const onboardingHandlers = HttpApiBuilder.group(InstanceHttpApi, "onboard
       .handle("scan", scan)
       .handle("cancelScan", cancelScan)
       .handle("start", start)
+      .handle("addFiles", addFiles)
       .handle("active", active)
       .handle("job", job)
       .handle("action", action)

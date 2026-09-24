@@ -2783,6 +2783,27 @@ export type WorkspaceWarpError = {
   }
 }
 
+export type SpinosaWorkspaceTargetError = {
+  name: "SpinosaWorkspaceTargetError"
+  data: {
+    message: string
+  }
+}
+
+export type SpinosaWorkspaceOperationError = {
+  name: "SpinosaWorkspaceOperationError"
+  data: {
+    message: string
+  }
+}
+
+export type SpinosaFrameworkUnavailableError = {
+  name: "SpinosaFrameworkUnavailableError"
+  data: {
+    message: string
+  }
+}
+
 export type UnauthorizedError = {
   _tag: "UnauthorizedError"
   message: string
@@ -11951,6 +11972,197 @@ export type ExperimentalWorkspaceWarpResponses = {
 export type ExperimentalWorkspaceWarpResponse =
   ExperimentalWorkspaceWarpResponses[keyof ExperimentalWorkspaceWarpResponses]
 
+export type ExperimentalSpinosaWorkspaceStartupPromptData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/spinosa/workspace/startup-prompt"
+}
+
+export type ExperimentalSpinosaWorkspaceStartupPromptErrors = {
+  /**
+   * SpinosaWorkspaceTargetError | InvalidRequestError
+   */
+  400: SpinosaWorkspaceTargetError | InvalidRequestError
+  /**
+   * SpinosaWorkspaceOperationError
+   */
+  500: SpinosaWorkspaceOperationError
+}
+
+export type ExperimentalSpinosaWorkspaceStartupPromptError =
+  ExperimentalSpinosaWorkspaceStartupPromptErrors[keyof ExperimentalSpinosaWorkspaceStartupPromptErrors]
+
+export type ExperimentalSpinosaWorkspaceStartupPromptResponses = {
+  /**
+   * Canonical review-first workspace startup prompt
+   */
+  200: {
+    input: string
+    parts: Array<unknown>
+    autoSubmit: false
+    forceAgent: "build"
+  }
+}
+
+export type ExperimentalSpinosaWorkspaceStartupPromptResponse =
+  ExperimentalSpinosaWorkspaceStartupPromptResponses[keyof ExperimentalSpinosaWorkspaceStartupPromptResponses]
+
+export type ExperimentalSpinosaWorkspaceFreshnessData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/spinosa/workspace/freshness"
+}
+
+export type ExperimentalSpinosaWorkspaceFreshnessErrors = {
+  /**
+   * SpinosaWorkspaceTargetError | InvalidRequestError
+   */
+  400: SpinosaWorkspaceTargetError | InvalidRequestError
+  /**
+   * SpinosaWorkspaceOperationError
+   */
+  500: SpinosaWorkspaceOperationError
+  /**
+   * SpinosaFrameworkUnavailableError
+   */
+  503: SpinosaFrameworkUnavailableError
+}
+
+export type ExperimentalSpinosaWorkspaceFreshnessError =
+  ExperimentalSpinosaWorkspaceFreshnessErrors[keyof ExperimentalSpinosaWorkspaceFreshnessErrors]
+
+export type ExperimentalSpinosaWorkspaceFreshnessResponses = {
+  /**
+   * Workspace template-pack freshness
+   */
+  200: {
+    stale: boolean
+    refreshRecommended: boolean
+    versionBehind: boolean
+    versionAhead: boolean
+    protocolBehind: boolean
+    workspaceVersion?: string
+    bundledVersion?: string
+    stalePaths: Array<string>
+    missingPaths: Array<string>
+    message: string
+  }
+}
+
+export type ExperimentalSpinosaWorkspaceFreshnessResponse =
+  ExperimentalSpinosaWorkspaceFreshnessResponses[keyof ExperimentalSpinosaWorkspaceFreshnessResponses]
+
+export type ExperimentalSpinosaWorkspaceUpdateData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/spinosa/workspace/update"
+}
+
+export type ExperimentalSpinosaWorkspaceUpdateErrors = {
+  /**
+   * SpinosaWorkspaceTargetError | InvalidRequestError
+   */
+  400: SpinosaWorkspaceTargetError | InvalidRequestError
+  /**
+   * SpinosaWorkspaceOperationError
+   */
+  500: SpinosaWorkspaceOperationError
+  /**
+   * SpinosaFrameworkUnavailableError
+   */
+  503: SpinosaFrameworkUnavailableError
+}
+
+export type ExperimentalSpinosaWorkspaceUpdateError =
+  ExperimentalSpinosaWorkspaceUpdateErrors[keyof ExperimentalSpinosaWorkspaceUpdateErrors]
+
+export type ExperimentalSpinosaWorkspaceUpdateResponses = {
+  /**
+   * Workspace update and post-update freshness
+   */
+  200: {
+    before: {
+      stale: boolean
+      refreshRecommended: boolean
+      versionBehind: boolean
+      versionAhead: boolean
+      protocolBehind: boolean
+      workspaceVersion?: string
+      bundledVersion?: string
+      stalePaths: Array<string>
+      missingPaths: Array<string>
+      message: string
+    }
+    update: {
+      success: boolean
+      added:
+        | number
+        | "NaN"
+        | "Infinity"
+        | "-Infinity"
+        | "Infinity"
+        | "-Infinity"
+        | "NaN"
+      updated:
+        | number
+        | "NaN"
+        | "Infinity"
+        | "-Infinity"
+        | "Infinity"
+        | "-Infinity"
+        | "NaN"
+      removed:
+        | number
+        | "NaN"
+        | "Infinity"
+        | "-Infinity"
+        | "Infinity"
+        | "-Infinity"
+        | "NaN"
+      skipped:
+        | number
+        | "NaN"
+        | "Infinity"
+        | "-Infinity"
+        | "Infinity"
+        | "-Infinity"
+        | "NaN"
+      changes: boolean
+      presence?: string
+      error?: string
+    }
+    freshness: {
+      stale: boolean
+      refreshRecommended: boolean
+      versionBehind: boolean
+      versionAhead: boolean
+      protocolBehind: boolean
+      workspaceVersion?: string
+      bundledVersion?: string
+      stalePaths: Array<string>
+      missingPaths: Array<string>
+      message: string
+    }
+    restartRequired: boolean
+    restartMessage?: string
+  }
+}
+
+export type ExperimentalSpinosaWorkspaceUpdateResponse =
+  ExperimentalSpinosaWorkspaceUpdateResponses[keyof ExperimentalSpinosaWorkspaceUpdateResponses]
+
 export type OnboardingToolsGetData = {
   body?: never
   path?: never
@@ -12377,6 +12589,43 @@ export type OnboardingStartResponses = {
 
 export type OnboardingStartResponse =
   OnboardingStartResponses[keyof OnboardingStartResponses]
+
+export type OnboardingAddFilesData = {
+  body?: {
+    sourcePath: string
+    extensions: Array<string>
+    visionModelId: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/onboarding/jobs/add-files"
+}
+
+export type OnboardingAddFilesErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type OnboardingAddFilesError =
+  OnboardingAddFilesErrors[keyof OnboardingAddFilesErrors]
+
+export type OnboardingAddFilesResponses = {
+  /**
+   * Started workspace file import
+   */
+  200: {
+    id: string
+    workspacePath: string
+  }
+}
+
+export type OnboardingAddFilesResponse =
+  OnboardingAddFilesResponses[keyof OnboardingAddFilesResponses]
 
 export type OnboardingActiveGetData = {
   body?: never

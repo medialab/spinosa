@@ -229,6 +229,7 @@ async function renderFrame(component: () => JSX.Element, options: { width: numbe
 describe("TUI inline tool wrapping", () => {
   test("falls back for unknown tool names", () => {
     expect(toolDisplay("bash")).toBe("bash")
+    expect(toolDisplay("jev")).toBe("jev")
     expect(toolDisplay("plugin_tool")).toBe("generic")
   })
 
@@ -282,6 +283,20 @@ describe("TUI inline tool wrapping", () => {
       command: '"Session" in /repo/src',
     })
 
+
+    expect(
+      buildToolCalloutSummary(
+        "jev",
+        { query: "causes of reversal", passages: [{ path: "raw/a.md", text: "X" }, { path: "raw/b.md", text: "Y" }] },
+        {},
+        (value) => value ?? "",
+      ),
+    ).toEqual({
+      tag: "JEV",
+      command: "causes of reversal (2)",
+    })
+
+    expect(toolUsesBlockLayout("jev", {}, "READ  1.90  raw/a.md", false)).toBe(true)
 
     expect(
       buildToolCalloutSummary(

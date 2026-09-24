@@ -4,6 +4,7 @@ import { useServer } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { usePlatform } from "@/context/platform"
 import { sdkResponseData } from "@/utils/sdk-response"
+import { activeOnboardingJob } from "@/utils/active-onboarding-job"
 import type {
   OnboardingJobGetResponse,
   OnboardingPreviewResponse,
@@ -108,11 +109,11 @@ export function DialogSpinosaOnboarding(props: {
     const sdk = client()
     if (!resume || !sdk || jobID()) return
     let disposed = false
-    void sdk.onboarding.active.get({ directory: resume.sourcePath })
-      .then((result) => {
-        if (disposed || !result.data) return
-        setJobID(result.data.id)
-        setJob(result.data)
+    void activeOnboardingJob(() => sdk.onboarding.active.get({ directory: resume.sourcePath }))
+      .then((active) => {
+        if (disposed || !active) return
+        setJobID(active.id)
+        setJob(active)
         setStep("progress")
       })
       .catch((cause) => {

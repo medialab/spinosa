@@ -68,6 +68,12 @@ const StartPayload = Schema.Struct({
   preferredCli: Schema.String,
 })
 
+const AddFilesPayload = Schema.Struct({
+  sourcePath: Schema.String,
+  extensions: Schema.Array(Schema.String),
+  visionModelId: Schema.String,
+})
+
 const PreviewPayload = Schema.Struct({
   sourcePaths: Schema.Array(Schema.String),
   scanID: Schema.optional(Schema.String),
@@ -127,6 +133,7 @@ export const OnboardingPaths = {
   scan: `${root}/scans/:scanID`,
   cancelScan: `${root}/scans/:scanID/cancel`,
   jobs: `${root}/jobs`,
+  addFiles: `${root}/jobs/add-files`,
   active: `${root}/active`,
   job: `${root}/jobs/:jobID`,
   action: `${root}/jobs/:jobID/action`,
@@ -194,6 +201,16 @@ export const OnboardingApi = HttpApi.make("onboarding")
           identifier: "onboarding.start",
           summary: "Create and import a Spinosa workspace",
           description: "Run the shared core onboarding workflow as a cancellable background job.",
+        })),
+        HttpApiEndpoint.post("addFiles", OnboardingPaths.addFiles, {
+          query: WorkspaceRoutingQuery,
+          payload: AddFilesPayload,
+          success: described(Schema.Struct({ id: Schema.String, workspacePath: Schema.String }), "Started workspace file import"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(OpenApi.annotations({
+          identifier: "onboarding.addFiles",
+          summary: "Import files into an existing Spinosa workspace",
+          description: "Run the shared core import pipeline against an existing workspace without rerunning onboarding or changing setup status.",
         })),
         HttpApiEndpoint.get("active", OnboardingPaths.active, {
           query: WorkspaceRoutingQuery,

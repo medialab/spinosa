@@ -78,5 +78,5 @@ export function DialogMarkdownViewer(props: {
 }
 
 export function isMarkdownPath(path: string): boolean {
-  return /\.markdown?$/i.test(path.trim())
+  return /\.(?:md|markdown)$/i.test(path.trim())
 }

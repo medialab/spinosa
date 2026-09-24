@@ -30,6 +30,7 @@ import { createSessionOwnership } from "./session-ownership"
 import { useLocal } from "@/context/local"
 import { useProviders } from "@/hooks/use-providers"
 import { promptStash } from "@/utils/prompt-stash"
+import { unwrapEnvelope } from "@/utils/legacy-api"
 
 export type SessionCommandContext = {
   navigateMessageByOffset: (offset: number) => void
@@ -323,6 +324,25 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     void openDialog(
       () => import("@/components/dialog-select-mcp"),
       (x) => dialog.show(() => <x.DialogSelectMcp />),
+    )
+  }
+
+  const openSpinosaAddFiles = () => {
+    const workspacePath = sdk().directory
+    void openDialog(
+      () => import("@/components/dialog-spinosa-add-files"),
+      (x) =>
+        dialog.show(() => (
+          <x.DialogSpinosaAddFiles workspacePath={workspacePath} onComplete={() => void file.tree.refresh("")} />
+        )),
+    )
+  }
+
+  const openSpinosaWorkspaceUpdate = () => {
+    const workspacePath = sdk().directory
+    void openDialog(
+      () => import("@/components/dialog-spinosa-workspace-update"),
+      (x) => dialog.show(() => <x.DialogSpinosaWorkspaceUpdate workspacePath={workspacePath} />),
     )
   }
 
@@ -739,7 +759,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
           image: { mime: file.type || "image/png", data: btoa(binary) },
         })
         .then((response) => response.data)
-      setResult(data ?? "")
+      setResult(data?.text ?? "")
     } catch (err) {
       setError(err instanceof Error ? err.message : language.t("dialog.vision.failed"))
     } finally {
@@ -1182,7 +1202,11 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       setBusy(true)
       setError(null)
       try {
-        const data = await sdk().client.file.read({ path }).then((result) => result.data)
+        const directory = sdk().directory
+        const readPath = path.startsWith(`${directory}/`) ? path.slice(directory.length + 1) : path
+        const data = unwrapEnvelope(await sdk().client.file.read({ path: readPath, directory })) as
+          | { type: string; content: string }
+          | undefined
         if (!data || data.type !== "text") {
           setError(language.t("dialog.md.binary"))
           return
@@ -1197,7 +1221,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const openDroppedMarkdown = async (file: File) => {
-    if (!/\.markdown?$/i.test(file.name.trim())) return false
+    if (!/\.(?:md|markdown)$/i.test(file.name.trim())) return false
     try {
       const content = await file.text()
       openMarkdownViewer(file.name, content)
@@ -1223,7 +1247,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         : decoded.startsWith("/")
           ? decoded
           : `${sdk().directory}/${decoded}`
-      if (!/\.markdown?$/i.test(absolute.trim())) return false
+      if (!/\.(?:md|markdown)$/i.test(absolute.trim())) return false
       openMarkdownViewer(absolute)
       return true
     } catch {
@@ -1246,7 +1270,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         dialog.show(() => (
           <x.DialogSelectFile
             onOpenFile={(path) => {
-              if (/\.markdown?$/i.test(path.trim())) openMarkdownViewer(path)
+              if (/\.(?:md|markdown)$/i.test(path.trim())) openMarkdownViewer(path)
               else showToast({ variant: "error", title: language.t("toast.view.notMarkdown.title") })
             }}
           />
@@ -1459,6 +1483,13 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       onSelect: compact,
     }),
     sessionCommand({
+      id: "session.compact.alias",
+      title: language.t("command.session.compact"),
+      slash: "summarize",
+      disabled: !params.id,
+      onSelect: compact,
+    }),
+    sessionCommand({
       id: "session.fork",
       title: language.t("command.session.fork"),
       description: language.t("command.session.fork.description"),
@@ -1507,6 +1538,14 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const contextCmds = () => [
+    contextCommand({
+      id: "context.fileContext",
+      title: `${language.t("command.context.fileContext")} · ${language.t(
+        settings.general.fileContext() ? "debugBar.focus.on" : "debugBar.focus.off",
+      )}`,
+      description: language.t("command.context.fileContext.description"),
+      onSelect: () => settings.general.setFileContext(!settings.general.fileContext()),
+    }),
     contextCommand({
       id: "context.addSelection",
       title: language.t("command.context.addSelection"),
@@ -1640,6 +1679,13 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       disabled: !params.id,
       onSelect: () => settings.general.setShowThinking(!settings.general.showThinking()),
     }),
+    sessionCommand({
+      id: "session.thinking.alias",
+      title: language.t("command.session.thinking"),
+      slash: "toggle-thinking",
+      disabled: !params.id,
+      onSelect: () => settings.general.setShowThinking(!settings.general.showThinking()),
+    }),
   ]
 
   const sessionOpsCmds = () => [
@@ -1699,18 +1745,32 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       slash: "report",
       onSelect: openReport,
     }),
-    sessionCommand({
-      id: "dialog.sessions",
-      title: language.t("dialog.session.list.title"),
-      slash: "sessions",
-      onSelect: openSessions,
-    }),
+    ...(["session", "sessions"] as const).map((slash) =>
+      sessionCommand({
+        id: `dialog.${slash}`,
+        title: language.t("dialog.session.list.title"),
+        slash,
+        onSelect: openSessions,
+      }),
+    ),
     sessionCommand({
       id: "dialog.export",
       title: language.t("dialog.export.title"),
       slash: "export",
       disabled: !params.id,
       onSelect: openExportOptions,
+    }),
+    sessionCommand({
+      id: "dialog.spinosa.addFiles",
+      title: language.t("prompt.action.attachFile"),
+      slash: "add-files",
+      onSelect: openSpinosaAddFiles,
+    }),
+    sessionCommand({
+      id: "dialog.spinosa.updateWorkspace",
+      title: language.t("dialog.spinosaWorkspaceUpdate.title"),
+      slash: "update-workspace",
+      onSelect: openSpinosaWorkspaceUpdate,
     }),
     sessionCommand({
       id: "dialog.stash",

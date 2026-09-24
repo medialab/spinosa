@@ -23,7 +23,7 @@ import { createEffect, createMemo, createResource, createSignal, Show } from "so
 import { render } from "solid-js/web"
 import pkg from "../../package.json"
 import { t } from "./i18n"
-import { sendRendererDiagnostic } from "./diagnostics"
+import { isExpectedNoActiveOnboardingJobMiss, sendRendererDiagnostic } from "./diagnostics"
 import { initializationData } from "./initialization"
 import { DesktopFirstLaunchOnboarding } from "./onboarding"
 import { resetZoom, setPinchZoomEnabled, webviewZoom, zoomIn, zoomOut } from "./webview-zoom"
@@ -281,11 +281,11 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       const startedAt = Date.now()
       const method = request instanceof Request ? request.method : init?.method ?? "GET"
       const pathname = requestURL?.pathname ?? "$URL"
-      const record = (status: number, cause?: unknown) => {
+      const record = (status: number, cause?: unknown, expectedNotFound = false) => {
         if (status < 400 && method === "GET") return
         void writeDiagnostic({
           event: "http.request",
-          level: status >= 400 || cause ? "error" : "info",
+          level: (status >= 400 && !expectedNotFound) || cause ? "error" : "info",
           correlationID: requestID,
           rendererID,
           durationMs: Date.now() - startedAt,
@@ -294,7 +294,17 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       }
       try {
         const response = await fetch(request, request instanceof Request || requestURL ? undefined : init)
-        record(response.status)
+        const expectedNotFound =
+          response.status === 404 &&
+          method === "GET" &&
+          pathname === "/experimental/onboarding/active" &&
+          isExpectedNoActiveOnboardingJobMiss({
+            method,
+            path: pathname,
+            status: response.status,
+            body: await response.clone().json().catch(() => undefined),
+          })
+        record(response.status, undefined, expectedNotFound)
         return response
       } catch (cause) {
         record(500, cause)

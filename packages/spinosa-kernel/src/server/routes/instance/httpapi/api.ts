@@ -26,6 +26,7 @@ import { SyncApi } from "./groups/sync"
 import { TuiApi } from "./groups/tui"
 import { WorkspaceApi } from "./groups/workspace"
 import { OnboardingApi } from "./groups/onboarding"
+import { SpinosaWorkspaceGroup } from "./groups/spinosa-workspace"
 import { makeApi } from "@spinosa/protocol/api"
 import { LocationMiddleware } from "@spinosa/server/location"
 import { SessionLocationMiddleware } from "@spinosa/server/middleware/session-location"
@@ -75,6 +76,7 @@ export const InstanceHttpApi = HttpApi.make("spinosa-instance")
   .addHttpApi(SyncApi)
   .addHttpApi(TuiApi)
   .addHttpApi(WorkspaceApi)
+  .add(SpinosaWorkspaceGroup)
   .addHttpApi(OnboardingApi)
   .middleware(SchemaErrorMiddleware)
 

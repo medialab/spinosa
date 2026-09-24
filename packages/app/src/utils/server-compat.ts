@@ -318,6 +318,7 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         }
       },
       async shell(value: SessionShellInput & LegacyPrompt) {
+        if (!value.agent) throw new Error("An agent is required to run a shell command")
         await legacy().session.shell({
           sessionID: value.sessionID,
           command: value.command,
@@ -746,9 +747,10 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
         )
       },
       async add(value) {
+        if (!value.config) throw new Error("MCP server configuration is required")
         await legacy(value?.location).mcp.add({
           name: value.server,
-          config: value.config as { type: "local"; command: string[] } | { type: "remote"; url: string } | undefined,
+          config: value.config as { type: "local"; command: string[] } | { type: "remote"; url: string },
           directory: directory(value?.location),
         })
       },

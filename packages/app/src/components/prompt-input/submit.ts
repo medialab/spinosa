@@ -19,7 +19,7 @@ import { buildRequestParts } from "./build-request-parts"
 import { setCursorPosition } from "./editor-dom"
 import { formatServerError } from "@/utils/server-errors"
 import { ScopedKey } from "@/utils/server-scope"
-import { createPromptSubmissionState } from "./submission-state"
+import { createPromptSubmissionState, mergeSubmissionContext } from "./submission-state"
 import { normalizeSessionInfo } from "@/utils/session"
 import { Event } from "@spinosa/schema/event"
 import { blobDataUrl } from "@/utils/draft-store"
@@ -287,6 +287,7 @@ type PromptSubmitInput = {
   onQueue?: (draft: FollowupDraft) => void
   onAbort?: () => void
   onSubmit?: () => void
+  selectedFileContext?: () => ContextItem | undefined
   model?: ModelSelection
 }
 
@@ -390,16 +391,19 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     event.preventDefault()
 
     const target = prompt.capture()
+    const mode = input.mode()
     const submission = createPromptSubmissionState({
       target,
       prompt: target.current(),
-      context: target.context.items().slice(),
+      context: mergeSubmissionContext(
+        target.context.items().slice(),
+        mode === "normal" ? input.selectedFileContext?.() : undefined,
+      ),
     })
     const currentPrompt = submission.prompt
     const context = submission.context
     const text = currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
     const images = input.imageAttachments().slice()
-    const mode = input.mode()
 
     if (text.trim().length === 0 && images.length === 0 && input.commentCount() === 0) {
       if (input.working()) void abort()

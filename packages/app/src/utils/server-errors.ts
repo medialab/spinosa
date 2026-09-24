@@ -63,6 +63,16 @@ export function isSessionNotFoundError(error: unknown, sessionID: string) {
   return value._tag === "SessionNotFoundError" && value.sessionID === sessionID
 }
 
+export function isServerNotFoundError(error: unknown) {
+  const isNotFoundBody = (value: unknown) =>
+    typeof value === "object" && value !== null &&
+    (("name" in value && value.name === "NotFoundError") || ("_tag" in value && value._tag === "NotFound"))
+  if (isNotFoundBody(error)) return true
+  if (!(error instanceof Error) || typeof error.cause !== "object" || error.cause === null) return false
+  const cause = error.cause as { body?: unknown; status?: unknown }
+  return cause.status === 404 && isNotFoundBody(cause.body)
+}
+
 function isConfigInvalidErrorLike(error: unknown): error is ConfigInvalidError {
   if (typeof error !== "object" || error === null) return false
   const o = error as Record<string, unknown>

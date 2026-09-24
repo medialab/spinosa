@@ -33,9 +33,11 @@ import { SelectV2 } from "@spinosa/ui/v2/select-v2"
 import { isScrollKeyTarget, scrollKey, scrollKeyOwner } from "@spinosa/ui/scroll-view"
 import { Tabs } from "@spinosa/ui/tabs"
 import { ButtonV2 } from "@spinosa/ui/v2/button-v2"
+import { SegmentedControlItemV2, SegmentedControlV2 } from "@spinosa/ui/v2/segmented-control-v2"
 import { createAutoScroll } from "@spinosa/ui/hooks"
 import { previewSelectedLines } from "@spinosa/session-ui/pierre/selection-bridge"
 import { Button } from "@spinosa/ui/button"
+import { Spinner } from "@spinosa/ui/spinner"
 import { showToast } from "@/utils/toast"
 import { base64Encode, checksum } from "@spinosa/kernel-core/util/encode"
 import { useLocation, useNavigate, useParams, useSearchParams } from "@solidjs/router"
@@ -70,7 +72,13 @@ import {
   createSessionComposerRegionController,
   SessionComposerRegion,
 } from "@/pages/session/composer"
-import { createOpenReviewFile, createSessionTabs, createSizing, shouldShowFileTree } from "@/pages/session/helpers"
+import {
+  createOpenReviewFile,
+  createOpenSessionFileTab,
+  createSessionTabs,
+  createSizing,
+  shouldShowFileTree,
+} from "@/pages/session/helpers"
 import { MessageTimeline } from "@/pages/session/timeline/message-timeline"
 import { createTimelineModel } from "@/pages/session/timeline/model"
 import { type DiffStyle, SessionReviewTab, type SessionReviewTabProps } from "@/pages/session/review-tab"
@@ -83,6 +91,8 @@ import {
 } from "@/pages/session/session-panel-width"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
 import { SessionSubagentsFooter } from "@/pages/session/session-harness-rails"
+import { SessionWorkspaceVisualizer } from "@/pages/session/session-workspace-visualizer"
+import { SpinosaBackgroundImport } from "@/components/spinosa-background-import"
 import { sessionPanelLayout } from "@/pages/session/session-panel-layout"
 import { SessionReviewEmptyChangesV2 } from "@spinosa/session-ui/v2/session-review-empty-changes-v2"
 import { SessionReviewEmptyNoGitV2 } from "@spinosa/session-ui/v2/session-review-empty-no-git-v2"
@@ -339,7 +349,7 @@ function SessionPanelFrame(props: ParentProps<{ newLayout: boolean; raised?: boo
   return (
     <div
       classList={{
-        "flex-1 min-h-0 flex flex-col": true,
+        "relative flex-1 min-h-0 flex flex-col": true,
         "bg-v2-background-bg-base": props.newLayout,
         "bg-background-stronger": !props.newLayout,
         "rounded-[10px] overflow-hidden": props.newLayout,
@@ -391,6 +401,7 @@ export default function Page() {
   const [ui, setUi] = createStore({
     pendingMessage: undefined as string | undefined,
     reviewSnap: false,
+    viewMode: "conversation" as "conversation" | "visualizer",
     scrollGesture: 0,
     scroll: {
       overflow: false,
@@ -398,6 +409,8 @@ export default function Page() {
       jump: false,
     },
   })
+
+  createEffect(on(() => params.id, () => setUi("viewMode", "conversation"), { defer: true }))
 
   const composer = createSessionComposerController()
   const inputController = createPromptInputController({
@@ -553,6 +566,7 @@ export default function Page() {
   const messages = timeline.messages
   const messagesReady = timeline.ready
   const sessionSync = timeline.resource
+  const retrySessionSync = timeline.retry
   const userMessages = timeline.userMessages
   const visibleUserMessages = timeline.visibleUserMessages
 
@@ -1165,7 +1179,7 @@ export default function Page() {
       const files = event.dataTransfer?.files
       if (!files || files.length === 0) return
       if (event.target instanceof Element && event.target.closest("[contenteditable],input,textarea")) return
-      const md = Array.from(files).find((file) => /\.markdown?$/i.test(file.name.trim()))
+      const md = Array.from(files).find((file) => /\.(?:md|markdown)$/i.test(file.name.trim()))
       if (!md) return
       event.preventDefault()
       event.stopPropagation()
@@ -2094,14 +2108,51 @@ export default function Page() {
     return <SessionErrorFallback error={error} sessionID={params.id} />
   }
 
+  const openVisualizerFileTab = createOpenSessionFileTab({
+    normalizeTab,
+    openTab: (tab) => void tabs().open(tab),
+    pathFromTab: file.pathFromTab,
+    loadFile: (path) => void file.load(path),
+    openReviewPanel: () => {
+      layout.fileTree.setTab("all")
+      view().reviewPanel.open()
+    },
+    setActive: (tab) => tabs().setActive(tab),
+  })
+  const openVisualizerFile = (path: string) => {
+    openVisualizerFileTab(path)
+    setUi("viewMode", "conversation")
+  }
+
   const sessionPanelContent = () => (
     <>
-      {sessionSync() ?? ""}
       <Show when={!isDesktop() && !!params.id && settings.general.newLayoutDesigns() && !mobileTabsBottom()}>
         {mobileTabs(true)}
       </Show>
-      <div class="flex min-h-0 flex-1 gap-2">
-        <div class="flex min-w-0 flex-1 flex-col">
+      <Show when={params.id && !mobileChanges()}>
+        <div class="pointer-events-none absolute inset-x-0 top-1 z-40 flex justify-center">
+          <SegmentedControlV2
+            value={ui.viewMode}
+            onChange={(value) => {
+              if (value === "conversation" || value === "visualizer") setUi("viewMode", value)
+            }}
+            aria-label={language.t("session.view.mode")}
+            class="pointer-events-auto !h-10 !w-auto !rounded-full !border !border-border-weak-base !bg-background-base !p-1 shadow-sm"
+          >
+            <SegmentedControlItemV2 value="conversation" class="!h-8 !min-w-[120px] !rounded-full !px-4">
+              {language.t("session.view.conversation")}
+            </SegmentedControlItemV2>
+            <SegmentedControlItemV2 value="visualizer" class="!h-8 !min-w-[120px] !rounded-full !px-4">
+              {language.t("session.view.visualizer")}
+            </SegmentedControlItemV2>
+          </SegmentedControlV2>
+        </div>
+      </Show>
+      <div class="relative flex min-h-0 flex-1">
+        <div
+          class="absolute inset-0 flex min-h-0 min-w-0 flex-1 flex-col"
+          classList={{ "invisible pointer-events-none": ui.viewMode === "visualizer" && !mobileChanges() }}
+        >
           <div class="flex-1 min-h-0 overflow-hidden">
             <Switch>
               <Match when={params.id && mobileChanges()}>
@@ -2119,7 +2170,35 @@ export default function Page() {
                 </div>
               </Match>
               <Match when={params.id}>
-                <Show when={messagesReady() ? params.id : undefined} keyed>
+                <Show
+                  when={messagesReady() ? params.id : undefined}
+                  keyed
+                  fallback={
+                    <Show
+                      when={sessionSync.error}
+                      fallback={
+                        <div
+                          data-component="session-timeline-loading"
+                          class="flex size-full items-center justify-center gap-2 text-text-weak"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <Spinner class="size-4" />
+                          {language.t("common.loading")}
+                        </div>
+                      }
+                    >
+                      <div class="flex size-full flex-col items-center justify-center gap-3 px-4" data-component="session-timeline-error">
+                        <p class="text-12-regular text-text-danger" role="alert">
+                          {language.t("common.requestFailed")}: {formatServerError(sessionSync.error, language.t)}
+                        </p>
+                        <Button size="small" variant="secondary" onClick={() => void retrySessionSync()}>
+                          {language.t("common.continue")}
+                        </Button>
+                      </div>
+                    </Show>
+                  }
+                >
                   {(_id) => (
                     <MessageTimeline
                       actions={actions}
@@ -2150,6 +2229,7 @@ export default function Page() {
                         restoreHistoryAnchor = handlers.restore
                       }}
                       anchor={anchor}
+                      onOpenMarkdownHref={sessionCommands.openMarkdownHref}
                       setRevealMessage={(fn) => {
                         revealMessage = fn
                       }}
@@ -2284,6 +2364,11 @@ export default function Page() {
             <SessionSubagentsFooter messages={messages} sessionID={() => params.id} />
           </Show>
         </div>
+        <Show when={params.id && ui.viewMode === "visualizer" && !mobileChanges()}>
+          <div class="absolute inset-0 flex min-h-0">
+            <SessionWorkspaceVisualizer workspacePath={() => sdk().directory} onOpenFile={openVisualizerFile} />
+          </div>
+        </Show>
       </div>
       <Show when={!!params.id && mobileTabsBottom()}>{mobileTabs(true, true)}</Show>
     </>
@@ -2292,6 +2377,7 @@ export default function Page() {
   return (
     <SessionRouteFrame>
       <SessionHeader />
+      <SpinosaBackgroundImport directory={sdk().directory} />
       <div
         ref={panelRow}
         class="flex-1 min-h-0 flex flex-col md:flex-row"

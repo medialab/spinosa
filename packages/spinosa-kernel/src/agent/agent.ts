@@ -127,6 +127,7 @@ const layer = Layer.effect(
           doom_loop: "ask",
           // Outbound web (search or fetch) leaves the corpus. Prompt once per session.
           web: "ask",
+          jev: "ask",
           external_directory: {
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
@@ -212,6 +213,7 @@ const layer = Layer.effect(
                 list: "allow",
                 bash: "allow",
                 web: "ask",
+                jev: "ask",
                 read: "allow",
                 external_directory: readonlyExternalDirectory,
               }),

@@ -1,4 +1,15 @@
 import { expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
+
+test("keeps generated app and desktop outputs out of the renderer watcher", async () => {
+  const module = await import(`./electron.vite.config.ts?watch=${Date.now()}`)
+  const ignored = module.default.renderer?.server?.watch?.ignored
+
+  expect(ignored).toEqual([
+    fileURLToPath(new URL("../app/dist", import.meta.url)),
+    fileURLToPath(new URL("./out", import.meta.url)),
+  ])
+})
 
 test("loads the credentialed Sentry plugin through the Node-compatible entrypoint", async () => {
   const previous = {

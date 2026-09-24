@@ -13,6 +13,11 @@ export const test = base.extend<BrowserDiagnostics>({
       const consoleErrors: string[] = []
       // V2 protocol discovery intentionally probes the legacy health route and expects a 404.
       const expectedConsoleErrors: string[] = []
+      const expectedConsoleErrorPatterns = () =>
+        testInfo.annotations
+          .filter((annotation) => annotation.type === "expected-console-error")
+          .map((annotation) => annotation.description)
+          .filter((value): value is string => !!value)
       const consoleWarnings: string[] = []
       const pageErrors: string[] = []
       const failedRequests: string[] = []
@@ -33,7 +38,9 @@ export const test = base.extend<BrowserDiagnostics>({
             if (expectedHealthProbe) {
               expectedConsoleErrors.push(entry)
             } else {
-              consoleErrors.push(entry)
+              const expectedPattern = expectedConsoleErrorPatterns().find((pattern) => entry.includes(pattern))
+              if (expectedPattern) expectedConsoleErrors.push(entry)
+              else consoleErrors.push(entry)
             }
           }
           if (message.type() === "warning") consoleWarnings.push(entry)

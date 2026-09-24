@@ -70,6 +70,22 @@ function setupWithRaw(
 }
 
 describe("createCompatibleApi", () => {
+  test("rejects a V1 shell command without an agent before sending it", async () => {
+    const { api, requests } = setup("v1")
+    const input = { sessionID: "ses_1", command: "pwd" } as unknown as Parameters<typeof api.session.shell>[0]
+
+    await expect(api.session.shell(input)).rejects.toThrow("An agent is required to run a shell command")
+    expect(requests).toHaveLength(0)
+  })
+
+  test("rejects a V1 MCP server without configuration before sending it", async () => {
+    const { api, requests } = setup("v1")
+    const input = { server: "missing-config", config: undefined } as unknown as Parameters<typeof api.mcp.add>[0]
+
+    await expect(api.mcp.add(input)).rejects.toThrow("MCP server configuration is required")
+    expect(requests).toHaveLength(0)
+  })
+
   /*
   test("routes V1 archive through the legacy session update", async () => {
     const { api, requests } = setup("v1")

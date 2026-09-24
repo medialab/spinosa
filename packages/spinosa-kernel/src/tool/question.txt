@@ -1,11 +1,12 @@
-Use this tool when you need to ask the user questions during execution. This allows you to:
-1. Gather user preferences or requirements
-2. Clarify ambiguous instructions
-3. Get decisions on implementation choices as you work
-4. Offer choices to the user about what direction to take.
+Use this tool when a blocking decision belongs to the user. After elaborating the prompt, ask only to:
+1. Confirm or correct the elaborated scope
+2. Request missing data the user must supply
+3. Resolve real ambiguity that would change the analysis or deliverable
+
+Do not ask ritual, filler, or “questions for their own sake.” Skip the tool when the elaborated reading is already clear and actionable.
 
 Usage notes:
-- Ask 1 to 3 questions in one turn. Use 1 when the task has one reading. Use 2 or 3 when goal, scope, or deliverable is ambiguous.
+- Ask 1 to 3 questions in one turn. Prefer concrete options; put a recommended option first when applicable.
 - Do not ask a fourth question. Do not chain extra question calls for the same task.
 - When `custom` is enabled (default), a "Type your own answer" option is added automatically; don't include "Other" or catch-all options
 - Answers are returned as arrays of labels; set `multiple: true` to allow selecting more than one

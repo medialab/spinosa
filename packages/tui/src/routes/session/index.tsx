@@ -573,7 +573,7 @@ const resolveExportPath = (filename: string): string => {
       const tag = count > 1 ? `${summary.tag} x${count}` : summary.tag
       const commands = count > 1 ? group.parts.map((p) => buildCopyCommand(p.tool, p.state.input ?? {}, { tag: summary.tag, command: summary.command })) : undefined
       const groupSummary: ToolCalloutSummary = { tag, command: summary.command, commands }
-      const side = ["bash", "read", "grep", "glob", "webfetch", "websearch", "web"].includes(group.display) ? "left" : "right"
+      const side = ["bash", "read", "grep", "glob", "webfetch", "websearch", "web", "jev"].includes(group.display) ? "left" : "right"
       const offsetTop = side === "left" ? leftHeight : rightHeight
       sides.set(first.callID, { side, offsetTop, summary: groupSummary })
       const height = estimateToolCalloutHeight(groupSummary, layout.railWidth, first.tool, first.state.status === "pending" ? {} : (first.state.metadata ?? {}), first.state.input ?? {})
@@ -1763,6 +1763,7 @@ const toolCalloutColor = (tool: string, theme: ReturnType<typeof useTheme>["them
     webfetch: theme.info,
     websearch: theme.info,
     web: theme.info,
+    jev: theme.info,
     write: theme.accent,
     edit: theme.accent,
     apply_patch: theme.error,
@@ -1901,6 +1902,10 @@ function buildCopyCommand(tool: string, input: Record<string, unknown>, summary:
     if (url) return `curl -sL "${url}"`
     const query = stringValue(input.query)
     return query ? `search: ${query}` : summary.command
+  }
+  if (display === "jev") {
+    const query = stringValue(input.query)
+    return query ? `jev: ${query}` : summary.command
   }
   if (display === "write") {
     const filePath = stringValue(input.filePath) ?? stringValue(input.path)
@@ -2642,6 +2647,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
           <Match when={display() === "web"}>
             <Web {...toolprops} />
           </Match>
+          <Match when={display() === "jev"}>
+            <GenericTool {...toolprops} />
+          </Match>
           <Match when={display() === "write"}>
             <Write {...toolprops} />
           </Match>
@@ -2686,6 +2694,7 @@ export function toolUsesBlockLayout(
   if (display === "todowrite") return parseTodos(metadata.todos).length > 0
   if (display === "question") return Boolean(parseQuestionAnswers(metadata.answers))
   if (display === "generic") return Boolean(output && showGenericToolOutput)
+  if (display === "jev") return Boolean(output)
   return false
 }
 
@@ -2732,6 +2741,13 @@ export function buildToolCalloutSummary(
     return {
       tag: "WEB",
       command: stringValue(inputValue.query) ?? "Search",
+    }
+  }
+  if (display === "jev") {
+    const passages = Array.isArray(inputValue.passages) ? inputValue.passages.length : 0
+    return {
+      tag: "JEV",
+      command: `${stringValue(inputValue.query) ?? "screen"} (${passages})`,
     }
   }
   if (display === "write") {
@@ -3664,6 +3680,7 @@ const toolDisplays = new Set([
   "webfetch",
   "websearch",
   "web",
+  "jev",
   "write",
   "edit",
   "task",

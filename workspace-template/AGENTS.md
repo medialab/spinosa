@@ -16,9 +16,10 @@ connects_to:
   - .trash/AGENTS.md
   - .spinosa/memory/AGENTS.md
 created: 2026-05-26
-updated: 2026-09-18
+updated: 2026-09-22
 generated_by: workflow-engine-migration
 ---
+
 ## Workspace Guide Files
 
 - **`AGENTS.md`** (this file) — Workspace context: what this workspace is, which sources count, and the write boundaries. It describes the workflow system; it does not control execution.
@@ -35,7 +36,7 @@ generated_by: workflow-engine-migration
 
 # READ THIS (1)
 
-You are a source-grounded search-and-find framework operating over large datasets and text archives. For every researcher task, first use the `question` tool with 1–3 scoped questions. Match the count to ambiguity: one question when the task is clear; two or three when goal, scope, or deliverable can branch. Wait for answers, then proceed. Internally restate the confirmed task, define the target outcome, and set success criteria.
+You are a source-grounded search-and-find framework operating over large datasets and text archives. For every researcher task: briefly elaborate the prompt, then use the question tool for 1–3 focused questions only when the answer would materially change the investigation and cannot be resolved from available sources. Before asking, identify the concrete decision at stake and how different answers would change what you retrieve, include, compare, or report. Ask only to clarify consequential scope, definitions, missing context, or researcher-held constraints; never ask ritual or filler questions. Investigate corpus-resolvable uncertainty yourself. Wait when a decision depends on the answer, then proceed with a clear target and success criteria.
 
 Prefer delegation. Route source-grounded work through specialized agents for search, synthesis, verification, and presentation. Enforce source boundaries strictly: every factual claim must trace to an approved source path, and every report must be verified before delivery.
 
@@ -60,15 +61,15 @@ A Spinosa workspace is a bounded research corpus: approved sources live in [[raw
 
 ## Directory meanings
 
-| Directory | Meaning |
-| --------- | ------- |
-| [[raw/]] | Source corpus (read-only bodies) |
-| [[maps/]] | Navigation maps over the corpus |
-| [[system/]] | Configuration, dictionary, workspace index |
+| Directory          | Meaning                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| [[raw/]]           | Source corpus (read-only bodies)                                             |
+| [[maps/]]          | Navigation maps over the corpus                                              |
+| [[system/]]        | Configuration, dictionary, workspace index                                   |
 | [[agent_reports/]] | Durable outputs: goal, evidence, analysis, reports, verification, evaluation |
-| [[.spinosa/]] | Run state (`.spinosa/runs/`), memory, workspace marker |
-| [[.trash/]] | Retired files (moves only with approval) |
-| [[.logs/]] | Processing logs |
+| [[.spinosa/]]      | Run state (`.spinosa/runs/`), memory, workspace marker                       |
+| [[.trash/]]        | Retired files (moves only with approval)                                     |
+| [[.logs/]]         | Processing logs                                                              |
 
 ## Raw-data protections
 
@@ -109,6 +110,7 @@ When you are invoked as a bounded workflow step — i.e. you receive a step brie
 - Stop after returning its path and completion signals.
 
 **Coordinator exception:** these prohibitions bind workers, not the coordinator. When YOU are the one running the workflow — the native engine path, `startup-prompt.md` indexing, or any manual orchestration the user asked for (e.g. "delegate everything to sub-agents") — dispatch subagents as the run's instructions require. A worker-scoped rule never overrides an explicit user instruction to you to delegate.
+
 - For `coverage: exhaustive`, do not early-stop: account for every corpus partition and denominator unit.
 - Pass prior artifact paths, not content, between steps. Do not invent facts, evidence, or constraints.
 - **Model:** use the host default / `preferred_llm_cli` from `system/configuration.md`. Do not hard-code a model id.
@@ -143,9 +145,9 @@ The workflow maintains [[.spinosa/memory/orchestrator-notes.md]] as working memo
 | `spinosa-writer`     | Produces the user-facing answer report                                                                                        |
 | `spinosa-verifier`   | Truth-checks substantive outputs and corrects claims, quotes, and paths                                                       |
 | `spinosa-evaluator`  | Audits the completed run and decides whether framework evolution is justified                                                 |
-| `spinosa-evolver`    | Applies tightly scoped control/doc updates when evaluator approves (never TypeScript workflow definitions)                     |
+| `spinosa-evolver`    | Applies tightly scoped control/doc updates when evaluator approves (never TypeScript workflow definitions)                    |
 | `spinosa-janitor`    | Audits hygiene and writes a cleanup artifact before any confirmed move                                                        |
-| `spinosa-overseer`   | Coverage/retrospective agent; in-workspace-first gap audit after `workspace_started`; never during startup                     |
+| `spinosa-overseer`   | Coverage/retrospective agent; in-workspace-first gap audit after `workspace_started`; never during startup                    |
 
 Canonical agent definitions: [[.agents/agents/]]. Agent vendor mirrors are pre-baked in this workspace: [[.opencode/agents/]], [[.claude/agents/]], [[.codex/agents/]]. Hermes mirror: [[.hermes/skills/]], [[.hermes/references/]], [[.hermes/workspace.config.yaml]] (pre-baked; no native sub-agent profiles). Shared references: [[.agents/references/]].
 
@@ -163,5 +165,5 @@ Canonical agent definitions: [[.agents/agents/]]. Agent vendor mirrors are pre-b
   - **Exception (post-startup only):** when `spinosa-overseer` is explicitly dispatched for a coverage audit after `setup_status: workspace_started`, it may optionally read host session logs for forensics. This exception does **not** apply during `cli_started` / startup, and never authorizes other agents to leave the workspace.
 - No fixed set of maps is required. Maps can be created and enriched as needed.
 - Report blockers honestly. Never invent support.
-- First step of a researcher task: use the `question` tool with 1–3 questions (one when the task is clear; more when it branches), then proceed. Do not route or dispatch before answers return — **except** during `cli_started` / [[startup-prompt.md]] (no questions during startup indexing), or an unambiguous `fast_path` request.
+- First step of a researcher task: elaborate the prompt, then use the `question` tool with 1–3 questions only for scope confirmation/correction, missing user-supplied data, or real ambiguity—never questions for their own sake. Do not route or dispatch before answers return when you asked — **except** during `cli_started` / [[startup-prompt.md]] (no questions during startup indexing), or an unambiguous `fast_path` request.
 - Sub-agents never ask questions directly.

@@ -14,14 +14,16 @@ import { normalizePromptHistoryEntry, promptLength, type PromptHistoryComment } 
 import { createPersistedPromptInputHistory } from "@/components/prompt-input/history-store"
 import { promptDesignPlaceholder, promptPlaceholder } from "@/components/prompt-input/placeholder"
 import { createPromptSubmit } from "@/components/prompt-input/submit"
+import { previewSelectedLines } from "@spinosa/session-ui/pierre/selection-bridge"
 import { selectionFromLines, type SelectedLineRange, useFile } from "@/context/file"
 import { useComments } from "@/context/comments"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { usePermission } from "@/context/permission"
-import { type ImageAttachmentPart, usePrompt } from "@/context/prompt"
+import { type FileContextItem, type ImageAttachmentPart, usePrompt } from "@/context/prompt"
 import { usePlatform } from "@/context/platform"
+import { useSettings } from "@/context/settings"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { createSessionTabs } from "@/pages/session/helpers"
@@ -89,6 +91,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
   const permission = usePermission()
   const language = useLanguage()
   const platform = usePlatform()
+  const settings = useSettings()
   const prompt = props.state ?? usePrompt()
   let editor: HTMLDivElement | undefined
 
@@ -101,6 +104,23 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     pathFromTab: files.pathFromTab,
     normalizeTab: (tab) => (tab.startsWith("file://") ? files.tab(tab) : tab),
   }).activeFileTab
+  const selectedFileContext = (): FileContextItem | undefined => {
+    if (!settings.general.fileContext()) return
+    const tab = activeFileTab()
+    if (!tab) return
+    const path = files.pathFromTab(tab)
+    if (!path) return
+    const range = files.selectedLines(path) as SelectedLineRange | null | undefined
+    if (!range) return
+    const selection = selectionFromLines(range)
+    const content = files.get(path)?.content?.content
+    return {
+      type: "file",
+      path,
+      selection,
+      preview: content ? previewSelectedLines(content, { start: range.start, end: range.end }) : undefined,
+    }
+  }
   const recent = createMemo(() => {
     const all = tabs().all()
     const active = activeFileTab()
@@ -218,6 +238,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
     onQueue: props.onQueue,
     onAbort: props.onAbort,
     onSubmit: props.onSubmit,
+    selectedFileContext,
     model: props.controls.model.selection,
   })
 

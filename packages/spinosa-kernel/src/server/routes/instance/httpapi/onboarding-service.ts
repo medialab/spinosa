@@ -19,7 +19,7 @@ import { ImportBatchManager } from "@spinosa/core/import/batch"
 import type { VisionTranscribe } from "@spinosa/core/import/vision-transcribe"
 import { isSpinosaCancellationError } from "@spinosa/core/import/cancellation"
 import { scanSource, detectDocumentTools } from "@spinosa/core/scan/scanner"
-import { writeWorkspaceStatus } from "@spinosa/core/workspace/meta"
+import { isSpinosaWorkspace, readWorkspaceMeta, writeWorkspaceStatus } from "@spinosa/core/workspace/meta"
 import { resolveWorkspacePath } from "@spinosa/core/commands/create"
 import { ProgressEmitter } from "@spinosa/core/progress/progress"
 import { bootLog, bootLogError } from "@spinosa/kernel-core/observability/boot-log"
@@ -184,6 +184,7 @@ export type OnboardingJobSnapshot = {
 type OnboardingJobOptions = { requestID?: string }
 
 type InternalJob = {
+  kind: "onboarding" | "add-files"
   snapshot: OnboardingJobSnapshot
   input: OnboardingStartInput
   sourceDirectory: string
@@ -193,6 +194,7 @@ type InternalJob = {
   startedAt: number
   phaseStartedAt: number
   progressEvents: number
+  targetWorkspacePath: string
   resolveAction?: (action: string) => void
   transcribeVision: VisionTranscribe
 }
@@ -510,32 +512,88 @@ export async function startOnboardingJob(
   transcribeVision: VisionTranscribe,
   options?: OnboardingJobOptions,
 ): Promise<{ id: string; workspacePath: string }> {
-  for (const job of jobs.values()) {
-    if (!FINAL_STATUSES.has(job.snapshot.status)) throw new Error("A Spinosa onboarding job is already running.")
-  }
-  while (jobs.size >= MAX_JOBS) {
-    const oldestFinal = [...jobs].find(([, job]) => FINAL_STATUSES.has(job.snapshot.status))?.[0]
-    if (!oldestFinal) break
-    jobs.delete(oldestFinal)
-  }
   if (input.sourcePaths.length === 0 || input.sourcePaths.length > 24) throw new Error("Choose between 1 and 24 source folders.")
   if (path.resolve(sourceDirectory) !== path.resolve(input.sourcePaths[0]!)) {
     throw new Error("The routed directory must match the first source folder.")
   }
   if (input.extensions.length === 0) throw new Error("Select at least one file type to import.")
 
-  const id = crypto.randomUUID()
-  const requestID = options?.requestID ?? crypto.randomUUID()
-  const startedAt = Date.now()
   const workspacePath = input.resumeWorkspacePath
     ? path.resolve(input.resumeWorkspacePath)
     : resolveWorkspacePath(input.sourcePaths[0]!, input.workspaceName)
+  return startJob("onboarding", input, sourceDirectory, workspacePath, transcribeVision, options)
+}
+
+export type AddFilesStartInput = {
+  sourcePath: string
+  extensions: string[]
+  visionModelId: string
+}
+
+export async function startAddFilesJob(
+  input: AddFilesStartInput,
+  workspaceDirectory: string,
+  transcribeVision: VisionTranscribe,
+  options?: OnboardingJobOptions,
+): Promise<{ id: string; workspacePath: string }> {
+  const workspacePath = path.resolve(workspaceDirectory)
+  const sourcePath = path.resolve(input.sourcePath)
+  if (!isSpinosaWorkspace(workspacePath)) throw new Error("Target folder is not a Spinosa workspace.")
+  if (!statSyncSafe(workspacePath)) throw new Error("Spinosa workspace folder does not exist.")
+  if (!statSyncSafe(sourcePath)) throw new Error("Source folder does not exist.")
+  if (sourcePath === workspacePath || sourcePath.startsWith(`${workspacePath}${path.sep}`)) {
+    throw new Error("Choose a source folder outside the workspace.")
+  }
+  const extensions = [...new Set(input.extensions.map((extension) => extension.trim().toLowerCase()))]
+  if (extensions.length === 0 || extensions.some((extension) => !/^[a-z0-9][a-z0-9_+-]{0,31}$/.test(extension))) {
+    throw new Error("Select at least one valid file type to import.")
+  }
+  const meta = await readWorkspaceMeta(workspacePath)
+  if (!meta) throw new Error("Target folder is not a Spinosa workspace.")
+  const jobInput: OnboardingStartInput = {
+    sourcePaths: [sourcePath],
+    workspaceName: meta.projectName,
+    extensions,
+    visionModelId: input.visionModelId,
+    preferredCli: "opencode_desktop",
+  }
+  return startJob("add-files", jobInput, workspacePath, workspacePath, transcribeVision, options)
+}
+
+function statSyncSafe(value: string): boolean {
+  try {
+    return statSync(value).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function startJob(
+  kind: InternalJob["kind"],
+  input: OnboardingStartInput,
+  sourceDirectory: string,
+  workspacePath: string,
+  transcribeVision: VisionTranscribe,
+  options?: OnboardingJobOptions,
+): { id: string; workspacePath: string } {
+  for (const job of jobs.values()) {
+    if (!FINAL_STATUSES.has(job.snapshot.status)) throw new Error("A Spinosa onboarding or import job is already running.")
+  }
+  while (jobs.size >= MAX_JOBS) {
+    const oldestFinal = [...jobs].find(([, job]) => FINAL_STATUSES.has(job.snapshot.status))?.[0]
+    if (!oldestFinal) break
+    jobs.delete(oldestFinal)
+  }
+  const id = crypto.randomUUID()
+  const requestID = options?.requestID ?? crypto.randomUUID()
+  const startedAt = Date.now()
   const job: InternalJob = {
+    kind,
     snapshot: {
       id,
       status: "running",
       phase: "queued",
-      message: "Preparing workspace…",
+      message: kind === "add-files" ? "Preparing files…" : "Preparing workspace…",
       workspacePath,
       current: 0,
       total: 0,
@@ -544,6 +602,7 @@ export async function startOnboardingJob(
     },
     input: { ...input, sourcePaths: input.sourcePaths.map((source) => path.resolve(source)) },
     sourceDirectory,
+    targetWorkspacePath: workspacePath,
     controller: new AbortController(),
     background: false,
     requestID,
@@ -552,14 +611,14 @@ export async function startOnboardingJob(
     progressEvents: 0,
     transcribeVision,
   }
-
   jobs.set(id, job)
-  bootLog("onboarding.job.start", "Onboarding job started", {
+  bootLog(kind === "add-files" ? "onboarding.add-files.start" : "onboarding.job.start", kind === "add-files" ? "Workspace file import started" : "Onboarding job started", {
     jobID: id,
     requestID,
     sourceCount: input.sourcePaths.length,
     extensionCount: input.extensions.length,
     resumed: Boolean(input.resumeWorkspacePath),
+    workspacePath,
   })
   void executeOnboardingJob(job)
   return { id, workspacePath }
@@ -659,35 +718,44 @@ async function executeOnboardingJob(job: InternalJob): Promise<void> {
       frameworkVersion: readFrameworkVersionFromRoot(frameworkRoot),
       durationMs: Date.now() - frameworkStartedAt,
     })
-    setPhase(job, "setup", "Creating workspace from the Spinosa template…")
-    const created = await createWorkspace({
-      corpusPath: primarySource,
-      frameworkRoot,
-      workspaceName: job.input.workspaceName,
-      resumeWorkspacePath: job.input.resumeWorkspacePath,
-      onProgress: (message) => {
-        job.snapshot.message = message
-        appendLog(job, message)
-      },
-      shouldAbort,
-    })
-    if (!created.success) {
-      bootLog("onboarding.workspace.failure", "Onboarding workspace creation failed", {
-        jobID: job.snapshot.id,
-        requestID: job.requestID,
+    let projectTitle = job.input.workspaceName
+    if (job.kind === "onboarding") {
+      setPhase(job, "setup", "Creating workspace from the Spinosa template…")
+      const created = await createWorkspace({
+        corpusPath: primarySource,
         frameworkRoot,
+        workspaceName: job.input.workspaceName,
+        resumeWorkspacePath: job.input.resumeWorkspacePath,
+        onProgress: (message) => {
+          job.snapshot.message = message
+          appendLog(job, message)
+        },
+        shouldAbort,
       })
-      throw new Error("Workspace template could not be created.")
+      if (!created.success) {
+        bootLog("onboarding.workspace.failure", "Onboarding workspace creation failed", {
+          jobID: job.snapshot.id,
+          requestID: job.requestID,
+          frameworkRoot,
+        })
+        throw new Error("Workspace template could not be created.")
+      }
+      job.snapshot.workspacePath = created.workspacePath
+      job.targetWorkspacePath = created.workspacePath
+      projectTitle = job.input.workspaceName || created.projectName
+      await writeWorkspaceStatus(created.workspacePath, "importing")
+    } else {
+      const meta = await readWorkspaceMeta(job.targetWorkspacePath)
+      if (!meta) throw new Error("Target folder is not a Spinosa workspace.")
+      projectTitle = meta.projectName
     }
-    job.snapshot.workspacePath = created.workspacePath
-    await writeWorkspaceStatus(created.workspacePath, "importing")
 
     setPhase(job, "scan", "Preparing the selected source files…")
     const prepared = await prepareOnboarding({
-      workspacePath: created.workspacePath,
+      workspacePath: job.targetWorkspacePath,
       frameworkRoot,
       sourcePath: primarySource,
-      projectTitle: job.input.workspaceName || created.projectName,
+      projectTitle,
       flagExtensions: job.input.extensions.join(","),
       allowEmptySelection: job.input.sourcePaths.length > 1,
       onPhase: (phase, message) => {
@@ -738,40 +806,66 @@ async function executeOnboardingJob(job: InternalJob): Promise<void> {
 
     ctx.copyableCount = selectedCount
     setPhase(job, "verification", "Verifying every imported file…")
-    const completed = await completeOnboarding(ctx, acc, {
-      workspacePath: created.workspacePath,
-      frameworkRoot,
-      sourcePath: primarySource,
-      projectTitle: job.input.workspaceName || created.projectName,
-      flagCli: job.input.preferredCli,
-      handoffMode: "none",
-      ocrModelId: job.input.visionModelId,
-      additionalRecovered,
-      onPhase: (phase, message) => {
-        setPhase(job, phase, message)
-        appendLog(job, message)
-      },
-      shouldAbort,
-    })
+    let successful: boolean
+    let recovered = 0
+    let failureMessage: string | undefined
+    if (job.kind === "onboarding") {
+      const completed = await completeOnboarding(ctx, acc, {
+        workspacePath: job.targetWorkspacePath,
+        frameworkRoot,
+        sourcePath: primarySource,
+        projectTitle,
+        flagCli: job.input.preferredCli,
+        handoffMode: "none",
+        ocrModelId: job.input.visionModelId,
+        additionalRecovered,
+        onPhase: (phase, message) => {
+          setPhase(job, phase, message)
+          appendLog(job, message)
+        },
+        shouldAbort,
+      })
+      successful = completed.success
+      recovered = completed.verify?.recovered ?? 0
+      totalStillMissing += completed.verify?.stillMissing ?? 0
+      failureMessage = completed.blockerReason
+    } else {
+      const verified = await verifyAndRecoverImport(
+        primarySource,
+        ctx.rawDir,
+        ctx.batches,
+        true,
+        true,
+        (message) => appendLog(job, message),
+        shouldAbort,
+        ctx.rawDir,
+        undefined,
+        undefined,
+        job.input.visionModelId,
+        ctx.scannedFiles,
+      )
+      recovered = verified.recovered
+      totalStillMissing += verified.stillMissing
+      successful = deliveredCount(acc) + recovered > 0
+      if (!successful) failureMessage = "No files were delivered to raw/."
+    }
     if (shouldAbort()) throw new DOMException("Onboarding cancelled", "AbortError")
 
-    const verify = completed.verify
-    totalStillMissing += verify?.stillMissing ?? 0
     const failed = acc.direct.failed + acc.markitdown.failed + acc.pdf.failed + acc.vision.failed + acc.ocr.failed
     job.snapshot.result = {
-      success: completed.success,
-      imported: deliveredCount(acc) + (verify?.recovered ?? 0) + additionalRecovered,
-      recovered: (verify?.recovered ?? 0) + additionalRecovered,
+      success: successful,
+      imported: deliveredCount(acc) + recovered + additionalRecovered,
+      recovered: recovered + additionalRecovered,
       stillMissing: totalStillMissing,
       failed,
     }
-    job.snapshot.status = completed.success ? "completed" : "failed"
-    job.snapshot.phase = completed.success ? "done" : "error"
-    job.snapshot.message = completed.success
-      ? "Workspace onboarding is complete."
-      : completed.blockerReason ?? "Onboarding completed with no delivered files."
+    job.snapshot.status = successful ? "completed" : "failed"
+    job.snapshot.phase = successful ? "done" : "error"
+    job.snapshot.message = successful
+      ? job.kind === "add-files" ? "File import is complete." : "Workspace onboarding is complete."
+      : failureMessage ?? "Onboarding completed with no delivered files."
     appendLog(job, job.snapshot.message)
-    bootLog("onboarding.job.complete", "Onboarding job completed", {
+    bootLog(job.kind === "add-files" ? "onboarding.add-files.complete" : "onboarding.job.complete", job.kind === "add-files" ? "Workspace file import completed" : "Onboarding job completed", {
       jobID: job.snapshot.id,
       requestID: job.requestID,
       status: job.snapshot.status,
@@ -786,10 +880,12 @@ async function executeOnboardingJob(job: InternalJob): Promise<void> {
     job.snapshot.phase = cancelled ? "cancelled" : "error"
     job.snapshot.error = error instanceof Error ? error.message : String(error)
     appendLog(job, errorLogText(error))
-    job.snapshot.message = cancelled ? "Onboarding cancelled. This workspace can be resumed later." : job.snapshot.error
+    job.snapshot.message = cancelled
+      ? job.kind === "add-files" ? "File import cancelled." : "Onboarding cancelled. This workspace can be resumed later."
+      : job.snapshot.error
     if (cancelled) appendLog(job, job.snapshot.message)
     bootLogError(`onboarding.job.error.${job.snapshot.id}`, error)
-    bootLog("onboarding.job.finished", "Onboarding job finished", {
+    bootLog(job.kind === "add-files" ? "onboarding.add-files.finished" : "onboarding.job.finished", job.kind === "add-files" ? "Workspace file import finished" : "Onboarding job finished", {
       jobID: job.snapshot.id,
       requestID: job.requestID,
       status: job.snapshot.status,
@@ -808,7 +904,8 @@ async function executeOnboardingJob(job: InternalJob): Promise<void> {
 function scopedJob(id: string, directory?: string): InternalJob | undefined {
   if (!directory) return
   const job = jobs.get(id)
-  if (!job || path.resolve(job.sourceDirectory) !== path.resolve(directory)) return
+  const resolved = path.resolve(directory)
+  if (!job || (path.resolve(job.sourceDirectory) !== resolved && path.resolve(job.targetWorkspacePath) !== resolved)) return
   return job
 }
 
@@ -822,7 +919,7 @@ export function getActiveOnboardingJob(directory?: string): OnboardingJobSnapsho
   const resolved = path.resolve(directory)
   const job = [...jobs.values()].find((candidate) =>
     !FINAL_STATUSES.has(candidate.snapshot.status)
-    && path.resolve(candidate.sourceDirectory) === resolved,
+    && (path.resolve(candidate.sourceDirectory) === resolved || path.resolve(candidate.targetWorkspacePath) === resolved),
   )
   return job ? snapshot(job) : undefined
 }

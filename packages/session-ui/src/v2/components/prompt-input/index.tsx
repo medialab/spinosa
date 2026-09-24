@@ -10,6 +10,7 @@ import { IconButtonV2 } from "@spinosa/ui/v2/icon-button-v2"
 import { KeybindV2 } from "@spinosa/ui/v2/keybind-v2"
 import { MenuV2 } from "@spinosa/ui/v2/menu-v2"
 import { TooltipV2 } from "@spinosa/ui/v2/tooltip-v2"
+import { Spinner } from "@spinosa/ui/spinner"
 import { AttachmentCardV2 } from "../attachment-card-v2"
 import { CommentCardV2 } from "../comment-card-v2"
 import { typeLabel } from "../../../components/message-file"
@@ -94,6 +95,8 @@ export function PromptInputV2(props: PromptInputV2Props) {
       <Show when={state.popover.type !== "closed"}>
         <PromptInputV2Popover
           emptyLabel={i18n.t("ui.promptInput.noMatchingItems")}
+          loadingLabel={i18n.t("ui.list.loading")}
+          loading={props.controller.loading()}
           items={props.controller.suggestions()}
           activeID={state.popover.type === "closed" ? undefined : state.popover.activeID}
           search={
@@ -608,6 +611,8 @@ export function PromptInputV2Select(props: {
 
 export function PromptInputV2Popover(props: {
   emptyLabel: string
+  loadingLabel: string
+  loading: boolean
   items: PromptInputV2Suggestion[]
   activeID?: string
   search?: {
@@ -645,7 +650,22 @@ export function PromptInputV2Popover(props: {
       </Show>
       <Show
         when={props.items.length > 0}
-        fallback={<div class="px-2 py-1 text-v2-text-text-muted">{props.emptyLabel}</div>}
+        fallback={
+          <Show
+            when={props.loading}
+            fallback={<div class="px-2 py-1 text-v2-text-text-muted">{props.emptyLabel}</div>}
+          >
+            <div
+              data-component="prompt-suggestions-loading"
+              class="flex items-center gap-2 px-2 py-1 text-v2-text-text-muted"
+              role="status"
+              aria-live="polite"
+            >
+              <Spinner class="size-3" />
+              {props.loadingLabel}
+            </div>
+          </Show>
+        }
       >
         <For each={groups()}>
           {(group) => (

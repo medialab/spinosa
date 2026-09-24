@@ -20,6 +20,7 @@ import { base64Encode } from "@spinosa/kernel-core/util/encode"
 import { decode64 } from "@/utils/base64"
 import { ResizeHandle } from "@spinosa/ui/resize-handle"
 import { Button } from "@spinosa/ui/button"
+import { Spinner } from "@spinosa/ui/spinner"
 import { Icon as IconV2 } from "@spinosa/ui/v2/icon"
 import { IconButton } from "@spinosa/ui/icon-button"
 import { Tooltip } from "@spinosa/ui/tooltip"
@@ -54,7 +55,6 @@ import { useTheme, type ColorScheme } from "@spinosa/ui/theme/context"
 import { useCommand, type CommandOption } from "@/context/command"
 import { ConstrainDragXAxis, getDraggableId } from "@/utils/solid-dnd"
 import { DebugBar } from "@/components/debug-bar"
-import { TabsInfoPopup } from "@/components/help-button"
 import { Titlebar, type TitlebarUpdate } from "@/components/titlebar"
 import { useDirectoryPicker } from "@/components/directory-picker"
 import { ServerConnection, useServer } from "@/context/server"
@@ -2363,7 +2363,20 @@ export default function LegacyLayout(props: ParentProps) {
                   "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base bg-background-base xl:border-s xl:rounded-ss-[12px]": true,
                 }}
               >
-                <Show when={!autoselecting.loading} fallback={<div class="size-full" />}>
+                <Show
+                  when={!autoselecting.loading}
+                  fallback={
+                    <div
+                      data-component="workspace-auto-select-loading"
+                      class="flex size-full items-center justify-center gap-2 text-text-weak"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Spinner class="size-4" />
+                      {language.t("common.loading")}
+                    </div>
+                  }
+                >
                   {props.children}
                 </Show>
               </main>
@@ -2411,7 +2424,6 @@ export default function LegacyLayout(props: ParentProps) {
         </div>
         {import.meta.env.DEV && import.meta.env.VITE_DISABLE_DEBUG_BAR !== "1" && state.debugTools && <DebugBar />}
       </div>
-      <TabsInfoPopup />
       <ToastRegion v2={false} />
     </div>
   )

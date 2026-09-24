@@ -22,6 +22,7 @@ Your strengths:
 Guidelines:
 - Use Glob for broad file pattern matching
 - Use Grep for searching file contents with regex
+- After Grep, use Jev to score hit snippets against the question. Pass query plus passages as path and text. Read only the read band next. Do not send whole files.
 - Use Read when you know the specific file path you need to read
 - Adapt your search approach based on the thoroughness level specified by the caller
 - Return file paths as absolute paths in your final response
@@ -113,6 +114,7 @@ export const Plugin = define({
       { action: "*", resource: "*", effect: "allow" },
       ...readonlyExternalDirectory,
       { action: "web", resource: "*", effect: "ask" },
+      { action: "jev", resource: "*", effect: "ask" },
       { action: "question", resource: "*", effect: "deny" },
       { action: "plan_enter", resource: "*", effect: "deny" },
       { action: "plan_exit", resource: "*", effect: "deny" },
@@ -174,6 +176,7 @@ export const Plugin = define({
               { action: "grep", resource: "*", effect: "allow" },
               { action: "glob", resource: "*", effect: "allow" },
               { action: "web", resource: "*", effect: "ask" },
+              { action: "jev", resource: "*", effect: "ask" },
               { action: "read", resource: "*", effect: "allow" },
             ],
             readonlyExternalDirectory,

@@ -3,6 +3,7 @@ import { Button } from "@spinosa/ui/button"
 import { List } from "@spinosa/ui/list"
 import { useDialog } from "@spinosa/ui/context/dialog"
 import { useLanguage } from "@/context/language"
+import { Show } from "solid-js"
 
 export interface SessionListEntry {
   id: string
@@ -13,8 +14,8 @@ export function DialogSessionList(props: {
   sessions: SessionListEntry[]
   currentID?: string
   onSelect: (id: string) => void
-  onRename: (id: string) => void
-  onDelete: (id: string) => void
+  onRename?: (id: string) => void
+  onDelete?: (id: string) => void
 }) {
   const dialog = useDialog()
   const language = useLanguage()
@@ -52,12 +53,16 @@ export function DialogSessionList(props: {
               >
                 {language.t("common.switch")}
               </Button>
-              <Button size="small" variant="ghost" onClick={() => props.onRename(item.id)}>
-                {language.t("common.rename")}
-              </Button>
-              <Button size="small" variant="ghost" onClick={() => props.onDelete(item.id)}>
-                {language.t("common.delete")}
-              </Button>
+              <Show when={props.onRename}>
+                <Button size="small" variant="ghost" onClick={() => props.onRename?.(item.id)}>
+                  {language.t("common.rename")}
+                </Button>
+              </Show>
+              <Show when={props.onDelete}>
+                <Button size="small" variant="ghost" onClick={() => props.onDelete?.(item.id)}>
+                  {language.t("common.delete")}
+                </Button>
+              </Show>
             </div>
           </div>
         )}

@@ -1,13 +1,16 @@
 import { useCommand, type CommandOption } from "@/context/command"
+import { useNavigate } from "@solidjs/router"
 import { useLanguage } from "@/context/language"
 import { useLocal, type ModelSelection } from "@/context/local"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
 import { useDialog } from "@spinosa/ui/context/dialog"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
-import { sdkResponseData } from "@/utils/sdk-response"
+import { showToast } from "@/utils/toast"
 import { useSessionLayout } from "./session-layout"
 import { createSessionOwnership } from "./session-ownership"
+import { base64Encode } from "@spinosa/kernel-core/util/encode"
 
 const withCategory = (category: string) => {
   return (option: Omit<CommandOption, "category">): CommandOption => ({
@@ -23,33 +26,42 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
   const local = useLocal()
   const prompt = usePrompt()
   const sdk = useSDK()
-  const { sessionKey } = useSessionLayout()
+  const sync = useSync()
+  const navigate = useNavigate()
+  const { params, sessionKey } = useSessionLayout()
   const sessionOwnership = createSessionOwnership(sessionKey)
   const model = input.model ?? local.model
   const modelCommand = withCategory(language.t("command.category.model"))
+  const providerCommand = withCategory(language.t("command.category.provider"))
   const agentCommand = withCategory(language.t("command.category.agent"))
   const sessionCommand = withCategory(language.t("command.category.session"))
 
   const runStartupBrief = async () => {
     const owner = sessionOwnership.capture()
-    let brief: string | undefined
+    let startup: { input: string; forceAgent: "build" } | undefined
     try {
-      const result = await sdk().client.file.read({ path: "startup-prompt.md" })
-      const data = sdkResponseData<{ type?: string; content?: string }>(result)
-      const content = data?.type === "text" ? data.content : undefined
-      if (content?.trim()) brief = content
-    } catch {
-      brief = undefined
+      const result = await sdk().client.experimental.spinosa.workspace.startupPrompt({ directory: sdk().directory })
+      if (!result.data) throw new Error(language.t("common.requestFailed"))
+      startup = result.data
+    } catch (cause) {
+      owner.run(() =>
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: cause instanceof Error ? cause.message : String(cause),
+        }),
+      )
+      return
     }
     owner.run(() => {
-      const text = brief ?? language.t("command.startup.fallback")
-      local.agent.set("build")
+      if (!startup) return
+      const text = startup.input
+      local.agent.set(startup.forceAgent)
       prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
       queueMicrotask(() => {
         if (!owner.current()) return
         const editor = document.querySelector<HTMLElement>('[data-component="prompt-input"]')
         editor?.focus()
-        prompt.submit()
       })
     })
   }
@@ -76,7 +88,36 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
     })
   }
 
+  const configureProvider = async () => {
+    const owner = sessionOwnership.capture()
+    const { DialogConnectProvider } = await import("@/components/dialog-connect-provider")
+    owner.run(() => void dialog.show(() => <DialogConnectProvider directory={() => sdk().directory} />))
+  }
+
+  const openDraftSessions = () => {
+    const sessions = sync().data.session.map((item) => ({ id: item.id, title: item.title || item.id }))
+    const directory = sdk().directory
+    void import("@/components/dialog-session-list").then((x) =>
+      dialog.show(() => (
+        <x.DialogSessionList
+          sessions={sessions}
+          onSelect={(id) => navigate(`/${base64Encode(directory)}/session/${id}`)}
+        />
+      )),
+    )
+  }
+
   command.register("composer", () => [
+    ...(!params.id
+      ? (["session", "sessions"] as const).map((slash) =>
+          sessionCommand({
+            id: `dialog.${slash}`,
+            title: language.t("dialog.session.list.title"),
+            slash,
+            onSelect: openDraftSessions,
+          }),
+        )
+      : []),
     modelCommand({
       id: "model.choose",
       title: language.t("command.model.choose"),
@@ -84,6 +125,18 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
       keybind: "mod+'",
       slash: "model",
       onSelect: chooseModel,
+    }),
+    modelCommand({
+      id: "model.choose.alias",
+      title: language.t("command.model.choose"),
+      slash: "models",
+      onSelect: chooseModel,
+    }),
+    providerCommand({
+      id: "provider.configure",
+      title: language.t("command.provider.connect"),
+      slash: "provider",
+      onSelect: () => void configureProvider(),
     }),
     modelCommand({
       id: "model.cycleRecent",

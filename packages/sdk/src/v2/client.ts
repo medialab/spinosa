@@ -59,6 +59,11 @@ export function createSpinosaClient(
 
     return response
   })
-  client.interceptors.error.use(wrapClientError)
+  client.interceptors.error.use((error, response, request, options) =>
+    wrapClientError(error, response, request, {
+      ...options,
+      throwOnError: options?.throwOnError ?? config?.throwOnError,
+    }),
+  )
   return new OpencodeClient({ client })
 }

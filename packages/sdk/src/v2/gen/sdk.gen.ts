@@ -55,6 +55,12 @@ import type {
   ExperimentalSessionBackgroundResponses,
   ExperimentalSessionListErrors,
   ExperimentalSessionListResponses,
+  ExperimentalSpinosaWorkspaceFreshnessErrors,
+  ExperimentalSpinosaWorkspaceFreshnessResponses,
+  ExperimentalSpinosaWorkspaceStartupPromptErrors,
+  ExperimentalSpinosaWorkspaceStartupPromptResponses,
+  ExperimentalSpinosaWorkspaceUpdateErrors,
+  ExperimentalSpinosaWorkspaceUpdateResponses,
   ExperimentalWorkspaceAdapterListErrors,
   ExperimentalWorkspaceAdapterListResponses,
   ExperimentalWorkspaceCreateErrors,
@@ -133,6 +139,8 @@ import type {
   MoveSessionDestination,
   OnboardingActiveGetErrors,
   OnboardingActiveGetResponses,
+  OnboardingAddFilesErrors,
+  OnboardingAddFilesResponses,
   OnboardingJobActionErrors,
   OnboardingJobActionResponses,
   OnboardingJobCancelErrors,
@@ -1376,6 +1384,129 @@ export class Workspace extends HeyApiClient {
   }
 }
 
+export class Workspace2 extends HeyApiClient {
+  /**
+   * Prepare the canonical Spinosa workspace startup prompt
+   *
+   * Read the workspace startup brief and return the same review-first prompt payload used by the TUI.
+   */
+  public startupPrompt<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<
+    ExperimentalSpinosaWorkspaceStartupPromptResponses,
+    ExperimentalSpinosaWorkspaceStartupPromptErrors,
+    ThrowOnError
+  > {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalSpinosaWorkspaceStartupPromptResponses,
+      ExperimentalSpinosaWorkspaceStartupPromptErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/spinosa/workspace/startup-prompt",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Inspect Spinosa workspace template freshness
+   *
+   * Inspect whether the routed Spinosa workspace matches the installed template pack.
+   */
+  public freshness<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<
+    ExperimentalSpinosaWorkspaceFreshnessResponses,
+    ExperimentalSpinosaWorkspaceFreshnessErrors,
+    ThrowOnError
+  > {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalSpinosaWorkspaceFreshnessResponses,
+      ExperimentalSpinosaWorkspaceFreshnessErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/spinosa/workspace/freshness",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update Spinosa workspace template files
+   *
+   * Explicitly refresh the routed Spinosa workspace from the installed template pack and report whether Spinosa must restart.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<
+    ExperimentalSpinosaWorkspaceUpdateResponses,
+    ExperimentalSpinosaWorkspaceUpdateErrors,
+    ThrowOnError
+  > {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentalSpinosaWorkspaceUpdateResponses,
+      ExperimentalSpinosaWorkspaceUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/spinosa/workspace/update",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Spinosa extends HeyApiClient {
+  private _workspace?: Workspace2
+  get workspace(): Workspace2 {
+    return (this._workspace ??= new Workspace2({ client: this.client }))
+  }
+}
+
 export class Experimental extends HeyApiClient {
   private _controlPlane?: ControlPlane
   get controlPlane(): ControlPlane {
@@ -1410,6 +1541,11 @@ export class Experimental extends HeyApiClient {
   private _workspace?: Workspace
   get workspace(): Workspace {
     return (this._workspace ??= new Workspace({ client: this.client }))
+  }
+
+  private _spinosa?: Spinosa
+  get spinosa(): Spinosa {
+    return (this._spinosa ??= new Spinosa({ client: this.client }))
   }
 }
 
@@ -1626,7 +1762,7 @@ export class Workspaces extends HeyApiClient {
   }
 }
 
-export class Spinosa extends HeyApiClient {
+export class Spinosa2 extends HeyApiClient {
   private _workspaces?: Workspaces
   get workspaces(): Workspaces {
     return (this._workspaces ??= new Workspaces({ client: this.client }))
@@ -1715,9 +1851,9 @@ export class Global extends HeyApiClient {
     return (this._config ??= new Config({ client: this.client }))
   }
 
-  private _spinosa?: Spinosa
-  get spinosa(): Spinosa {
-    return (this._spinosa ??= new Spinosa({ client: this.client }))
+  private _spinosa?: Spinosa2
+  get spinosa(): Spinosa2 {
+    return (this._spinosa ??= new Spinosa2({ client: this.client }))
   }
 }
 
@@ -6387,6 +6523,55 @@ export class Onboarding extends HeyApiClient {
       ThrowOnError
     >({
       url: "/experimental/onboarding/jobs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Import files into an existing Spinosa workspace
+   *
+   * Run the shared core import pipeline against an existing workspace without rerunning onboarding or changing setup status.
+   */
+  public addFiles<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      sourcePath: string
+      extensions: Array<string>
+      visionModelId: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ): RequestResult<
+    OnboardingAddFilesResponses,
+    OnboardingAddFilesErrors,
+    ThrowOnError
+  > {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "sourcePath" },
+            { in: "body", key: "extensions" },
+            { in: "body", key: "visionModelId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OnboardingAddFilesResponses,
+      OnboardingAddFilesErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/onboarding/jobs/add-files",
       ...options,
       ...params,
       headers: {

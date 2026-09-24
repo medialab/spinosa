@@ -5,8 +5,8 @@ import { Show, type Accessor } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useNavigate } from "@solidjs/router"
 import { PromptInputV2Composer } from "@/components/prompt-input-v2"
-import { SpinosaHarnessFooter, SpinosaHarnessStrip } from "@/components/spinosa-harness-strip"
-import { PromptGitStatus, PromptWorkspaceSelector } from "@/components/prompt-workspace-selector"
+import { SpinosaHarnessStrip } from "@/components/spinosa-harness-strip"
+import { PromptWorkspaceSelector } from "@/components/prompt-workspace-selector"
 import {
   PromptProjectAddButton,
   PromptProjectSelector,
@@ -85,7 +85,7 @@ export function NewSessionView(props: {
               {workspaceName()}
             </h1>
             <div class="mt-8 flex flex-col gap-8">
-              <SpinosaHarnessStrip project={props.project} restoreFocus={props.input.restoreFocus} />
+              <SpinosaHarnessStrip />
               <PromptInputV2Composer controller={props.input} />
               <Show when={props.project.empty()}>
                 <PromptProjectAddButton controller={props.project} />
@@ -93,27 +93,19 @@ export function NewSessionView(props: {
               <Show when={props.project.selected()}>
                 <div class="flex min-h-7 min-w-0 flex-col items-center justify-center gap-0 text-v2-text-text-faint sm:flex-row">
                   <PromptProjectSelector controller={props.project} placement="bottom" />
-                  <Show
-                    when={props.workspace.bar.visible()}
-                    fallback={
-                      <PromptGitStatus branch={props.workspace.bar.branch()} noGit={!props.workspace.project.git()} />
-                    }
-                  >
-                    <PromptWorkspaceSelector
-                      value={props.workspace.selection.value()}
-                      projectRoot={props.workspace.project.root()}
-                      workspaces={props.workspace.project.workspaces()}
-                      branch={props.workspace.bar.branch()}
-                      onChange={props.workspace.selection.set}
-                      onDone={props.input.restoreFocus}
-                    />
-                  </Show>
+                  <PromptWorkspaceSelector
+                    value={props.workspace.selection.value()}
+                    projectRoot={props.workspace.project.root()}
+                    workspaces={props.workspace.project.workspaces()}
+                    canCreate={props.workspace.project.git()}
+                    onChange={props.workspace.selection.set}
+                    onDone={props.input.restoreFocus}
+                  />
                 </div>
               </Show>
             </div>
           </div>
         </div>
-        <SpinosaHarnessFooter project={props.project} />
       </div>
     </div>
   )

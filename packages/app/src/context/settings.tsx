@@ -29,6 +29,7 @@ export interface Settings {
     showSearch: boolean
     showStatus: boolean
     showThinking: boolean
+    fileContext: boolean
     showTerminal: boolean
     showReasoningSummaries: boolean
     shellToolPartsExpanded: boolean
@@ -191,6 +192,7 @@ const defaultSettings: Settings = {
     showSearch: false,
     showStatus: false,
     showThinking: true,
+    fileContext: true,
     showTerminal: false,
     showReasoningSummaries: false,
     shellToolPartsExpanded: false,
@@ -408,6 +410,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         showThinking: withFallback(() => store.general?.showThinking, defaultSettings.general.showThinking),
         setShowThinking(value: boolean) {
           setStore("general", "showThinking", value)
+        },
+        fileContext: withFallback(() => store.general?.fileContext, defaultSettings.general.fileContext),
+        setFileContext(value: boolean) {
+          setStore("general", "fileContext", value)
         },
         shellToolPartsExpanded: withFallback(
           () => store.general?.shellToolPartsExpanded,

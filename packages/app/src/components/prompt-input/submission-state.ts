@@ -2,6 +2,18 @@ import { type ContextItem, type Prompt, type usePrompt } from "@/context/prompt"
 
 type PromptTarget = ReturnType<ReturnType<typeof usePrompt>["capture"]>
 
+export function mergeSubmissionContext(
+  items: (ContextItem & { key: string })[],
+  selected: ContextItem | undefined,
+): (ContextItem & { key: string })[] {
+  if (!selected) return items
+  const start = selected.type === "file" ? selected.selection?.startLine : undefined
+  const end = selected.type === "file" ? selected.selection?.endLine : undefined
+  const key = `${selected.type}:${selected.type === "file" ? selected.path : ""}:${start}:${end}`
+  if (items.some((item) => item.key === key)) return items
+  return [...items, { ...selected, key }]
+}
+
 export function createPromptSubmissionState(input: {
   target: PromptTarget
   prompt: Prompt

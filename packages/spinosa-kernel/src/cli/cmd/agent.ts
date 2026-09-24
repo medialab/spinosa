@@ -25,6 +25,7 @@ const AVAILABLE_PERMISSIONS = [
   "web",
   "task",
   "todowrite",
+  "jev",
   "lsp",
   "skill",
 ]

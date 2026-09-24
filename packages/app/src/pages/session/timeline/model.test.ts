@@ -21,6 +21,12 @@ describe("timeline model", () => {
     expect(isTimelineReady([], false)).toBe(true)
   })
 
+  test("waits for the initial message page even when history is not marked loading", () => {
+    expect(isTimelineReady([], false, true)).toBe(false)
+    expect(isTimelineReady([assistant("msg_2")], false, true)).toBe(false)
+    expect(isTimelineReady([user("msg_1")], true, true)).toBe(true)
+  })
+
   test("loads exactly one opaque cursor page", async () => {
     let calls = 0
     const anchors: Array<string | boolean> = []

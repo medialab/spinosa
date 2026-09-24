@@ -78,6 +78,7 @@ import { observeElementOffsetReconnectAware } from "./observe-element-offset"
 import { createTimelineProjection } from "./projection"
 import { MessageComment, SummaryDiff, TimelineRow, TimelineRowMap } from "./rows"
 import { filterVirtualIndexes } from "./virtual-items"
+import { installMarkdownPathPills } from "./markdown-path-pill"
 
 const emptyMessages: MessageType[] = []
 const emptyParts: PartType[] = []
@@ -297,6 +298,7 @@ export function MessageTimeline(props: {
   setRevealMessage?: (fn: (id: string) => void) => void
   setScrollToEnd?: (fn: () => void) => void
   setHistoryAnchor?: (handlers: { capture: () => void; restore: (done: boolean) => void }) => void
+  onOpenMarkdownHref: (href: string) => boolean
 }) {
   let touchGesture: number | undefined
 
@@ -316,6 +318,8 @@ export function MessageTimeline(props: {
   const platform = usePlatform()
 
   const [listRoot, setListRoot] = createSignal<HTMLDivElement>()
+  let disposeMarkdownPathPills: (() => void) | undefined
+  onCleanup(() => disposeMarkdownPathPills?.())
   const sessionID = createMemo(() => params.id)
   const sessionStatus = createMemo(() => {
     const id = sessionID()
@@ -1423,7 +1427,8 @@ export function MessageTimeline(props: {
               "w-full": true,
               "pb-4": true,
               "pr-3": true,
-              "pl-2.5": settings.general.newLayoutDesigns(),
+              "pl-[190px]": settings.general.newLayoutDesigns() && platform.platform === "desktop" && platform.os === "macos",
+              "pl-2.5": settings.general.newLayoutDesigns() && (platform.platform !== "desktop" || platform.os !== "macos"),
               "pl-2 md:pl-4": !settings.general.newLayoutDesigns(),
               "md:max-w-200 md:mx-auto 2xl:max-w-[1000px]": props.centered && !settings.general.newLayoutDesigns(),
             }}
@@ -1433,6 +1438,11 @@ export function MessageTimeline(props: {
                 classList={{
                   "flex items-center gap-1 min-w-0 flex-1": true,
                   "pr-3": !settings.general.newLayoutDesigns(),
+                }}
+                style={{
+                  "max-width": settings.general.newLayoutDesigns() && platform.platform === "desktop" && platform.os === "macos"
+                    ? "max(0px, calc(50vw - 330px))"
+                    : undefined,
                 }}
               >
                 <div class="flex items-center min-w-0 flex-1 w-full">
@@ -1868,6 +1878,8 @@ export function MessageTimeline(props: {
           ref={(element) => {
             virtualContent = element
             props.setContentRef(element)
+            disposeMarkdownPathPills?.()
+            disposeMarkdownPathPills = installMarkdownPathPills(element, props.onOpenMarkdownHref)
           }}
           style={{
             height: `${virtualizer.getTotalSize()}px`,

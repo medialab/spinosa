@@ -235,6 +235,8 @@ export function SessionHeader() {
     messageAgentColor(params.id ? sync().data.message[params.id] : undefined, sync().data.agent),
   )
   const v2ActionsState = createMemo<SessionHeaderV2ActionsState>(() => ({
+    backLabel: language.t("session.header.backToHome"),
+    onBack: () => command.trigger("home.toggle"),
     statusVisible: status(),
     statusLabel: language.t("status.popover.trigger"),
     reviewLabel: language.t("command.review.toggle"),
@@ -503,6 +505,16 @@ export function SessionHeader() {
                         </Button>
                       </TooltipKeybind>
                     </div>
+                    <Tooltip placement="bottom" value={language.t("session.header.backToHome")}>
+                      <Button
+                        variant="ghost"
+                        class="titlebar-icon w-8 h-6 p-0 box-border shrink-0"
+                        onClick={() => command.trigger("home.toggle")}
+                        aria-label={language.t("session.header.backToHome")}
+                      >
+                        <Icon size="small" name="arrow-left" />
+                      </Button>
+                    </Tooltip>
                   </div>
                 </div>
               }
@@ -517,6 +529,8 @@ export function SessionHeader() {
 }
 
 type SessionHeaderV2ActionsState = {
+  backLabel: string
+  onBack: () => void
   statusVisible: boolean
   statusLabel: string
   reviewLabel: string
@@ -531,6 +545,17 @@ function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
 
   return (
     <div class="flex items-center gap-2">
+      <TooltipV2 class="shrink-0" placement="bottom" value={props.state.backLabel}>
+        <IconButtonV2
+          type="button"
+          variant="ghost-muted"
+          size="large"
+          class="!w-9 shrink-0"
+          onClick={props.state.onBack}
+          aria-label={props.state.backLabel}
+          icon={<Icon name="arrow-left" size="small" class="rtl:rotate-180" />}
+        />
+      </TooltipV2>
       <Show when={props.state.statusVisible}>
         <Tooltip placement="bottom" value={props.state.statusLabel}>
           <StatusPopoverV2 />

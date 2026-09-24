@@ -1386,6 +1386,42 @@ exports[`tool parameters JSON Schema (wire shape) web 1`] = `
 }
 `;
 
+exports[`tool parameters JSON Schema (wire shape) jev 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "passages": {
+      "description": "Grep hits or map snippets to score. At most 32. Truncated to 800 characters each.",
+      "items": {
+        "properties": {
+          "path": {
+            "description": "Source path from grep/glob. Do not invent a path.",
+            "type": "string",
+          },
+          "text": {
+            "description": "The passage to screen: a grep hit plus a little context, not a whole file.",
+            "type": "string",
+          },
+        },
+        "required": [
+          "text",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+    "query": {
+      "description": "The researcher question these passages might answer.",
+      "type": "string",
+    },
+  },
+  "required": [
+    "query",
+    "passages",
+  ],
+  "type": "object",
+}
+`;
 
 exports[`tool parameters JSON Schema (wire shape) write 1`] = `
 {

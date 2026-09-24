@@ -3,6 +3,7 @@ import { FileIcon } from "@spinosa/ui/file-icon"
 import { Icon } from "@spinosa/ui/icon"
 import { Tag } from "@spinosa/ui/v2/badge-v2"
 import { KeybindV2 } from "@spinosa/ui/v2/keybind-v2"
+import { Spinner } from "@spinosa/ui/spinner"
 import { getDirectory, getFilename } from "@spinosa/kernel-core/util/path"
 
 export type AtOption =
@@ -33,6 +34,7 @@ type PromptPopoverProps = {
   popover: "at" | "slash" | null
   setSlashPopoverRef: (el: HTMLDivElement) => void
   atFlat: AtOption[]
+  atLoading: boolean
   atActive?: string
   atKey: (item: AtOption) => string
   setAtActive: (id: string) => void
@@ -72,15 +74,34 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
             <Show
               when={props.atFlat.length > 0}
               fallback={
-                <div
-                  class="px-2 py-1"
-                  classList={{
-                    "text-v2-text-text-muted": props.newLayoutDesigns,
-                    "text-text-weak": !props.newLayoutDesigns,
-                  }}
+                <Show
+                  when={props.atLoading}
+                  fallback={
+                    <div
+                      class="px-2 py-1"
+                      classList={{
+                        "text-v2-text-text-muted": props.newLayoutDesigns,
+                        "text-text-weak": !props.newLayoutDesigns,
+                      }}
+                    >
+                      {props.t("prompt.popover.emptyResults")}
+                    </div>
+                  }
                 >
-                  {props.t("prompt.popover.emptyResults")}
-                </div>
+                  <div
+                    data-component="prompt-suggestions-loading"
+                    class="flex items-center gap-2 px-2 py-1"
+                    classList={{
+                      "text-v2-text-text-muted": props.newLayoutDesigns,
+                      "text-text-weak": !props.newLayoutDesigns,
+                    }}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Spinner class="size-3" />
+                    {props.t("common.loading")}
+                  </div>
+                </Show>
               }
             >
               <For each={props.atFlat.slice(0, 10)}>

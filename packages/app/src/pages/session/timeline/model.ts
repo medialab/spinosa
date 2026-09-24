@@ -16,7 +16,7 @@ export function createTimelineModel(input: {
   let refreshFrame: number | undefined
   let refreshTimer: number | undefined
 
-  const [resource] = createResource(
+  const [resource, actions] = createResource(
     () => input.sessionID(),
     (id) => {
       clearRefresh()
@@ -45,7 +45,14 @@ export function createTimelineModel(input: {
   })
   const ready = createMemo(() => {
     const id = input.sessionID()
-    return !id || isTimelineReady(sync().data.message[id], serverSync().session.history.loading(id))
+    return (
+      !id ||
+      isTimelineReady(
+        sync().data.message[id],
+        serverSync().session.history.loading(id),
+        resource.loading || !!resource.error,
+      )
+    )
   })
   const userMessages = createMemo(() => selectUserMessages(messages()), emptyUserMessages, { equals: same })
   const visibleUserMessages = createMemo(
@@ -82,6 +89,7 @@ export function createTimelineModel(input: {
     messages,
     ready,
     resource,
+    retry: actions.refetch,
     userMessages,
     visibleUserMessages,
   }
@@ -98,8 +106,8 @@ export function selectUserMessages(messages: Message[]) {
   return messages.filter((message): message is UserMessage => message.role === "user")
 }
 
-export function isTimelineReady(messages: Message[] | undefined, loading: boolean) {
-  return messages !== undefined && (messages.some((message) => message.role === "user") || !loading)
+export function isTimelineReady(messages: Message[] | undefined, loading: boolean, initialLoading = false) {
+  return messages !== undefined && (messages.some((message) => message.role === "user") || (!initialLoading && !loading))
 }
 
 export function selectVisibleUserMessages(messages: UserMessage[], revertMessageID?: string) {

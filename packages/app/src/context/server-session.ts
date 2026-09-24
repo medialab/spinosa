@@ -573,7 +573,11 @@ export function createServerSession(
       onAttempt?.()
       return client.session.messages({ sessionID, limit, before })
     })
+    if (!response.response) {
+      throw response.error ?? new Error("Session message request returned no response")
+    }
     const items = (response.data ?? []).filter((item) => !!item?.info?.id)
+    const cursor = response.response.headers.get("x-next-cursor") ?? undefined
     return {
       session: items.map((item) => cleanMessage(item.info)).sort(compareMessages),
       part: items.map((item) => ({
@@ -582,8 +586,8 @@ export function createServerSession(
       })),
       source: legacyMessageSource(items),
       sourceMode: before ? ("older" as const) : ("latest" as const),
-      cursor: response.response.headers.get("x-next-cursor") ?? undefined,
-      complete: !response.response.headers.get("x-next-cursor"),
+      cursor,
+      complete: !cursor,
     }
   }
 

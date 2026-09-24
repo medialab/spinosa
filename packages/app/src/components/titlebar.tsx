@@ -20,6 +20,7 @@ import { IconButtonV2 } from "@spinosa/ui/v2/icon-button-v2"
 import { Icon as IconV2 } from "@spinosa/ui/v2/icon"
 import { KeybindV2 } from "@spinosa/ui/v2/keybind-v2"
 import { TooltipV2 } from "@spinosa/ui/v2/tooltip-v2"
+import { useDialog } from "@spinosa/ui/context/dialog"
 
 import { LayoutRoute, useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
@@ -37,8 +38,11 @@ import { ServerConnection, useServer } from "@/context/server"
 import { tabKey, useTabs } from "@/context/tabs"
 import type { PromptSession } from "@/context/prompt"
 import "./titlebar.css"
-import { newTabTooltipKeybind } from "./command-tooltip-keybind"
 import { normalizeSessionInfo } from "@/utils/session"
+import { decode64 } from "@/utils/base64"
+import { showToast } from "@/utils/toast"
+import { activeOnboardingJob } from "@/utils/active-onboarding-job"
+import { DialogStopCurrentTask } from "@/components/dialog-stop-current-task"
 
 const legacyTitlebarHeight = 40
 const v2TitlebarHeight = 36
@@ -68,6 +72,8 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
   const language = useLanguage()
   const settings = useSettings()
   const server = useServer()
+  const global = useGlobal()
+  const dialog = useDialog()
   const navigate = useNavigate()
   const location = useLocation()
   const params = useParams()
@@ -137,6 +143,76 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
     update: updateState(),
   }))
 
+  const goHome = async () => {
+    const route = layout.route()
+    if (route.type !== "session") {
+      if (location.pathname !== "/") navigate("/")
+      return
+    }
+
+    const conn = global.servers.list().find((item) => ServerConnection.key(item) === (route.server ?? server.key))
+    if (!conn) {
+      navigate("/")
+      return
+    }
+
+    const ctx = global.ensureServerCtx(conn)
+    const check = async () => {
+      const session = ctx.sync.session.peek(route.sessionId) ?? (await ctx.sync.session.resolve(route.sessionId))
+      const directory = session?.directory ?? decode64(params.dir)
+      const status = ctx.sync.session.data.session_status[route.sessionId]
+      const chatBusy = status !== undefined && status.type !== "idle"
+      const job = directory
+        ? await activeOnboardingJob(() =>
+            ctx.sdk.ensureDirSdkContext(directory).client.onboarding.active.get({ directory }),
+          )
+        : undefined
+      const importBusy = job !== undefined && (job.status === "running" || job.status === "waiting")
+
+      if (!chatBusy && !importBusy) return
+
+      return async () => {
+        const operations: Promise<unknown>[] = []
+        if (chatBusy) operations.push(ctx.sdk.client.session.abort({ sessionID: route.sessionId }))
+        if (importBusy && directory && job) {
+          operations.push(
+            ctx.sdk.ensureDirSdkContext(directory).client.onboarding.job.cancel({ directory, jobID: job.id }),
+          )
+        }
+        await Promise.all(operations)
+      }
+    }
+
+    let active = true
+    dialog.show(
+      () => <DialogStopCurrentTask check={check} isActive={() => active} onHome={() => navigate("/")} />,
+      () => {
+        active = false
+      },
+    )
+  }
+
+  const requestHome = () => {
+    void goHome().catch((error: unknown) => {
+      showToast({
+        variant: "error",
+        title: language.t("common.requestFailed"),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    })
+  }
+
+  command.register("titlebar-home", () => [
+    {
+      id: "home.toggle",
+      title: language.t("home.title"),
+      category: language.t("command.category.view"),
+      keybind: "mod+b",
+      hidden: true,
+      onSelect: requestHome,
+    },
+  ])
+
   const back = () => {
     const next = backPath(history)
     if (!next) return
@@ -172,9 +248,9 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
     <header
       data-slot={useV2Titlebar() ? "titlebar-v2" : undefined}
       classList={{
-        "shrink-0 relative flex flex-row": true,
-        "h-9 bg-v2-background-bg-deep overflow-visible": useV2Titlebar(),
-        "h-10 bg-background-base overflow-hidden": !useV2Titlebar(),
+        "flex flex-row": true,
+        "absolute inset-x-0 top-0 z-50 h-12 bg-transparent pointer-events-none overflow-visible": useV2Titlebar(),
+        "shrink-0 relative h-10 bg-background-base overflow-hidden": !useV2Titlebar(),
         "order-last": bottom(),
       }}
       style={{
@@ -192,8 +268,6 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
         <Match when={useV2Titlebar()}>
           {(_) => {
             const layout = useLayout()
-            const global = useGlobal()
-
             const tabs = useTabs()
             const tabsStore = tabs.store
             const tabsStoreActions = tabs
@@ -311,19 +385,6 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
 
               tabs.newDraft({ server: fallback.server, directory: fallback.project.worktree }, "")
             }
-            const toggleHome = () => tabs.toggleHome({ home: layout.route().type === "home", current: currentTab() })
-
-            command.register("titlebar-home", () => [
-              {
-                id: "home.toggle",
-                title: language.t("home.title"),
-                category: language.t("command.category.view"),
-                keybind: "mod+b",
-                hidden: true,
-                onSelect: toggleHome,
-              },
-            ])
-
             command.register("tabs", () => {
               const current = currentTab()
 
@@ -360,7 +421,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
 
             return (
               <div
-                class="h-full flex-1 overflow-hidden flex flex-row items-center gap-1.5 px-2 md:pr-3"
+                class="h-full flex-1 overflow-visible flex flex-row items-center gap-1.5 px-2 md:pr-3"
                 classList={{
                   "pt-2": !bottom(),
                   "pb-2": bottom(),
@@ -368,9 +429,9 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   "md:pl-4": !macTrafficLights(),
                 }}
               >
-                <ChannelIndicator debugTools={props.debugTools} />
+                <div class="pointer-events-auto"><ChannelIndicator debugTools={props.debugTools} /></div>
                 <Show when={windows() || linux()}>
-                  <WindowsAppMenu command={command} platform={platform} variant="v2" />
+                  <div class="pointer-events-auto"><WindowsAppMenu command={command} platform={platform} variant="v2" /></div>
                 </Show>
                 <TooltipV2
                   placement="bottom"
@@ -380,55 +441,39 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                       <KeybindV2 keys={command.keybindParts("home.toggle")} variant="neutral" />
                     </>
                   }
-                  class="shrink-0"
+                  class="shrink-0 pointer-events-auto"
                 >
                   <IconButtonV2
                     type="button"
                     variant="ghost-muted"
                     size="large"
-                    class="!w-9 shrink-0"
+                    class="!w-9 shrink-0 rounded-full bg-v2-background-bg-base shadow-sm"
                     icon={<IconV2 name="home" />}
                     state={layout.route().type === "home" ? "pressed" : undefined}
-                    onClick={toggleHome}
+                    onClick={requestHome}
                     aria-label={language.t("home.title")}
                     aria-pressed={layout.route().type === "home"}
                   />
                 </TooltipV2>
 
-                <TitlebarTabStrip
-                  tabs={tabsStore}
-                  currentTab={currentTab}
-                  forceTruncate={tabsAreOverflowing()}
-                  onOverflowChange={setTabsAreOverflowing}
-                  onNavigate={(tab, el) => {
-                    tabs.select(tab)
-                    el?.scrollIntoView({ behavior: "instant" })
-                  }}
-                  onClose={(tab) => {
-                    const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
-                    if (index !== -1) tabsStoreActions.closeTab(index)
-                  }}
-                  onReorder={(keys) => tabsStoreActions.reorder(keys)}
-                />
-                <TooltipV2
-                  placement="bottom"
-                  value={
-                    <>
-                      {language.t("command.session.new")}
-                      <KeybindV2 keys={newTabTooltipKeybind(command)} variant="neutral" />
-                    </>
-                  }
-                >
-                  <IconButtonV2
-                    type="button"
-                    variant="ghost-muted"
-                    size="large"
-                    class="shrink-0"
-                    icon={<IconV2 name="plus" />}
-                    onClick={openNewTab}
-                    aria-label={language.t("command.session.new")}
+                <div class="hidden" aria-hidden="true">
+                  <TitlebarTabStrip
+                    tabs={tabsStore}
+                    currentTab={currentTab}
+                    forceTruncate={tabsAreOverflowing()}
+                    onOverflowChange={setTabsAreOverflowing}
+                    onNavigate={(tab, el) => {
+                      tabs.select(tab)
+                      el?.scrollIntoView({ behavior: "instant" })
+                    }}
+                    onClose={(tab) => {
+                      const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
+                      if (index !== -1) tabsStoreActions.closeTab(index)
+                    }}
+                    onReorder={(keys) => tabsStoreActions.reorder(keys)}
                   />
-                </TooltipV2>
+                </div>
+
                 <div class="flex-1" />
                 <TitlebarV2Right state={v2RightState()} />
               </div>
@@ -604,7 +649,7 @@ type TitlebarV2RightState = {
 
 function TitlebarV2Right(props: { state: TitlebarV2RightState }) {
   return (
-    <div class="relative z-20 flex shrink-0 items-center justify-end gap-0 overflow-visible">
+    <div class="pointer-events-auto relative z-20 flex shrink-0 items-center justify-end gap-0 overflow-visible">
       <Show when={props.state.update.visible}>
         <TitlebarUpdateIconButton state={props.state.update} />
       </Show>
