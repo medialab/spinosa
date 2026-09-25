@@ -945,7 +945,7 @@ test("does not emit blank patch snapshots between edit and task", async () => {
     const output = lines.join("\n")
     expect(output).toContain("+ Created README-demo.md")
     expect(output).not.toContain("~ Patched src/demo-format.ts")
-    expect(output).toContain("+ Created README-demo.md\n\n# Explore Task")
+    expect(output).toContain("+ Created README-demo.md\n\n# Spinosa-Generalist Task")
     expect(output).not.toContain("+ Created README-demo.md\n\n\n# Explore Task")
   } finally {
     out.scrollback.destroy()

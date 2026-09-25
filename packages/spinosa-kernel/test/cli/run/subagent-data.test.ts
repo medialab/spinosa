@@ -245,7 +245,7 @@ describe("run subagent data", () => {
     expect(snapshot.tabs).toEqual([
       expect.objectContaining({
         sessionID: "child-1",
-        label: "Explore",
+        label: "Spinosa-Generalist",
         description: "Scan reducer paths",
         title: "Reducer touchpoints",
         status: "completed",

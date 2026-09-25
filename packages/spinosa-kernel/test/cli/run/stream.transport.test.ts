@@ -1328,7 +1328,7 @@ describe("run stream transport", () => {
       expect(boot.tabs).toEqual([
         expect.objectContaining({
           sessionID: "child-1",
-          label: "Explore",
+          label: "Spinosa-Generalist",
           description: "Pending permission",
           status: "running",
         }),

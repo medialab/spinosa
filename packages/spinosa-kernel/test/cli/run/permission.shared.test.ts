@@ -104,7 +104,7 @@ describe("run permission shared", () => {
         }),
       ),
     ).toMatchObject({
-      title: "General Task",
+      title: "Spinosa-Generalist Task",
       lines: ["◉ investigate stream"],
     })
 

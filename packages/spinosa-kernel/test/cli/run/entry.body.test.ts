@@ -276,7 +276,7 @@ describe("run entry body", () => {
       ),
     ).toEqual({
       kind: "task",
-      title: "# Explore Task",
+      title: "# Spinosa-Generalist Task",
       rows: ["Inspect reducer"],
       tail: "",
     })
