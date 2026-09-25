@@ -165,7 +165,7 @@ describe("workspace update flow", () => {
     await mkdir(path.join(workspace, ".agents"), { recursive: true })
     await Bun.write(
       path.join(templateRoot, ".spinosa", "workspace-files.tsv"),
-      "path\trole\tupdate_policy\n.agents/\tframework\treplace_if_unmodified\n",
+      "path\trole\tupdate_policy\n.agents/\tframework\treplace_if_unmodified\n.spinosa/agents/\tframework\treplace_if_unmodified\n",
     )
     await Bun.write(path.join(templateRoot, ".agents", "agent.md"), "framework update\n")
     await Bun.write(path.join(templateRoot, ".agents", "new.md"), "new managed file\n")
@@ -178,7 +178,7 @@ describe("workspace update flow", () => {
     expect(await Bun.file(path.join(workspace, ".agents", "new.md")).text()).toBe("new managed file\n")
   })
 
-  test("refreshes protocol probe files under .agents even without checksum baseline", async () => {
+  test("refreshes protocol probe files even without checksum baseline", async () => {
     await using tmp = await tmpdir()
     const frameworkRoot = path.join(tmp.path, "install")
     const templateRoot = path.join(frameworkRoot, "workspace-template")
@@ -186,7 +186,7 @@ describe("workspace update flow", () => {
 
     const probeDirs = [
       path.join(".agents", "references"),
-      path.join(".agents", "agents"),
+      path.join(".spinosa", "agents"),
       path.join(".agents", "skills", "spinosa-overseer"),
     ]
     for (const root of [templateRoot, workspace]) {
@@ -195,14 +195,14 @@ describe("workspace update flow", () => {
     }
     await Bun.write(
       path.join(templateRoot, ".spinosa", "workspace-files.tsv"),
-      "path\trole\tupdate_policy\n.agents/\tframework\treplace_if_unmodified\n",
+      "path\trole\tupdate_policy\n.agents/\tframework\treplace_if_unmodified\n.spinosa/agents/\tframework\treplace_if_unmodified\n",
     )
     await Bun.write(path.join(templateRoot, ".agents", "references", "classification.md"), "template classification\n")
-    await Bun.write(path.join(templateRoot, ".agents", "agents", "spinosa-overseer.md"), "template overseer\n")
+    await Bun.write(path.join(templateRoot, ".spinosa", "agents", "spinosa-overseer.md"), "template overseer\n")
     await Bun.write(path.join(templateRoot, ".agents", "skills", "spinosa-overseer", "SKILL.md"), "template skill\n")
     await Bun.write(path.join(templateRoot, ".agents", "custom.md"), "template custom\n")
     await Bun.write(path.join(workspace, ".agents", "references", "classification.md"), "stale classification\n")
-    await Bun.write(path.join(workspace, ".agents", "agents", "spinosa-overseer.md"), "stale overseer\n")
+    await Bun.write(path.join(workspace, ".spinosa", "agents", "spinosa-overseer.md"), "stale overseer\n")
     await Bun.write(path.join(workspace, ".agents", "skills", "spinosa-overseer", "SKILL.md"), "stale skill\n")
     await Bun.write(path.join(workspace, ".agents", "custom.md"), "user custom\n")
     // No framework-checksums.json — missing baseline previously skipped nested probes forever.
@@ -211,7 +211,7 @@ describe("workspace update flow", () => {
 
     expect(result.success).toBe(true)
     expect(await Bun.file(path.join(workspace, ".agents", "references", "classification.md")).text()).toBe("template classification\n")
-    expect(await Bun.file(path.join(workspace, ".agents", "agents", "spinosa-overseer.md")).text()).toBe("template overseer\n")
+    expect(await Bun.file(path.join(workspace, ".spinosa", "agents", "spinosa-overseer.md")).text()).toBe("template overseer\n")
     expect(await Bun.file(path.join(workspace, ".agents", "skills", "spinosa-overseer", "SKILL.md")).text()).toBe("template skill\n")
     // Non-probe managed files still preserve edits without a baseline.
     expect(await Bun.file(path.join(workspace, ".agents", "custom.md")).text()).toBe("user custom\n")
@@ -519,13 +519,11 @@ describe("workspace update flow", () => {
     const templateRoot = path.join(frameworkRoot, "workspace-template")
     const workspace = path.join(tmp.path, "legacy-1.0.0-workspace")
 
-    await mkdir(path.join(templateRoot, ".spinosa"), { recursive: true })
-    await mkdir(path.join(templateRoot, ".agents"), { recursive: true })
-    await mkdir(path.join(templateRoot, ".codex", "agents"), { recursive: true })
+    await mkdir(path.join(templateRoot, ".spinosa", "agents"), { recursive: true })
+    await mkdir(path.join(templateRoot, ".agents", "agents"), { recursive: true })
     await mkdir(path.join(frameworkRoot, "metadata"), { recursive: true })
     await mkdir(path.join(workspace, ".spinosa"), { recursive: true })
-    await mkdir(path.join(workspace, ".agents"), { recursive: true })
-    await mkdir(path.join(workspace, ".codex", "agents"), { recursive: true })
+    await mkdir(path.join(workspace, ".agents", "agents"), { recursive: true })
     await mkdir(path.join(workspace, "raw"), { recursive: true })
 
     await Bun.write(path.join(frameworkRoot, "metadata", "version"), "1.0.3-beta.5\n")
@@ -535,12 +533,12 @@ describe("workspace update flow", () => {
         "path\trole\tupdate_policy",
         "AGENTS.md\tframework\talways_replace",
         ".agents/\tframework\treplace_if_unmodified",
-        ".codex/\tframework\treplace_if_unmodified",
+        ".spinosa/agents/\tframework\treplace_if_unmodified",
       ].join("\n") + "\n",
     )
     await Bun.write(path.join(templateRoot, "AGENTS.md"), "# Spinosa\n")
-    await Bun.write(path.join(templateRoot, ".agents", "spinosa-searcher.md"), "spinosa searcher\n")
-    await Bun.write(path.join(templateRoot, ".codex", "agents", "spinosa-searcher.toml"), "name = \"spinosa-searcher\"\n")
+    await Bun.write(path.join(templateRoot, ".agents", "agents", "spinosa-searcher.md"), "canonical searcher\n")
+    await Bun.write(path.join(templateRoot, ".spinosa", "agents", "spinosa-searcher.md"), "# spinosa-searcher\n")
 
     // Legacy 1.0.0 workspace: no checksum baseline, Pilosa names, user corpus
     await Bun.write(
@@ -553,9 +551,8 @@ describe("workspace update flow", () => {
       ].join("\n") + "\n",
     )
     await Bun.write(path.join(workspace, "AGENTS.md"), "# Pilosa\n")
-    await Bun.write(path.join(workspace, ".agents", "pilosa-searcher.md"), "old agent\n")
-    await Bun.write(path.join(workspace, ".agents", "user-custom.md"), "keep me\n")
-    await Bun.write(path.join(workspace, ".codex", "agents", "pilosa-searcher.toml"), "name = \"pilosa-searcher\"\n")
+    await Bun.write(path.join(workspace, ".agents", "agents", "pilosa-searcher.md"), "old agent\n")
+    await Bun.write(path.join(workspace, ".agents", "agents", "user-custom.md"), "keep me\n")
     await Bun.write(path.join(workspace, "raw", "interviews.jsonl"), '{"q":1}\n')
     expect(existsSync(path.join(workspace, ".spinosa", "framework-checksums.json"))).toBe(false)
 
@@ -563,10 +560,9 @@ describe("workspace update flow", () => {
 
     expect(result.success).toBe(true)
     expect(await Bun.file(path.join(workspace, "AGENTS.md")).text()).toBe("# Spinosa\n")
-    expect(await Bun.file(path.join(workspace, ".agents", "spinosa-searcher.md")).text()).toBe("spinosa searcher\n")
-    expect(existsSync(path.join(workspace, ".agents", "pilosa-searcher.md"))).toBe(false)
-    expect(existsSync(path.join(workspace, ".codex", "agents", "pilosa-searcher.toml"))).toBe(false)
-    expect(await Bun.file(path.join(workspace, ".agents", "user-custom.md")).text()).toBe("keep me\n")
+    expect(await Bun.file(path.join(workspace, ".spinosa", "agents", "spinosa-searcher.md")).text()).toBe("# spinosa-searcher\n")
+    expect(existsSync(path.join(workspace, ".agents", "agents", "pilosa-searcher.md"))).toBe(false)
+    expect(await Bun.file(path.join(workspace, ".agents", "agents", "user-custom.md")).text()).toBe("keep me\n")
     expect(await Bun.file(path.join(workspace, "raw", "interviews.jsonl")).text()).toBe('{"q":1}\n')
     expect(await Bun.file(path.join(workspace, ".spinosa", "workspace")).text()).toContain("framework_version: 1.0.3-beta.5")
     expect(existsSync(path.join(workspace, ".spinosa", "framework-checksums.json"))).toBe(true)

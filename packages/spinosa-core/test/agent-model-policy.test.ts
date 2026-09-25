@@ -16,15 +16,11 @@ function templateFiles() {
   return readdirSync(templateRoot, { recursive: true, encoding: "utf8" }).map((entry) => String(entry))
 }
 
-/** Canonical definitions plus every vendor mirror (.claude, .codex, .opencode, .hermes). */
+/** Canonical guidance, Spinosa runtime definitions, and portable skills. */
 function agentDefinitions() {
   return templateFiles().filter(
     (file) => /(^|\/)\.[a-z]+\/agents\/[^/]+\.md$/.test(file) || /(^|\/)skills\/[^/]+\/SKILL\.md$/.test(file),
   )
-}
-
-function codexProfiles() {
-  return templateFiles().filter((file) => /(^|\/)\.codex\/agents\/[^/]+\.toml$/.test(file))
 }
 
 /** The leading YAML frontmatter block, or "" when the file has none. */
@@ -50,24 +46,13 @@ describe("agent model policy", () => {
     expect(offenders).toEqual([])
   })
 
-  test("codex profiles leave the model setting commented out", () => {
-    const files = codexProfiles()
-    expect(files.length).toBeGreaterThan(5)
-
-    const offenders = files.filter((file) =>
-      readFileSync(path.join(templateRoot, file), "utf8")
-        .split("\n")
-        .some((line) => /^\s*model\s*=/.test(line)),
-    )
-    expect(offenders).toEqual([])
-  })
-
-  test("the scan actually reaches the canonical definitions and every mirror", () => {
+  test("the scan reaches canonical guidance and Spinosa runtime definitions only", () => {
     const files = agentDefinitions()
     expect(files).toContain(".agents/agents/spinosa-searcher.md")
     expect(files).toContain(".agents/skills/spinosa-searcher/SKILL.md")
-    for (const vendor of [".claude", ".codex", ".opencode", ".hermes"]) {
-      expect(files.some((file) => file.startsWith(`${vendor}/`))).toBe(true)
+    expect(files).toContain(".spinosa/agents/spinosa-searcher.md")
+    for (const removedVendor of [".claude/", ".codex/", ".hermes/", ".opencode/"]) {
+      expect(files.some((file) => file.startsWith(removedVendor))).toBe(false)
     }
   })
 })

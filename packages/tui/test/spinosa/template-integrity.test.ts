@@ -18,19 +18,13 @@ describe("workspace template integrity", () => {
     expect(missing).toEqual([])
   })
 
-  test("all supported agents exist in each adapter", () => {
+  test("all supported agents exist in canonical and Spinosa runtime layouts", () => {
     const missing: string[] = []
     for (const agent of SPINOSA_AGENT_FILES) {
       const skill = agent.replace(/\.md$/, "")
       for (const relative of [
         path.join(".agents", "skills", skill, "SKILL.md"),
-        path.join(".opencode", "skills", skill, "SKILL.md"),
-        path.join(".opencode", "agents", agent),
-        path.join(".claude", "agents", agent),
-        path.join(".claude", "skills", skill, "SKILL.md"),
-        path.join(".codex", "agents", `${skill}.toml`),
-        path.join(".codex", "skills", skill, "SKILL.md"),
-        path.join(".hermes", "skills", skill, "SKILL.md"),
+        path.join(".spinosa", "agents", agent),
       ]) {
         if (!existsSync(path.join(templateRoot, relative))) missing.push(relative)
       }
@@ -38,34 +32,29 @@ describe("workspace template integrity", () => {
     expect(missing).toEqual([])
   })
 
-  test("markdown agent and skill mirrors match their canonical content", () => {
+  test("Spinosa runtime agent bodies match canonical guidance", () => {
     const drift: string[] = []
     const body = (content: string) => content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim()
     for (const agent of SPINOSA_AGENT_FILES) {
-      const skill = agent.replace(/\.md$/, "")
       const canonicalAgent = readFileSync(path.join(templateRoot, ".agents", "agents", agent), "utf-8")
-      for (const relative of [path.join(".opencode", "agents", agent), path.join(".claude", "agents", agent)]) {
-        if (body(readFileSync(path.join(templateRoot, relative), "utf-8")) !== body(canonicalAgent)) drift.push(relative)
-      }
-    const canonicalSkill = body(
-      readFileSync(path.join(templateRoot, ".agents", "skills", skill, "SKILL.md"), "utf-8"),
-    )
-    for (const vendor of [".opencode", ".claude", ".codex", ".hermes"]) {
-      const relative = path.join(vendor, "skills", skill, "SKILL.md")
-      if (body(readFileSync(path.join(templateRoot, relative), "utf-8")) !== canonicalSkill) drift.push(relative)
-    }
+      const relative = path.join(".spinosa", "agents", agent)
+      const runtimeAgent = readFileSync(path.join(templateRoot, relative), "utf-8")
+      if (body(runtimeAgent) !== body(canonicalAgent)) drift.push(relative)
+      if (!/^mode:\s*subagent$/m.test(runtimeAgent)) drift.push(`${relative} (not a subagent)`)
     }
     expect(drift).toEqual([])
   })
 
-  test("contains no Python caches or maintainer-specific Hermes path", async () => {
+  test("contains no Python caches or removed vendor trees", async () => {
     const caches: string[] = []
     for await (const file of new Bun.Glob("**/*.pyc").scan({ cwd: templateRoot, onlyFiles: true, dot: true })) caches.push(file)
     for await (const file of new Bun.Glob("**/*.pyc").scan({ cwd: path.join(repoRoot, ".agents"), onlyFiles: true, dot: true })) caches.push(path.join(".agents", file))
     expect(caches).toEqual([])
-    const hermes = await Bun.file(path.join(templateRoot, ".hermes", "workspace.config.yaml")).text()
-    expect(hermes).not.toContain("/Users/")
-    expect(hermes).toContain("{{SPINOSA_WORKSPACE}}")
+    for (const vendor of [".claude", ".codex", ".hermes"]) {
+      expect(existsSync(path.join(templateRoot, vendor))).toBe(false)
+    }
+    expect(existsSync(path.join(templateRoot, ".opencode"))).toBe(false)
+    expect(existsSync(path.join(templateRoot, "CLAUDE.md"))).toBe(false)
   })
 
   test("package manifests are strict JSON", async () => {

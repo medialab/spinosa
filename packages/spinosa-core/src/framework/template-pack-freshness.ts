@@ -9,7 +9,7 @@ export const TEMPLATE_PACK_PROTOCOL_PROBES = [
   "startup-prompt.md",
   "AGENTS.md",
   ".agents/references/classification.md",
-  ".agents/agents/spinosa-overseer.md",
+  ".spinosa/agents/spinosa-overseer.md",
   ".agents/skills/spinosa-overseer/SKILL.md",
 ] as const
 
@@ -99,7 +99,7 @@ function protocolBodyForCompare(
   options?: { workspacePath?: string; role?: "template" | "workspace" },
 ): string {
   if (relativePath === "startup-prompt.md") return stripStartupPromptWorkspaceSuffix(content)
-  if ((relativePath === "AGENTS.md" || relativePath === "CLAUDE.md") && options?.workspacePath) {
+  if (relativePath === "AGENTS.md" && options?.workspacePath) {
     const substituted =
       options.role === "template"
         ? content.replaceAll("{{WORKSPACE_PATH}}", options.workspacePath)

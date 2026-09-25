@@ -116,6 +116,18 @@ describe("mcp skills", () => {
     expect(skills.some((s) => s.name === ".agents/spinosa-searcher" || s.name.endsWith("/spinosa-searcher"))).toBe(true)
     expect(skills[0]?.uri.startsWith("spinosa://skill/")).toBe(true)
   })
+
+  test("listSkillFiles reads Spinosa skills and ignores legacy OpenCode paths", async () => {
+    const ws = await fakeWorkspace()
+    await mkdir(path.join(ws, ".spinosa", "skills", "local-skill"), { recursive: true })
+    await mkdir(path.join(ws, ".opencode", "skills", "legacy-skill"), { recursive: true })
+    await Bun.write(path.join(ws, ".spinosa", "skills", "local-skill", "SKILL.md"), "---\nname: local-skill\n---\n")
+    await Bun.write(path.join(ws, ".opencode", "skills", "legacy-skill", "SKILL.md"), "---\nname: legacy-skill\n---\n")
+
+    const names = listSkillFiles(ws).map((skill) => skill.name)
+    expect(names).toContain(".spinosa/local-skill")
+    expect(names).not.toContain(".opencode/legacy-skill")
+  })
 })
 
 describe("createSpinosaMcpServer", () => {

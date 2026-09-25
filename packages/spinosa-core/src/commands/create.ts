@@ -151,18 +151,12 @@ function today(): string {
 }
 
 function materializePlaceholders(workspacePath: string): void {
-  for (const relPath of ["AGENTS.md", "CLAUDE.md"]) {
+  for (const relPath of ["AGENTS.md"]) {
     const filePath = path.join(workspacePath, relPath)
     if (!existsSync(filePath)) continue
     let content = readFileSync(filePath, "utf-8")
     const updated = content.replaceAll("{{WORKSPACE_PATH}}", workspacePath)
     if (updated !== content) writeFileSync(filePath, updated, "utf-8")
-  }
-  const hermesConfig = path.join(workspacePath, ".hermes", "workspace.config.yaml")
-  if (existsSync(hermesConfig)) {
-    let content = readFileSync(hermesConfig, "utf-8")
-    const updated = content.replaceAll("{{SPINOSA_WORKSPACE}}", workspacePath)
-    if (updated !== content) writeFileSync(hermesConfig, updated, "utf-8")
   }
 }
 
