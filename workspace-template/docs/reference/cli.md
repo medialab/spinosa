@@ -76,7 +76,7 @@ Sync **workspace framework files** to match the installed CLI version.
 - Overwrites release-managed workspace files from the installed framework
 - Preserves user-state paths such as `raw/`, `system/context.md`, `system/dictionary.md`, and `.spinosa/memory/orchestrator-notes.md`
 - Removes retired or no-longer-managed framework files recorded in the workspace manifest
-- Keeps pre-baked vendor mirrors current from `workspace-template/` (`.opencode/`, `.claude/`, `.codex/`, `.hermes/skills/`, etc.)
+- Refreshes managed runtime agent files under `.spinosa/agents/` from the workspace template
 - Blocked if installed CLI is **older** than the workspace declares — run `spinosa upgrade` first
 
 Examples:
@@ -88,11 +88,10 @@ spinosa update --dry-run                 # preview changes
 spinosa update --force --yes             # compatibility flag; same behavior
 ```
 
-**Hermes users:** after update, merge `.hermes/workspace.config.yaml` into `~/.hermes/config.yaml` (see [Integrations](#integrations) below).
 
 ### `spinosa doctor`
 
-Read-only health check: CLI version, workspace skew, document tools, cloud-storage paths, Hermes config drift.
+Read-only health check: CLI version, workspace skew, document tools, and cloud-storage paths.
 
 ```bash
 spinosa doctor
@@ -135,7 +134,7 @@ Spinosa has **three layers**. Use the right command for each:
 |-------|---------|--------------|
 | Global CLI | `spinosa upgrade` | `~/.spinosa/versions/`, `~/.spinosa/bin/spinosa` |
 | Workspace framework | `spinosa update` | `AGENTS.md`, `.agents/`, `.bin/`, `docs/`, maps templates, etc. |
-| Vendor integration | automatic on `update` + manual Hermes merge | `.opencode/`, `.claude/`, `.codex/`, `.hermes/skills/`; merge `workspace.config.yaml` → `~/.hermes/config.yaml` |
+| Spinosa runtime agents | automatic on `update` | `.spinosa/agents/` |
 
 ### Launch-time upgrade check
 
@@ -163,21 +162,16 @@ Typical flow after a new release:
 ```bash
 spinosa upgrade          # 1. CLI
 spinosa update --yes     # 2. each workspace (or accept the post-upgrade prompt)
-# 3. Hermes: merge .hermes/workspace.config.yaml into ~/.hermes/config.yaml
-spinosa doctor           # 4. verify
+spinosa doctor           # 3. verify
 ```
 
 Run `spinosa doctor` anytime to see whether CLI and workspace versions match.
 
-## Integrations
+## Agent and skill files
 
-Spinosa does **not** upgrade OpenCode, Hermes, Codex, or Claude Code for you. It regenerates **project-local** config from `.agents/` when you run `spinosa update`.
-
-| Tool | Spinosa manages | You manage |
-|------|-----------------|------------|
-| **OpenCode** | `.opencode/agents/`, `.opencode/skills/` (generated) | OpenCode CLI install & version |
-| **Hermes** | `.hermes/skills/`, `.hermes/workspace.config.yaml` (generated) | Merge into `~/.hermes/config.yaml`; Hermes CLI version |
-| **Codex / Claude** | `.codex/`, `.claude/` mirrors (generated) | Vendor CLI install & version |
+Spinosa loads native agent definitions from `.spinosa/agents/`. Worker guidance,
+portable skills, and shared references remain in `.agents/`; `spinosa update`
+refreshes the managed runtime files without generating an `.opencode/` tree.
 
 Workspaces on **Google Drive, Dropbox, or OneDrive** may time out during `spinosa update`. Open the folder locally, wait for sync, then retry.
 
@@ -216,7 +210,7 @@ PDFs are automatically classified as text-based (routed to MarkItDown) or image-
 
 ## External agents (`spinosa mcp-server`)
 
-Host agents (Claude, Codex, Cursor) can use Spinosa without a nested Spinosa model:
+OpenCode and other MCP-capable hosts can use Spinosa without a nested Spinosa model:
 
 1. Create a workspace with `spinosa new … --launch copy --json`.
 2. Attach MCP: `{ "command": "spinosa", "args": ["mcp-server"] }` (starts unbound).

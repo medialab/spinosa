@@ -94,7 +94,7 @@ export NO_COLOR=1                   # readable logs
 export RLWRAP_EXEC=1                # skip rlwrap re-exec in scripts
 ```
 
-**Automation rule:** never let `spinosa new` open an LLM CLI (OpenCode, Codex, etc.). Always pass `--launch copy` (or `--cli other --launch copy`) so onboarding only copies the startup prompt — no new terminal window.
+**Automation rule:** never let `spinosa new` open an LLM CLI. Always pass `--launch copy` (or `--cli other --launch copy`) so onboarding only copies the startup prompt — no new terminal window.
 
 ---
 
@@ -200,7 +200,7 @@ source ~/.spinosa/env.sh   # or source ~/.zshrc
 | `version` | `spinosa version` | Prints `spinosa X.Y.Z` |
 | `help` | `spinosa help` | Exit 0; no library errors |
 | `doctor` | `spinosa doctor` | Exit 0 or 1 with **warnings only** — never bash traceback / `unbound variable` |
-| `doctor` (workspace) | `spinosa doctor -w "$WORKSPACE"` | Shows CLI vs workspace version; cloud/Hermes advisories OK |
+| `doctor` (workspace) | `spinosa doctor -w "$WORKSPACE"` | Shows CLI vs workspace version; cloud-storage advisories OK |
 | `upgrade` | `spinosa upgrade --yes` | "Already on latest" when current; or successful upgrade |
 | `update` preview | `cd "$WORKSPACE" && spinosa update --dry-run --yes` | Lists changed paths; exit 0 |
 | `uninstall` dry | `spinosa uninstall --help` | Help only — do not uninstall during standard gate |
@@ -343,19 +343,8 @@ spinosa update --yes --workspace "$WORKSPACE"
 | Doctor | Warns if workspace behind CLI; no crash on `framework_version: dev` workspaces |
 | Dry-run | Shows version range (e.g. `0.7.1 → 0.7.3`) and file count |
 | Apply update | `framework_version` bumped in `.spinosa/workspace` |
-| Pre-baked agent mirrors | `.hermes/skills/`, `.codex/agents/` present after update |
+| Spinosa runtime agents | `.spinosa/agents/` present after create/update; no `.opencode/` tree is generated |
 | Cloud path | Doctor cloud warning acceptable; update completes or documents known Drive limits |
-
-### E1. Hermes (if used)
-
-After update:
-
-```bash
-# Merge advisory from doctor
-diff ~/.hermes/config.yaml "$WORKSPACE/.hermes/workspace.config.yaml"
-```
-
-If the Hermes workspace template changed, verify the doctor advisory still points users at the correct merge step.
 
 ---
 
@@ -474,7 +463,7 @@ Publish only via `bun run release …` (not manual `git tag`).
 - Published `install.sh` PINNED_VERSION ≠ tagged version
 - Any Phase A script fails
 
-Warnings (cloud storage, Hermes merge, workspace behind CLI) are **not** blockers if documented and update path works.
+Warnings (cloud storage, workspace behind CLI) are **not** blockers if documented and update path works.
 
 ---
 

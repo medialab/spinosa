@@ -20,24 +20,24 @@ You can edit YAML headers (the metadata block at the top of each file), but don'
 Only with explicit researcher authorization. By default, Spinosa works exclusively with files you've provided. If you need external sources, set `external_sources_allowed: yes` in `system/configuration.md` first.
 
 **How do I ask a question?**
- In plain language, directly to your LLM tool. "Find all mentions of X in the Y interviews." "Compare what group A said about Z vs group B." "Summarize the key findings about W." The orchestrator either answers directly on `fast_path` or writes a goal artifact and dispatches a non-fast-path chain through sub-agents.
+In plain language, directly to your LLM tool. "Find all mentions of X in the Y interviews." "Compare what group A said about Z vs group B." "Summarize the key findings about W." The runtime router selects a strategy, creates or resumes `run.json`, and releases only the runnable nodes. Workers receive bounded scopes and cannot choose the next phase.
 
 **My question got a fast-path answer instead of a full report. Why?**
-Some questions are operational — "what's in my corpus?", "how do I add files?" — and get answered directly without the full sub-agent pipeline. If you want a full evidence-grounded report, be explicit: "Find evidence for X in my sources."
+Some questions are operational — "what's in my corpus?", "how do I add files?" — and may complete as a fast-path operation. If you want a full evidence-grounded report, be explicit: "Find evidence for X in my sources." The selected runtime workflow determines which artifacts and gates are required.
 
 ## Reports & verification
 
 **The Verifier says "unsupported." Does that mean my report is wrong?**
 "Unsupported" means the source file exists but doesn't contain the claimed content — the Searcher may have misread a passage. The Verifier flags it so the Writer can correct it. The final report will either drop that claim or mark it corrected. Check the report status badge for the overall verdict.
 
-**What does `◐◐◐◐◐◐◐◐◑░░░░░░░ 75%` mean?**
-That's a gauge chart. The filled half-circles show a percentage. 75% filled = 75% healthy. In a Janitor report, it means 75% of files are in good shape and 25% may need attention.
+**How are figures rendered?**
+Use `spinosa_figure` with `bar`, `sparkline`, `stacked_bar`, or `status_matrix`. Unsupported chart requests should be reported as unavailable and expressed in prose or a Markdown table.
 
 **I see `○ pending` on my report. What's happening?**
-The Writer has finished composing, but the Verifier hasn't checked it yet. Wait a moment — verification runs automatically after writing. The status will update to `✓`, `⚠`, or `✗`.
+The Writer has finished composing, but the runtime has not completed its verification gate yet. Wait for the selected workflow to record its next state. Valid statuses are `pass`, `pass_with_corrections`, `partial`, `fail`, and `blocked`.
 
 **Can I get a report regenerated?**
-Yes. Ask the same question again, or refine it. Each question is a new dispatch.
+Yes. Ask the same question again, or refine it. Each request creates or resumes a runtime workflow according to its run state.
 
 ## Maintenance
 
@@ -50,12 +50,10 @@ Two commands — different scopes:
 
 After upgrading the CLI, run `spinosa update` on each workspace (Spinosa prompts you after upgrade). Then run **`spinosa doctor`** to check version alignment.
 
-**Hermes:** after `spinosa update`, merge `.hermes/workspace.config.yaml` into `~/.hermes/config.yaml`.
-
 **Cloud storage:** if your workspace is on Google Drive or similar, ensure files are synced locally before `spinosa update`.
 
 **How do I clean up old files?**
-Run the Janitor agent. It scans for stale files, broken links, and outdated reports, then presents a cleanup proposal. You confirm before anything moves to `.trash/`.
+Run the maintenance workflow. Janitor reports independent integrity and freshness counts and proposes cleanup; files move only after the workflow's explicit approval step.
 
 **Can I uninstall?**
 `spinosa uninstall` (or `spinosa uninstall --yes` non-interactively) removes the framework runtime under `~/.spinosa` and application files under XDG paths. Your workspace folders are left in place, and `~/.spinosa/metadata/` remains so a future reinstall can reuse remembered workspace paths and configuration.

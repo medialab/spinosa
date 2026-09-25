@@ -6,7 +6,7 @@ This page covers the workspace layout, what each directory holds, configuration 
 
 ```
 your-workspace/
-  AGENTS.md         Instructions that tell your AI tool how to orchestrate agents
+  AGENTS.md         Workspace boundaries and runtime workflow guidance
   raw/              Your documents, all converted to .md files
   maps/             Navigation maps — an automatic table of contents
   system/           Configuration, context, dictionary, index
@@ -26,12 +26,13 @@ your-workspace/
 | `raw/` | Your converted documents. Single-page sources usually become one `.md` file. Split multi-page sources become one folder with `page-001.md`, `page-002.md`, etc. Each page file has a YAML header with provenance and page data. The agents search here. |
 | `maps/` | Navigation maps built during startup. Think of them as a smart index — they say "these 5 files are about coastal erosion, these 3 are about farming practices, and here are the key passages." Uses Obsidian wikilinks (`[[filename]]`) so you can browse connections visually if you open the workspace in Obsidian. |
 | `system/` | Your workspace settings. `context.md` stores project scope and research vocabulary. `configuration.md` stores operating settings. `dictionary.md` is the master vocabulary list. |
-| `agent_reports/` | All agent output. Numbered files like `00_startup-report.md` are final results. Session-scoped files like `evidence_packet_{session_id}.md` are intermediate work files the evaluator moves to `.trash/` after the route closes. |
+| `agent_reports/` | Workflow artifacts: goal mirrors, evidence packets, reports, verification, evaluation, and maintenance proposals. Each worker writes only to its runtime-assigned path. |
 | `.logs/` | Hidden operational traces: `onboarding.log`, conversion NDJSON. Pre-memory-migration session records may remain here or in `.spinosa/archive/`. Current session memory is at `.spinosa/memory/`. |
-| `.agents/agents/` | Definitions of the 11 agents. Each is a `.md` file with permissions, workflow, and output format. |
+| `.agents/agents/` | Canonical bounded-worker guidance; native runtime agent definitions are installed under `.spinosa/agents/`. |
 | `.agents/skills/` | Fallback instructions for each agent, used when native dispatch isn't available. |
+| `.spinosa/agents/` | Runtime-loaded Spinosa agent definitions; refreshed by `spinosa update`. |
 | `.bin/` | CLI scripts and conversion engines. |
-| `.trash/` | Archived process files — moved here automatically as reports are finalized. |
+| `.trash/` | Retired files moved only through the approved cleanup workflow. |
 
 ## YAML headers in raw/
 
@@ -138,15 +139,16 @@ After startup, the workspace index includes a health grid:
 
 ## Startup protocol
 
-When you first create a workspace, the startup protocol indexes everything:
+When you first create a workspace, `corpus.startup_index` runs this sequence:
 
-1. **Verify onboarding** — confirm your files were copied correctly
-2. **Survey the corpus** — count files, note types and languages
-3. **Build dictionary + extract content** — read every file, extract names, places, terms, summaries, and key passages
-4. **Write navigation maps** — build structural overview, group maps, and theme maps
-5. **Validate** — check every file appears in at least one map, spot-check quote accuracy
+`validate → survey → partition → extraction fan-out → merge → dictionary → header enrichment → map write → connection analysis → verification → evaluation → commit workspace_started`
 
-Startup is complete only when all validation checks pass. The status then changes from `cli_started` to `workspace_started`.
+The WorkflowEngine supplies node inputs, outputs, and gates. Optional artifacts
+do not silently skip a scheduled phase. Startup commits `workspace_started`
+only after the required dictionary, index, maps, extraction-coverage, and
+verification gates pass. Recovery validates the complete assigned file set,
+terminal statuses, metadata, and artifact contents; an existing filename alone
+does not prove a batch is complete.
 
 > For the full protocol with detailed specifications, see the Startup Protocol in `startup-prompt.md`.
 
