@@ -4,13 +4,13 @@ import { UPDATER_ENABLED } from "./constants"
 import { createUpdaterController, type UpdaterReadyRecord } from "./updater-controller"
 import { getLogger } from "./logging"
 import { getStore } from "./store"
-import { setAppQuitting } from "./windows"
+import { revokeWindowCloseApprovals, setAppQuitting } from "./windows"
 import { nativeT } from "./native-translations"
 
 const { autoUpdater } = pkg
 const key = "ready"
 
-export function setupAutoUpdater(stop: () => Promise<void>) {
+export function setupAutoUpdater(stop: () => Promise<void | boolean>) {
   const logger = getLogger()
   autoUpdater.logger = logger
   autoUpdater.channel = "latest"
@@ -42,6 +42,7 @@ export function setupAutoUpdater(stop: () => Promise<void>) {
           // The install failed and the app keeps running; clear the flag so
           // deliberate window closes prune ids again.
           setAppQuitting(false)
+          revokeWindowCloseApprovals()
           throw error
         }
       },

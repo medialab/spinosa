@@ -1,4 +1,4 @@
-import { createEffect, For, Match, on, onCleanup, onMount, Show, Switch, type Accessor, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch, type Accessor, type JSX } from "solid-js"
 import { animate, type AnimationPlaybackControls } from "motion"
 import { useI18n } from "@spinosa/ui/context/i18n"
 import { createStore } from "solid-js/store"
@@ -42,6 +42,152 @@ export interface BasicToolProps {
   triggerHref?: string
   triggerAsLink?: boolean
   clickable?: boolean
+  tool?: string
+  input?: Record<string, unknown>
+  metadata?: Record<string, unknown>
+  output?: string
+}
+
+const TOOL_BUBBLE_TAGS: Record<string, string> = {
+  shell: "SHELL",
+  bash: "SHELL",
+  read: "READ",
+  list: "LIST",
+  glob: "GLOB",
+  grep: "GREP",
+  webfetch: "FETCH",
+  websearch: "SEARCH",
+  web: "WEB",
+  edit: "EDIT",
+  write: "WRITE",
+  patch: "PATCH",
+  apply_patch: "PATCH",
+  todowrite: "TODO",
+  question: "QUESTION",
+  skill: "SKILL",
+  task: "TASK",
+}
+
+export function toolBubbleTag(tool: string): string {
+  const tag = TOOL_BUBBLE_TAGS[tool.toLowerCase()]
+  if (tag) return tag
+  const fallback = tool.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 12)
+  return fallback || "TOOL"
+}
+
+function firstStringField(input: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+  if (!input) return undefined
+  for (const key of keys) {
+    const value = input[key]
+    if (typeof value === "string" && value.length > 0) return value
+  }
+  return undefined
+}
+
+export function toolBubbleCopyText(
+  tool: string,
+  input?: Record<string, unknown>,
+  metadata?: Record<string, unknown>,
+): string {
+  const key = tool.toLowerCase()
+  if (key === "shell" || key === "bash") {
+    return firstStringField(input, ["command"]) ?? firstStringField(metadata, ["command"]) ?? ""
+  }
+  if (key === "read" || key === "edit" || key === "write" || key === "patch" || key === "apply_patch") {
+    return firstStringField(input, ["filePath", "path"]) ?? ""
+  }
+  if (key === "list") {
+    return firstStringField(input, ["path"]) ?? ""
+  }
+  if (key === "glob") {
+    const pattern = firstStringField(input, ["pattern"]) ?? ""
+    const dir = firstStringField(input, ["path"])
+    return dir ? `${pattern} in ${dir}` : pattern
+  }
+  if (key === "grep") {
+    const pattern = firstStringField(input, ["pattern"]) ?? ""
+    const dir = firstStringField(input, ["path"])
+    return dir ? `${pattern} in ${dir}` : pattern
+  }
+  if (key === "webfetch" || key === "web") {
+    return firstStringField(input, ["url"]) ?? firstStringField(input, ["query"]) ?? ""
+  }
+  if (key === "websearch") {
+    return firstStringField(input, ["query"]) ?? ""
+  }
+  if (key === "task") {
+    return firstStringField(input, ["description"]) ?? ""
+  }
+  if (key === "skill") {
+    return firstStringField(input, ["name"]) ?? ""
+  }
+  if (key === "question") {
+    const questions = input?.["questions"]
+    if (Array.isArray(questions)) {
+      const first = questions.find(
+        (item): item is { question?: unknown } => !!item && typeof item === "object" && "question" in item,
+      )
+      if (first && typeof first.question === "string") return first.question
+    }
+    return ""
+  }
+  return (
+    firstStringField(input, ["command", "query", "url", "filePath", "path", "pattern", "name", "description"]) ?? ""
+  )
+}
+
+async function copyBubbleText(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Clipboard unavailable (permissions, insecure context) — leave the bubble unchanged.
+  }
+  return false
+}
+
+function ToolBubble(props: { tag: string; copyText: string; failed?: boolean }) {
+  const i18n = useI18n()
+  const [copied, setCopied] = createSignal(false)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => {
+    if (timer !== undefined) clearTimeout(timer)
+  })
+  const copy = (event: MouseEvent | KeyboardEvent) => {
+    event.stopPropagation()
+    event.preventDefault()
+    if (!props.copyText || copied()) return
+    void copyBubbleText(props.copyText).then((ok) => {
+      if (!ok) return
+      setCopied(true)
+      if (timer !== undefined) clearTimeout(timer)
+      timer = setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      data-component="tool-bubble"
+      data-copied={copied() ? "true" : undefined}
+      data-failed={props.failed ? "true" : undefined}
+      title={i18n.t("ui.toolBubble.copy")}
+      aria-label={copied() ? i18n.t("ui.toolBubble.copied") : i18n.t("ui.toolBubble.copy")}
+      onClick={copy}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return
+        copy(event)
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      <span data-slot="tool-bubble-tag">{props.tag}</span>
+      <span data-slot="tool-bubble-copy">
+        {copied() ? i18n.t("ui.toolBubble.copied") : i18n.t("ui.toolBubble.copy")}
+      </span>
+    </span>
+  )
 }
 
 const SPRING = { type: "spring" as const, visualDuration: 0.35, bounce: 0 }
@@ -182,12 +328,21 @@ export function BasicTool(props: BasicToolProps) {
     setOpen(value)
   }
 
+  const bubble = createMemo(() => {
+    if (!props.tool) return undefined
+    const copyText = toolBubbleCopyText(props.tool, props.input, props.metadata) || props.tool
+    return { tag: toolBubbleTag(props.tool), copyText }
+  })
+
   const trigger = () => (
     <div
       data-component="tool-trigger"
       data-clickable={props.clickable ? "true" : undefined}
       data-hide-details={props.hideDetails ? "true" : undefined}
     >
+      <Show when={bubble()}>
+        {(item) => <ToolBubble tag={item().tag} copyText={item().copyText} failed={props.status === "error"} />}
+      </Show>
       <div data-slot="basic-tool-tool-trigger-content">
         <div data-slot="basic-tool-tool-info">
           <Switch>
@@ -325,6 +480,8 @@ export function GenericTool(props: {
   status?: string
   hideDetails?: boolean
   input?: Record<string, unknown>
+  metadata?: Record<string, unknown>
+  output?: string
 }) {
   const i18n = useI18n()
 
@@ -338,6 +495,10 @@ export function GenericTool(props: {
         args: args(props.input),
       }}
       hideDetails={props.hideDetails}
+      tool={props.tool}
+      input={props.input}
+      metadata={props.metadata}
+      output={props.output}
     />
   )
 }

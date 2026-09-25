@@ -109,14 +109,14 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
 
   command.register("composer", () => [
     ...(!params.id
-      ? (["session", "sessions"] as const).map((slash) =>
+      ? [
           sessionCommand({
-            id: `dialog.${slash}`,
+            id: "dialog.session",
             title: language.t("dialog.session.list.title"),
-            slash,
+            slash: "session",
             onSelect: openDraftSessions,
           }),
-        )
+        ]
       : []),
     modelCommand({
       id: "model.choose",

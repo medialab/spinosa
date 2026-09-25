@@ -3,6 +3,14 @@ import type { ElectronAPI, WslServersEvent } from "./types"
 import type { UpdaterState } from "@spinosa/app/updater"
 
 const updaterCallbacks = new Set<(state: UpdaterState) => void>()
+const windowCloseCallbacks = new Set<() => void>()
+ipcRenderer.on("window-close-request", () => {
+  if (windowCloseCallbacks.size === 0) {
+    ipcRenderer.send("window-close-decision", true)
+    return
+  }
+  windowCloseCallbacks.forEach((callback) => callback())
+})
 let updaterState: UpdaterState | undefined
 let updaterSubscription: Promise<void> | undefined
 const updaterHandler = (_: unknown, state: UpdaterState) => {
@@ -80,6 +88,11 @@ const api: ElectronAPI = {
   draftBlobGet: (id) => ipcRenderer.invoke("draft-blob-get", id),
 
   getWindowID: () => ipcRenderer.invoke("get-window-id"),
+  onWindowCloseRequest: (cb) => {
+    windowCloseCallbacks.add(cb)
+    return () => windowCloseCallbacks.delete(cb)
+  },
+  respondWindowClose: (allowed) => ipcRenderer.send("window-close-decision", allowed),
   onMenuCommand: (cb) => {
     const handler = (_: unknown, id: string) => cb(id)
     ipcRenderer.on("menu-command", handler)

@@ -2077,6 +2077,10 @@ ToolRegistry.register({
         clickable={clickable()}
         onTriggerClick={navigate}
         onTriggerKeyDown={navigateKey}
+        tool={props.tool ?? "task"}
+        input={props.input}
+        metadata={props.metadata}
+        output={props.output}
       />
     )
   },
@@ -2637,6 +2641,17 @@ ToolRegistry.register({
       </div>
     )
 
-    return <BasicTool icon="brain" status={props.status} trigger={trigger()} hideDetails />
+    return (
+      <BasicTool
+        icon="brain"
+        status={props.status}
+        trigger={trigger()}
+        hideDetails
+        tool={props.tool ?? "skill"}
+        input={props.input}
+        metadata={props.metadata}
+        output={props.output}
+      />
+    )
   },
 })

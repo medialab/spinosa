@@ -2,6 +2,9 @@ import type { RawGraphEdge, RawGraphNode } from "./raw-workspace-graph"
 
 export type RawGraphPoint = { x: number; y: number }
 export type RawGraphCluster = { id: string; nodePaths: string[] }
+export type RawGraphForces = { center: number; repel: number; link: number; distance: number }
+
+export const DEFAULT_GRAPH_FORCES: RawGraphForces = { center: 1, repel: 1, link: 1, distance: 1 }
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const NODE_CLEARANCE = 32
@@ -145,27 +148,62 @@ export function layoutRawWorkspaceGraph(
   width = 1000,
   height = 680,
   clusters = clusterRawWorkspaceGraph(nodes, edges),
+  forces: RawGraphForces = DEFAULT_GRAPH_FORCES,
 ): Map<string, RawGraphPoint> {
   if (nodes.length === 0) return new Map()
 
-  const columns = clusters.length === 1 ? 1 : Math.ceil(Math.sqrt((clusters.length * width) / height))
-  const rows = Math.ceil(clusters.length / columns)
-  const cellWidth = width / columns
-  const cellHeight = height / rows
   const positions: Array<RawGraphPoint & { path: string; cluster: number; vx: number; vy: number }> = []
   const clusterCenters = new Map<number, RawGraphPoint>()
+  const clusterByPath = new Map(clusters.flatMap((cluster, index) => cluster.nodePaths.map((path) => [path, index] as const)))
+  const relations = clusters.map(() => new Map<number, number>())
+  for (const edge of edges) {
+    const source = clusterByPath.get(edge.source)
+    const target = clusterByPath.get(edge.target)
+    if (source === undefined || target === undefined || source === target) continue
+    relations[source]!.set(target, (relations[source]!.get(target) ?? 0) + edgeWeight(edge))
+    relations[target]!.set(source, (relations[target]!.get(source) ?? 0) + edgeWeight(edge))
+  }
+  const degree = relations.map((neighbors) => [...neighbors.values()].reduce((sum, weight) => sum + weight, 0))
+  const ranked = clusters.map((_, index) => index).sort((a, b) =>
+    degree[b]! - degree[a]! || clusters[b]!.nodePaths.length - clusters[a]!.nodePaths.length || a - b,
+  )
+  const order: number[] = []
+  const seen = new Set<number>()
+  for (const root of ranked) {
+    if (seen.has(root)) continue
+    const queue = [root]
+    seen.add(root)
+    for (let head = 0; head < queue.length; head++) {
+      const index = queue[head]!
+      order.push(index)
+      const neighbors = [...relations[index]!].sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      for (const [neighbor] of neighbors) {
+        if (seen.has(neighbor)) continue
+        seen.add(neighbor)
+        queue.push(neighbor)
+      }
+    }
+  }
+  const largestCluster = clusters.reduce((largest, cluster) => Math.max(largest, cluster.nodePaths.length), 0)
+  const spacing = Math.max(90, Math.sqrt(largestCluster) * NODE_CLEARANCE * 1.4) / Math.max(0.25, forces.center)
+  order.forEach((index, rank) => {
+    const angle = rank * GOLDEN_ANGLE
+    const distance = Math.sqrt(rank) * spacing
+    const jitterAngle = pathAngle(clusters[index]!.id)
+    const jitter = rank === 0 ? 0 : spacing * 0.35
+    clusterCenters.set(index, {
+      x: width / 2 + Math.cos(angle) * distance + Math.cos(jitterAngle) * jitter,
+      y: height / 2 + Math.sin(angle) * distance + Math.sin(jitterAngle) * jitter,
+    })
+  })
 
   clusters.forEach((cluster, clusterIndex) => {
-    const column = clusterIndex % columns
-    const row = Math.floor(clusterIndex / columns)
-    const center = { x: (column + 0.5) * cellWidth, y: (row + 0.5) * cellHeight }
-    clusterCenters.set(clusterIndex, center)
-    const radius = Math.min(cellWidth, cellHeight) * 0.38
+    const center = clusterCenters.get(clusterIndex)!
 
     cluster.nodePaths.forEach((path, nodeIndex) => {
       const angle = nodeIndex * GOLDEN_ANGLE + pathAngle(path)
       const distance =
-        cluster.nodePaths.length === 1 ? 0 : Math.sqrt((nodeIndex + 0.5) / cluster.nodePaths.length) * radius
+        cluster.nodePaths.length === 1 ? 0 : Math.sqrt(nodeIndex + 0.5) * NODE_CLEARANCE * 0.65
       positions.push({
         path,
         cluster: clusterIndex,
@@ -184,18 +222,13 @@ export function layoutRawWorkspaceGraph(
     if (source === undefined || target === undefined) return []
     return [{ source, target, weight: edgeWeight(edge) }]
   })
-  const clusterPositions = clusters.map((cluster) =>
-    cluster.nodePaths.flatMap((path) => {
-      const index = indexByPath.get(path)
-      return index === undefined ? [] : [index]
-    }),
-  )
   const count = positions.length
-  const iterations = Math.max(1, Math.min(64, Math.floor(1_600_000 / (count * count))))
+  const allIndexes = positions.map((_, index) => index)
+  const iterations = edges.length === 0 ? 1 : Math.max(4, Math.min(64, Math.floor(1_600_000 / (count * count))))
 
   for (let iteration = 0; iteration < iterations; iteration++) {
     const cooling = 1 - iteration / iterations
-    for (const indexes of clusterPositions) repelNearNeighbors(positions, indexes, cooling)
+    repelNearNeighbors(positions, allIndexes, cooling, forces.repel)
 
     for (const spring of springs) {
       const a = positions[spring.source]!
@@ -203,7 +236,7 @@ export function layoutRawWorkspaceGraph(
       const dx = b.x - a.x
       const dy = b.y - a.y
       const distance = Math.max(0.01, Math.hypot(dx, dy))
-      const force = ((distance - LINK_LENGTH) / distance) * 0.012 * spring.weight * cooling
+      const force = ((distance - LINK_LENGTH * forces.distance) / distance) * 0.012 * spring.weight * cooling * forces.link
       a.vx += dx * force
       a.vy += dy * force
       b.vx -= dx * force
@@ -212,26 +245,30 @@ export function layoutRawWorkspaceGraph(
 
     for (const point of positions) {
       const center = clusterCenters.get(point.cluster)!
-      const column = point.cluster % columns
-      const row = Math.floor(point.cluster / columns)
-      const left = column * cellWidth + 12
-      const right = (column + 1) * cellWidth - 12
-      const top = row * cellHeight + 12
-      const bottom = (row + 1) * cellHeight - 12
-      point.vx = (point.vx + (center.x - point.x) * 0.0015) * 0.78
-      point.vy = (point.vy + (center.y - point.y) * 0.0015) * 0.78
-      point.x = Math.min(right, Math.max(left, point.x + point.vx))
-      point.y = Math.min(bottom, Math.max(top, point.y + point.vy))
+      point.vx = (point.vx + (center.x - point.x) * 0.0015 * forces.center) * 0.78
+      point.vy = (point.vy + (center.y - point.y) * 0.0015 * forces.center) * 0.78
+      point.x += point.vx
+      point.y += point.vy
     }
   }
 
-  return new Map(positions.map(({ path, x, y }) => [path, { x, y }]))
+  const xs = positions.map((point) => point.x)
+  const ys = positions.map((point) => point.y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const scale = Math.min(1, (width - 40) / Math.max(1, maxX - minX), (height - 40) / Math.max(1, maxY - minY))
+  const offsetX = width / 2 - ((minX + maxX) / 2) * scale
+  const offsetY = height / 2 - ((minY + maxY) / 2) * scale
+  return new Map(positions.map(({ path, x, y }) => [path, { x: x * scale + offsetX, y: y * scale + offsetY }]))
 }
 
 function repelNearNeighbors(
   points: Array<RawGraphPoint & { path: string; cluster: number; vx: number; vy: number }>,
   indexes: readonly number[],
   cooling: number,
+  repel: number,
 ) {
   const buckets = new Map<string, number[]>()
   for (const index of indexes) {
@@ -263,7 +300,7 @@ function repelNearNeighbors(
             distance = Math.hypot(dx, dy)
           }
           if (distance >= NODE_CLEARANCE) continue
-          const force = ((NODE_CLEARANCE - distance) / distance) * 0.035 * cooling
+          const force = ((NODE_CLEARANCE - distance) / distance) * 0.035 * cooling * repel
           a.vx -= dx * force
           a.vy -= dy * force
           b.vx += dx * force

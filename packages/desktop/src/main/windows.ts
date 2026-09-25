@@ -17,6 +17,7 @@ import { createWindowRegistry } from "./window-registry"
 import { safeWindowURL } from "./window-state"
 import { resolveExternalURL, resolveLocalFilePath } from "./external-url"
 import { absoluteAppRelaunchArgs } from "./relaunch"
+import { createWindowCloseGate } from "./window-close-gate"
 
 const root = dirname(fileURLToPath(import.meta.url))
 const rendererRoot = join(root, "../renderer")
@@ -54,6 +55,8 @@ let relaunchHandler = () => {
 const titlebarThemes = new WeakMap<BrowserWindow, Partial<TitlebarTheme>>()
 const pinchZoomEnabled = new WeakMap<BrowserWindow, boolean>()
 const windowIDs = new WeakMap<BrowserWindow, string>()
+const closeGates = new WeakMap<BrowserWindow, ReturnType<typeof createWindowCloseGate>>()
+const approvedCloses = new WeakSet<BrowserWindow>()
 const registry = createWindowRegistry<BrowserWindow>({
   read: () => getStore().get(WINDOW_IDS_KEY),
   write: (ids) => getStore().set(WINDOW_IDS_KEY, ids),
@@ -72,6 +75,25 @@ export function setRelaunchHandler(handler: () => void) {
 
 export function setAppQuitting(quitting = true) {
   registry.setQuitting(quitting)
+}
+
+export function respondWindowClose(win: BrowserWindow, allowed: boolean) {
+  return closeGates.get(win)?.respond(allowed) ?? false
+}
+
+export async function confirmAllWindowCloses() {
+  const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed())
+  const decisions = await Promise.all(windows.map((win) => {
+    if (approvedCloses.has(win) || win.webContents.isDestroyed()) return Promise.resolve(true)
+    return closeGates.get(win)?.request() ?? Promise.resolve(true)
+  }))
+  if (decisions.some((allowed) => !allowed)) return false
+  windows.forEach((win) => approvedCloses.add(win))
+  return true
+}
+
+export function revokeWindowCloseApprovals() {
+  BrowserWindow.getAllWindows().forEach((win) => approvedCloses.delete(win))
 }
 
 export function setBackgroundColor(color: string) {
@@ -271,11 +293,25 @@ function wireNavigationPolicy(win: BrowserWindow) {
 function registerWindow(win: BrowserWindow, id: string) {
   windowIDs.set(win, id)
   registry.register(id, win)
+  const closeGate = createWindowCloseGate(() => win.webContents.send("window-close-request"))
+  closeGates.set(win, closeGate)
 
   win.on("focus", () => registry.focused(id))
+  win.on("close", (event) => {
+    if (approvedCloses.has(win) || win.webContents.isDestroyed()) return
+    event.preventDefault()
+    void closeGate.request().then((allowed) => {
+      if (!allowed || win.isDestroyed()) return
+      approvedCloses.add(win)
+      win.close()
+    })
+  })
   // Windows never emits before-quit on OS shutdown/logoff, but each window
   // gets session-end before it closes; flag the quit so ids stay persisted.
-  win.on("session-end", () => registry.setQuitting())
+  win.on("session-end", () => {
+    registry.setQuitting()
+    approvedCloses.add(win)
+  })
   win.on("closed", () => registry.closed(id))
 }
 

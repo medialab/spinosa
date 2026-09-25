@@ -12,6 +12,7 @@ export type RawGraphEdge = {
   source: string
   target: string
   kinds: Array<"header" | "wikilink" | "markdown">
+  directions?: string[]
 }
 
 export type RawWorkspaceGraph = {
@@ -200,14 +201,15 @@ function buildGraph(documents: readonly RawGraphDocument[]): RawWorkspaceGraph {
     }
   }
 
-  const edges = new Map<string, { source: string; target: string; kinds: Set<RawGraphEdge["kinds"][number]> }>()
+  const edges = new Map<string, { source: string; target: string; kinds: Set<RawGraphEdge["kinds"][number]>; directions: Set<string> }>()
   const sharedHeaders = new Map<string, Set<string>>()
-  const add = (source: string, target: string | undefined, kind: RawGraphEdge["kinds"][number]) => {
+  const add = (source: string, target: string | undefined, kind: RawGraphEdge["kinds"][number], directed = true) => {
     if (!target || source === target) return
     const [left, right] = source.localeCompare(target) < 0 ? [source, target] : [target, source]
     const key = `${left}\0${right}`
-    const edge = edges.get(key) ?? { source: left, target: right, kinds: new Set() }
+    const edge = edges.get(key) ?? { source: left, target: right, kinds: new Set(), directions: new Set<string>() }
     edge.kinds.add(kind)
+    if (directed) edge.directions.add(source)
     edges.set(key, edge)
   }
 
@@ -231,13 +233,13 @@ function buildGraph(documents: readonly RawGraphDocument[]): RawWorkspaceGraph {
   for (const paths of sharedHeaders.values()) {
     const ordered = [...paths].sort((a, b) => a.localeCompare(b))
     // A chain keeps a shared header group connected without creating a dense clique.
-    for (let index = 1; index < ordered.length; index++) add(ordered[index - 1]!, ordered[index], "header")
+    for (let index = 1; index < ordered.length; index++) add(ordered[index - 1]!, ordered[index], "header", false)
   }
 
   return {
     nodes,
     edges: [...edges.values()]
-      .map((edge) => ({ ...edge, kinds: [...edge.kinds].sort() }))
+      .map((edge) => ({ ...edge, kinds: [...edge.kinds].sort(), directions: [...edge.directions].sort() }))
       .sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target)),
     unreadable: [...unique.values()].filter((document) => document.unreadable).length,
   }

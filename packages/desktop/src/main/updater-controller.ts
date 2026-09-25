@@ -21,7 +21,7 @@ export function createUpdaterController(input: {
   currentVersion: string
   backend: UpdaterBackend
   persistence: UpdaterPersistence
-  stop: () => Promise<void>
+  stop: () => Promise<void | boolean>
   log?: (message: string, data?: object) => void
 }) {
   let state: UpdaterState = input.enabled ? { status: "idle" } : { status: "disabled" }
@@ -82,7 +82,11 @@ export function createUpdaterController(input: {
       transition({ status: "installing", version })
       await input
         .stop()
-        .then(() => {
+        .then((proceed) => {
+          if (proceed === false) {
+            transition({ status: "ready", version })
+            return
+          }
           input.backend.quitAndInstall()
           transition({ status: "ready", version })
         })

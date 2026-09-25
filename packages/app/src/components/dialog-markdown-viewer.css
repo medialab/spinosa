@@ -1,0 +1,70 @@
+[data-component="dialog"] [data-slot="dialog-container"]:has(> .markdown-viewer-dialog) {
+  width: min(calc(100vw - 32px), max(60vw, 680px));
+  height: min(90dvh, calc(100dvh - 16px));
+}
+
+[data-component="dialog"] .markdown-viewer-dialog {
+  height: 100%;
+  min-height: 0;
+}
+
+[data-component="dialog"] .markdown-viewer-dialog [data-slot="dialog-title"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.markdown-viewer-toolbar,
+.markdown-viewer-footer {
+  flex-wrap: wrap;
+}
+
+.markdown-viewer-scroll {
+  width: 100%;
+  padding: clamp(16px, 3vw, 40px);
+  overflow-x: hidden;
+}
+
+.markdown-viewer-page {
+  width: 100%;
+  max-width: 72ch;
+  margin-inline: auto;
+  font-size: var(--viewer-font-size);
+}
+
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] {
+  font-size: var(--viewer-font-size);
+  line-height: 1.65;
+}
+
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] h1 {
+  font-size: 1.5em;
+}
+
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] h2 {
+  font-size: 1.25em;
+}
+
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] h3 {
+  font-size: 1.1em;
+}
+
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] h4,
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] h5,
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] h6,
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] table {
+  font-size: 1em;
+}
+
+[data-component="dialog"] .markdown-viewer-dialog [data-component="markdown"] .shiki {
+  font-size: 0.875em;
+}
+
+@media (max-width: 720px) {
+  [data-component="dialog"] [data-slot="dialog-container"]:has(> .markdown-viewer-dialog) {
+    width: calc(100vw - 16px);
+  }
+
+  .markdown-viewer-scroll {
+    padding: 16px;
+  }
+}

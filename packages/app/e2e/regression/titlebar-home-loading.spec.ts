@@ -95,7 +95,7 @@ test("shows Home-check and task-stop progress, including recovery from a failed 
     await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
     await expectAppVisible(page.locator('[data-component="prompt-input"]'))
     await expect(page.locator("header").getByRole("button", { name: "New session", exact: true })).toHaveCount(0)
-    await page.getByRole("button", { name: "Home", exact: true }).click()
+    await page.getByRole("button", { name: "Back to workspace home" }).click()
     await started
     await expect(page.locator('[data-component="home-task-check-loading"]')).toBeVisible()
 
@@ -110,7 +110,7 @@ test("shows Home-check and task-stop progress, including recovery from a failed 
     await stopping
     await expect(dialog.locator('[data-component="home-task-stopping"]')).toBeVisible()
     finishStop()
-    await expect(page).toHaveURL("/")
+    await expect(page).toHaveURL(/\/new-session\?draftId=/)
   } finally {
     finishFirstCheck()
     finishStop()
@@ -162,9 +162,9 @@ test("returns home when no onboarding job is active", async ({ page }, testInfo)
 
   await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
   await expectAppVisible(page.locator('[data-component="prompt-input"]'))
-  await page.getByRole("button", { name: "Home", exact: true }).click()
+  await page.getByRole("button", { name: "Back to workspace home" }).click()
 
-  await expect(page).toHaveURL("/")
-  await expectAppVisible(page.getByRole("heading", { name: "SPINOSA", exact: true }))
+  await expect(page).toHaveURL(/\/new-session\?draftId=/)
+  await expectAppVisible(page.getByRole("textbox", { name: "Prompt" }))
   await expect(page.locator('[data-component="dialog"]')).toHaveCount(0)
 })

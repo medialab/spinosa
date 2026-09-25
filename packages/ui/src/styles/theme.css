@@ -277,8 +277,8 @@
   --icon-on-brand-hover: rgba(0, 0, 0, 0.915);
   --icon-on-brand-selected: rgba(0, 0, 0, 0.915);
   --icon-on-interactive-base: #fcfcfc;
-  --icon-agent-plan-base: #a753ae;
-  --icon-agent-docs-base: #fcb239;
+  --icon-agent-plan-base: #fcb239;
+  --icon-agent-docs-base: #a753ae;
   --icon-agent-ask-base: #2090f5;
   --icon-agent-build-base: #034cff;
   --icon-on-success-base: rgba(18, 201, 5, 0.9);
@@ -537,8 +537,8 @@
     --icon-on-brand-hover: rgba(255, 255, 255, 0.928);
     --icon-on-brand-selected: rgba(255, 255, 255, 0.928);
     --icon-on-interactive-base: #ededed;
-    --icon-agent-plan-base: #edb2f1;
-    --icon-agent-docs-base: #fbb73c;
+    --icon-agent-plan-base: #fbb73c;
+    --icon-agent-docs-base: #edb2f1;
     --icon-agent-ask-base: #2090f5;
     --icon-agent-build-base: #9dbefe;
     --icon-on-success-base: rgba(18, 201, 5, 0.9);

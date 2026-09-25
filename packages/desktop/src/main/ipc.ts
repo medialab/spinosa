@@ -17,6 +17,7 @@ import {
   getWindowID,
   openExternalURL,
   openLocalFileURL,
+  respondWindowClose,
   setPinchZoomEnabled,
   setTitlebar,
   updateTitlebar,
@@ -64,6 +65,12 @@ export function registerIpcHandlers(deps: Deps) {
   app.on("before-quit", () => drafts.flush())
   app.once("will-quit", () => drafts.close())
   app.on("browser-window-created", (_event, win) => win.on("session-end", () => drafts.flush()))
+
+  ipcMain.on("window-close-decision", (event, allowed: unknown) => {
+    if (typeof allowed !== "boolean") return
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) respondWindowClose(win, allowed)
+  })
 
   ipcMain.handle("kill-sidecar", () => deps.killSidecar())
   ipcMain.handle("await-initialization", () => deps.awaitInitialization())

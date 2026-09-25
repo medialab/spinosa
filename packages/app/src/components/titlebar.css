@@ -6,6 +6,31 @@
   outline: none;
 }
 
+.session-unified-controls [data-slot="session-title-parent"],
+.session-unified-controls [data-slot="session-title-separator"],
+.session-unified-controls h1[data-slot="session-title-child"] {
+  display: none;
+}
+
+.session-unified-controls [data-session-title] {
+  height: 0;
+  padding: 0;
+  background: none;
+}
+
+.session-unified-controls [data-session-title] > div {
+  height: 0;
+}
+
+.session-unified-controls input[data-slot="session-title-child"] {
+  position: absolute;
+  z-index: 40;
+  top: 48px;
+  left: 16px;
+  max-width: min(320px, calc(100% - 32px));
+  background: var(--v2-background-bg-base);
+}
+
 [data-slot="titlebar-v2"]
   [data-component="icon-button-v2"][data-variant="ghost-muted"]:is(:focus-visible, [data-state="focus"]):not(
     :disabled

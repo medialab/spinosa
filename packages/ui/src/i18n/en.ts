@@ -200,6 +200,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Revert message",
   "ui.message.copyResponse": "Copy response",
   "ui.message.copied": "Copied",
+  "ui.toolBubble.copy": "Copy",
+  "ui.toolBubble.copied": "Copied!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "Interrupted",

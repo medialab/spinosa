@@ -1,4 +1,4 @@
-import { createEffect, on, type Accessor } from "solid-js"
+import { createEffect, on, type Accessor, type JSX } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useFilteredList } from "@spinosa/ui/hooks"
 import { createPromptInputV2Attachments, type PromptInputV2AttachmentConfig } from "./attachments"
@@ -24,6 +24,8 @@ export type PromptInputV2SelectControl = {
   current: Accessor<string>
   onSelect: (id: string) => void
   keybind?: Accessor<string[]>
+  labelStyle?: Accessor<JSX.CSSProperties | undefined>
+  optionStyle?: (id: string) => JSX.CSSProperties | undefined
 }
 
 export type PromptInputV2ViewConfig = {

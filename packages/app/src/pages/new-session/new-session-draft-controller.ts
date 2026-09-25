@@ -10,7 +10,13 @@ import { createPromptModelSelection } from "@/pages/session/composer/prompt-mode
 import { useSessionKey } from "@/pages/session/session-layout"
 import { useComposerCommands } from "@/pages/session/use-composer-commands"
 
-export function createNewSessionDraftController(workspace: { worktree: () => string; resetWorktree: () => void }) {
+export function createNewSessionDraftController(workspace: {
+  worktree: () => string
+  resetWorktree: () => void
+  registeredWorkspaces: () => { path: string; name: string }[]
+  registeredLoading: () => boolean
+  registeredError: () => boolean
+}) {
   const prompt = usePrompt()
   const serverSync = useServerSync()
   const comments = useComments()
@@ -27,7 +33,11 @@ export function createNewSessionDraftController(workspace: { worktree: () => str
     queryOptions: serverSync().queryOptions,
     model,
   })
-  const projectControls = createPromptProjectControls()
+  const projectControls = createPromptProjectControls(
+    workspace.registeredWorkspaces,
+    workspace.registeredLoading,
+    workspace.registeredError,
+  )
   const input = usePromptInputV2Controller({
     get controls() {
       return controls()

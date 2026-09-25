@@ -23,6 +23,7 @@ import { makeEventListener } from "@solid-primitives/event-listener"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { debounce } from "@solid-primitives/scheduled"
+import { Portal } from "solid-js/web"
 import { useLocal } from "@/context/local"
 import { FileProvider, selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
@@ -42,6 +43,7 @@ import { showToast } from "@/utils/toast"
 import { base64Encode, checksum } from "@spinosa/kernel-core/util/encode"
 import { useLocation, useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { NewSessionView, SessionHeader } from "@/components/session"
+import { useTitlebarSessionMount } from "@/components/titlebar"
 import { ErrorPage } from "@/pages/error"
 import { CommentsProvider, useComments } from "@/context/comments"
 import { useCommand } from "@/context/command"
@@ -72,6 +74,8 @@ import {
   createSessionComposerRegionController,
   SessionComposerRegion,
 } from "@/pages/session/composer"
+import { markFollowupSteered, nextQueuedFollowup, removeQueuedFollowup } from "@/pages/session/composer/followup-queue"
+import { SESSION_LEAVE_EVENT } from "@/utils/session-leave"
 import {
   createOpenReviewFile,
   createOpenSessionFileTab,
@@ -115,7 +119,7 @@ import { useUsageExceededDialogs } from "./session/usage-exceeded-dialogs"
 import { createSessionOwnership } from "./session/session-ownership"
 import { createSessionLineage } from "./session/session-lineage"
 
-type FollowupItem = FollowupDraft & { id: string }
+type FollowupItem = FollowupDraft & { id: string; steeredAt?: number }
 type FollowupEdit = Pick<FollowupItem, "id" | "prompt" | "context">
 const emptyFollowups: FollowupItem[] = []
 
@@ -337,23 +341,27 @@ function SessionProviders(props: ParentProps) {
   )
 }
 
-function SessionRouteFrame(props: ParentProps<{ padded?: boolean }>) {
+function SessionRouteFrame(props: ParentProps<{ padded?: boolean; unifiedControls?: boolean }>) {
   return (
-    <div class="relative size-full overflow-hidden flex flex-col" classList={{ "p-2": props.padded }}>
+    <div
+      class="relative size-full overflow-hidden flex flex-col"
+      classList={{ "p-2": props.padded, "session-unified-controls": props.unifiedControls }}
+    >
       {props.children}
     </div>
   )
 }
 
-function SessionPanelFrame(props: ParentProps<{ newLayout: boolean; raised?: boolean }>) {
+function SessionPanelFrame(props: ParentProps<{ newLayout: boolean; raised?: boolean; flush?: boolean }>) {
   return (
     <div
       classList={{
         "relative flex-1 min-h-0 flex flex-col": true,
         "bg-v2-background-bg-base": props.newLayout,
         "bg-background-stronger": !props.newLayout,
-        "rounded-[10px] overflow-hidden": props.newLayout,
-        "shadow-[var(--v2-elevation-raised)]": props.newLayout && props.raised,
+        "overflow-hidden": props.newLayout,
+        "rounded-[10px]": props.newLayout && !props.flush,
+        "shadow-[var(--v2-elevation-raised)]": props.newLayout && props.raised && !props.flush,
       }}
     >
       {props.children}
@@ -378,6 +386,7 @@ export default function Page() {
   const comments = useComments()
   const command = useCommand()
   const terminal = useTerminal()
+  const titlebarSessionMount = useTitlebarSessionMount()
   const [searchParams, setSearchParams] = useSearchParams<{ prompt?: string }>()
   const location = useLocation()
   const navigate = useNavigate()
@@ -489,12 +498,10 @@ export default function Page() {
   const splitReview = createMemo(
     () => (newSessionDesign() ? desktopV2ReviewOpen() : desktopReviewOpen()) && layout.review.diffStyle() === "split",
   )
-  // The observer reports the content-box width, which already excludes the row
-  // padding; only the flex gap between the panels remains to subtract.
   const sessionPanelAvailable = createMemo(() => {
     const width = panelRowWidth()
     if (width === undefined) return undefined
-    return width - (settings.general.newLayoutDesigns() ? 8 : 0)
+    return width - (settings.general.newLayoutDesigns() && !isDesktop() ? 8 : 0)
   })
   const sessionPanelMax = createMemo(() => {
     const available = sessionPanelAvailable()
@@ -632,6 +639,14 @@ export default function Page() {
       edit: {},
     }),
   )
+  const [steerState, setSteerState] = createStore({ sessionID: undefined as string | undefined, id: undefined as string | undefined })
+
+  makeEventListener(window, SESSION_LEAVE_EVENT, (event) => {
+    const detail = (event as CustomEvent<{ sessionID?: string; paused?: boolean; previous?: boolean }>).detail
+    if (!detail?.sessionID || detail.paused === undefined) return
+    if (detail.paused) detail.previous = followup.paused[detail.sessionID] === true
+    setFollowup("paused", detail.sessionID, detail.paused)
+  })
 
   createComputed((prev) => {
     const key = sessionKey()
@@ -1797,6 +1812,7 @@ export default function Page() {
   const sendingFollowup = createMemo(() => {
     const id = params.id
     if (!id) return
+    if (steerState.sessionID === id) return steerState.id
     if (!followupBusy(id)) return
     return followupMutation.variables?.id
   })
@@ -1804,7 +1820,7 @@ export default function Page() {
   const queueEnabled = createMemo(() => {
     const id = params.id
     if (!id) return false
-    return settings.general.followup() === "queue" && busy(id) && !composer.blocked() && !isChildSession()
+    return (platform.platform === "desktop" || settings.general.followup() === "queue") && busy(id) && !composer.blocked() && !isChildSession()
   })
 
   const followupText = (item: FollowupDraft) => {
@@ -1833,7 +1849,12 @@ export default function Page() {
     setFollowup("paused", draft.sessionID, undefined)
   }
 
-  const followupDock = createMemo(() => queuedFollowups().map((item) => ({ id: item.id, text: followupText(item) })))
+  const followupDock = createMemo(() => queuedFollowups().map((item) => ({
+    id: item.id,
+    text: followupText(item),
+    steered: item.steeredAt !== undefined,
+    failed: followup.failed[params.id ?? ""] === item.id,
+  })))
 
   const sendFollowup = (sessionID: string, id: string, opts?: { manual?: boolean }) => {
     if (sync().session.get(sessionID)?.parentID) return Promise.resolve()
@@ -1847,18 +1868,49 @@ export default function Page() {
   const editFollowup = (id: string) => {
     const sessionID = params.id
     if (!sessionID) return
-    if (followupBusy(sessionID)) return
+    if (followupBusy(sessionID) || steerState.sessionID === sessionID) return
 
     const item = queuedFollowups().find((entry) => entry.id === id)
     if (!item) return
 
-    setFollowup("items", sessionID, (items) => (items ?? []).filter((entry) => entry.id !== id))
+    setFollowup("items", sessionID, (items) => removeQueuedFollowup(items ?? [], id))
     setFollowup("failed", sessionID, (value) => (value === id ? undefined : value))
     setFollowup("edit", sessionID, {
       id: item.id,
       prompt: item.prompt,
       context: item.context,
     })
+  }
+
+  const removeFollowup = (id: string) => {
+    const sessionID = params.id
+    if (!sessionID || followupBusy(sessionID) || steerState.sessionID === sessionID) return
+    setFollowup("items", sessionID, (items) => removeQueuedFollowup(items ?? [], id))
+    setFollowup("failed", sessionID, (value) => (value === id ? undefined : value))
+  }
+
+  const steerFollowup = async (id: string) => {
+    const sessionID = params.id
+    if (!sessionID || followupBusy(sessionID) || steerState.sessionID === sessionID) return
+    const item = queuedFollowups().find((entry) => entry.id === id)
+    if (!item || (item.steeredAt !== undefined && followup.failed[sessionID] !== id)) return
+    setFollowup("items", sessionID, (items) => markFollowupSteered(items ?? [], id, Date.now()))
+    setFollowup("paused", sessionID, undefined)
+    setFollowup("failed", sessionID, (value) => (value === id ? undefined : value))
+    if (!busy(sessionID)) return
+    setSteerState({ sessionID, id })
+    try {
+      await sdk().api.session.interrupt({ sessionID })
+    } catch (error) {
+      setFollowup("items", sessionID, (items) => (items ?? []).map((entry) => entry.id === id ? { ...entry, steeredAt: item.steeredAt } : entry))
+      showToast({
+        variant: "error",
+        title: language.t("session.followupDock.steerFailed"),
+        description: formatServerError(error, language.t),
+      })
+    } finally {
+      setSteerState({ sessionID: undefined, id: undefined })
+    }
   }
 
   const clearFollowupEdit = () => {
@@ -1979,7 +2031,7 @@ export default function Page() {
     const sessionID = params.id
     if (!sessionID) return
 
-    const item = queuedFollowups()[0]
+    const item = nextQueuedFollowup(queuedFollowups())
     if (!item) return
     if (followupBusy(sessionID)) return
     if (followup.failed[sessionID] === item.id) return
@@ -2120,9 +2172,45 @@ export default function Page() {
     setActive: (tab) => tabs().setActive(tab),
   })
   const openVisualizerFile = (path: string) => {
-    openVisualizerFileTab(path)
+    if (/\.(?:md|markdown)$/i.test(path)) {
+      sessionCommands.openMarkdownViewer(path)
+      return
+    }
+    openVisualizerFileTab(file.tab(path))
     setUi("viewMode", "conversation")
   }
+
+  const viewPill = (titlebar = false) => (
+    <div
+      class={titlebar
+        ? "session-view-pill pointer-events-none absolute inset-x-0 top-1/2 z-40 flex -translate-y-1/2 justify-center"
+        : "session-view-pill pointer-events-none absolute inset-x-0 top-1 z-40 flex justify-center"}
+    >
+      <SegmentedControlV2
+        value={ui.viewMode}
+        onChange={(value) => {
+          if (value === "conversation" || value === "visualizer") setUi("viewMode", value)
+        }}
+        aria-label={language.t("session.view.mode")}
+        class={`pointer-events-auto !h-10 ${titlebar ? "!w-[260px]" : "!w-full"} !max-w-[260px] !rounded-full !border !border-border-weak-base !bg-background-base !p-1 shadow-sm`}
+      >
+        <SegmentedControlItemV2
+          value="conversation"
+          aria-label={language.t("session.view.conversation")}
+          class="!h-8 !min-w-0 !flex-1 !truncate !rounded-full !px-2"
+        >
+          {language.t("session.view.conversation")}
+        </SegmentedControlItemV2>
+        <SegmentedControlItemV2
+          value="visualizer"
+          aria-label={language.t("session.view.visualizer")}
+          class="!h-8 !min-w-0 !flex-1 !truncate !rounded-full !px-2"
+        >
+          {language.t("session.view.visualizer")}
+        </SegmentedControlItemV2>
+      </SegmentedControlV2>
+    </div>
+  )
 
   const sessionPanelContent = () => (
     <>
@@ -2130,30 +2218,14 @@ export default function Page() {
         {mobileTabs(true)}
       </Show>
       <Show when={params.id && !mobileChanges()}>
-        <div class="pointer-events-none absolute inset-x-0 top-1 z-40 flex justify-center">
-          <SegmentedControlV2
-            value={ui.viewMode}
-            onChange={(value) => {
-              if (value === "conversation" || value === "visualizer") setUi("viewMode", value)
-            }}
-            aria-label={language.t("session.view.mode")}
-            class="pointer-events-auto !h-10 !w-auto !rounded-full !border !border-border-weak-base !bg-background-base !p-1 shadow-sm"
-          >
-            <SegmentedControlItemV2 value="conversation" class="!h-8 !min-w-[120px] !rounded-full !px-4">
-              {language.t("session.view.conversation")}
-            </SegmentedControlItemV2>
-            <SegmentedControlItemV2 value="visualizer" class="!h-8 !min-w-[120px] !rounded-full !px-4">
-              {language.t("session.view.visualizer")}
-            </SegmentedControlItemV2>
-          </SegmentedControlV2>
-        </div>
+        <Show when={!isDesktop() || !settings.general.newLayoutDesigns()}>{viewPill()}</Show>
       </Show>
       <div class="relative flex min-h-0 flex-1">
         <div
           class="absolute inset-0 flex min-h-0 min-w-0 flex-1 flex-col"
           classList={{ "invisible pointer-events-none": ui.viewMode === "visualizer" && !mobileChanges() }}
         >
-          <div class="flex-1 min-h-0 overflow-hidden">
+          <div class="flex-1 min-h-0 overflow-hidden pt-2">
             <Switch>
               <Match when={params.id && mobileChanges()}>
                 <div class="relative h-full overflow-hidden">
@@ -2264,8 +2336,9 @@ export default function Page() {
                     ? {
                         items: followupDock(),
                         sending: sendingFollowup(),
-                        onSend: (id) => void sendFollowup(params.id!, id, { manual: true }),
+                        onSteer: (id) => void steerFollowup(id),
                         onEdit: editFollowup,
+                        onRemove: removeFollowup,
                       }
                     : undefined,
                 revert: () =>
@@ -2365,7 +2438,7 @@ export default function Page() {
           </Show>
         </div>
         <Show when={params.id && ui.viewMode === "visualizer" && !mobileChanges()}>
-          <div class="absolute inset-0 flex min-h-0">
+          <div class="absolute inset-0 flex min-h-0 pt-2">
             <SessionWorkspaceVisualizer workspacePath={() => sdk().directory} onOpenFile={openVisualizerFile} />
           </div>
         </Show>
@@ -2375,14 +2448,18 @@ export default function Page() {
   )
 
   return (
-    <SessionRouteFrame>
+    <SessionRouteFrame unifiedControls={settings.general.newLayoutDesigns() && isDesktop()}>
       <SessionHeader />
+      <Show when={params.id && !mobileChanges() && isDesktop() && settings.general.newLayoutDesigns()}>
+        <Show when={titlebarSessionMount()} keyed>{(mount) => <Portal mount={mount}>{viewPill(true)}</Portal>}</Show>
+      </Show>
       <SpinosaBackgroundImport directory={sdk().directory} />
       <div
         ref={panelRow}
         class="flex-1 min-h-0 flex flex-col md:flex-row"
         classList={{
-          "gap-2 p-2": settings.general.newLayoutDesigns(),
+          "gap-2 p-2": settings.general.newLayoutDesigns() && !isDesktop(),
+          "pt-14": settings.general.newLayoutDesigns() && isDesktop(),
         }}
       >
         <Show when={!isDesktop() && !!params.id && !settings.general.newLayoutDesigns()}>{mobileTabs()}</Show>
@@ -2400,7 +2477,7 @@ export default function Page() {
           {settings.general.newLayoutDesigns() ? (
             <Show when={sessionPanelKey()} keyed>
               {(_) => (
-                <SessionPanelFrame newLayout raised={!!params.id}>
+                <SessionPanelFrame newLayout raised={!!params.id} flush={isDesktop()}>
                   <ErrorBoundary fallback={sessionErrorFallback}>{sessionPanelContent()}</ErrorBoundary>
                 </SessionPanelFrame>
               )}

@@ -1745,14 +1745,12 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       slash: "report",
       onSelect: openReport,
     }),
-    ...(["session", "sessions"] as const).map((slash) =>
-      sessionCommand({
-        id: `dialog.${slash}`,
-        title: language.t("dialog.session.list.title"),
-        slash,
-        onSelect: openSessions,
-      }),
-    ),
+    sessionCommand({
+      id: "dialog.session",
+      title: language.t("dialog.session.list.title"),
+      slash: "session",
+      onSelect: openSessions,
+    }),
     sessionCommand({
       id: "dialog.export",
       title: language.t("dialog.export.title"),

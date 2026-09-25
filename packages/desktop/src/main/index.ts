@@ -36,6 +36,8 @@ import {
 import { setupAutoUpdater, showUpdaterDialog } from "./updater"
 import { safeWebContentsURL } from "./window-state"
 import {
+  confirmAllWindowCloses,
+  revokeWindowCloseApprovals,
   getLastFocusedWindow,
   registerRendererProtocol,
   setRelaunchHandler,
@@ -171,17 +173,14 @@ const main = Effect.gen(function* () {
     await killSidecar()
     wslServers.stopAll()
   }
+  let quitConfirmed = false
+  let quitChecking = false
+  let relaunchRequested = false
   const relaunch = () => {
-    setAppQuitting()
-    void stopSidecars().finally(() => {
-      app.relaunch({ args: absoluteAppRelaunchArgs(process.argv, app.getAppPath()) })
-      app.quit()
-    })
+    relaunchRequested = true
+    app.quit()
   }
-  const quit = () => {
-    setAppQuitting()
-    void stopSidecars().finally(() => app.quit())
-  }
+  const quit = () => app.quit()
 
   try {
     setDefaultCACertificates([...new Set([...getCACertificates("default"), ...getCACertificates("system")])])
@@ -233,7 +232,30 @@ const main = Effect.gen(function* () {
     emitDeepLinks([url])
   })
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
+    if (!quitConfirmed) {
+      event.preventDefault()
+      if (quitChecking) return
+      quitChecking = true
+      void confirmAllWindowCloses().then((allowed) => {
+        quitChecking = false
+        if (!allowed) {
+          relaunchRequested = false
+          return
+        }
+        quitConfirmed = true
+        setAppQuitting()
+        void stopSidecars().finally(() => {
+          if (relaunchRequested) app.relaunch({ args: absoluteAppRelaunchArgs(process.argv, app.getAppPath()) })
+          app.quit()
+        })
+      }).catch((error) => {
+        quitChecking = false
+        relaunchRequested = false
+        writeLog("main", "failed to confirm app quit", { error }, "error")
+      })
+      return
+    }
     setAppQuitting()
     void stopSidecars()
   })
@@ -257,6 +279,7 @@ const main = Effect.gen(function* () {
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => {
+      quitConfirmed = true
       setAppQuitting()
       void stopSidecars().finally(() => app.quit())
     })
@@ -284,7 +307,15 @@ const main = Effect.gen(function* () {
   app.setAsDefaultProtocolClient("spinosa")
   registerRendererProtocol()
   setDockIcon()
-  const updater = setupAutoUpdater(stopSidecars)
+  const updater = setupAutoUpdater(async () => {
+    if (!await confirmAllWindowCloses()) return false
+    try {
+      await stopSidecars()
+    } catch (error) {
+      revokeWindowCloseApprovals()
+      throw error
+    }
+  })
   const menuDeps = {
     trigger: (id: string) => {
       const win = getLastFocusedWindow()

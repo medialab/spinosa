@@ -30,6 +30,8 @@ describe("buildRequestParts", () => {
     })
 
     expect(result.requestParts[0]?.type).toBe("text")
+    expect(result.requestParts[0]).toMatchObject({ metadata: { spinosaRoute: { kind: "general" } } })
+    expect(result.optimisticParts[0]).toMatchObject({ metadata: { spinosaRoute: { kind: "general" } } })
     expect(result.requestParts.some((part) => part.type === "agent")).toBe(true)
     expect(
       result.requestParts.some((part) => part.type === "file" && part.url.startsWith("file:///repo/src/foo.ts")),

@@ -12,7 +12,7 @@ import {
   type JSX,
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Dynamic } from "solid-js/web"
+import { Dynamic, Portal } from "solid-js/web"
 import { useNavigate } from "@solidjs/router"
 import { useMutation } from "@tanstack/solid-query"
 import { createVirtualizer, defaultRangeExtractor, elementScroll, type VirtualItem } from "@tanstack/solid-virtual"
@@ -72,6 +72,7 @@ import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/sessio
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
+import { useTitlebarRightMount } from "@/components/titlebar"
 import { sessionTitle } from "@/utils/session-title"
 import { scheduleConnectedMeasure } from "./measure"
 import { observeElementOffsetReconnectAware } from "./observe-element-offset"
@@ -79,9 +80,16 @@ import { createTimelineProjection } from "./projection"
 import { MessageComment, SummaryDiff, TimelineRow, TimelineRowMap } from "./rows"
 import { filterVirtualIndexes } from "./virtual-items"
 import { installMarkdownPathPills } from "./markdown-path-pill"
+import { resolveSpinosaRouteBadge } from "@/utils/spinosa-route-badge"
 
 const emptyMessages: MessageType[] = []
 const emptyParts: PartType[] = []
+
+function TimelineActions(props: { mount?: HTMLElement; children: JSX.Element }) {
+  return <Show when={props.mount} fallback={props.children}>
+    {(mount) => <Portal mount={mount()}>{props.children}</Portal>}
+  </Show>
+}
 const emptyTools: ToolPart[] = []
 const emptyAssistantMessages: AssistantMessage[] = []
 const idle = { type: "idle" as const }
@@ -316,6 +324,7 @@ export function MessageTimeline(props: {
   const initialMeasurements = cached?.measurements
   const coldBottomMount = !initialMeasurements?.length && props.shouldAnchorBottom()
   const platform = usePlatform()
+  const rightMount = useTitlebarRightMount()
 
   const [listRoot, setListRoot] = createSignal<HTMLDivElement>()
   let disposeMarkdownPathPills: (() => void) | undefined
@@ -376,6 +385,8 @@ export function MessageTimeline(props: {
     return language.t("command.session.new")
   })
   const showHeader = createMemo(() => !!(titleValue() || parentID()))
+  const unifiedHeader = createMemo(() => settings.general.newLayoutDesigns() && platform.platform === "desktop" && !!sessionID())
+  const headerOffset = createMemo(() => showHeader() && !unifiedHeader() ? 64 : 0)
   const projection = createTimelineProjection({
     messages: sessionMessages,
     userMessages: () => props.userMessages,
@@ -486,7 +497,7 @@ export function MessageTimeline(props: {
     followOnAppend: true,
     scrollEndThreshold: 80,
     get scrollMargin() {
-      return showHeader() ? 64 : 0
+      return headerOffset()
     },
     overscan: 50,
     paddingEnd: 64,
@@ -1101,6 +1112,7 @@ export function MessageTimeline(props: {
         id={anchor() ? props.anchor(input.row().userMessageID) : undefined}
         data-message-id={input.row().userMessageID}
         data-timeline-row={input.row()._tag}
+        data-centered={props.centered ? "" : undefined}
         classList={{
           "min-w-0 w-full max-w-full": true,
           "md:max-w-200 2xl:max-w-[1000px]": props.centered,
@@ -1169,6 +1181,18 @@ export function MessageTimeline(props: {
           const m = messageByID().get(userMessageRow().userMessageID)
           if (m?.role === "user") return m
         })
+        const routeBadge = createMemo(() => {
+          const userID = userMessageRow().userMessageID
+          const followUpParts = assistantMessagesByParent().get(userID)?.flatMap((assistant) => getMsgParts(assistant.id))
+          return resolveSpinosaRouteBadge(getMsgParts(userID), followUpParts)
+        })
+        const routeLabel = createMemo(() => {
+          const badge = routeBadge()
+          if (!badge) return ""
+          if (badge.kind === "general") return language.t("session.route.general")
+          if (badge.kind === "workflow") return badge.workflowID.replace(/[._]/g, " ")
+          return badge.label === "Chat" ? language.t("session.route.chat") : badge.label
+        })
         const messageComments = createMemo(() => {
           if (!settings.general.newLayoutDesigns()) return []
           return getMsgParts(userMessageRow().userMessageID).flatMap((part) => MessageComment.fromPart(part) ?? [])
@@ -1178,6 +1202,20 @@ export function MessageTimeline(props: {
             <Show when={message()}>
               {(message) => (
                 <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
+                  <Show when={routeBadge()}>
+                    {(badge) => (
+                      <div class="mb-1 flex w-full justify-end">
+                        <span
+                          data-slot="spinosa-route-badge"
+                          data-route-kind={badge().kind}
+                          class="inline-flex max-w-[82%] items-center gap-1 truncate rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-01 px-2 py-0.5 text-[11px] leading-4 text-v2-text-text-muted"
+                        >
+                          <span aria-hidden="true">●</span>
+                          {routeLabel()}
+                        </span>
+                      </div>
+                    )}
+                  </Show>
                   <div data-slot="session-turn-message-content" aria-live="off">
                     <Message
                       message={message()}
@@ -1315,7 +1353,7 @@ export function MessageTimeline(props: {
         data-timeline-key={props.rowKey}
         style={{
           position: "absolute",
-          top: `${item().start - (showHeader() ? 64 : 0)}px`,
+          top: `${item().start - headerOffset()}px`,
           left: "0",
           width: "100%",
           height: `${item().size}px`,
@@ -1412,7 +1450,7 @@ export function MessageTimeline(props: {
         onClick={props.onAutoScrollInteraction}
         class="relative min-w-0 w-full h-full"
         style={{
-          "--sticky-accordion-top": showHeader() ? "48px" : "0px",
+          "--sticky-accordion-top": headerOffset() ? "48px" : "0px",
         }}
       >
         <Show when={showHeader()}>
@@ -1521,6 +1559,7 @@ export function MessageTimeline(props: {
               </div>
               <Show when={sessionID()} keyed>
                 {(id) => (
+                  <TimelineActions mount={unifiedHeader() ? rightMount() ?? undefined : undefined}>
                   <div
                     classList={{
                       "shrink-0 flex items-center": true,
@@ -1868,6 +1907,7 @@ export function MessageTimeline(props: {
                       </KobaltePopover>
                     </Show>
                   </div>
+                  </TimelineActions>
                 )}
               </Show>
             </div>

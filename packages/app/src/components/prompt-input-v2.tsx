@@ -28,6 +28,7 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { showToast } from "@/utils/toast"
+import { agentColor } from "@/utils/agent"
 import { PromptInputV2, type PromptInputV2Suggestion } from "@spinosa/session-ui/v2/prompt-input"
 import {
   createPromptInputV2Controller,
@@ -426,6 +427,8 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
               current: () => props.controls.agents.current,
               onSelect: (value: string) => props.controls.agents.select(value),
               keybind: () => command.keybindParts("agent.cycle"),
+              labelStyle: () => ({ color: agentColor(props.controls.agents.current) }),
+              optionStyle: (id: string) => ({ color: agentColor(id) }),
             }
           : undefined
       },

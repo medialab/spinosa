@@ -3,7 +3,7 @@ import { createQuery } from "@tanstack/solid-query"
 import { useNavigate, useSearchParams } from "@solidjs/router"
 import { type Accessor, createMemo } from "solid-js"
 import type { PromptInputControls } from "@/components/prompt-input/contracts"
-import type { PromptProjectControls } from "@/components/prompt-project-selector"
+import type { PromptProject, PromptProjectControls } from "@/components/prompt-project-selector"
 import { useDirectoryPicker } from "@/components/directory-picker"
 import { useGlobal } from "@/context/global"
 import { useLayout } from "@/context/layout"
@@ -65,7 +65,33 @@ export function createPromptInputController(input: {
   })
 }
 
-export function createPromptProjectControls() {
+export function registeredPromptProjects(
+  opened: readonly PromptProject[],
+  registered: readonly { path: string; name: string }[],
+  server?: PromptProject["server"],
+  fallbackPath?: string,
+): PromptProject[] {
+  const projects = registered.map((workspace) => {
+    const project = opened.find(
+      (item) => pathKey(item.worktree) === pathKey(workspace.path) && (!server || item.server?.key === server.key),
+    )
+    return {
+      ...project,
+      worktree: workspace.path,
+      name: workspace.name,
+      ...(project?.server || server ? { server: project?.server ?? server } : {}),
+    }
+  })
+  if (!fallbackPath || projects.some((project) => pathKey(project.worktree) === pathKey(fallbackPath))) return projects
+  const current = opened.find((project) => pathKey(project.worktree) === pathKey(fallbackPath))
+  return current ? [...projects, current] : projects
+}
+
+export function createPromptProjectControls(
+  registeredWorkspaces?: Accessor<readonly { path: string; name: string }[]>,
+  registeredLoading?: Accessor<boolean>,
+  registeredError?: Accessor<boolean>,
+) {
   const navigate = useNavigate()
   const layout = useLayout()
   const server = useServer()
@@ -78,16 +104,30 @@ export function createPromptProjectControls() {
   const projectServer = () => serverSDK().server
   const projectServerCtx = createMemo(() => global.ensureServerCtx(projectServer()))
   const projects = createMemo(() => {
-    if (server.list.length <= 1) {
-      return search.draftId ? projectServerCtx().projects.list() : layout.projects.list()
+    const opened =
+      server.list.length <= 1
+        ? search.draftId
+          ? projectServerCtx().projects.list()
+          : layout.projects.list()
+        : server.list.flatMap((conn) => {
+            const item = { key: ServerConnection.key(conn), name: serverName(conn) }
+            return global
+              .ensureServerCtx(conn)
+              .projects.list()
+              .map((project) => ({ ...project, server: item }))
+          })
+    const active = projectServer()
+    const serverInfo =
+      server.list.length > 1 ? { key: ServerConnection.key(active), name: serverName(active) } : undefined
+    if (registeredWorkspaces) {
+      return registeredPromptProjects(
+        opened,
+        registeredWorkspaces(),
+        serverInfo,
+        registeredError?.() ? sdk().directory : undefined,
+      )
     }
-    return server.list.flatMap((conn) => {
-      const item = { key: ServerConnection.key(conn), name: serverName(conn) }
-      return global
-        .ensureServerCtx(conn)
-        .projects.list()
-        .map((project) => ({ ...project, server: item }))
-    })
+    return opened
   })
   const selectProject = (worktree: string, serverKey?: string) => {
     const conn = serverKey ? server.list.find((conn) => ServerConnection.key(conn) === serverKey) : projectServer()
@@ -130,6 +170,8 @@ export function createPromptProjectControls() {
 
   return createMemo<PromptProjectControls>(() => ({
     available: projects(),
+    allowAdd: !registeredWorkspaces,
+    loading: registeredLoading?.() ?? false,
     directory: sdk().directory,
     server: server.list.length > 1 ? ServerConnection.key(projectServer()) : undefined,
     select: selectProject,

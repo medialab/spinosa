@@ -49,6 +49,7 @@ import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpa
 import { useCommand } from "@/context/command"
 import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
+import { agentColor } from "@/utils/agent"
 import { usePlatform } from "@/context/platform"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { createTextFragment, getCursorPosition, setCursorPosition, setRangeEdge } from "./prompt-input/editor-dom"
@@ -271,6 +272,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const buttons = createMemo(() => motion(buttonsSpring()))
   const shell = createMemo(() => motion(1 - buttonsSpring()))
   const control = createMemo(() => ({ height: "28px", ...buttons() }))
+  const agentTriggerStyle = createMemo(() => ({
+    ...control(),
+    color: agentColor(props.controls.agents.current),
+  }))
 
   const commentCount = createMemo(() => {
     if (store.mode === "shell") return 0
@@ -1468,6 +1473,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         onSubmit={handleSubmit}
         classList={{
           "group/prompt-input": true,
+          "border border-border-weak-base": store.draggingType === null,
           "border-icon-info-active border-dashed": store.draggingType !== null,
           [props.class ?? ""]: !!props.class,
         }}
@@ -1669,12 +1675,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           props.controls.agents.select(value)
                           restoreFocus()
                         }}
-                        class="capitalize max-w-[160px] text-text-base"
-                        valueClass="truncate text-13-regular text-text-base"
-                        triggerStyle={control()}
+                        class="capitalize max-w-[160px]"
+                        valueClass="truncate text-13-regular"
+                        triggerStyle={agentTriggerStyle()}
                         triggerProps={{ "data-action": "prompt-agent" }}
                         variant="ghost"
-                      />
+                      >
+                        {(item) => <span style={{ color: agentColor(item ?? "") }}>{item}</span>}
+                      </Select>
                     </TooltipKeybind>
                   </div>
                 </Show>

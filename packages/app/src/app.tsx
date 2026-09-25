@@ -275,6 +275,8 @@ declare global {
     api?: {
       setTitlebar?: (theme: { mode: "light" | "dark"; scheme?: "system" | "light" | "dark" }) => Promise<void>
       exportDebugLogs?: () => Promise<string>
+      onWindowCloseRequest?: (cb: () => void) => () => void
+      respondWindowClose?: (allowed: boolean) => void
     }
   }
 }

@@ -46,13 +46,16 @@ export function createNewSessionWorkspaceController() {
   const serverSDK = useServerSDK()
   const language = useLanguage()
   const [worktree, setWorktree] = createSignal<string>()
+  const [registryError, setRegistryError] = createSignal(false)
   const [registered] = createResource(
     () => serverSDK().client,
     async (client) => {
       try {
         const result = await client.global.spinosa.workspaces.list()
+        setRegistryError(false)
         return availableSpinosaWorkspaces(result.data)
       } catch (error) {
+        setRegistryError(true)
         showToast({
           variant: "error",
           title: language.t("common.requestFailed"),
@@ -62,10 +65,6 @@ export function createNewSessionWorkspaceController() {
       }
     },
     { initialValue: [] },
-  )
-  const projectRoot = createMemo(() => sync().project?.worktree ?? sdk().directory)
-  const workspaces = createMemo(() =>
-    (registered() ?? []).filter((workspace) => pathKey(workspace.path) !== pathKey(projectRoot())),
   )
   const value = createMemo(() =>
     resolveNewSessionWorktree({
@@ -84,9 +83,8 @@ export function createNewSessionWorkspaceController() {
         setWorktree(normalizeNewSessionWorktree(worktree, sdk().directory, sync().project?.worktree)),
     },
     project: {
-      root: projectRoot,
-      workspaces,
-      git: () => sync().project?.vcs === "git",
+      registered,
+      registryError,
     },
   }
 }

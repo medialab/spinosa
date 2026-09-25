@@ -33,8 +33,14 @@ export type PromptProjectControls = {
   available: PromptProject[]
   directory: string
   server?: string
+  loading?: boolean
+  allowAdd?: boolean
   select: (worktree: string, server?: string) => void
   add: (title: string, server?: string) => void
+}
+
+export function workspaceTitleLoading(directory: string, switchingTo: string, registryLoading: boolean) {
+  return registryLoading || (!!switchingTo && pathKey(directory) !== pathKey(switchingTo))
 }
 
 const actionPrefix = "action:"
@@ -48,12 +54,22 @@ function actionKey(server?: string) {
   return `${actionPrefix}${encodeURIComponent(server ?? "")}`
 }
 
+export function projectMenuKeys(projects: readonly PromptProject[], servers: readonly { key: string }[], allowAdd: boolean) {
+  if (servers.length <= 1) {
+    return [...projects.map(projectKey), ...(allowAdd ? [actionKey(servers[0]?.key)] : [])]
+  }
+  return [
+    ...servers.flatMap((server) => projects.filter((project) => project.server?.key === server.key).map(projectKey)),
+    ...(allowAdd ? [actionKey()] : []),
+  ]
+}
+
 export function createPromptProjectController(input: {
   controls: Accessor<PromptProjectControls>
   onDone: () => void
 }) {
   const language = useLanguage()
-  const [store, setStore] = createStore({ open: false, search: "", active: "" })
+  const [store, setStore] = createStore({ open: false, search: "", active: "", switchingTo: "" })
   let searchRef: HTMLInputElement | undefined
 
   const current = () => {
@@ -66,7 +82,9 @@ export function createPromptProjectController(input: {
           (pathKey(project.worktree) === key || project.sandboxes?.some((sandbox) => pathKey(sandbox) === key)),
       )
   }
-  const selected = () => current() ?? input.controls().available[0]
+  const selected = () => current()
+  const loading = () => workspaceTitleLoading(input.controls().directory, store.switchingTo, !!input.controls().loading)
+  const canAdd = () => input.controls().allowAdd !== false
   const projects = () => {
     const search = store.search.trim().toLowerCase()
     if (!search) return input.controls().available
@@ -77,19 +95,7 @@ export function createPromptProjectController(input: {
       .controls()
       .available.map((project) => project.server)
       .filter((server, index, all) => server && all.findIndex((item) => item?.key === server.key) === index)
-  const keys = () => {
-    if (servers().length <= 1) {
-      return [...projects().map(projectKey), actionKey(servers()[0]?.key)]
-    }
-    return [
-      ...servers().flatMap((server) =>
-        projects()
-          .filter((project) => project.server?.key === server!.key)
-          .map(projectKey),
-      ),
-      actionKey(),
-    ]
-  }
+  const keys = () => projectMenuKeys(projects(), servers().filter((server) => !!server), canAdd())
   const initialActive = () => {
     const selectedKey = selected() ? projectKey(selected()!) : undefined
     const options = keys()
@@ -105,11 +111,13 @@ export function createPromptProjectController(input: {
       pathKey(project.worktree) !== pathKey(current()?.worktree ?? "") ||
       project.server?.key !== current()?.server?.key
     ) {
+      setStore("switchingTo", project.worktree)
       input.controls().select(project.worktree, project.server?.key)
     }
     close()
   }
   const add = (server?: string) => {
+    if (!canAdd()) return
     setStore({ open: false, search: "", active: "" })
     input.controls().add(language.t("command.project.open"), server)
   }
@@ -120,12 +128,14 @@ export function createPromptProjectController(input: {
       .available.find((project) => !search || displayName(project).toLowerCase().includes(search))
     setStore({
       search: value,
-      active: first ? projectKey(first) : actionKey(servers().length > 1 ? undefined : servers()[0]?.key),
+      active: first ? projectKey(first) : canAdd() ? actionKey(servers().length > 1 ? undefined : servers()[0]?.key) : "",
     })
   }
 
   return {
     selected,
+    loading,
+    canAdd,
     empty: () => input.controls().available.length === 0,
     projects,
     servers,
@@ -195,6 +205,7 @@ export type PromptProjectController = ReturnType<typeof createPromptProjectContr
 export function PromptProjectSelector(props: {
   controller: PromptProjectController
   placement?: "bottom" | "bottom-start"
+  workspaceTitle?: string
 }) {
   const [triggerReady, setTriggerReady] = createSignal(false)
   let contentRef: HTMLDivElement | undefined
@@ -238,13 +249,13 @@ export function PromptProjectSelector(props: {
       selectProject(project)
       return
     }
-    if (props.controller.activeAction() && props.controller.servers().length > 1) {
+    if (props.controller.canAdd() && props.controller.activeAction() && props.controller.servers().length > 1) {
       const item = activeItem()
       item?.focus()
       item?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
       return
     }
-    selectAction(props.controller.activeServer())
+    if (props.controller.canAdd()) selectAction(props.controller.activeServer())
   }
   const moveActive = (delta: number) => {
     props.controller.moveActive(delta)
@@ -287,7 +298,13 @@ export function PromptProjectSelector(props: {
         props.controller.setOpen(open)
       }}
     >
-      <DropdownMenu.Trigger as={ProjectTrigger} ref={setTriggerRef} controller={props.controller} />
+      <DropdownMenu.Trigger
+        as={ProjectTrigger}
+        ref={setTriggerRef}
+        controller={props.controller}
+        workspaceTitle={props.workspaceTitle}
+        disabled={props.controller.loading()}
+      />
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           ref={contentRef}
@@ -396,8 +413,9 @@ export function PromptProjectSelector(props: {
               </Show>
             </div>
           </div>
-          <div class="h-px bg-v2-border-border-muted" />
-          <div class="flex flex-col p-0.5">
+          <Show when={props.controller.canAdd()}>
+            <div class="h-px bg-v2-border-border-muted" />
+            <div class="flex flex-col p-0.5">
             <Show
               when={props.controller.servers().length > 1}
               fallback={
@@ -433,37 +451,27 @@ export function PromptProjectSelector(props: {
                 </DropdownMenu.Portal>
               </DropdownMenu.Sub>
             </Show>
-          </div>
+            </div>
+          </Show>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu>
   )
 }
 
-export function PromptProjectAddButton(props: { controller: PromptProjectController }) {
-  return (
-    <button
-      data-action="prompt-project"
-      type="button"
-      class="flex h-7 min-w-0 max-w-[160px] items-center gap-1.5 rounded-sm px-2 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-faint transition-colors hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
-      onClick={() => props.controller.add()}
-    >
-      <Icon name="folder-add-left" size="small" class="shrink-0 text-v2-icon-icon-muted" />
-      <span class="min-w-0 truncate leading-5">{props.controller.labels.new()}</span>
-      <Icon name="chevron-down" size="small" class="shrink-0 text-v2-icon-icon-muted" />
-    </button>
-  )
-}
-
-function ProjectTrigger(props: ComponentProps<"button"> & { controller: PromptProjectController }) {
-  const [local, rest] = splitProps(props, ["controller", "class", "classList", "onClick", "onKeyDown"])
+function ProjectTrigger(props: ComponentProps<"button"> & { controller: PromptProjectController; workspaceTitle?: string }) {
+  const [local, rest] = splitProps(props, ["controller", "workspaceTitle", "class", "classList", "onClick", "onKeyDown"])
   const project = () => local.controller.selected()
   return (
     <button
       {...rest}
       data-action="prompt-project"
       type="button"
-      class="flex h-7 min-w-0 max-w-[203px] items-center gap-1.5 rounded-sm px-1.5 transition-colors focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+      class={
+        local.workspaceTitle
+          ? "flex max-w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[22px] font-[560] leading-7 tracking-[-0.02em] text-v2-text-text-base transition-colors [font-family:var(--v2-font-family-sans)] focus-visible:outline-2 focus-visible:outline-v2-border-border-focus"
+          : "flex h-7 min-w-0 max-w-[203px] items-center gap-1.5 rounded-sm px-1.5 transition-colors focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+      }
       classList={{
         ...local.classList,
         "hover:bg-v2-overlay-simple-overlay-hover": !local.controller.open(),
@@ -480,20 +488,22 @@ function ProjectTrigger(props: ComponentProps<"button"> & { controller: PromptPr
         if (typeof local.onKeyDown === "function") local.onKeyDown(event)
       }}
     >
-      <Show
-        when={project()}
-        fallback={<Icon name="folder-add-left" size="small" class="shrink-0 text-v2-icon-icon-muted" />}
-      >
-        {(item) => (
-          <ProjectAvatar
-            fallback={displayName(item())}
-            src={getProjectAvatarSource(item().id, item().icon)}
-            variant={getProjectAvatarVariant(item().icon?.color)}
-          />
-        )}
+      <Show when={!local.workspaceTitle}>
+        <Show
+          when={project()}
+          fallback={<Icon name="folder-add-left" size="small" class="shrink-0 text-v2-icon-icon-muted" />}
+        >
+          {(item) => (
+            <ProjectAvatar
+              fallback={displayName(item())}
+              src={getProjectAvatarSource(item().id, item().icon)}
+              variant={getProjectAvatarVariant(item().icon?.color)}
+            />
+          )}
+        </Show>
       </Show>
-      <span class="min-w-0 truncate leading-5">
-        {project() ? displayName(project()!) : local.controller.labels.new()}
+      <span class="min-w-0 truncate">
+        {local.workspaceTitle ?? (project() ? displayName(project()!) : local.controller.labels.new())}
       </span>
       <Icon name="chevron-down" size="small" class="shrink-0 text-v2-icon-icon-muted" />
     </button>

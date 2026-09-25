@@ -1,5 +1,64 @@
+[data-component="tool-bubble"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-right: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in srgb, var(--text-diff-add-base) 13%, transparent);
+  color: var(--text-diff-add-base);
+  font-family: var(--font-family-sans);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--text-diff-add-base) 22%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 1px;
+  }
+
+  &[data-failed] {
+    background: color-mix(in srgb, var(--text-diff-delete-base) 13%, transparent);
+    color: var(--text-diff-delete-base);
+  }
+
+  [data-slot="tool-bubble-copy"] {
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    opacity: 0.85;
+  }
+}
+
+/* Wide centered timelines park the bubble in the left gutter outside the
+   reading column (mirrors the TUI rail callouts). Below lg — or whenever the
+   timeline is not centered — the pill stays inline in the trigger row. */
+@media (min-width: 1024px) {
+  [data-centered] [data-component="tool-bubble"] {
+    position: absolute;
+    right: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    margin-right: 0;
+    white-space: nowrap;
+    z-index: 1;
+  }
+}
+
 [data-component="tool-trigger"] {
   content-visibility: auto;
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;

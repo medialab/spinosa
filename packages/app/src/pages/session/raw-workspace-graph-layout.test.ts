@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { buildRawWorkspaceGraph, type RawGraphEdge } from "./raw-workspace-graph"
-import { clusterRawWorkspaceGraph, layoutRawWorkspaceGraph } from "./raw-workspace-graph-layout"
+import { clusterRawWorkspaceGraph, DEFAULT_GRAPH_FORCES, layoutRawWorkspaceGraph } from "./raw-workspace-graph-layout"
 
 describe("raw workspace graph layout", () => {
   test("lays out every file deterministically within the graph viewport", () => {
@@ -30,6 +30,54 @@ describe("raw workspace graph layout", () => {
     )
 
     expect(point).toEqual({ x: 400, y: 250 })
+  })
+
+  test("places disconnected communities around a circle instead of on grid rows", () => {
+    const nodes = Array.from({ length: 9 }, (_, index) => ({ path: `raw/${index}.md`, fileName: `${index}.md` }))
+    const points = [...layoutRawWorkspaceGraph(nodes, [], 800, 500).values()]
+
+    expect(new Set(points.map((point) => Math.round(point.x))).size).toBeGreaterThan(6)
+    expect(new Set(points.map((point) => Math.round(point.y))).size).toBeGreaterThan(6)
+    expect(points.some((point) => Math.hypot(point.x - 400, point.y - 250) < 75)).toBe(true)
+  })
+
+  test("places related communities closer than disconnected communities", () => {
+    const nodes = ["a", "b", "c", "d", "e", "f", "g", "h", "i"].map((name) => ({ path: `raw/${name}.md`, fileName: `${name}.md` }))
+    const clusters = nodes.map((node) => ({ id: node.path, nodePaths: [node.path] }))
+    const edges: RawGraphEdge[] = [{ source: "raw/a.md", target: "raw/i.md", kinds: ["header"] }]
+    const points = layoutRawWorkspaceGraph(nodes, edges, 800, 500, clusters)
+    const distance = (left: string, right: string) => {
+      const a = points.get(`raw/${left}.md`)!
+      const b = points.get(`raw/${right}.md`)!
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
+
+    expect(distance("a", "i")).toBeLessThan(distance("a", "b"))
+    expect(distance("a", "i")).toBeLessThan(distance("a", "c"))
+  })
+
+  test("link distance changes the geometry rather than only the control value", () => {
+    const nodes = ["a", "b", "c"].map((name) => ({ path: `raw/${name}.md`, fileName: `${name}.md` }))
+    const edges: RawGraphEdge[] = [{ source: nodes[0]!.path, target: nodes[1]!.path, kinds: ["wikilink"] }]
+    const normal = layoutRawWorkspaceGraph(nodes, edges)
+    const longer = layoutRawWorkspaceGraph(nodes, edges, 1000, 680, undefined, { ...DEFAULT_GRAPH_FORCES, distance: 2 })
+    const separation = (points: Map<string, { x: number; y: number }>) => {
+      const a = points.get(nodes[0]!.path)!
+      const b = points.get(nodes[1]!.path)!
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
+    expect(separation(longer)).toBeGreaterThan(separation(normal))
+  })
+
+  test("keeps unlinked files as individual orphans rather than fake folder communities", () => {
+    const nodes = ["a", "b", "c", "d"].map((name, index) => ({
+      path: `raw/Ex${index < 2 ? 1 : 2}/${name}.md`,
+      fileName: `${name}.md`,
+    }))
+    const clusters = clusterRawWorkspaceGraph(nodes, [])
+    expect(clusters.map((cluster) => cluster.nodePaths)).toEqual([
+      ["raw/Ex1/a.md"], ["raw/Ex1/b.md"], ["raw/Ex2/c.md"], ["raw/Ex2/d.md"],
+    ])
   })
 
   test("separates dense communities from one another and leaves unrelated files as their own clusters", () => {

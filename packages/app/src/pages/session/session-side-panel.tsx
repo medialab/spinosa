@@ -303,7 +303,7 @@ export function SessionSidePanel(props: {
           "pointer-events-none": !open(),
           "transition-[width] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
             !props.size.active() && !props.reviewSnap,
-          "rounded-[10px] shadow-[var(--v2-elevation-raised)] overflow-hidden": settings.general.newLayoutDesigns(),
+          "overflow-hidden": settings.general.newLayoutDesigns(),
           "flex-1": reviewOpen(),
         }}
         style={{ width: panelWidth() }}
@@ -312,7 +312,7 @@ export function SessionSidePanel(props: {
           <div
             class="size-full flex"
             classList={{
-              "border-l border-border-weaker-base": !settings.general.newLayoutDesigns(),
+              "border-l border-border-weaker-base": true,
             }}
           >
             <Show when={reviewOpen()}>

@@ -86,6 +86,25 @@ describe("updater controller", () => {
     expect(app.controller.getState()).toEqual({ status: "ready", version: "2.0.0" })
   })
 
+  test("cancelled install does not quit or stop the backend", async () => {
+    let installs = 0
+    const app = createUpdaterController({
+      enabled: true,
+      currentVersion: "1.0.0",
+      backend: {
+        checkForUpdates: async () => ({ isUpdateAvailable: true, updateInfo: { version: "2.0.0" } }),
+        downloadUpdate: async () => {},
+        quitAndInstall: () => { installs += 1 },
+      },
+      persistence: { get: () => undefined, set() {}, clear() {} },
+      stop: async () => false,
+    })
+    await app.start()
+    await app.install()
+    expect(installs).toBe(0)
+    expect(app.getState()).toEqual({ status: "ready", version: "2.0.0" })
+  })
+
   test("returns to ready when installation cannot start", async () => {
     const app = setup()
     await app.controller.start()

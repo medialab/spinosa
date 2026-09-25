@@ -30,6 +30,9 @@ export function DialogStopCurrentTask(props: {
   check: () => Promise<Stop | undefined>
   isActive: () => boolean
   onHome: () => void
+  beforeLeave?: () => void
+  onStopFailed?: () => void
+  message?: string
 }) {
   const dialog = useDialog()
   const language = useLanguage()
@@ -48,8 +51,9 @@ export function DialogStopCurrentTask(props: {
       const stop = await props.check()
       if (current !== attempt || !props.isActive()) return
       if (!stop) {
-        dialog.close()
+        props.beforeLeave?.()
         props.onHome()
+        dialog.close()
         return
       }
       setState({ phase: "confirm", stop, retry: undefined, error: undefined })
@@ -69,12 +73,14 @@ export function DialogStopCurrentTask(props: {
     const action = state.stop
     setState({ phase: "stopping", stop: action, retry: undefined, error: undefined })
     try {
+      props.beforeLeave?.()
       await action()
       if (!props.isActive()) return
-      dialog.close()
       props.onHome()
+      dialog.close()
     } catch (cause) {
       if (!props.isActive()) return
+      props.onStopFailed?.()
       setState({
         phase: "error",
         stop: action,
@@ -113,7 +119,7 @@ export function DialogStopCurrentTask(props: {
           </div>
         </Show>
         <Show when={state.phase === "confirm" || (state.phase === "error" && state.retry === "stop")}>
-          <p class="text-sm opacity-80">{language.t("home.leaveTask.message")}</p>
+          <p class="text-sm opacity-80">{props.message ?? language.t("home.leaveTask.message")}</p>
         </Show>
         <Show when={state.phase === "stopping"}>
           <div

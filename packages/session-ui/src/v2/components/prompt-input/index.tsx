@@ -120,6 +120,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
         class="group/prompt-input relative min-h-[96px] w-full overflow-clip rounded-xl bg-v2-background-bg-base"
         classList={{
           "shadow-[var(--v2-elevation-raised)]": !props.borderUnderlay,
+          "border border-v2-border-border-base": state.drag !== "active",
           "border border-v2-icon-icon-info border-dashed": state.drag === "active",
         }}
         onSubmit={(event) => {
@@ -229,6 +230,8 @@ export function PromptInputV2(props: PromptInputV2Props) {
                   title={i18n.t("ui.promptInput.chooseAgent")}
                   keybind={["Mod", "."]}
                   control={control}
+                  labelStyle={control.labelStyle}
+                  optionStyle={control.optionStyle}
                 />
               )}
             </Show>
@@ -536,6 +539,8 @@ function PromptInputV2ConfiguredSelect(props: {
   keybind?: string[]
   control: PromptInputV2SelectControl
   model?: boolean
+  labelStyle?: Accessor<JSX.CSSProperties | undefined>
+  optionStyle?: (id: string) => JSX.CSSProperties | undefined
 }) {
   const current = () => props.control.current()
   const providerID = () => props.control.options().find((option) => option.id === current())?.providerID
@@ -551,6 +556,8 @@ function PromptInputV2ConfiguredSelect(props: {
         </Show>
       }
       onSelect={props.control.onSelect}
+      labelStyle={props.labelStyle}
+      optionStyle={props.optionStyle}
     />
   )
 }
@@ -564,6 +571,8 @@ export function PromptInputV2Select(props: {
   class?: string
   onOpenChange?: (open: boolean) => void
   onSelect: (id: string) => void
+  labelStyle?: Accessor<JSX.CSSProperties | undefined>
+  optionStyle?: (id: string) => JSX.CSSProperties | undefined
 }) {
   return (
     <TooltipV2
@@ -584,7 +593,7 @@ export function PromptInputV2Select(props: {
           aria-label={props.title}
         >
           {props.currentIcon}
-          <span class="truncate capitalize leading-5">
+          <span class="truncate capitalize leading-5" style={props.labelStyle?.()}>
             {props.options.find((option) => option.id === props.current)?.label ?? props.current}
           </span>
           <span class="-ms-0.5 -me-1 flex shrink-0">
@@ -597,7 +606,7 @@ export function PromptInputV2Select(props: {
               <For each={props.options}>
                 {(option) => (
                   <MenuV2.RadioItem value={option.id} class="capitalize" closeOnSelect>
-                    {option.label}
+                    <span style={props.optionStyle?.(option.id)}>{option.label}</span>
                   </MenuV2.RadioItem>
                 )}
               </For>

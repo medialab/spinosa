@@ -40,6 +40,7 @@ describe("raw workspace graph", () => {
         source: "raw/interviews/alice.md",
         target: "raw/reports/study.md",
         kinds: ["header", "wikilink"],
+        directions: ["raw/interviews/alice.md", "raw/reports/study.md"],
       },
     ])
     expect(graph.unreadable).toBe(0)
@@ -67,9 +68,19 @@ describe("raw workspace graph", () => {
     ])
 
     expect(graph.edges).toEqual([
-      { source: "raw/a.md", target: "raw/b.md", kinds: ["header"] },
-      { source: "raw/b.md", target: "raw/c.md", kinds: ["header"] },
+      { source: "raw/a.md", target: "raw/b.md", kinds: ["header"], directions: [] },
+      { source: "raw/b.md", target: "raw/c.md", kinds: ["header"], directions: [] },
     ])
+  })
+
+  test("records link direction without assigning it to inferred metadata bonds", () => {
+    const graph = buildRawWorkspaceGraph([
+      { path: "raw/a.md", content: "---\ntopics: maps\n---\n[[b]]" },
+      { path: "raw/b.md", content: "---\ntopics: maps\n---" },
+      { path: "raw/c.md", content: "---\ntopics: maps\n---" },
+    ])
+    expect(graph.edges).toContainEqual({ source: "raw/a.md", target: "raw/b.md", kinds: ["header", "wikilink"], directions: ["raw/a.md"] })
+    expect(graph.edges).toContainEqual({ source: "raw/b.md", target: "raw/c.md", kinds: ["header"], directions: [] })
   })
 
   test("recursively inventories raw files, including ignored files, and reads only Markdown headers", async () => {

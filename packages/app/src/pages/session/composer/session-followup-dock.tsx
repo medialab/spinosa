@@ -6,10 +6,11 @@ import { IconButton } from "@spinosa/ui/icon-button"
 import { useLanguage } from "@/context/language"
 
 export function SessionFollowupDock(props: {
-  items: { id: string; text: string }[]
+  items: { id: string; text: string; steered: boolean; failed: boolean }[]
   sending?: string
-  onSend: (id: string) => void
+  onSteer: (id: string) => void
   onEdit: (id: string) => void
+  onRemove: (id: string) => void
 }) {
   const language = useLanguage()
   const [store, setStore] = createStore({
@@ -81,20 +82,31 @@ export function SessionFollowupDock(props: {
                   size="small"
                   variant="secondary"
                   class="shrink-0"
-                  disabled={!!props.sending}
-                  onClick={() => props.onSend(item.id)}
+                  disabled={!!props.sending || (item.steered && !item.failed)}
+                  onClick={() => props.onSteer(item.id)}
                 >
-                  {language.t("session.followupDock.sendNow")}
+                  {item.failed ? language.t("session.followupDock.sendNow") : item.steered ? language.t("session.followupDock.upNext") : language.t("session.followupDock.steer")}
                 </Button>
-                <Button
-                  size="small"
+                <IconButton
+                  icon="edit"
+                  size="normal"
                   variant="ghost"
                   class="shrink-0"
                   disabled={!!props.sending}
                   onClick={() => props.onEdit(item.id)}
-                >
-                  {language.t("session.followupDock.edit")}
-                </Button>
+                  aria-label={language.t("session.followupDock.edit")}
+                  title={language.t("session.followupDock.edit")}
+                />
+                <IconButton
+                  icon="trash"
+                  size="normal"
+                  variant="ghost"
+                  class="shrink-0"
+                  disabled={!!props.sending}
+                  onClick={() => props.onRemove(item.id)}
+                  aria-label={language.t("session.followupDock.remove")}
+                  title={language.t("session.followupDock.remove")}
+                />
               </div>
             )}
           </For>

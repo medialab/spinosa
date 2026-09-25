@@ -82,6 +82,8 @@ export type ElectronAPI = {
   draftBlobGet: (id: string) => Promise<ArrayBuffer | null>
 
   getWindowID: () => Promise<string>
+  onWindowCloseRequest: (cb: () => void) => () => void
+  respondWindowClose: (allowed: boolean) => void
   onMenuCommand: (cb: (id: string) => void) => () => void
   onDeepLink: (cb: (urls: string[]) => void) => () => void
 

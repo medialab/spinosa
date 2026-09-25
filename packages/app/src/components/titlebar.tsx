@@ -5,13 +5,15 @@ import {
   createSignal,
   Match,
   on,
+  onCleanup,
   onMount,
   Show,
   Switch,
   untrack,
 } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useLocation, useNavigate, useParams } from "@solidjs/router"
+import { useBeforeLeave, useLocation, useNavigate, useParams } from "@solidjs/router"
+import { base64Encode } from "@spinosa/kernel-core/util/encode"
 import { IconButton } from "@spinosa/ui/icon-button"
 import { Icon } from "@spinosa/ui/icon"
 import { Button } from "@spinosa/ui/button"
@@ -22,7 +24,7 @@ import { KeybindV2 } from "@spinosa/ui/v2/keybind-v2"
 import { TooltipV2 } from "@spinosa/ui/v2/tooltip-v2"
 import { useDialog } from "@spinosa/ui/context/dialog"
 
-import { LayoutRoute, useLayout } from "@/context/layout"
+import { currentRoute, LayoutRoute, useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
@@ -36,6 +38,8 @@ import { readSessionTabsRemovedDetail, SESSION_TABS_REMOVED_EVENT } from "@/comp
 import { useGlobal } from "@/context/global"
 import { ServerConnection, useServer } from "@/context/server"
 import { tabKey, useTabs } from "@/context/tabs"
+import { tabHref } from "@/context/tabs"
+import { nextTabAfterClose } from "@/context/closed-tabs"
 import type { PromptSession } from "@/context/prompt"
 import "./titlebar.css"
 import { normalizeSessionInfo } from "@/utils/session"
@@ -43,6 +47,7 @@ import { decode64 } from "@/utils/base64"
 import { showToast } from "@/utils/toast"
 import { activeOnboardingJob } from "@/utils/active-onboarding-job"
 import { DialogStopCurrentTask } from "@/components/dialog-stop-current-task"
+import { pauseSessionFollowups } from "@/utils/session-leave"
 
 const legacyTitlebarHeight = 40
 const v2TitlebarHeight = 36
@@ -62,6 +67,16 @@ export function useTitlebarRightMount() {
   const sync = () => setMount(document.getElementById("opencode-titlebar-right"))
   onMount(sync)
   createEffect(on(language.direction, sync, { defer: true }))
+  return mount
+}
+
+export function useTitlebarSessionMount() {
+  const language = useLanguage()
+  const settings = useSettings()
+  const [mount, setMount] = createSignal<HTMLElement | null>(null)
+  const sync = () => setMount(document.getElementById("opencode-titlebar-session"))
+  onMount(sync)
+  createEffect(on([language.direction, settings.general.newLayoutDesigns], sync, { defer: true }))
   return mount
 }
 
@@ -143,53 +158,118 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
     update: updateState(),
   }))
 
+  const checkLeave = async (route: Extract<LayoutRoute, { type: "session" }>) => {
+    const conn = global.servers.list().find((item) => ServerConnection.key(item) === (route.server ?? server.key))
+    if (!conn) throw new Error(language.t("common.requestFailed"))
+
+    const ctx = global.ensureServerCtx(conn)
+    const session = ctx.sync.session.peek(route.sessionId) ?? (await ctx.sync.session.resolve(route.sessionId))
+    const directory = session?.directory ?? decode64(params.dir)
+    const [active, job] = await Promise.all([
+      ctx.sdk.api.session.active(),
+      directory
+        ? activeOnboardingJob(() => ctx.sdk.ensureDirSdkContext(directory).client.onboarding.active.get({ directory }))
+        : Promise.resolve(undefined),
+    ])
+    const status = ctx.sync.session.data.session_status[route.sessionId]
+    const chatBusy = (status !== undefined && status.type !== "idle") || Boolean(active[route.sessionId])
+    const importBusy = job !== undefined && (job.status === "running" || job.status === "waiting")
+
+    if (!chatBusy && !importBusy) return
+    return async () => {
+      const operations: Promise<unknown>[] = []
+      if (chatBusy) operations.push(ctx.sdk.api.session.interrupt({ sessionID: route.sessionId }))
+      if (importBusy && directory && job) {
+        operations.push(ctx.sdk.ensureDirSdkContext(directory).client.onboarding.job.cancel({ directory, jobID: job.id }))
+      }
+      await Promise.all(operations)
+    }
+  }
+
+  let leavePending = false
+  let approvedRoute: string | undefined
+  const navigateApproved = (to: string, action: () => void) => {
+    approvedRoute = new URL(to, window.location.href).pathname
+    action()
+    queueMicrotask(() => { approvedRoute = undefined })
+  }
+  const confirmLeave = (onLeave: () => void, onCancel?: () => void, home = false) => {
+    const route = layout.route()
+    if (route.type !== "session") {
+      onLeave()
+      return
+    }
+    if (leavePending) {
+      onCancel?.()
+      return
+    }
+    leavePending = true
+    let active = true
+    let settled = false
+    let restoreFollowups: (() => void) | undefined
+    const finish = (leave: boolean) => {
+      if (settled) return
+      settled = true
+      leavePending = false
+      if (leave) onLeave()
+      else onCancel?.()
+    }
+    dialog.show(
+      () => <DialogStopCurrentTask
+        check={() => checkLeave(route)}
+        isActive={() => active}
+        beforeLeave={() => { restoreFollowups = pauseSessionFollowups(route.sessionId) }}
+        onStopFailed={() => restoreFollowups?.()}
+        onHome={() => finish(true)}
+        message={home ? undefined : language.t("session.leaveTask.message")}
+      />,
+      () => {
+        active = false
+        finish(false)
+      },
+    )
+  }
+
+  useBeforeLeave((event) => {
+    if (event.defaultPrevented || layout.route().type !== "session") return
+    if (typeof event.to === "string") {
+      const target = new URL(event.to, window.location.href)
+      if (approvedRoute === target.pathname) {
+        approvedRoute = undefined
+        return
+      }
+      const next = currentRoute(target.pathname, target.search)
+      const route = layout.route()
+      if (next.type === "session" && route.type === "session" && next.sessionId === route.sessionId) return
+    }
+    event.preventDefault()
+    const home = typeof event.to === "string" && (event.to === "/" || /\/session\/?$/.test(event.to))
+    confirmLeave(() => event.retry(true), undefined, home)
+  })
+
+  if (platform.platform === "desktop") {
+    const unsubscribe = window.api?.onWindowCloseRequest?.(() => {
+      confirmLeave(
+        () => window.api?.respondWindowClose?.(true),
+        () => window.api?.respondWindowClose?.(false),
+      )
+    })
+    onCleanup(() => unsubscribe?.())
+  }
+
   const goHome = async () => {
     const route = layout.route()
     if (route.type !== "session") {
       if (location.pathname !== "/") navigate("/")
       return
     }
-
     const conn = global.servers.list().find((item) => ServerConnection.key(item) === (route.server ?? server.key))
-    if (!conn) {
-      navigate("/")
-      return
-    }
-
-    const ctx = global.ensureServerCtx(conn)
-    const check = async () => {
-      const session = ctx.sync.session.peek(route.sessionId) ?? (await ctx.sync.session.resolve(route.sessionId))
-      const directory = session?.directory ?? decode64(params.dir)
-      const status = ctx.sync.session.data.session_status[route.sessionId]
-      const chatBusy = status !== undefined && status.type !== "idle"
-      const job = directory
-        ? await activeOnboardingJob(() =>
-            ctx.sdk.ensureDirSdkContext(directory).client.onboarding.active.get({ directory }),
-          )
-        : undefined
-      const importBusy = job !== undefined && (job.status === "running" || job.status === "waiting")
-
-      if (!chatBusy && !importBusy) return
-
-      return async () => {
-        const operations: Promise<unknown>[] = []
-        if (chatBusy) operations.push(ctx.sdk.client.session.abort({ sessionID: route.sessionId }))
-        if (importBusy && directory && job) {
-          operations.push(
-            ctx.sdk.ensureDirSdkContext(directory).client.onboarding.job.cancel({ directory, jobID: job.id }),
-          )
-        }
-        await Promise.all(operations)
-      }
-    }
-
-    let active = true
-    dialog.show(
-      () => <DialogStopCurrentTask check={check} isActive={() => active} onHome={() => navigate("/")} />,
-      () => {
-        active = false
-      },
-    )
+    const session = conn
+      ? global.ensureServerCtx(conn).sync.session.peek(route.sessionId) ??
+        (await global.ensureServerCtx(conn).sync.session.resolve(route.sessionId))
+      : undefined
+    const directory = session?.directory ?? decode64(params.dir)
+    navigate(directory ? `/${base64Encode(directory)}/session` : "/")
   }
 
   const requestHome = () => {
@@ -216,15 +296,19 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
   const back = () => {
     const next = backPath(history)
     if (!next) return
-    setHistory(next.state)
-    navigate(next.to)
+    confirmLeave(() => navigateApproved(next.to, () => {
+      setHistory(next.state)
+      navigate(next.to)
+    }))
   }
 
   const forward = () => {
     const next = forwardPath(history)
     if (!next) return
-    setHistory(next.state)
-    navigate(next.to)
+    confirmLeave(() => navigateApproved(next.to, () => {
+      setHistory(next.state)
+      navigate(next.to)
+    }))
   }
 
   command.register(() => [
@@ -249,7 +333,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
       data-slot={useV2Titlebar() ? "titlebar-v2" : undefined}
       classList={{
         "flex flex-row": true,
-        "absolute inset-x-0 top-0 z-50 h-12 bg-transparent pointer-events-none overflow-visible": useV2Titlebar(),
+        "absolute inset-x-0 top-0 z-50 h-12 md:h-14 bg-transparent pointer-events-none overflow-visible": useV2Titlebar(),
         "shrink-0 relative h-10 bg-background-base overflow-hidden": !useV2Titlebar(),
         "order-last": bottom(),
       }}
@@ -310,6 +394,22 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
             }
 
             const currentTab = () => matchRoute(layout.route())
+            const closeTabSafely = (index: number) => {
+              const tab = tabsStore[index]
+              if (!tab) return
+              const current = currentTab()
+              if (layout.route().type !== "session" || !current || tabKey(tab) !== tabKey(current)) {
+                tabsStoreActions.closeTab(index)
+                return
+              }
+              const next = nextTabAfterClose(tabsStore, index, true)
+              const destination = next ? tabHref(next) : "/"
+              confirmLeave(
+                () => navigateApproved(destination, () => tabsStoreActions.closeTab(index)),
+                undefined,
+                destination === "/",
+              )
+            }
 
             createEffect(() => {
               const route = layout.route()
@@ -404,7 +504,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   keybind: "mod+w",
                   hidden: true,
                   onSelect: () => {
-                    tabsStoreActions.closeTab(tabsStore.findIndex((tab) => current === tab))
+                    closeTabSafely(tabsStore.findIndex((tab) => current === tab))
                   },
                 },
                 {
@@ -421,7 +521,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
 
             return (
               <div
-                class="h-full flex-1 overflow-visible flex flex-row items-center gap-1.5 px-2 md:pr-3"
+                class="relative h-full flex-1 overflow-visible flex flex-row items-center gap-1.5 px-2 md:pr-3"
                 classList={{
                   "pt-2": !bottom(),
                   "pb-2": bottom(),
@@ -429,7 +529,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   "md:pl-4": !macTrafficLights(),
                 }}
               >
-                <div class="pointer-events-auto"><ChannelIndicator debugTools={props.debugTools} /></div>
+                <div class="pointer-events-auto shrink-0"><ChannelIndicator debugTools={props.debugTools} /></div>
                 <Show when={windows() || linux()}>
                   <div class="pointer-events-auto"><WindowsAppMenu command={command} platform={platform} variant="v2" /></div>
                 </Show>
@@ -437,7 +537,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   placement="bottom"
                   value={
                     <>
-                      {language.t("home.title")}
+                      {language.t(layout.route().type === "session" ? "session.header.backToHome" : "home.title")}
                       <KeybindV2 keys={command.keybindParts("home.toggle")} variant="neutral" />
                     </>
                   }
@@ -447,14 +547,16 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     type="button"
                     variant="ghost-muted"
                     size="large"
-                    class="!w-9 shrink-0 rounded-full bg-v2-background-bg-base shadow-sm"
-                    icon={<IconV2 name="home" />}
+                    class="relative z-10 !w-9 shrink-0 rounded-full bg-v2-background-bg-base shadow-sm"
+                    icon={<IconV2 name={layout.route().type === "session" ? "arrow-left" : "home"} />}
                     state={layout.route().type === "home" ? "pressed" : undefined}
                     onClick={requestHome}
-                    aria-label={language.t("home.title")}
+                    aria-label={language.t(layout.route().type === "session" ? "session.header.backToHome" : "home.title")}
                     aria-pressed={layout.route().type === "home"}
                   />
                 </TooltipV2>
+
+                <div id="opencode-titlebar-session" class="pointer-events-auto flex min-w-0 shrink items-center" />
 
                 <div class="hidden" aria-hidden="true">
                   <TitlebarTabStrip
@@ -463,18 +565,22 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     forceTruncate={tabsAreOverflowing()}
                     onOverflowChange={setTabsAreOverflowing}
                     onNavigate={(tab, el) => {
-                      tabs.select(tab)
-                      el?.scrollIntoView({ behavior: "instant" })
+                      const current = currentTab()
+                      if (current && tabKey(tab) === tabKey(current)) return
+                      confirmLeave(() => navigateApproved(tabHref(tab), () => {
+                        tabs.select(tab)
+                        el?.scrollIntoView({ behavior: "instant" })
+                      }))
                     }}
                     onClose={(tab) => {
                       const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
-                      if (index !== -1) tabsStoreActions.closeTab(index)
+                      if (index !== -1) closeTabSafely(index)
                     }}
                     onReorder={(keys) => tabsStoreActions.reorder(keys)}
                   />
                 </div>
 
-                <div class="flex-1" />
+                <div class="min-w-0 flex-1" />
                 <TitlebarV2Right state={v2RightState()} />
               </div>
             )
