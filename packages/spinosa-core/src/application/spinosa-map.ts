@@ -478,7 +478,18 @@ async function coverMaps(input: SpinosaMapInput): Promise<SpinosaMapResult> {
   if (!relativePath) return fail("cover needs relativePath or batchId of an extraction")
   const extraction = await readWorkspaceFile(input.workspacePath, relativePath)
   if (!extraction) return fail(`missing extraction: ${relativePath}`)
-  const needed = extractPacketPaths(extraction).filter((p) => p.startsWith("raw/"))
+  // Table rows carry the on-disk form (raw/foo.md) while packet **Path:**
+  // lines use the wikilink form (raw/foo). Dedupe by extension-stripped key
+  // so one file is never reported missing twice.
+  const seen = new Set<string>()
+  const needed: string[] = []
+  for (const candidate of extractPacketPaths(extraction)) {
+    if (!candidate.startsWith("raw/")) continue
+    const key = candidate.replace(/\.md$/i, "")
+    if (seen.has(key)) continue
+    seen.add(key)
+    needed.push(candidate)
+  }
   const maps = await listMaps(input.workspacePath)
   const mapTexts: string[] = []
   for (const mapPath of maps) {

@@ -106,6 +106,37 @@ describe("spinosaMap", () => {
     expect(covered.output).toContain('ok="true"')
   })
 
+  test("cover lists each file once despite table and wikilink forms", async () => {
+    const root = await workspace()
+    const written = await spinosaMap({
+      action: "write_extraction",
+      workspacePath: root,
+      batchId: "coast-batch-001",
+      files: ["raw/interview.md"],
+      packets: [
+        {
+          filename: "interview.md",
+          path: "raw/interview.md",
+          summary: "Speakers discuss inland relocation after storms.",
+          passages: [{ quote: "Coastal relocation notes.", lines: "L3" }],
+          concepts: ["relocation"],
+          tags: ["#concept/relocation", "#type/interview", "#group/coast"],
+          connections: ["none"],
+        },
+      ],
+    })
+    if (!written.ok) throw new Error(written.reason)
+
+    const covered = await spinosaMap({
+      action: "cover",
+      workspacePath: root,
+      batchId: "coast-batch-001",
+    })
+    if (!covered.ok) throw new Error(covered.reason)
+    expect(covered.output).toContain('missing="1"')
+    expect(covered.output.match(/^- raw\/interview\.md$/gm)).toHaveLength(1)
+  })
+
   test("begin skips an existing extraction", async () => {
     const root = await workspace()
     const first = await spinosaMap({
