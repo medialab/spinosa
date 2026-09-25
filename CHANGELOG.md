@@ -10,6 +10,8 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2-beta.4] — 2026-09-25
+
 ### Added
 
 - The searcher screens grep hits with its own relevance ranking. It does not use a separate screening tool.

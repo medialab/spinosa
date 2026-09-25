@@ -90,7 +90,7 @@ import file_86 from "./template-blobs/7aaf276387b614cc0c8fbd673a311f09146ada327b
 import file_87 from "./template-blobs/4583fd83681cd040984089cc17c8c5f62f58413b9be1f94e2e7cfa3be590255f.bin" with { type: "file" };
 
 export const templatePack = {
-  version: "1.2.2-beta.3",
+  version: "1.2.2-beta.4",
   packId: "4cc91893c8fd9f5e6b6103f6f5bf2d6a6a09e7de32a0096c9eb99fab062b5de1",
   files: [
   { path: ".agents/agents/spinosa-analyst.md", mode: 420, sha256: "0ffca7164c7165c78c8d66638448235e65836c7a14b17dbc1583341190899146", contentPath: file_0 },
