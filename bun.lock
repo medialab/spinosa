@@ -626,6 +626,7 @@
         "unzipper": "^0.12.3",
       },
       "devDependencies": {
+        "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
         "@types/unzipper": "0.10.11",
         "typescript": "catalog:",
