@@ -199,7 +199,7 @@ exports[`tool parameters JSON Schema (wire shape) question 1`] = `
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "questions": {
-      "description": "1 to 3 questions. Use 1 when the task is clear. Use 2 or 3 when goal, scope, or deliverable is ambiguous.",
+      "description": "1 to 3 questions. Only for scope confirmation/correction, missing user-supplied data, or real ambiguity—never filler.",
       "items": {
         "properties": {
           "header": {
