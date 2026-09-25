@@ -126,6 +126,55 @@ Regenerate the patch audit table after changing `patchedDependencies`:
 bun run patches:generate
 ```
 
+## Desktop App (`spinosa-desktop-app` branch and beyond)
+
+The Electron desktop app lives in `packages/desktop/` (shell) + `packages/app/`
+(web UI, SolidJS) + `packages/session-ui/` (transcript components), on top of
+the shared `packages/ui/` design system. The backend is always the Spinosa
+kernel — never opencode. The app talks to it over HTTP via `@spinosa/sdk`
+(V2 client preferred); the legacy promise-shaped `ServerApi` surface is
+preserved by `packages/app/src/utils/legacy-api.ts` (adapter) and the vendored
+type bridge in `packages/app/src/utils/legacy-client.ts`.
+
+```bash
+# Backend (headless kernel for UI dev — no Electron needed)
+bun ./packages/desktop/scripts/serve-dev.ts 4096
+
+# Web UI only (targets the backend above)
+bun run --cwd packages/app dev -- --port 4444
+# → http://localhost:4444 (set VITE_SPINOSA_SERVER_HOST/PORT to match)
+
+# Full Electron shell (builds the sidecar bundle first via predev)
+bun run --cwd packages/desktop dev
+
+# Checks for the desktop packages
+for p in app session-ui desktop ui; do bun run --cwd packages/$p typecheck; done
+bun run --cwd packages/app test:unit
+bun run --cwd packages/session-ui test
+bun test --cwd packages/desktop src
+```
+
+Notes:
+
+- `packages/desktop/scripts/server-entry.ts` re-exports kernel `Server`; `scripts/build-server.ts`
+  compiles it for plain Node (`packages/spinosa-kernel/dist/node/`, git-ignored) because
+  `utilityProcess` cannot run the Bun runtime. Externalized: `@lydell/node-pty`,
+  `@aws-sdk/client-s3`, `jsonc-parser` (resolved from the app bundle at runtime).
+- The sidecar authenticates as user `spinosa` (`SPINOSA_SERVER_USERNAME/PASSWORD`).
+  Protocol detection (`utils/server-protocol.ts`) routes Spinosa's dual-stack
+  (`/global/health` + `/api/health`, no pid) to the V2 client.
+- WSL backend support is stubbed out (`installOpencode` returns "unavailable"):
+  `packages/desktop/src/main/wsl/` still targets the opencode installer and needs
+  a Spinosa-based rewrite as a follow-up.
+- Follow-ups (need kernel `schema → protocol → server` groups first, the UI must
+  never import kernel/core directly): workspace registry (list/create/add),
+  onboarding + add-files wizards, visualizer views, doctor/upgrade surfaces.
+  Also pending: product icon/favicon artwork, non-English translator review of
+  rebranded strings, and desktop release publishing from `medialab/spinosa`.
+- One upstream test assertion is environment-sensitive and fails identically on
+  opencode HEAD: `desktop native locale detection > uses Unicode likely subtags`
+  (ICU `pa-PK` handling). Not a regression.
+
 ## Rules for Agents
 
 1. Product workspace behavior belongs in `packages/spinosa-core/`. CLI wiring belongs in `packages/spinosa-kernel/`. UI belongs in `packages/tui/`.

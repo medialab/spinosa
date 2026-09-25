@@ -96,6 +96,7 @@ import {
   unregisterPump,
 } from "../../spinosa/outbound-queue"
 import { readStartupPrompt } from "../../spinosa/service"
+import { STARTUP_PROMPT_FALLBACK } from "@spinosa/core/commands/startup"
 import { useSpinosaWorkspace } from "../../context/spinosa-workspace"
 import { fadeColor, getEditorRangeLabel, hasEditorRangeSelection, randomIndex } from "./helpers"
 import { ESC_ARM_WINDOW_MS, escConfirmStop } from "./interrupt"
@@ -131,9 +132,6 @@ const money = new Intl.NumberFormat("en-US", {
 })
 
 const DRAFT_RETENTION_MIN_CHARS = 20
-const STARTUP_PROMPT_FALLBACK =
-  "Run Spinosa startup indexing for this workspace. Follow startup-prompt.md: survey corpus, batch mapper extraction, write maps, validate, and set setup_status to workspace_started."
-
 function formatEditorContext(selection: EditorSelection) {
   const selected = selection.ranges.filter(hasEditorRangeSelection)
   if (selected.length === 0)
@@ -1768,7 +1766,7 @@ export function Prompt(props: PromptProps) {
       return `Enter a shell command… "${example}"`
     }
     if (!list().length) return undefined
-    return `Describe the task… "${list()[store.placeholder % list().length]}"`
+    return `Describe your task or use / for commands… "${list()[store.placeholder % list().length]}"`
   })
 
   const spinnerDef = createMemo(() => {

@@ -32,6 +32,7 @@ import { Schema } from "effect"
 import z from "zod"
 import { Plugin } from "../plugin"
 import { Provider } from "@/provider/provider"
+import { Auth } from "@/auth"
 
 import { webSearchEnabled } from "./websearch"
 import { LspTool } from "./lsp"
@@ -433,6 +434,7 @@ export const node = LayerNode.make({
     FSUtil.node,
     EventV2Bridge.node,
     httpClient,
+    Auth.node,
     CrossSpawnSpawner.node,
     Format.node,
     Truncate.node,

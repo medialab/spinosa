@@ -10,6 +10,35 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+### Added
+
+- The searcher screens grep hits with its own relevance ranking. It does not use a separate screening tool.
+
+## [1.2.2-beta.3] — 2026-09-25
+
+### Added
+
+- The desktop app confirms workspace deletion with a name entry. Type the workspace name to enable Delete.
+- The desktop composer shows TUI agent names. `build` is Orchestrator-Editor. `plan` is Orchestrator-Planner.
+- Desktop command parity tiers 0-2 plus a markdown viewer.
+- The searcher ranks grep hits itself. It does not use a separate screening tool.
+
+### Changed
+
+- The view toggle shows only the moving pill. It has no outer container.
+- The back-to-workspace button shows a back arrow. It no longer falls back to a plus icon.
+- Focus rings use the neutral border stroke. Blue contours are gone.
+- Conversation tool headers show the camelCase tool name. They no longer say Called.
+- The TUI session footer is gone. Context and cost live in the prompt box.
+- The TUI home bar keeps `ctrl+p palette`. It drops the `/` and tab hints.
+- The TUI prompt placeholder reads `Describe your task or use / for commands`.
+- Desktop workspace and conversation UX refinements across session state, prompt exits, and permission lists.
+
+### Removed
+
+- The `jev` passage-screening tool and its permission, prompts, and UI. Remove stored TypeSafe keys if you added them only for `jev`.
+- The TUI session footer bar.
+
 ## [1.2.2-beta.2] — 2026-09-21
 
 ### Added

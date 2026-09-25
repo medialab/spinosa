@@ -433,7 +433,6 @@ describe("tool parameters", () => {
     })
   })
 
-
   describe("write", () => {
     test("accepts content + filePath", () => {
       expect(parse(Write, { content: "hi", filePath: "/a" })).toEqual({ content: "hi", filePath: "/a" })

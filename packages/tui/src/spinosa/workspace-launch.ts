@@ -1,8 +1,8 @@
 import { readStartupPrompt, readWorkspaceMeta } from "@spinosa/core/workspace/meta"
 import { resolveWorkspaceDisplayName } from "@spinosa/core/workspace-name"
+import { STARTUP_PROMPT_FALLBACK } from "@spinosa/core/commands/startup"
 
-export const STARTUP_PROMPT_FALLBACK =
-  "Run Spinosa startup indexing for this workspace. Follow startup-prompt.md: survey corpus, batch mapper extraction, write maps, validate, and set setup_status to workspace_started."
+export { STARTUP_PROMPT_FALLBACK }
 
 export type WorkspaceLaunchDecision =
   | { type: "open" }

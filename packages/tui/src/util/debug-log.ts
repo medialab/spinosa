@@ -3,11 +3,11 @@ import path from "path"
 import { productLogDir, sanitizeLogValue } from "@spinosa/kernel-core/observability/sanitize-log"
 
 function logPath() {
-  return path.join(productLogDir(), "debug.ndjson")
+  return path.join(productLogDir(), "debug.tui.ndjson")
 }
 
 /**
- * Write a structured debug log entry to ~/.spinosa/logs/debug.ndjson.
+ * Write a structured debug log entry to ~/.spinosa/logs/debug.tui.ndjson.
  */
 export function dbg(tag: string, data: Record<string, unknown>): void {
   const safeData = sanitizeLogValue(data) as Record<string, unknown>

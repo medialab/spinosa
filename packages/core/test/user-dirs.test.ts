@@ -91,8 +91,8 @@ describe("user dirs", () => {
   })
 
   test("product path keeps install home and drops workspace .spinosa markers", () => {
-    expect(isRuntimeProductPath("/Users/name/.spinosa/logs/boot.ndjson")).toBe(true)
-    expect(isRuntimeProductPath("~/.spinosa/logs/effect.log")).toBe(true)
+    expect(isRuntimeProductPath("/Users/name/.spinosa/logs/boot.tui.ndjson")).toBe(true)
+    expect(isRuntimeProductPath("~/.spinosa/logs/effect.tui.log")).toBe(true)
     expect(isRuntimeProductPath("/Users/name/Downloads/ARCHIVE/.spinosa/memory/notes.md")).toBe(false)
     expect(isRuntimeProductPath("/home/name/Downloads/ws/.spinosa/workspace")).toBe(false)
   })

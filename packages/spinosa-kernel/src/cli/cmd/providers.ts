@@ -500,6 +500,10 @@ export const ProvidersLoginCommand = effectCmd({
       )
     }
 
+    if (provider === "typesafe") {
+      yield* Prompt.log.info("Create an API key at https://typesafe.ai.")
+    }
+
     if (provider === "opencode") {
       yield* Prompt.log.info("Create an api key at https://opencode.ai/auth")
     }

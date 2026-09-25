@@ -48,7 +48,7 @@ function format(input: unknown) {
   return /^[^\s="\\]+$/.test(value) ? value : JSON.stringify(value)
 }
 
-export function fileLogger(file = path.join(productLogDir(), "effect.log"), id: string = runID) {
+export function fileLogger(file = path.join(productLogDir(), "effect.tui.log"), id: string = runID) {
   // Do not set batchWindow to 0; it causes high idle CPU usage.
   try {
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })

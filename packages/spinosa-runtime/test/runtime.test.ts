@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { beginExecution, classifyPrompt, completeExecution, createResearchRun, nextExecution } from "../src"
+import { beginExecution, classifyPrompt, completeExecution, createResearchRun, nextExecution, AGENT_CONTRACTS } from "../src"
 
 describe("research runtime", () => {
   test("keeps greetings on the direct-chat path", () => {
@@ -52,3 +52,12 @@ describe("research runtime", () => {
   })
 })
 
+describe("agent contracts", () => {
+  test("searcher policy is read-only grep/glob screening", () => {
+    expect(AGENT_CONTRACTS["spinosa-searcher"]?.defaultToolPolicy).toContainEqual({
+      tool: "grep",
+      resource: "*",
+      effect: "allow",
+    })
+  })
+})

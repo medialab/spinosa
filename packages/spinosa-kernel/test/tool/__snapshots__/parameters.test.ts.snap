@@ -1386,7 +1386,6 @@ exports[`tool parameters JSON Schema (wire shape) web 1`] = `
 }
 `;
 
-
 exports[`tool parameters JSON Schema (wire shape) write 1`] = `
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",

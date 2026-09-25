@@ -405,7 +405,6 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               }
             }
 
-
             if (permission === "doom_loop") {
               return {
                 icon: "⟳",

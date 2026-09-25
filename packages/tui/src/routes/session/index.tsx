@@ -68,7 +68,6 @@ import { extractMdPaths } from "./extract-md-paths"
 import { toolPartsFingerprint } from "./tool-callout-fingerprint"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogQueuedPrompts } from "../../component/dialog-queued-prompts"
-import { SessionFooter } from "./footer"
 import {
   assistantPartGapBefore,
   steerControlLabel,
@@ -1678,7 +1677,6 @@ const resolveExportPath = (filename: string): string => {
                     </box>
                   </pluginRuntime.Slot>
                 </Show>
-                <SessionFooter sessionID={route.sessionID} />
               </box>
               </Show>
             </box>

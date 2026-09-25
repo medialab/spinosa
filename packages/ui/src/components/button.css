@@ -169,6 +169,28 @@
   }
 }
 
+/* Opt-in CTA treatment; compact button sizes retain their usual shape. */
+[data-component="button"].button-cta[data-size="large"]:is([data-variant="primary"], [data-variant="secondary"]) {
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 9999px;
+  font-size: 15px;
+}
+
+[data-component="button"].button-cta[data-size="large"][data-variant="secondary"]:not(:disabled) {
+  border: 1px solid var(--border-weak-base);
+  background-color: transparent;
+  box-shadow: none;
+}
+
+[data-component="button"].button-cta[data-size="large"][data-variant="secondary"]:hover:not(:disabled) {
+  background-color: var(--surface-base-hover);
+}
+
+[data-component="button"].button-cta[data-size="large"][data-variant="secondary"]:focus-visible:not(:disabled) {
+  box-shadow: var(--shadow-xs-border-focus);
+}
+
 [data-component="button"].titlebar-icon[data-variant="ghost"][aria-expanded="true"] {
   background-color: var(--surface-base-active);
 }

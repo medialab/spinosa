@@ -13,9 +13,12 @@ export interface PathSerializer {
   url: string
 }
 
-export const PATH_PARAM_RE = /\{[^{}]+\}/g
+export const PATH_PARAM_RE: RegExp = /\{[^{}]+\}/g
 
-export const defaultPathSerializer = ({ path, url: _url }: PathSerializer) => {
+export const defaultPathSerializer = ({
+  path,
+  url: _url,
+}: PathSerializer): string => {
   let url = _url
   const matches = _url.match(PATH_PARAM_RE)
   if (matches) {
@@ -44,7 +47,10 @@ export const defaultPathSerializer = ({ path, url: _url }: PathSerializer) => {
       }
 
       if (Array.isArray(value)) {
-        url = url.replace(match, serializeArrayParam({ explode, name, style, value }))
+        url = url.replace(
+          match,
+          serializeArrayParam({ explode, name, style, value }),
+        )
         continue
       }
 
@@ -73,7 +79,9 @@ export const defaultPathSerializer = ({ path, url: _url }: PathSerializer) => {
         continue
       }
 
-      const replaceValue = encodeURIComponent(style === "label" ? `.${value as string}` : (value as string))
+      const replaceValue = encodeURIComponent(
+        style === "label" ? `.${value as string}` : (value as string),
+      )
       url = url.replace(match, replaceValue)
     }
   }
@@ -92,7 +100,7 @@ export const getUrl = ({
   query?: Record<string, unknown>
   querySerializer: QuerySerializer
   url: string
-}) => {
+}): string => {
   const pathUrl = _url.startsWith("/") ? _url : `/${_url}`
   let url = (baseUrl ?? "") + pathUrl
   if (path) {
@@ -112,18 +120,19 @@ export function getValidRequestBody(options: {
   body?: unknown
   bodySerializer?: BodySerializer | null
   serializedBody?: unknown
-}) {
+}): unknown {
   const hasBody = options.body !== undefined
   const isSerializedBody = hasBody && options.bodySerializer
 
   if (isSerializedBody) {
     if ("serializedBody" in options) {
-      const hasSerializedBody = options.serializedBody !== undefined && options.serializedBody !== ""
+      const hasSerializedBody =
+        options.serializedBody !== undefined && options.serializedBody !== ""
 
       return hasSerializedBody ? options.serializedBody : null
     }
 
-    // not all clients implement a serializedBody property (i.e. client-axios)
+    // not all clients implement a serializedBody property (i.e., client-axios)
     return options.body !== "" ? options.body : null
   }
 

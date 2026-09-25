@@ -69,8 +69,8 @@ export function buildIconTokens(context: ThemeResolutionContext, textTokens: Res
   tokens["icon-on-brand-hover"] = onColor(context, brandh)
   tokens["icon-on-brand-selected"] = onColor(context, brandh)
   tokens["icon-on-interactive-base"] = onColor(context, interb)
-  tokens["icon-agent-plan-base"] = info[8]
-  tokens["icon-agent-docs-base"] = amber[8]
+  tokens["icon-agent-plan-base"] = amber[8]
+  tokens["icon-agent-docs-base"] = info[8]
   tokens["icon-agent-ask-base"] = blue[8]
   tokens["icon-agent-build-base"] = tone(interactive, isDark, 10, 8)
   tokens["icon-on-success-base"] = onColor(context, succb)
