@@ -658,7 +658,7 @@ function emitPatch(state: State): void {
 function emitTask(state: State): void {
   const ref = make(state, "task", {
     description: "Scan run/* for reducer touchpoints",
-    subagent_type: "explore",
+    subagent_type: "spinosa-generalist",
   })
   doneTool(state, ref, {
     title: "Reducer touchpoints found",
@@ -841,12 +841,12 @@ function emitPermission(state: State, kind: PermissionKind = "edit"): void {
   if (kind === "task") {
     const ref = make(state, "task", {
       description: "Inspect footer spacing across direct-mode prompts",
-      subagent_type: "explore",
+      subagent_type: "spinosa-generalist",
     })
     askPermission(state, {
       ref,
       permission: "task",
-      patterns: ["explore"],
+      patterns: ["spinosa-generalist"],
       always: ["*"],
       done: {
         title: "Footer spacing checked",
@@ -889,7 +889,7 @@ function emitPermission(state: State, kind: PermissionKind = "edit"): void {
   if (kind === "doom") {
     const ref = make(state, "task", {
       description: "Retry the formatter after repeated failures",
-      subagent_type: "general",
+      subagent_type: "spinosa-generalist",
     })
     askPermission(state, {
       ref,

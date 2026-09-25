@@ -11,7 +11,7 @@ import { ProviderTransform } from "@/provider/transform"
 
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
-import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_SPINOSA_GENERALIST from "./prompt/spinosa-generalist.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
@@ -117,11 +117,6 @@ const layer = Layer.effect(
           ...referenceDirs.map((dir) => path.join(dir, "*")),
           ...envWhitelist,
         ]
-        const readonlyExternalDirectory = {
-          "*": "ask",
-          ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
-        } satisfies Record<string, "allow" | "ask" | "deny">
-
         const defaults = Permission.fromConfig({
           "*": "allow",
           doom_loop: "ask",
@@ -171,7 +166,7 @@ const layer = Layer.effect(
                 question: "allow",
                 plan_exit: "allow",
                 task: {
-                  general: "deny",
+                  "spinosa-generalist": "deny",
                 },
                 external_directory: {
                   [path.join(Global.Path.data, "plans", "*")]: "allow",
@@ -187,9 +182,9 @@ const layer = Layer.effect(
             mode: "primary",
             native: true,
           },
-          general: {
-            name: "general",
-            description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
+          "spinosa-generalist": {
+            name: "spinosa-generalist",
+            description: `Spinosa-aware general-purpose agent for researching complex questions and executing multi-step tasks in a Spinosa environment. Use this agent to execute multiple units of work in parallel, with artifact discipline.`,
             permission: Permission.merge(
               defaults,
               Permission.fromConfig({
@@ -197,28 +192,7 @@ const layer = Layer.effect(
               }),
               user,
             ),
-            options: {},
-            mode: "subagent",
-            native: true,
-          },
-          explore: {
-            name: "explore",
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                "*": "deny",
-                grep: "allow",
-                glob: "allow",
-                list: "allow",
-                bash: "allow",
-                web: "ask",
-                read: "allow",
-                external_directory: readonlyExternalDirectory,
-              }),
-              user,
-            ),
-            description: `Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.`,
-            prompt: PROMPT_EXPLORE,
+            prompt: PROMPT_SPINOSA_GENERALIST,
             options: {},
             mode: "subagent",
             native: true,

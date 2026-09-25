@@ -3346,7 +3346,7 @@ function Task(props: ToolProps) {
     if (!description) return ""
     let content = [
       formatSubagentTitle(
-        agentDisplayName(stringValue(props.input.subagent_type) ?? "general"),
+        agentDisplayName(stringValue(props.input.subagent_type) ?? "spinosa-generalist"),
         description,
         props.metadata.background === true,
       ),

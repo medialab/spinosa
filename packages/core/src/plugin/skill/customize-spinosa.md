@@ -276,7 +276,7 @@ file, `disable: true` in frontmatter.
 
 ### Built-in agents
 
-opencode ships with `build` (Orchestrator-Editor), `plan` (Orchestrator-Planner), `general`, `explore`. Hidden internal agents:
+opencode ships with `build` (Orchestrator-Editor), `plan` (Orchestrator-Planner), `spinosa-generalist` (Spinosa-aware generalist subagent). Hidden internal agents:
 `compaction`, `title`, `summary`. To override a built-in's fields, define the
 same key in `agent: { <name>: { ... } }`.
 

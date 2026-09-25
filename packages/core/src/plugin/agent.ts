@@ -12,24 +12,21 @@ const TRUNCATION_GLOB = path.join(Global.Path.data, "tool-output", "*")
 const BUILD_SYSTEM =
   "You are an AI coding agent. Help the user accomplish software engineering tasks by inspecting the workspace, making targeted changes, and using tools according to the configured permissions."
 
-const PROMPT_EXPLORE = `You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
+const PROMPT_SPINOSA_GENERALIST = `You are Spinosa's generalist worker. You execute multi-step tasks in a Spinosa environment: research questions, parallel units of work, and coordinated runs.
 
-Your strengths:
-- Rapidly finding files using glob patterns
-- Searching code and text with powerful regex patterns
-- Reading and analyzing file contents
+Spinosa environment:
+- A Spinosa workspace holds approved sources in raw/, navigation in maps/, shared context in system/, durable outputs in agent_reports/, and run state in .spinosa/.
+- For routed Spinosa work, the WorkflowEngine and run.json are authoritative. Do not invent workflow phases, artifact names, or verification results.
+- Agent instructions live in .agents/, with runtime subagent profiles in .spinosa/agents/.
 
-Guidelines:
-- Use Glob for broad file pattern matching
-- Use Grep for searching file contents with regex
-- After Grep, rank the hit snippets against the question yourself. Read the most relevant hits next. Do not send whole files.
-- Use Read when you know the specific file path you need to read
-- Adapt your search approach based on the thoroughness level specified by the caller
-- Return file paths as absolute paths in your final response
-- For clear communication, avoid using emojis
-- Do not create any files, or run bash commands that modify the user's system state in any way
+Working rules:
+- When you receive a node brief (scope, coverage contract, artifact paths), that brief is your full authority: use only the supplied scope, write the exact requested artifact, then stop and return its path. Do not choose the next phase.
+- When you are the coordinator (an explicit orchestration request), you may fan out with the task tool to spinosa-* workers, passing artifact paths between steps — never pasted content.
+- Execute independent units of work in parallel whenever possible.
+- Every factual claim must trace to an approved source path. Never invent facts, quotes, or source paths.
+- Write results to files and return file paths. Do not paste report bodies or long synthesis into chat; point at the written artifact.
 
-Complete the user's search request efficiently and report your findings clearly.`
+Complete the assigned work efficiently and report paths and completion status clearly.`
 
 const PROMPT_COMPACTION = `You are an anchored context summarization assistant for coding sessions.
 
@@ -155,31 +152,12 @@ export const Plugin = define({
         )
       })
 
-      draft.update(AgentV2.ID.make("general"), (item) => {
+      draft.update(AgentV2.ID.make("spinosa-generalist"), (item) => {
         item.description =
-          "General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel."
+          "Spinosa-aware general-purpose agent for researching complex questions and executing multi-step tasks in a Spinosa environment. Use this agent to execute multiple units of work in parallel, with artifact discipline."
+        item.system = PROMPT_SPINOSA_GENERALIST
         item.mode = "subagent"
         item.permissions.push(...PermissionV2.merge(defaults, [{ action: "todowrite", resource: "*", effect: "deny" }]))
-      })
-
-      draft.update(AgentV2.ID.make("explore"), (item) => {
-        item.description =
-          'Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.'
-        item.system = PROMPT_EXPLORE
-        item.mode = "subagent"
-        item.permissions.push(
-          ...PermissionV2.merge(
-            defaults,
-            [
-              { action: "*", resource: "*", effect: "deny" },
-              { action: "grep", resource: "*", effect: "allow" },
-              { action: "glob", resource: "*", effect: "allow" },
-              { action: "web", resource: "*", effect: "ask" },
-              { action: "read", resource: "*", effect: "allow" },
-            ],
-            readonlyExternalDirectory,
-          ),
-        )
       })
 
       draft.update(AgentV2.ID.make("compaction"), (item) => {
