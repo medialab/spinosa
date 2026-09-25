@@ -41,9 +41,7 @@ workspace-template/  ← Files shipped into Spinosa workspaces (via workspace-fi
   .bin/spinosa       ← Minimal forwarder to ~/.spinosa/bin/spinosa (product installs)
   .spinosa/          ← Workspace manifest and local state templates
   .agents/           ← Canonical skills and agent instructions
-  .opencode/         ← OpenCode adapter mirror
-  .claude/ .codex/   ← Vendor adapter mirrors
-  .hermes/           ← Hermes adapter and generated workspace config
+  .spinosa/agents/   ← Native subagent profiles for the runtime
   system/ docs/      ← Workspace system files and user docs
 packages/            ← Runtime source (kernel, tui, spinosa-core, llm, and deps)
 install.sh           ← User-facing binary installer (curl | bash)

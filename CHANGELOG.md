@@ -14,6 +14,12 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 - The searcher screens grep hits with its own relevance ranking. It does not use a separate screening tool.
 
+### Changed
+
+- Workspace instructions now ship only `.agents` and `.spinosa` trees. The vendor mirrors are gone.
+- Extraction recovery rejects partial batches. Each assigned file needs one packet.
+- The route tool reads the latest user text. Model summaries no longer hide startup briefs.
+
 ## [1.2.2-beta.3] — 2026-09-25
 
 ### Added
