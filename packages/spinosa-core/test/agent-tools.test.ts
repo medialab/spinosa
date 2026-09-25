@@ -48,6 +48,17 @@ describe("spinosaRoute", () => {
     expect(formatRouteTitle(routed.decision)).toBe("Index the workspace")
   })
 
+  test("startup user prompt overrides a model-supplied research summary", () => {
+    const routed = spinosaRoute({
+      text: "Find evidence",
+      userPrompt: "# Index This Workspace\n\nRun the corpus.startup_index workflow for this workspace.",
+      ...WS,
+    })
+    expect(routed.decision).toMatchObject({ mode: "orchestrated", operation: "corpus", strategy: "startup_index" })
+    expect(routed.provisional).toBe(false)
+    expect(formatRouteTitle(routed.decision)).toBe("Index the workspace")
+  })
+
   test("route titles are plan names, not mode/via jargon", () => {
     expect(formatRouteTitle({ mode: "general" })).toBe("Chat")
     expect(

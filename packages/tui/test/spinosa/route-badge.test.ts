@@ -77,6 +77,18 @@ describe("routeBadgeFromParts", () => {
     expect(routeBadgeFromParts([{ type: "text", text: "ctx", synthetic: true }])).toBeUndefined()
   })
 
+  test("startup brief is identified as an indexing task before route metadata", () => {
+    const info = routeBadgeFromParts([
+      {
+        type: "text",
+        text: "# Index This Workspace\n\nRun the corpus.startup_index workflow for this workspace.",
+        metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "general" } },
+      },
+    ])
+    expect(info).toEqual({ kind: "indexing" })
+    expect(routeBadgeLabel(info!)).toBe("INDEXING TASK")
+  })
+
   test("transient outbound states never parse from server parts", () => {
     // Outbound lifecycle states are TUI-local and rendered from the
     // outbound queue — they must never arrive via persisted part metadata.
@@ -192,6 +204,21 @@ describe("resolveRouteBadge", () => {
         { type: "tool", tool: "spinosa_route", state: { status: "completed", title: "Chat" } },
       ]),
     ).toEqual({ kind: "path", label: "Chat" })
+  })
+
+  test("keeps startup labeled INDEXING TASK after the route tool completes", () => {
+    expect(
+      resolveRouteBadge(
+        [
+          {
+            type: "text",
+            text: "# Index This Workspace\n\nRun the corpus.startup_index workflow for this workspace.",
+            metadata: { [SPINOSA_ROUTE_METADATA]: { kind: "general" } },
+          },
+        ],
+        [{ type: "tool", tool: "spinosa_route", state: { status: "completed", title: "Index the workspace" } }],
+      ),
+    ).toEqual({ kind: "indexing" })
   })
 
   test("does not overwrite a submit-stamped workflow badge", () => {

@@ -9,6 +9,7 @@ import {
   heuristicAmbiguousRoute,
   WorkflowRegistry,
   workflowLabel,
+  isStartupIndexingPrompt,
   type OrchestratedDecision,
   type RouteDecision,
   type RouteInput,
@@ -20,7 +21,7 @@ import { evidenceGate, validateArtifact, verificationOutcome } from "../artifact
 import { parseVerificationStatus } from "../artifacts/contracts"
 
 export type { OrchestratedDecision, RouteDecision } from "@spinosa/runtime"
-export { ROUTE_STRATEGIES, formatRouteTitle, workflowLabel } from "@spinosa/runtime"
+export { ROUTE_STRATEGIES, formatRouteTitle, isStartupIndexingPrompt, workflowLabel } from "@spinosa/runtime"
 
 // --- spinosa_route ---
 
@@ -38,6 +39,8 @@ export type SpinosaRouteResult = {
 
 export function spinosaRoute(input: {
   text: string
+  /** Latest user-authored turn, used to prevent model summaries hiding startup intent. */
+  userPrompt?: string
   isSpinosa: boolean
   setupStatus: RouteInput["workspace"]["setupStatus"]
   fileCount?: number
@@ -47,8 +50,9 @@ export function spinosaRoute(input: {
   explicitAgent?: string
   command?: string
 }): SpinosaRouteResult {
+  const routeText = input.userPrompt && isStartupIndexingPrompt(input.userPrompt) ? input.userPrompt : input.text
   const routeInput: RouteInput = {
-    text: input.text,
+    text: routeText,
     workspace: { isSpinosa: input.isSpinosa, setupStatus: input.setupStatus },
     references: {
       fileCount: input.fileCount ?? 0,
