@@ -11,6 +11,7 @@ import {
   sanitizeDiagnosticExportValue,
   sanitizeDiagnosticText,
   sanitizeDiagnosticValue,
+  shouldIncludeDiagnosticFile,
 } from "./diagnostics"
 
 const MAX_LOG_AGE_DAYS = 7
@@ -34,7 +35,9 @@ export function initLogging() {
       run,
       `${safeLogName(message?.scope ?? (message?.variables?.processType === "renderer" ? "renderer" : "main"))}.desktop.log`,
     )
-  log.initialize({ preload: false, spyRendererConsole: true })
+  // Renderer diagnostics arrive through the sanitized IPC path. Electron-log's
+  // console spy writes arbitrary renderer arguments directly to disk.
+  log.initialize({ preload: false, spyRendererConsole: false })
   initConsoleTransport()
   cleanup()
   return (logger = log)
@@ -68,7 +71,6 @@ export async function exportDebugLogs() {
       { name: "manifest.json", data: Buffer.from(JSON.stringify(sanitizeDiagnosticExportValue(manifest()), null, 2)) },
       ...collect(root, "desktop"),
       ...serverLogRoots().flatMap((dir, i) => collect(dir, `server-${i + 1}`)),
-      ...collect(app.getPath("crashDumps"), "crashpad"),
     ])
     shell.showItemInFolder(output)
     return output
@@ -184,7 +186,7 @@ function collect(dir: string, prefix: string): Entry[] {
 
       if (info.mtimeMs < cutoff) continue
       if (info.size > MAX_EXPORT_FILE_SIZE) continue
-      if (file.endsWith(".heapsnapshot")) continue
+      if (!shouldIncludeDiagnosticFile(file)) continue
       const data = sanitizeDiagnosticExportData(file, readFileSync(file))
       result.push({ name: join(prefix, file.slice(dir.length + 1)).replace(/\\/g, "/"), path: file, data })
     }

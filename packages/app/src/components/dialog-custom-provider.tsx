@@ -13,6 +13,7 @@ import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { type FormState, headerRow, modelRow, validateCustomProvider } from "./dialog-custom-provider-form"
+import { apiKeyInputError, normalizeApiKeyInput } from "@spinosa/kernel-core/util/api-key"
 
 type Props = {
   onBack: () => void
@@ -96,7 +97,6 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
 
   const setField = (key: "providerID" | "name" | "baseURL" | "apiKey", value: string) => {
     setForm(key, value)
-    if (key === "apiKey") return
     setForm("err", key, undefined)
   }
 
@@ -131,16 +131,16 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
 
   const saveMutation = useMutation(() => ({
     mutationFn: async (result: NonNullable<ReturnType<typeof validate>>) => {
-      if ((await serverSDK().protocol) !== "v1") throw new Error(language.t("provider.custom.unavailable"))
       const disabledProviders = serverSync().data.config.disabled_providers ?? []
       const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
 
       if (result.key) {
+        if (apiKeyInputError(result.key)) throw new Error(language.t("provider.connect.apiKey.invalid"))
         await serverSDK().client.auth.set({
           providerID: result.providerID,
           auth: {
             type: "api",
-            key: result.key,
+            key: normalizeApiKeyInput(result.key),
           },
         })
       }
@@ -220,10 +220,13 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
           />
           <TextField
             label={language.t("provider.custom.field.apiKey.label")}
+            type="password"
             placeholder={language.t("provider.custom.field.apiKey.placeholder")}
             description={language.t("provider.custom.field.apiKey.description")}
             value={form.apiKey}
             onChange={(v) => setField("apiKey", v)}
+            validationState={form.err.apiKey ? "invalid" : undefined}
+            error={form.err.apiKey}
           />
         </div>
 

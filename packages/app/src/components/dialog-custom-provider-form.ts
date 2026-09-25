@@ -1,5 +1,8 @@
+import { apiKeyInputError, normalizeApiKeyInput } from "@spinosa/kernel-core/util/api-key"
+
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-_]*$/
 const OPENAI_COMPATIBLE = "@ai-sdk/openai-compatible"
+const CREDENTIAL_HEADER = /(?:^|[-_])(?:authorization|api[-_]?key|token|secret|password)(?:$|[-_])/i
 
 type Translator = (key: string, vars?: Record<string, string | number | boolean>) => string
 
@@ -38,6 +41,7 @@ export type FormState = {
     providerID?: string
     name?: string
     baseURL?: string
+    apiKey?: string
   }
 }
 
@@ -55,7 +59,8 @@ export function validateCustomProvider(input: ValidateArgs) {
   const apiKey = input.form.apiKey.trim()
 
   const env = apiKey.match(/^\{env:([^}]+)\}$/)?.[1]?.trim()
-  const key = apiKey && !env ? apiKey : undefined
+  const key = apiKey && !env ? normalizeApiKeyInput(apiKey) : undefined
+  const apiKeyError = key && apiKeyInputError(apiKey) ? input.t("provider.connect.apiKey.invalid") : undefined
 
   const idError = !providerID
     ? input.t("provider.custom.error.providerID.required")
@@ -100,14 +105,15 @@ export function validateCustomProvider(input: ValidateArgs) {
     const value = h.value.trim()
 
     if (!key && !value) return {}
+    const duplicate = seenHeaders.has(key.toLowerCase())
+    if (key) seenHeaders.add(key.toLowerCase())
     const keyError = !key
       ? input.t("provider.custom.error.required")
-      : seenHeaders.has(key.toLowerCase())
+      : duplicate
         ? input.t("provider.custom.error.duplicate")
-        : (() => {
-            seenHeaders.add(key.toLowerCase())
-            return undefined
-          })()
+        : CREDENTIAL_HEADER.test(key) || /\b(?:Basic|Bearer)\s+\S+/i.test(value)
+          ? input.t("provider.custom.error.headerSecret")
+          : undefined
     const valueError = !value ? input.t("provider.custom.error.required") : undefined
     return { key: keyError, value: valueError }
   })
@@ -123,9 +129,10 @@ export function validateCustomProvider(input: ValidateArgs) {
     providerID: idError ?? existsError,
     name: nameError,
     baseURL: urlError,
+    apiKey: apiKeyError,
   }
 
-  const ok = !idError && !existsError && !nameError && !urlError && modelsValid && headersValid
+  const ok = !idError && !existsError && !nameError && !urlError && !apiKeyError && modelsValid && headersValid
   if (!ok) return { err, models, headers }
 
   return {

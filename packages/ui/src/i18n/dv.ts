@@ -13,6 +13,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "ލޯޑިންގ...",
   "ui.sessionReview.image.placeholder": "ފޮޓޯ",
   "ui.sessionReview.largeDiff.title": "ޑިފް މާ ބޮޑު ރެންޑަރ ކުރަން",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "ލިމިޓް: {{limit}} ބަދަލުކޮށްފައިވާ ލައިންތަކެވެ. މިހާރު: {{current}} ބަދަލުކޮށްފައިވަނީ ލައިންތަކެވެ.",
   "ui.sessionReview.largeDiff.renderAnyway": "ކޮންމެ ގޮތެއްވިޔަސް ރެންޑަރ ކޮށްލާށެވެ",
@@ -180,6 +181,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "ރިވަރޓް މެސެޖް",
   "ui.message.copyResponse": "ކޮޕީ ޖަވާބު",
   "ui.message.copied": "ކޮޕީކޮށްފައި",
+  "ui.toolBubble.copy": "ކޮޕީ",
+  "ui.toolBubble.copied": "ކޮޕީކޮށްފައި!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "މެދުކަނޑާލިއެވެ",

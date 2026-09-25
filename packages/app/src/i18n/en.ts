@@ -358,6 +358,7 @@ export const dict = {
   "provider.custom.error.baseURL.format": "Must start with http:// or https://",
   "provider.custom.error.required": "Required",
   "provider.custom.error.duplicate": "Duplicate",
+  "provider.custom.error.headerSecret": "Enter credentials in the API key field, not in headers",
 
   "provider.disconnect.toast.disconnected.title": "{{provider}} disconnected",
   "provider.disconnect.toast.disconnected.description": "{{provider}} models are no longer available.",
@@ -395,6 +396,9 @@ export const dict = {
   "common.collapse": "Collapse",
   "dialog.workspace.delete.title": "Delete workspace",
   "dialog.workspace.delete.message": "Remove “{{name}}” from Spinosa? Files on disk stay untouched.",
+  "dialog.workspace.delete.confirm.instruction": "Type “{{name}}” to confirm deletion.",
+  "dialog.workspace.delete.confirm.placeholder": "Workspace name",
+  "dialog.workspace.delete.confirm.mismatch": "Names do not match.",
   "toast.workspace.delete.success.title": "Workspace removed",
   "common.clear": "Clear",
   "common.open": "Open",
@@ -793,8 +797,6 @@ export const dict = {
   "error.chain.configInvalidWithMessage": "Config file at {{path}} is invalid: {{message}}",
 
   "notification.permission.title": "Permission required",
-  "notification.permission.jev.title": "Jev wants to screen {{count}} passages",
-  "notification.permission.jev.query": "Query: {{query}}",
   "notification.permission.description": "{{sessionTitle}} in {{projectName}} needs permission",
   "notification.question.title": "Question",
   "notification.question.description": "{{sessionTitle}} in {{projectName}} has a question",

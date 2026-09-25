@@ -17,10 +17,11 @@
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
-  padding: 4px 0;
+  padding: 0;
   gap: 8px;
   min-width: 0;
   width: 100%;
+  border-bottom: 1px solid var(--v2-border-border-muted);
   font-variant-numeric: tabular-nums;
 
   [data-slot="basic-tool-v2-trigger"] {
@@ -31,18 +32,32 @@
     gap: 6px;
     width: 100%;
     min-width: 0;
-    min-height: 20px;
-    padding: 0;
+    min-height: 32px;
+    padding: 4px 6px;
     margin: 0;
     text-align: left;
     color: inherit;
     outline: none;
+    border-radius: 4px;
+  }
+
+  [data-slot="basic-tool-v2-trigger"]:not([data-disabled]):not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  [data-slot="basic-tool-v2-trigger"]:not([data-disabled]):not([aria-disabled="true"]):hover {
+    background-color: var(--v2-overlay-simple-overlay-hover);
   }
 
   [data-slot="basic-tool-v2-trigger"]:focus-visible {
     outline: 2px solid var(--v2-border-border-focus);
-    outline-offset: 2px;
-    border-radius: 2px;
+    outline-offset: -2px;
+  }
+
+  @media (pointer: coarse) {
+    [data-slot="basic-tool-v2-trigger"] {
+      min-height: 44px;
+    }
   }
 
   [data-slot="basic-tool-v2-labels"] {

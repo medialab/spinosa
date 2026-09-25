@@ -179,6 +179,8 @@ export const dict = {
   "ui.message.revertMessage": "Баргардонидани паём",
   "ui.message.copyResponse": "Ҷавобро нусхабардорӣ кунед",
   "ui.message.copied": "Нусхабардорӣ",
+  "ui.toolBubble.copy": "Нусхабардорӣ",
+  "ui.toolBubble.copied": "Нусхабардорӣ!",
   "ui.message.duration.seconds": "{{count}}с",
   "ui.message.duration.minutesSeconds": "{{minutes}}м {{seconds}}с",
   "ui.message.interrupted": "Қатъ карда шуд",

@@ -58,11 +58,7 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
       const text = startup.input
       local.agent.set(startup.forceAgent)
       prompt.set([{ type: "text", content: text, start: 0, end: text.length }], text.length)
-      queueMicrotask(() => {
-        if (!owner.current()) return
-        const editor = document.querySelector<HTMLElement>('[data-component="prompt-input"]')
-        editor?.focus()
-      })
+      prompt.submit()
     })
   }
 

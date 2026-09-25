@@ -13,6 +13,7 @@ export const dict = {
   "ui.sessionReview.image.loading": "ဖွင့်နေသည်...",
   "ui.sessionReview.image.placeholder": "ပုံ",
   "ui.sessionReview.largeDiff.title": "တင်ဆက်ရန် ကွာခြားလွန်းသည်။",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "ကန့်သတ်- {{limit}} လိုင်းများကို ပြောင်းထားသည်။ လက်ရှိ- {{current}} လိုင်းများကို ပြောင်းထားသည်။",
   "ui.sessionReview.largeDiff.renderAnyway": "ဘာပဲဖြစ်ဖြစ် Render လုပ်ပါ။",
@@ -180,6 +181,8 @@ export const dict = {
   "ui.message.revertMessage": "မက်ဆေ့ဂျ်ကို ပြန်ပြောင်းပါ။",
   "ui.message.copyResponse": "တုံ့ပြန်မှုကို ကူးယူပါ။",
   "ui.message.copied": "ကူးယူထားသည်။",
+  "ui.toolBubble.copy": "မိတ္တူ",
+  "ui.toolBubble.copied": "ကူးယူထားသည်။!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "ပြတ်တောက်သွားသည်။",

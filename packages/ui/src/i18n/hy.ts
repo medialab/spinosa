@@ -179,6 +179,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Վերադարձնել հաղորդագրությունը",
   "ui.message.copyResponse": "Պատճենել պատասխանը",
   "ui.message.copied": "Պատճենված",
+  "ui.toolBubble.copy": "Պատճեն",
+  "ui.toolBubble.copied": "Պատճենված!",
   "ui.message.duration.seconds": "{{count}} վ",
   "ui.message.duration.minutesSeconds": "{{minutes}}ր {{seconds}}վ",
   "ui.message.interrupted": "Ընդհատված",

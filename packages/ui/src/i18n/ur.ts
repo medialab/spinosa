@@ -26,6 +26,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReviewV2.nextFile": "اگلی فائل",
   "ui.sessionReviewV2.diffView": "تبدیلیوں کا نظارہ",
   "ui.sessionReviewV2.empty.noGit.title": "کوئی ٹریک شدہ تبدیلیاں نہیں۔",
+  "ui.sessionReviewV2.empty.noGit.description": "Track, review, and undo changes in this project",
   "ui.sessionReviewV2.empty.noGit.description":
     "اس پروجیکٹ میں تبدیلیوں کو ٹریک کریں، ان کا جائزہ لیں اور ان کو کالعدم کریں۔",
   "ui.sessionReviewV2.empty.noGit.action": "Git ریپوزٹری بنائیں",
@@ -180,6 +181,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "پیغام کی تبدیلیاں واپس لیں",
   "ui.message.copyResponse": "جواب کاپی کریں۔",
   "ui.message.copied": "کاپی ہو گیا",
+  "ui.toolBubble.copy": "کاپی کریں",
+  "ui.toolBubble.copied": "کاپی ہو گیا!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "روک دیا گیا",

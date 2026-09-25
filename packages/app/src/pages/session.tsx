@@ -2192,7 +2192,7 @@ export default function Page() {
           if (value === "conversation" || value === "visualizer") setUi("viewMode", value)
         }}
         aria-label={language.t("session.view.mode")}
-        class={`pointer-events-auto !h-10 ${titlebar ? "!w-[260px]" : "!w-full"} !max-w-[260px] !rounded-full !border !border-border-weak-base !bg-background-base !p-1 shadow-sm`}
+        class={`pointer-events-auto !h-10 ${titlebar ? "!w-[260px]" : "!w-full"} !max-w-[260px] !rounded-full !border-0 !bg-transparent !p-0 !shadow-none`}
       >
         <SegmentedControlItemV2
           value="conversation"
@@ -2438,7 +2438,7 @@ export default function Page() {
           </Show>
         </div>
         <Show when={params.id && ui.viewMode === "visualizer" && !mobileChanges()}>
-          <div class="absolute inset-0 flex min-h-0 pt-2">
+          <div class="absolute inset-0 flex min-h-0">
             <SessionWorkspaceVisualizer workspacePath={() => sdk().directory} onOpenFile={openVisualizerFile} />
           </div>
         </Show>

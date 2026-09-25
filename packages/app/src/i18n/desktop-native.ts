@@ -213,9 +213,21 @@ export function desktopNativePluralCategories(locale: DesktopNativeLocale) {
   return new Intl.PluralRules(DESKTOP_NATIVE_LOCALE_TAGS[locale]).resolvedOptions().pluralCategories
 }
 
-function locale(value: string) {
+/**
+ * CLDR renamed the Shahmukhi script code from `Arab` to `Aran`, so runtimes
+ * with newer ICU maximize `pa-PK` to `pa-Aran-PK` while the bundle table pins
+ * `pa-Arab-PK`. Normalize the alias so script comparison keeps working on
+ * both old and new ICU.
+ */
+const SCRIPT_ALIASES: Record<string, string> = {
+  Aran: "Arab",
+}
+
+function locale(value: string): { language: string; script?: string } | undefined {
   try {
-    return new Intl.Locale(value).maximize()
+    const maximized = new Intl.Locale(value).maximize()
+    const script = maximized.script ? (SCRIPT_ALIASES[maximized.script] ?? maximized.script) : undefined
+    return { language: maximized.language, script }
   } catch {
     return undefined
   }

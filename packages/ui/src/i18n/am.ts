@@ -178,6 +178,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "መልዕክት ቀይር",
   "ui.message.copyResponse": "መልስ ቅጂ",
   "ui.message.copied": "የተገለበጠ",
+  "ui.toolBubble.copy": "ኮፒ",
+  "ui.toolBubble.copied": "የተገለበጠ!",
   "ui.message.duration.seconds": "{{count}} ሰ",
   "ui.message.duration.minutesSeconds": "{{minutes}} ደ {{seconds}} ሰ",
   "ui.message.interrupted": "የተቋረጠ",

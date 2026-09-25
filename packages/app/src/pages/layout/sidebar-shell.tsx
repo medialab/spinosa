@@ -12,6 +12,13 @@ import { IconButton } from "@spinosa/ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@spinosa/ui/tooltip"
 import { type LocalProject } from "@/context/layout"
 
+export function setSidebarHidden(element: HTMLElement, hidden: boolean, focusTarget?: HTMLElement | null) {
+  if (hidden && element.contains(document.activeElement)) focusTarget?.focus()
+  element.toggleAttribute("inert", hidden)
+  if (hidden) element.setAttribute("aria-hidden", "true")
+  else element.removeAttribute("aria-hidden")
+}
+
 export const SidebarContent = (props: {
   mobile?: boolean
   opened: Accessor<boolean>
@@ -35,21 +42,19 @@ export const SidebarContent = (props: {
   const expanded = createMemo(() => !!props.mobile || props.opened())
   const placement = () => (props.mobile ? "bottom" : "right")
   let panel: HTMLDivElement | undefined
+  let rail: HTMLDivElement | undefined
 
   createEffect(() => {
     const el = panel
     if (!el) return
-    if (expanded()) {
-      el.removeAttribute("inert")
-      return
-    }
-    el.setAttribute("inert", "")
+    setSidebarHidden(el, !expanded(), rail?.querySelector("button"))
   })
 
   return (
     <div class="flex h-full w-full min-w-0 overflow-hidden">
       <div
         data-component="sidebar-rail"
+        ref={rail}
         class="w-16 shrink-0 bg-background-base flex flex-col items-center overflow-hidden"
         onMouseMove={props.aimMove}
       >
@@ -116,7 +121,6 @@ export const SidebarContent = (props: {
           panel = el
         }}
         classList={{ "flex-1 flex h-full min-h-0 min-w-0 overflow-hidden": true, "pointer-events-none": !expanded() }}
-        aria-hidden={!expanded()}
       >
         {props.renderPanel()}
       </div>

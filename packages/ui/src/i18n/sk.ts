@@ -187,6 +187,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Vrátiť správu",
   "ui.message.copyResponse": "Kopírovať odpoveď",
   "ui.message.copied": "Skopírované",
+  "ui.toolBubble.copy": "Kopírovať",
+  "ui.toolBubble.copied": "Skopírované!",
   "ui.message.duration.seconds": "{{count}} s",
   "ui.message.duration.minutesSeconds": "{{minutes}} m {{seconds}} s",
   "ui.message.interrupted": "Prerušené",

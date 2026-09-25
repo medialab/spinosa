@@ -15,6 +15,21 @@ export function clusterRawWorkspaceGraph(
   edges: readonly RawGraphEdge[],
 ): RawGraphCluster[] {
   if (nodes.length === 0) return []
+  if (edges.length === 0) {
+    const folders = new Map<string, string[]>()
+    for (const node of nodes) {
+      const folder = node.path.slice(0, node.path.lastIndexOf("/"))
+      const paths = folders.get(folder) ?? []
+      paths.push(node.path)
+      folders.set(folder, paths)
+    }
+    return [...folders.values()]
+      .map((paths) => {
+        paths.sort((a, b) => a.localeCompare(b))
+        return { id: paths[0]!, nodePaths: paths }
+      })
+      .sort((a, b) => a.id.localeCompare(b.id))
+  }
 
   const indexByPath = new Map(nodes.map((node, index) => [node.path, index]))
   const adjacency = nodes.map(() => new Map<number, number>())

@@ -13,6 +13,7 @@ export const dict = {
   "ui.sessionReview.image.loading": "Учитавање...",
   "ui.sessionReview.image.placeholder": "Слика",
   "ui.sessionReview.largeDiff.title": "разлика је превелика за приказивање",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "Ограничење: {{limit}} промењених линија. Тренутно: {{current}} промењених линија.",
   "ui.sessionReview.largeDiff.renderAnyway": "Ипак прикажи",
@@ -184,6 +185,8 @@ export const dict = {
   "ui.message.revertMessage": "Врати поруку",
   "ui.message.copyResponse": "Копирај одговор",
   "ui.message.copied": "Копирано",
+  "ui.toolBubble.copy": "Копирај",
+  "ui.toolBubble.copied": "Копирано!",
   "ui.message.duration.seconds": "{{count}}с",
   "ui.message.duration.minutesSeconds": "{{minutes}}м {{seconds}}с",
   "ui.message.interrupted": "прекинут",

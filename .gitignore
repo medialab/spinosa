@@ -12,6 +12,10 @@ __pycache__/
 !.env.example
 
 # Credentials and secrets (never commit; services read them from the environment)
+.aws/
+.kube/
+.gcloud/
+.boto
 *.pem
 *.key
 *.p12

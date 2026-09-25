@@ -211,8 +211,8 @@ export function SpinosaHome() {
 
   return (
     <div class="relative h-full w-full overflow-hidden">
-      <div class="absolute inset-x-0 top-1/2 z-10 max-h-[90%] -translate-y-1/2 overflow-y-auto">
-        <div class="mx-auto flex w-full max-w-xl flex-col items-center gap-6 px-4 py-10">
+      <div class="absolute inset-0 z-10 overflow-y-auto">
+        <div class="mx-auto flex min-h-full w-full max-w-xl flex-col items-center justify-center gap-6 px-4 py-6">
           <div class="flex flex-col items-center gap-3">
             <h1 class="text-[48px] leading-none font-medium text-text-strong tracking-tight">SPINOSA</h1>
             <Show when={!connected()}>
@@ -227,11 +227,11 @@ export function SpinosaHome() {
               </Button>
             }
           >
-            <div class="flex w-full flex-col gap-3 sm:flex-row">
+            <div class="flex w-full flex-wrap gap-3">
               <Button
                 size="large"
                 variant="primary"
-                class="flex-1 px-6 py-4"
+                class="button-cta min-w-0 flex-[1_1_12rem] px-6 py-4"
                 disabled={serverUnreachable()}
                 onClick={chooseNewWorkspace}
               >
@@ -240,7 +240,7 @@ export function SpinosaHome() {
               <Button
                 size="large"
                 variant="secondary"
-                class="flex-1 px-6 py-4"
+                class="button-cta min-w-0 flex-[1_1_12rem] px-6 py-4"
                 disabled={serverUnreachable()}
                 onClick={choosePickWorkspace}
               >
@@ -281,19 +281,21 @@ export function SpinosaHome() {
                         class="relative z-20 flex flex-col gap-1 rounded-md bg-white"
                         style={{ "--surface-base-hover": "#f2f2f2", "--surface-base-active": "#e8e8e8" }}
                       >
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                           <Button
                             size="large"
                             variant="ghost"
-                            class="min-w-0 flex-1 justify-between px-3 text-left text-14-mono"
+                            class="min-w-0 flex-[1_1_16rem] flex-col items-start px-3 text-left text-14-mono"
                             style={{ color: "#171717" }}
                             onClick={() => server.current && openNewSession(server.current, project.worktree)}
                           >
-                            {project.worktree.replace(homedir(), "~")}
+                            <span class="block w-full truncate" title={project.worktree}>
+                              {project.worktree.replace(homedir(), "~")}
+                            </span>
                             <Show when={project.openedAt > 0}>
-                              <div class="text-14-regular text-text-weak" style={{ color: "#666" }}>
+                              <span class="text-12-regular text-text-weak" style={{ color: "#666" }}>
                                 {DateTime.fromMillis(project.openedAt).toRelative()}
-                              </div>
+                              </span>
                             </Show>
                           </Button>
                           <Show when={workspace()?.setupStatus === "importing" && workspace()?.sourceLocation}>
@@ -335,10 +337,10 @@ export function SpinosaHome() {
                     const incomplete = () => workspace.setupStatus === "importing"
                     const needsStartup = () => workspace.setupStatus === "cli_started"
                     return (
-                      <li class="flex items-center gap-2 rounded-md border border-border-base bg-background-base px-3 py-2">
+                      <li class="flex flex-wrap items-center gap-2 rounded-md border border-border-base bg-background-base px-3 py-2">
                         <div class="min-w-0 flex-1">
                           <div class="truncate text-14-medium text-text-strong">{workspace.projectName}</div>
-                          <div class="truncate font-mono text-xs text-text-weak">
+                          <div class="truncate font-mono text-xs text-text-weak" title={workspace.path}>
                             {workspace.path.replace(homedir(), "~")}
                           </div>
                           <Show when={missing()}>

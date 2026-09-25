@@ -364,7 +364,7 @@ export function PromptProjectSelector(props: {
               <Show when={props.controller.search().trim()}>
                 <button
                   type="button"
-                  class="flex size-5 items-center justify-center rounded-sm text-v2-icon-icon-muted hover:bg-v2-overlay-simple-overlay-hover"
+                  class="flex size-5 items-center justify-center rounded-sm text-v2-icon-icon-muted motion-safe:transition-colors hover:bg-v2-overlay-simple-overlay-hover"
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => props.controller.clearSearch()}
                   aria-label={props.controller.labels.clear()}
@@ -521,7 +521,7 @@ function ProjectItem(props: {
       id={key()}
       value={key()}
       data-option-key={key()}
-      class="h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
+      class="h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base motion-safe:transition-colors data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
       classList={{ "!bg-v2-overlay-simple-overlay-hover": props.controller.active() === key() }}
       style={{
         "font-family": "var(--v2-font-family-sans)",
@@ -553,7 +553,7 @@ function ProjectItem(props: {
 }
 
 const projectActionClass =
-  "h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base [font-family:var(--v2-font-family-sans)] data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
+  "h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base motion-safe:transition-colors [font-family:var(--v2-font-family-sans)] data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
 
 function ProjectAction(props: {
   server?: string
@@ -565,7 +565,7 @@ function ProjectAction(props: {
     <DropdownMenu.Item
       id={key()}
       data-option-key={key()}
-      class="h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
+      class="h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base motion-safe:transition-colors data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
       classList={{ "!bg-v2-overlay-simple-overlay-hover": props.controller.active() === key() }}
       style={{
         "font-family": "var(--v2-font-family-sans)",

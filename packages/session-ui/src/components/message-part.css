@@ -665,6 +665,14 @@
   }
 }
 
+@media (min-width: 1024px) {
+  [data-centered] [data-component="context-tool-group-list"] [data-component="tool-bubble"] {
+    position: static;
+    transform: none;
+    margin-right: 8px;
+  }
+}
+
 [data-component="diagnostics"] {
   display: flex;
   flex-direction: column;

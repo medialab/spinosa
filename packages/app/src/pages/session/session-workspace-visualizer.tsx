@@ -8,7 +8,7 @@ import { createEffect, createMemo, For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { clusterRawWorkspaceGraph, DEFAULT_GRAPH_FORCES, layoutRawWorkspaceGraph } from "./raw-workspace-graph-layout"
 import { loadRawWorkspaceGraph, type RawGraphClient, type RawWorkspaceGraph } from "./raw-workspace-graph"
-import { filterRawWorkspaceGraph, incomingDegreeByPath } from "./raw-workspace-graph-view"
+import { filterRawWorkspaceGraph, graphSettingsNeedFullPane, incomingDegreeByPath } from "./raw-workspace-graph-view"
 
 const VIEWBOX_WIDTH = 1000
 const VIEWBOX_HEIGHT = 680
@@ -60,7 +60,7 @@ export function SessionWorkspaceVisualizer(props: Props) {
     workspacePath: "",
     graph: EMPTY_GRAPH,
   })
-  const [interaction, setInteraction] = createStore({ dragging: false, settingsOpen: false,
+  const [interaction, setInteraction] = createStore({ dragging: false, settingsOpen: false, settingsFullPane: false,
     contextPath: undefined as string | undefined, contextX: 0, contextY: 0 })
   const [settings, setSettings] = createStore({
     search: "", attachments: true, orphans: true, localPath: undefined as string | undefined, depth: 1,
@@ -73,6 +73,7 @@ export function SessionWorkspaceVisualizer(props: Props) {
     | undefined
   let canvas: HTMLCanvasElement | undefined
   let observer: ResizeObserver | undefined
+  let paneObserver: ResizeObserver | undefined
   let paintFrame: number | undefined
   let pressedPath: string | undefined
   const graph = createMemo(() => filterRawWorkspaceGraph(state.graph, settings))
@@ -129,6 +130,7 @@ export function SessionWorkspaceVisualizer(props: Props) {
   onCleanup(() => {
     request++
     observer?.disconnect()
+    paneObserver?.disconnect()
     if (paintFrame !== undefined) cancelAnimationFrame(paintFrame)
   })
 
@@ -259,7 +261,7 @@ export function SessionWorkspaceVisualizer(props: Props) {
 
   return (
     <div
-      class="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden w-full md:max-w-200 md:mx-auto 2xl:max-w-[1000px]"
+      class="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden w-full"
       data-testid="session-workspace-visualizer"
     >
       <Show when={state.status === "loading"}>
@@ -286,20 +288,32 @@ export function SessionWorkspaceVisualizer(props: Props) {
         <div class="text-13-regular text-text-weak">{language.t("session.visualizer.empty")}</div>
       </Show>
       <Show when={state.status === "ready" && state.graph.nodes.length > 0}>
-        <div class="relative h-full w-full">
-          <Show when={graph().nodes.length === 0}>
-            <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-13-regular text-text-weak">{language.t("session.visualizer.noMatches")}</div>
-          </Show>
+        <div class="relative h-full w-full" ref={(element) => {
+          paneObserver?.disconnect()
+          paneObserver = new ResizeObserver(([entry]) => {
+            if (!entry) return
+            setInteraction("settingsFullPane", graphSettingsNeedFullPane(entry.contentRect.width, entry.contentRect.height))
+          })
+          paneObserver.observe(element)
+        }}>
           <Show when={titlebarMount()} keyed>{(mount) => <Portal mount={mount}>
-          <button type="button" class="flex size-8 shrink-0 items-center justify-center rounded-full text-16-medium text-text-base hover:bg-background-stronger"
+          <button type="button" class="flex size-8 shrink-0 items-center justify-center rounded-full text-16-medium text-text-base motion-safe:transition-colors hover:bg-background-stronger"
             aria-label={language.t("session.visualizer.settings")} title={language.t("session.visualizer.settings")}
             aria-expanded={interaction.settingsOpen} onClick={() => setInteraction("settingsOpen", !interaction.settingsOpen)}>⚙</button>
           </Portal>}</Show>
           <Show when={interaction.settingsOpen}>
-            <aside class="absolute right-4 top-2 z-20 flex max-h-[min(75vh,600px)] w-64 flex-col gap-3 overflow-y-auto rounded-xl border border-border-weak-base bg-background-base p-4 shadow-lg" aria-label={language.t("session.visualizer.settings")}>
+            <aside
+              class="absolute z-20 flex min-h-0 flex-col gap-3 overflow-y-auto border border-border-weak-base bg-background-base p-4 shadow-lg"
+              classList={{
+                "inset-0 h-full w-full": interaction.settingsFullPane,
+                "right-4 top-2 max-h-[calc(100%_-_5rem)] w-64 rounded-xl": !interaction.settingsFullPane,
+              }}
+              aria-label={language.t("session.visualizer.settings")}
+            >
               <div class="flex items-center justify-between text-12-medium text-text-base"><span>{language.t("session.visualizer.settings")}</span>
                 <div class="flex gap-2"><button type="button" class="text-11-regular text-text-weak hover:text-text-base" onClick={retry}>{language.t("session.visualizer.refresh")}</button>
-                <button type="button" class="text-11-regular text-text-weak hover:text-text-base" onClick={resetGraph}>{language.t("common.reset")}</button></div></div>
+                <button type="button" class="text-11-regular text-text-weak hover:text-text-base" onClick={resetGraph}>{language.t("common.reset")}</button>
+                <button type="button" class="text-11-regular text-text-weak hover:text-text-base" onClick={() => setInteraction("settingsOpen", false)}>{language.t("common.close")}</button></div></div>
               <label class="flex flex-col gap-1 text-11-regular text-text-weak"><span>{language.t("session.visualizer.search")}</span>
                 <input type="search" value={settings.search} onInput={(event) => setSettings("search", event.currentTarget.value)}
                   class="rounded-md border border-border-weak-base bg-background-base px-2 py-1.5 text-12-regular text-text-base" /></label>
@@ -314,7 +328,7 @@ export function SessionWorkspaceVisualizer(props: Props) {
               <label class="flex items-center gap-2 text-11-regular text-text-base"><input type="checkbox" checked={settings.orphans} onChange={(event) => setSettings("orphans", event.currentTarget.checked)} />{language.t("session.visualizer.orphans")}</label>
               <Show when={settings.localPath}>
                 <div class="flex items-center justify-between gap-2 text-11-regular text-text-base"><span class="truncate" title={settings.localPath}>{language.t("session.visualizer.local")}: {settings.localPath}</span>
-                  <button type="button" onClick={() => setSettings("localPath", undefined)}>{language.t("session.visualizer.global")}</button></div>
+                  <button type="button" class="rounded px-1 text-text-weak hover:bg-background-stronger hover:text-text-base" onClick={() => setSettings("localPath", undefined)}>{language.t("session.visualizer.global")}</button></div>
                 <label class="flex flex-col gap-1 text-11-regular text-text-weak"><span>{language.t("session.visualizer.depth")}</span>
                   <input type="range" min="1" max="5" step="1" value={settings.depth} onInput={(event) => setSettings("depth", Number(event.currentTarget.value))} /></label>
               </Show>
@@ -330,6 +344,10 @@ export function SessionWorkspaceVisualizer(props: Props) {
               {slider("distance", language.t("session.visualizer.linkDistance"))}
             </aside>
           </Show>
+          <div class="absolute inset-0" classList={{ hidden: interaction.settingsOpen && interaction.settingsFullPane }}>
+          <Show when={graph().nodes.length === 0}>
+            <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-13-regular text-text-weak">{language.t("session.visualizer.noMatches")}</div>
+          </Show>
           <div class="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-1">
             <Show when={state.graph.unreadable > 0}>
               <div class="rounded-full border border-border-weak-base bg-background-base/90 px-3 py-1 text-11-regular text-text-weak shadow-sm">
@@ -338,7 +356,7 @@ export function SessionWorkspaceVisualizer(props: Props) {
             </Show>
             <Show when={state.graph.edges.length === 0}>
               <div class="whitespace-nowrap rounded-full border border-border-weak-base bg-background-base/90 px-3 py-1 text-11-regular text-text-weak shadow-sm">
-                {language.t("session.visualizer.unlinked")}
+                {language.t("session.visualizer.unlinkedFolders")}
               </div>
             </Show>
           </div>
@@ -592,6 +610,7 @@ export function SessionWorkspaceVisualizer(props: Props) {
             >
               ↺
             </button>
+          </div>
           </div>
         </div>
       </Show>

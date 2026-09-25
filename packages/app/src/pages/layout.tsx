@@ -81,7 +81,7 @@ import {
   type WorkspaceSidebarContext,
 } from "./layout/sidebar-workspace"
 import { ProjectDragOverlay, SortableProject, type ProjectSidebarContext } from "./layout/sidebar-project"
-import { SidebarContent } from "./layout/sidebar-shell"
+import { SidebarContent, setSidebarHidden } from "./layout/sidebar-shell"
 
 export default function LegacyLayout(props: ParentProps) {
   const serverSDK = useServerSDK()
@@ -102,6 +102,8 @@ export default function LegacyLayout(props: ParentProps) {
   const pageReady = createMemo(() => ready())
 
   let scrollContainerRef: HTMLDivElement | undefined
+  let mobileNavRef: HTMLElement | undefined
+  let peekPanelRef: HTMLDivElement | undefined
   let dialogRun = 0
   let dialogDead = false
 
@@ -234,6 +236,18 @@ export default function LegacyLayout(props: ParentProps) {
 
   const sidebarHovering = createMemo(() => !layout.sidebar.opened() && state.hoverProject !== undefined)
   const sidebarExpanded = createMemo(() => layout.sidebar.opened() || sidebarHovering())
+  const titlebarToggle = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>(".titlebar-icon[aria-expanded]")].find(
+      (button) => button.getAttribute("aria-label") === label,
+    )
+  createEffect(() => {
+    if (!mobileNavRef) return
+    setSidebarHidden(mobileNavRef, !layout.mobileSidebar.opened(), titlebarToggle(language.t("sidebar.menu.toggle")))
+  })
+  createEffect(() => {
+    if (!peekPanelRef) return
+    setSidebarHidden(peekPanelRef, !state.peeked || layout.sidebar.opened(), titlebarToggle(language.t("command.sidebar.toggle")))
+  })
   const setHoverProject = (value: string | undefined) => {
     setState("hoverProject", value)
     if (value !== undefined) return
@@ -2335,6 +2349,7 @@ export default function LegacyLayout(props: ParentProps) {
               <nav
                 aria-label={language.t("sidebar.nav.projectsAndSessions")}
                 data-component="sidebar-nav-mobile"
+                ref={mobileNavRef}
                 classList={{
                   "@container fixed top-10 bottom-0 start-0 z-50 w-full max-w-[400px] overflow-hidden border-e border-border-weaker-base bg-background-base transition-transform duration-200 ease-out": true,
                   "translate-x-0": layout.mobileSidebar.opened(),
@@ -2383,6 +2398,7 @@ export default function LegacyLayout(props: ParentProps) {
             </div>
 
             <div
+              ref={peekPanelRef}
               classList={{
                 "hidden xl:flex absolute inset-y-0 start-16 z-30": true,
                 "opacity-100 translate-x-0 pointer-events-auto": state.peeked && !layout.sidebar.opened(),

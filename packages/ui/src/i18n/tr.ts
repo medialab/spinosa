@@ -193,6 +193,8 @@ export const dict = {
   "ui.message.revertMessage": "Bu noktaya sıfırla",
   "ui.message.copyResponse": "Yanıtı kopyala",
   "ui.message.copied": "Kopyalandı",
+  "ui.toolBubble.copy": "Kopyala",
+  "ui.toolBubble.copied": "Kopyalandı!",
   "ui.message.interrupted": "Kesildi",
   "ui.message.queued": "Sırada",
   "ui.message.attachment.alt": "ek",

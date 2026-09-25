@@ -11,6 +11,8 @@ import {
   sanitizeDiagnosticText,
   sanitizeDiagnosticValue,
   serializeDiagnosticError,
+  shouldIncludeDiagnosticFile,
+  shouldCaptureNetworkLog,
 } from "./diagnostics"
 
 describe("desktop diagnostics", () => {
@@ -97,6 +99,20 @@ describe("desktop diagnostics", () => {
     expect(exported).not.toContain("secret")
     const binary = Buffer.from([0, 1, 2, 3])
     expect(sanitizeDiagnosticExportData("network.bin", binary)).toEqual(binary)
+  })
+
+  test("never exports binary dumps or network traces that cannot be safely redacted", () => {
+    expect(shouldIncludeDiagnosticFile("main.desktop.log")).toBe(true)
+    expect(shouldIncludeDiagnosticFile("effect.tui.ndjson")).toBe(true)
+    expect(shouldIncludeDiagnosticFile("network.desktop.netlog")).toBe(false)
+    expect(shouldIncludeDiagnosticFile("Crashpad/report.dmp")).toBe(false)
+    expect(shouldIncludeDiagnosticFile("memory.heapsnapshot")).toBe(false)
+  })
+
+  test("does not capture a raw network trace unless explicitly opted in", () => {
+    expect(shouldCaptureNetworkLog({})).toBe(false)
+    expect(shouldCaptureNetworkLog({ SPINOSA_DESKTOP_NETLOG: "0" })).toBe(false)
+    expect(shouldCaptureNetworkLog({ SPINOSA_DESKTOP_NETLOG: "1" })).toBe(true)
   })
 
   test("keeps product logs in the debug export without dropping legacy roots", () => {

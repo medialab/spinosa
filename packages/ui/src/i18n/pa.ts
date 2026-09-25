@@ -13,6 +13,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "لوڈ ہو رہیا اے...",
   "ui.sessionReview.image.placeholder": "تصویر",
   "ui.sessionReview.largeDiff.title": "رینڈر کرن لئی فرق بہوں وڈا اے",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "حد: {{limit}} تبدیل کیتیاں گئیاں لائناں۔ موجودہ: {{current}} بدلیاں گئیاں لائناں۔",
   "ui.sessionReview.largeDiff.renderAnyway": "ویسے وی رینڈر کرو",
@@ -180,6 +181,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "سنیہا واپس کرو",
   "ui.message.copyResponse": "جواب کاپی کرو",
   "ui.message.copied": "کاپی کیتا گیا",
+  "ui.toolBubble.copy": "کاپی کرو",
+  "ui.toolBubble.copied": "کاپی کیتا گیا!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "رکاوٹ پائی گئی",

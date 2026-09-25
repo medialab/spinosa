@@ -13,6 +13,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "Nalaganje...",
   "ui.sessionReview.image.placeholder": "Slika",
   "ui.sessionReview.largeDiff.title": "Razlika je prevelika za upodabljanje",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "Omejitev: {{limit}} spremenjene vrstice. Trenutno: {{current}} spremenjene vrstice.",
   "ui.sessionReview.largeDiff.renderAnyway": "Vseeno upodabljaj",
@@ -188,6 +189,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Razveljavi sporočilo",
   "ui.message.copyResponse": "Kopiraj odgovor",
   "ui.message.copied": "Kopirano",
+  "ui.toolBubble.copy": "Kopiraj",
+  "ui.toolBubble.copied": "Kopirano!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "Prekinjeno",

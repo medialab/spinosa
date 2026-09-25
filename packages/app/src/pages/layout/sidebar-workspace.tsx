@@ -20,7 +20,7 @@ import { useServerSync, useQueryOptions } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { pathKey } from "@/utils/path-key"
 import { NewSessionItem, SessionItem, SessionSkeleton } from "./sidebar-items"
-import { sortedRootSessions } from "./helpers"
+import { sortedRootSessions, workspaceActionsVisible } from "./helpers"
 import { useIsFetching } from "@tanstack/solid-query"
 
 type InlineEditorComponent = (props: {
@@ -99,19 +99,19 @@ const WorkspaceHeader = (props: {
   projectId?: string
 }): JSX.Element => (
   <div class="flex items-center gap-1 min-w-0 flex-1">
-    <div class="flex items-center justify-center shrink-0 size-6">
+    <div class="flex items-center justify-center shrink-0 size-6" title={props.local() ? props.language.t("workspace.type.local") : props.language.t("workspace.type.sandbox")}>
       <Show when={props.busy()} fallback={<Icon name="branch" size="small" />}>
         <Spinner class="size-[15px]" />
       </Show>
     </div>
-    <span class="text-14-medium text-text-base shrink-0">
-      {props.local() ? props.language.t("workspace.type.local") : props.language.t("workspace.type.sandbox")} :
+    <span class="sr-only">
+      {props.local() ? props.language.t("workspace.type.local") : props.language.t("workspace.type.sandbox")}
     </span>
     <Show
       when={!props.local()}
       fallback={
-        <span class="text-14-medium text-text-base min-w-0 truncate">
-          {props.branch() ?? getFilename(props.directory)}
+        <span class="text-14-medium text-text-base min-w-0 flex-1 truncate" title={props.workspaceValue()}>
+          {props.workspaceValue()}
         </span>
       }
     >
@@ -124,14 +124,14 @@ const WorkspaceHeader = (props: {
           props.renameWorkspace(props.directory, trimmed, props.projectId, props.branch())
           props.setEditor("value", props.workspaceValue())
         }}
-        class="text-14-medium text-text-base min-w-0 truncate"
-        displayClass="text-14-medium text-text-base min-w-0 truncate"
+        class="text-14-medium text-text-base min-w-0 flex-1 truncate"
+        displayClass="text-14-medium text-text-base min-w-0 flex-1 truncate"
         editing={props.workspaceEditActive()}
         stopPropagation={false}
         openOnDblClick={false}
       />
     </Show>
-    <div class="flex items-center justify-center shrink-0 overflow-hidden w-0 opacity-0 transition-all duration-200 group-hover/workspace:w-3.5 group-hover/workspace:opacity-100 group-focus-within/workspace:w-3.5 group-focus-within/workspace:opacity-100">
+    <div class="hidden items-center justify-center shrink-0 overflow-hidden w-0 opacity-0 transition-all duration-200 @min-[320px]:flex group-hover/workspace:w-3.5 group-hover/workspace:opacity-100 group-focus-within/workspace:w-3.5 group-focus-within/workspace:opacity-100">
       <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="text-icon-base" />
     </div>
   </div>
@@ -159,8 +159,8 @@ const WorkspaceActions = (props: {
   <div
     class="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity"
     classList={{
-      "opacity-100 pointer-events-auto": props.menuOpen(),
-      "opacity-0 pointer-events-none": !props.menuOpen(),
+      "opacity-100 pointer-events-auto": workspaceActionsVisible(props.menuOpen(), props.touch()),
+      "opacity-0 pointer-events-none": !workspaceActionsVisible(props.menuOpen(), props.touch()),
       "group-hover/workspace:opacity-100 group-hover/workspace:pointer-events-auto": true,
       "group-focus-within/workspace:opacity-100 group-focus-within/workspace:pointer-events-auto": true,
     }}
@@ -190,6 +190,12 @@ const WorkspaceActions = (props: {
             props.openEditor(`workspace:${props.directory}`, props.workspaceValue())
           }}
         >
+          <DropdownMenu.Item onSelect={() => {
+            props.clearHoverProjectSoon()
+            props.navigateToNewSession()
+          }}>
+            <DropdownMenu.ItemLabel>{props.language.t("command.session.new")}</DropdownMenu.ItemLabel>
+          </DropdownMenu.Item>
           <DropdownMenu.Item
             disabled={props.local()}
             onSelect={() => {
@@ -220,7 +226,7 @@ const WorkspaceActions = (props: {
           icon={<IconV2 name="edit" size="small" />}
           variant="ghost"
           size="small"
-          class="size-6 rounded-md opacity-0 pointer-events-none group-hover/workspace:opacity-100 group-hover/workspace:pointer-events-auto group-focus-within/workspace:opacity-100 group-focus-within/workspace:pointer-events-auto"
+          class="hidden size-6 rounded-md opacity-0 pointer-events-none @min-[320px]:flex group-hover/workspace:opacity-100 group-hover/workspace:pointer-events-auto group-focus-within/workspace:opacity-100 group-focus-within/workspace:pointer-events-auto"
           data-action="workspace-new-session"
           data-workspace={base64Encode(props.directory)}
           aria-label={props.language.t("command.session.new")}
@@ -327,7 +333,7 @@ export const SortableWorkspace = (props: {
   const fetching = useIsFetching(() => queryOptions().sessions(pathKey(props.directory)))
   const busy = createMemo(() => props.ctx.isBusy(props.directory))
   const loading = () => fetching() > 0 && count() === 0
-  const touch = createMediaQuery("(hover: none)")
+  const touch = createMediaQuery("(any-pointer: coarse)")
   const showNew = createMemo(() => !loading() && (touch() || count() === 0 || (active() && !params.id)))
   const loadMore = async () => {
     setWorkspaceStore("limit", (limit) => (limit ?? 0) + 5)
@@ -385,8 +391,8 @@ export const SortableWorkspace = (props: {
                 fallback={
                   <Collapsible.Trigger
                     class={`flex items-center justify-between w-full pl-2 py-1.5 rounded-md hover:bg-surface-raised-base-hover transition-[padding] duration-200 ${
-                      menu.open ? "pr-16" : "pr-2"
-                    } group-hover/workspace:pr-16 group-focus-within/workspace:pr-16`}
+                      menu.open || touch() ? "pr-8 @min-[320px]:pr-16" : "pr-2"
+                    } group-hover/workspace:pr-8 group-focus-within/workspace:pr-8 @min-[320px]:group-hover/workspace:pr-16 @min-[320px]:group-focus-within/workspace:pr-16`}
                     data-action="workspace-toggle"
                     data-workspace={base64Encode(props.directory)}
                   >
@@ -396,8 +402,8 @@ export const SortableWorkspace = (props: {
               >
                 <div
                   class={`flex items-center justify-between w-full pl-2 py-1.5 rounded-md transition-[padding] duration-200 ${
-                    menu.open ? "pr-16" : "pr-2"
-                  } group-hover/workspace:pr-16 group-focus-within/workspace:pr-16`}
+                    menu.open || touch() ? "pr-8 @min-[320px]:pr-16" : "pr-2"
+                  } group-hover/workspace:pr-8 group-focus-within/workspace:pr-8 @min-[320px]:group-hover/workspace:pr-16 @min-[320px]:group-focus-within/workspace:pr-16`}
                 >
                   {header()}
                 </div>

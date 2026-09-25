@@ -179,6 +179,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "წერილის დაბრუნება",
   "ui.message.copyResponse": "პასუხის კოპირება",
   "ui.message.copied": "კოპირებულია",
+  "ui.toolBubble.copy": "ასლი",
+  "ui.toolBubble.copied": "კოპირებულია!",
   "ui.message.duration.seconds": "{{count}} წმ",
   "ui.message.duration.minutesSeconds": "{{minutes}} წთ {{seconds}}წმ",
   "ui.message.interrupted": "შეწყვეტილია",

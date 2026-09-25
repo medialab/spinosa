@@ -16,6 +16,7 @@ export const dict = {
   "ui.sessionReview.image.loading": "Chargement...",
   "ui.sessionReview.image.placeholder": "Image",
   "ui.sessionReview.largeDiff.title": "Diff trop volumineux pour être affiché",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "Limite : {{limit}} lignes modifiées. Valeur actuelle : {{current}} lignes modifiées.",
   "ui.sessionReview.largeDiff.renderAnyway": "Afficher quand même",
@@ -126,6 +127,7 @@ export const dict = {
   "ui.promptInput.removeAttachment": "Supprimer la pièce jointe",
   "ui.promptInput.label": "Invite",
   "ui.promptInput.placeholder.shell": "Entrez une commande shell...",
+  "ui.promptInput.placeholder.normal": "Ask anything, {{slash}} for commands, {{at}} for context...",
   "ui.promptInput.placeholder.normal":
     "Demandez n'importe quoi, {{slash}} pour les commandes, {{at}} pour le contexte...",
   "ui.promptInput.add": "Ajouter des images et des fichiers",
@@ -193,6 +195,8 @@ export const dict = {
   "ui.message.revertMessage": "Réinitialiser à ce point",
   "ui.message.copyResponse": "Copier la réponse",
   "ui.message.copied": "Copié !",
+  "ui.toolBubble.copy": "Copier",
+  "ui.toolBubble.copied": "Copié !",
   "ui.message.interrupted": "Interrompu",
   "ui.message.queued": "En file d'attente",
   "ui.message.attachment.alt": "pièce jointe",

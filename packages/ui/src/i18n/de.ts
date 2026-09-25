@@ -34,6 +34,7 @@ export const dict = {
   "ui.sessionReviewV2.nextFile": "Nächste Datei",
   "ui.sessionReviewV2.diffView": "Diff-Ansicht",
   "ui.sessionReviewV2.empty.noGit.title": "Keine verfolgten Änderungen",
+  "ui.sessionReviewV2.empty.noGit.description": "Track, review, and undo changes in this project",
   "ui.sessionReviewV2.empty.noGit.description":
     "Änderungen in diesem Projekt verfolgen, überprüfen und rückgängig machen",
   "ui.sessionReviewV2.empty.noGit.action": "Git-Repository erstellen",
@@ -47,6 +48,8 @@ export const dict = {
   "ui.fileMedia.state.error": "{{kind}} konnte nicht geladen werden.",
   "ui.fileMedia.state.unavailable": "Vorschau für {{kind}} nicht verfügbar.",
   "ui.fileMedia.binary.title": "Binärdatei",
+  "ui.fileMedia.binary.description.path": "{{path}} is binary.",
+  "ui.fileMedia.binary.description.default": "Binary content",
   "ui.fileMedia.binary.description.path":
     "{{path}} kann nicht angezeigt werden, da es sich um eine Binärdatei handelt.",
   "ui.fileMedia.binary.description.default":
@@ -173,6 +176,8 @@ export const dict = {
   "ui.message.revertMessage": "Auf diesen Punkt zurücksetzen",
   "ui.message.copyResponse": "Antwort kopieren",
   "ui.message.copied": "Kopiert!",
+  "ui.toolBubble.copy": "Kopieren",
+  "ui.toolBubble.copied": "Kopiert!",
   "ui.message.interrupted": "Unterbrochen",
   "ui.message.queued": "In der Warteschlange",
   "ui.message.attachment.alt": "Anhang",

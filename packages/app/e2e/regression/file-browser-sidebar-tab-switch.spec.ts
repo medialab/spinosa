@@ -21,6 +21,7 @@ test("keeps the file-browser sidebar mounted when switching file tabs", async ({
 
   await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
   await expectSessionTitle(page, title)
+  await page.getByRole("button", { name: "Toggle review" }).click()
 
   const panel = page.locator("#review-panel")
   await panel.getByRole("button", { name: "Open file" }).click()
@@ -73,6 +74,7 @@ test("keeps previous file search results visible while the next search loads", a
 
   await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
   await expectSessionTitle(page, title)
+  await page.getByRole("button", { name: "Toggle review" }).click()
 
   const panel = page.locator("#review-panel")
   await panel.getByRole("button", { name: "Open file" }).click()

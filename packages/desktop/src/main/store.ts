@@ -5,6 +5,7 @@ import { join } from "node:path"
 
 import { SETTINGS_STORE } from "./store-keys"
 import { deleteStoreFileIfEmpty } from "./store-cleanup"
+import { protectStoreFile, STORE_FILE_MODE } from "./store-permissions"
 
 const cache = new Map<string, Store>()
 
@@ -20,7 +21,9 @@ export function getStore(name = SETTINGS_STORE) {
     cwd: electron.app.getPath("userData"),
     fileExtension: "",
     accessPropertiesByDotNotation: false,
+    configFileMode: STORE_FILE_MODE,
   })
+  protectStoreFile(next.path)
   cache.set(name, next)
   return next
 }

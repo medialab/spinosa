@@ -38,6 +38,7 @@ import { useSettings } from "@/context/settings"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { CustomProviderForm } from "./dialog-custom-provider"
 import { decode64 } from "@/utils/base64"
+import { apiKeyInputError } from "@spinosa/kernel-core/util/api-key"
 
 const CUSTOM_ID = "_custom"
 type ConnectMethod = Extract<IntegrationMethod, { type: "key" | "oauth" }>
@@ -822,8 +823,8 @@ function ProviderConnection(props: {
       const formData = new FormData(form)
       const apiKey = formData.get("apiKey") as string
 
-      if (!apiKey?.trim()) {
-        setFormStore("error", language.t("provider.connect.apiKey.required"))
+      if (apiKeyInputError(apiKey ?? "")) {
+        setFormStore("error", language.t(apiKey?.trim() ? "provider.connect.apiKey.invalid" : "provider.connect.apiKey.required"))
         return
       }
 
@@ -871,6 +872,7 @@ function ProviderConnection(props: {
               {language.t("provider.connect.apiKey.label", { provider: provider().name })}
               <TextInputV2
                 ref={apiKey}
+                type="password"
                 class="!w-full"
                 name="apiKey"
                 data-input="provider-api-key"
@@ -923,7 +925,7 @@ function ProviderConnection(props: {
           <TextField
             autofocus={!newLayout()}
             ref={apiKey}
-            type="text"
+            type="password"
             label={language.t("provider.connect.apiKey.label", { provider: provider().name })}
             placeholder={language.t("provider.connect.apiKey.placeholder")}
             name="apiKey"

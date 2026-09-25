@@ -179,6 +179,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Taasta sõnum",
   "ui.message.copyResponse": "Kopeeri vastus",
   "ui.message.copied": "Kopeeritud",
+  "ui.toolBubble.copy": "Kopeeri",
+  "ui.toolBubble.copied": "Kopeeritud!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}} min {{seconds}} s",
   "ui.message.interrupted": "Katkestatud",

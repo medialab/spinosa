@@ -158,7 +158,16 @@ test.describe("session timeline projection", () => {
 
     await expect(page.getByText("Keep this stable", { exact: true })).toBeVisible()
     await expect(page.locator('[data-timeline-row="DiffSummary"]')).toBeVisible()
-    await expect(page.getByText(/show all/i)).toBeVisible()
+    const showAll = page.locator('[data-slot="session-turn-diffs-toggle"]')
+    await expect(showAll).toHaveRole("button")
+    await expect(showAll).toHaveText(/show all/i)
+    await expect(showAll).toBeVisible()
+    await expect(showAll).toHaveAttribute("aria-expanded", "false")
+    await showAll.focus()
+    await page.keyboard.press("Enter")
+    await expect(showAll).toHaveAttribute("aria-expanded", "true")
+    await expect(showAll).toHaveText(/show less/i)
+    await expect(page.locator('[data-slot="session-turn-diff-trigger"]')).toHaveCount(11)
   })
 
   test("renders interruption independently when the turn is not compacted", async ({ page }) => {

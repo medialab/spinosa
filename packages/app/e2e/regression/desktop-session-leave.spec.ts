@@ -81,7 +81,11 @@ test("leaving a busy conversation pauses queued follow-ups before abort", async 
   await expect(editor).toBeVisible()
   await editor.fill("Do this after the current task")
   await editor.press("Enter")
-  await expect(page.locator('[data-component="session-followup-dock"]')).toContainText("Do this after the current task")
+  const dock = page.locator('[data-component="session-followup-dock"]')
+  await expect(dock).toContainText("Do this after the current task")
+  const prompt = dock.getByText("Do this after the current task")
+  await expect(prompt).toHaveClass(/line-clamp-2/)
+  await expect(dock.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-describedby", /^followup-prompt-/)
 
   await page.getByRole("button", { name: "Back to workspace home" }).click()
   await page.locator('[data-component="dialog"]').getByRole("button", { name: "YES", exact: true }).click()

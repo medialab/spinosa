@@ -67,6 +67,7 @@ export function DialogSpinosaOnboarding(props: {
   const [scanCancelled, setScanCancelled] = createSignal(false)
   const [job, setJob] = createSignal<OnboardingJobGetResponse>()
   const [error, setError] = createSignal<string>()
+  const [pollError, setPollError] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
   const [confirmCancel, setConfirmCancel] = createSignal(false)
 
@@ -137,6 +138,7 @@ export function DialogSpinosaOnboarding(props: {
         if (disposed) return
         loggedError = false
         if (result.data) {
+          setPollError(undefined)
           setJob(result.data)
           const state = `${result.data.status}:${result.data.phase}:${result.data.current}:${result.data.total}`
           if (state !== lastState) {
@@ -154,7 +156,7 @@ export function DialogSpinosaOnboarding(props: {
         }
       } catch (cause) {
         if (!disposed) {
-          setError(errorMessage(cause))
+          setPollError(errorMessage(cause))
           if (!loggedError) {
             loggedError = true
             record("onboarding.job.poll.error", { jobID: id, error: cause }, "error", startedAt)
@@ -535,15 +537,16 @@ export function DialogSpinosaOnboarding(props: {
           </Match>
 
           <Match when={step() === "progress" || step() === "result"}>
-            <div class="flex items-center justify-between"><span class="font-medium">{job()?.message ?? language.t("common.loading")}</span><span class="text-sm text-text-weak">{job()?.phase}</span></div>
+            <div class="flex items-center justify-between"><span class="font-medium" aria-live="polite">{job()?.message ?? language.t("common.loading")}</span><span class="text-sm text-text-weak">{job()?.phase}</span></div>
             <Show when={number(job()?.total ?? 0) > 0}><progress class="w-full" value={number(job()!.current)} max={number(job()!.total)} /></Show>
-            <Show when={job()?.activeFile}><p class="truncate text-sm text-text-weak">{job()?.activeFile}</p></Show>
+            <Show when={job()?.activeFile}><p class="break-all text-sm text-text-weak">{job()?.activeFile}</p></Show>
+            <Show when={pollError()}><p class="break-all text-sm text-danger" role="status">{pollError()}</p></Show>
             <Show when={job()?.status === "waiting" && phaseGate()}>{(gate) => <div class="flex justify-end"><Button disabled={busy()} onClick={() => void action("continue")}>{language.t("dialog.spinosaOnboarding.importPhase", { phase: gate().phase })}</Button></div>}</Show>
             <Show when={job()?.status === "waiting" && visionGate()}>{(gate) => <div class="rounded border border-danger-base p-3 text-sm"><p>{gate().message}</p><Show when={visionModels().length > 0}><label class="mt-3 flex items-center gap-2">{language.t("dialog.spinosaOnboarding.changeVisionModel")}<select class="min-w-0 flex-1 rounded border border-border-base bg-background-base px-2 py-1" value={visionModelId()} onChange={(event) => setVisionModelId(event.currentTarget.value)}><For each={visionModels()}>{(model) => <option value={model.id}>{model.label}</option>}</For></select></label></Show><div class="mt-3 flex justify-end gap-2"><Button variant="secondary" disabled={busy()} onClick={() => void action("skip")}>{language.t("dialog.spinosaOnboarding.skip")}</Button><Show when={visionModels().length > 0 && visionModelId() !== "none"}><Button variant="secondary" disabled={busy()} onClick={() => void action("changeModel")}>{language.t("dialog.spinosaOnboarding.useModel")}</Button></Show><Button disabled={busy()} onClick={() => void action("retry")}>{language.t("dialog.spinosaOnboarding.retry")}</Button></div></div>}</Show>
             <Show when={jobID() && !isFinal() && job()?.workspacePath && !visionGate()}><div class="flex justify-end"><Button variant="ghost" disabled={busy()} onClick={() => void continueInBackground()}>{language.t("dialog.spinosaOnboarding.continueInBackground")}</Button></div></Show>
-            <Show when={isFinal()}><div class="rounded border border-border-base p-3"><p class="text-danger">{job()?.message}</p><Show when={job()?.result}>{(result) => <p class="mt-2 text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.verification", { imported: number(result().imported), recovered: number(result().recovered), failed: number(result().failed), missing: number(result().stillMissing) })}</p>}</Show></div><div class="flex justify-end gap-2"><Show when={job()?.workspacePath}><Button variant="secondary" onClick={() => void openWorkspace(false)}>{language.t("dialog.spinosaOnboarding.openWorkspace")}</Button></Show><Button variant="secondary" onClick={() => dialog.close()}>{language.t("common.close")}</Button></div></Show>
+            <Show when={isFinal()}><div class="rounded border border-border-base p-3"><p class="text-danger">{job()?.message}</p><Show when={job()?.result}>{(result) => <p class="mt-2 text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.verification", { imported: number(result().imported), recovered: number(result().recovered), failed: number(result().failed), missing: number(result().stillMissing) })}</p>}</Show><Show when={job()?.workspacePath}><p class="mt-2 break-all text-xs text-text-weak">{job()?.workspacePath}</p></Show></div><div class="flex justify-end gap-2"><Show when={job()?.workspacePath}><Button variant="secondary" onClick={() => void openWorkspace(false)}>{language.t("dialog.spinosaOnboarding.openWorkspace")}</Button></Show><Button variant="secondary" onClick={() => dialog.close()}>{language.t("common.close")}</Button></div></Show>
             <Show when={job()?.logs.length}><details><summary class="cursor-pointer text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.logs")}</summary><pre class="mt-2 max-h-40 overflow-auto rounded bg-black/5 p-2 text-xs whitespace-pre-wrap dark:bg-white/5">{job()?.logs.join("\n")}</pre></details></Show>
-            <Show when={(job()?.files.length ?? 0) > 0}><details><summary class="cursor-pointer text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.files", { count: job()?.files.length ?? 0 })}</summary><ul class="mt-2 max-h-40 overflow-auto rounded border border-border-base px-3 py-2 text-xs"><For each={job()?.files ?? []}>{(file) => <li class="flex justify-between gap-3 py-1"><span class="min-w-0 truncate">{file.relPath}</span><span class="shrink-0 text-text-weak">{file.status}</span></li>}</For></ul></details></Show>
+            <Show when={(job()?.files.length ?? 0) > 0}><details><summary class="cursor-pointer text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.files", { count: job()?.files.length ?? 0 })}</summary><ul class="mt-2 max-h-40 overflow-auto rounded border border-border-base px-3 py-2 text-xs"><For each={job()?.files ?? []}>{(file) => <li class="flex justify-between gap-3 py-1"><span class="min-w-0 break-all">{file.relPath}</span><span class="shrink-0 text-text-weak">{file.status}</span></li>}</For></ul></details></Show>
             <Show when={confirmCancel()}><div role="alert" class="rounded border border-border-base p-3 text-sm"><p>{language.t("dialog.spinosaOnboarding.cancelConfirm")}</p><div class="mt-3 flex justify-end gap-2"><Button variant="ghost" disabled={busy()} onClick={() => setConfirmCancel(false)}>{language.t("dialog.spinosaOnboarding.keepImporting")}</Button><Button variant="secondary" disabled={busy()} onClick={() => { setConfirmCancel(false); void cancel() }}>{language.t("dialog.spinosaOnboarding.cancelImport")}</Button></div></div></Show>
           </Match>
 
@@ -551,6 +554,7 @@ export function DialogSpinosaOnboarding(props: {
             <div class="rounded border border-border-base p-3">
               <p class="font-medium text-success">{job()?.message}</p>
               <Show when={job()?.result}>{(result) => <p class="mt-2 text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.verification", { imported: number(result().imported), recovered: number(result().recovered), failed: number(result().failed), missing: number(result().stillMissing) })}</p>}</Show>
+              <Show when={job()?.workspacePath}><p class="mt-2 break-all text-xs text-text-weak">{job()?.workspacePath}</p></Show>
             </div>
             <p class="text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.launchDescription")}</p>
             <div class="flex justify-end gap-2">
@@ -558,6 +562,7 @@ export function DialogSpinosaOnboarding(props: {
               <Button onClick={() => void openWorkspace(true)}>{language.t("dialog.spinosaOnboarding.openAndStart")}</Button>
             </div>
             <Show when={job()?.logs.length}><details><summary class="cursor-pointer text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.logs")}</summary><pre class="mt-2 max-h-40 overflow-auto rounded bg-black/5 p-2 text-xs whitespace-pre-wrap dark:bg-white/5">{job()?.logs.join("\n")}</pre></details></Show>
+            <Show when={(job()?.files.length ?? 0) > 0}><details><summary class="cursor-pointer text-sm text-text-weak">{language.t("dialog.spinosaOnboarding.files", { count: job()?.files.length ?? 0 })}</summary><ul class="mt-2 max-h-40 overflow-auto rounded border border-border-base px-3 py-2 text-xs"><For each={job()?.files ?? []}>{(file) => <li class="flex justify-between gap-3 py-1"><span class="min-w-0 break-all">{file.relPath}</span><span class="shrink-0 text-text-weak">{file.status}</span></li>}</For></ul></details></Show>
           </Match>
         </Switch>
         <Show when={error()}><p class="text-sm text-danger">{error()}</p></Show>

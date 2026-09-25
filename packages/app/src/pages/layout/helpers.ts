@@ -4,6 +4,11 @@ import { pathKey } from "@/utils/path-key"
 import type { ServerConnection } from "@/context/server"
 import type { HomeProjectSelection } from "@/context/layout"
 
+/** Row actions stay visible for touch pointers or while the menu is open. Pure (no component imports). */
+export function workspaceActionsVisible(menuOpen: boolean, touch: boolean) {
+  return menuOpen || touch
+}
+
 type SessionStore = {
   session?: Session[]
   path: { directory: string }

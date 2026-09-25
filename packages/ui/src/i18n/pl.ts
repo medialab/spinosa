@@ -128,6 +128,7 @@ export const dict = {
   "ui.promptInput.removeAttachment": "Usuń załącznik",
   "ui.promptInput.label": "Prompt",
   "ui.promptInput.placeholder.shell": "Wpisz polecenie powłoki...",
+  "ui.promptInput.placeholder.normal": "Ask anything, {{slash}} for commands, {{at}} for context...",
   "ui.promptInput.placeholder.normal":
     "Zapytaj o cokolwiek, {{slash}} aby wyświetlić polecenia, {{at}} aby wyświetlić kontekst...",
   "ui.promptInput.add": "Dodaj obrazy i pliki",
@@ -195,6 +196,8 @@ export const dict = {
   "ui.message.revertMessage": "Cofnij wiadomość",
   "ui.message.copyResponse": "Kopiuj odpowiedź",
   "ui.message.copied": "Skopiowano!",
+  "ui.toolBubble.copy": "Kopiuj",
+  "ui.toolBubble.copied": "Skopiowano!",
   "ui.message.interrupted": "Przerwano",
   "ui.message.queued": "W kolejce",
   "ui.message.attachment.alt": "załącznik",

@@ -13,6 +13,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "མངོན་གསལ་འབད་དོ།",
   "ui.sessionReview.image.placeholder": "པར",
   "ui.sessionReview.largeDiff.title": "བཀྲམ་སྟོན་འབད་ནི་ལུ་ ཁྱད་པར་སྦོམ་དྲགས།",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "ཚད་: {{limit}} བསྒྱུར་བཅོས་འབད་ཡོད་པའི་གྲལ་ཐིག་ཚུ། ད་ལྟོའི་: {{current}} བསྒྱུར་བཅོས་འབད་ཡོད་པའི་གྲལ་ཐིག་ཚུ།",
   "ui.sessionReview.largeDiff.renderAnyway": "གང་ལྟར་ཡང་སྤྲོད།",
@@ -27,6 +28,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReviewV2.nextFile": "ཡིག་སྣོད་ཤུལ་མམ།",
   "ui.sessionReviewV2.diffView": "ཁྱད་པར་མཐོང་སྣང་།",
   "ui.sessionReviewV2.empty.noGit.title": "བརྟག་ཞིབ་འབད་ཡོད་པའི་བསྒྱུར་བཅོས་ཚུ་མེད།",
+  "ui.sessionReviewV2.empty.noGit.description": "Track, review, and undo changes in this project",
   "ui.sessionReviewV2.empty.noGit.description":
     "ལས་འགུལ་འདི་ནང་ བསྒྱུར་བཅོས་ཚུ་ བརྟག་ཞིབ་འབད་ནི་དང་ བསྐྱར་ཞིབ་འབད་ནི་ དེ་ལས་ འབད་བཤོལ་འབད་ནི།",
   "ui.sessionReviewV2.empty.noGit.action": "Gitམཛོད་ཁང་གསར་བསྐྲུན་འབད།",
@@ -181,6 +183,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "འཕྲིན་དོན་ཕྱིར་ལོག་འབད།",
   "ui.message.copyResponse": "ལན་འདེབས་འདྲ་བཤུས།",
   "ui.message.copied": "འདྲ་བཤུས་འབད་ཡོདཔ།",
+  "ui.toolBubble.copy": "འདྲ་བཤུས།",
+  "ui.toolBubble.copied": "འདྲ་བཤུས་འབད་ཡོདཔ།!",
   "ui.message.duration.seconds": "{{count}}ས །",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}ས །",
   "ui.message.interrupted": "བར་ཆད་ཅན།",

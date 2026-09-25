@@ -347,6 +347,17 @@ const TEXT_EXPORT_EXTENSIONS = new Set([
   ".txt",
 ])
 
+const SAFE_EXPORT_EXTENSIONS = new Set([".log", ".ndjson"])
+
+export function shouldCaptureNetworkLog(env: NodeJS.ProcessEnv) {
+  return env.SPINOSA_DESKTOP_NETLOG === "1"
+}
+
+/** Only text logs can be scrubbed before a debug ZIP is shared. */
+export function shouldIncludeDiagnosticFile(file: string) {
+  return SAFE_EXPORT_EXTENSIONS.has(path.extname(file).toLowerCase())
+}
+
 export function sanitizeDiagnosticExportData(file: string, data: Buffer) {
   if (!TEXT_EXPORT_EXTENSIONS.has(path.extname(file).toLowerCase())) return data
   return Buffer.from(sanitizeDiagnosticExportText(data.toString("utf8")))

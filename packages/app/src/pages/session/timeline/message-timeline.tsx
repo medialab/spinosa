@@ -217,9 +217,14 @@ function TimelineDiffSummaryRow(props: { diffs: SummaryDiff[] }) {
         </span>
         <DiffChanges changes={props.diffs} />
         <Show when={overflow() > 0}>
-          <span data-slot="session-turn-diffs-toggle" onClick={() => setState("showAll", !showAll())}>
+          <button
+            type="button"
+            data-slot="session-turn-diffs-toggle"
+            aria-expanded={showAll()}
+            onClick={() => setState("showAll", !showAll())}
+          >
             {showAll() ? language.t("ui.sessionTurn.diffs.showLess") : language.t("ui.sessionTurn.diffs.showAll")}
-          </span>
+          </button>
         </Show>
       </div>
       <div data-component="session-turn-diffs-content">
@@ -266,9 +271,9 @@ function TimelineDiffSummaryRow(props: { diffs: SummaryDiff[] }) {
           </For>
         </Accordion>
         <Show when={!showAll() && overflow() > 0}>
-          <div data-slot="session-turn-diffs-more" onClick={() => setState("showAll", true)}>
+          <button type="button" data-slot="session-turn-diffs-more" onClick={() => setState("showAll", true)}>
             {language.t("ui.sessionTurn.diffs.more", { count: String(overflow()) })}
-          </div>
+          </button>
         </Show>
       </div>
     </div>
@@ -1383,7 +1388,7 @@ export function MessageTimeline(props: {
   }
 
   return (
-    <div class="relative w-full h-full min-w-0">
+    <div class="relative w-full h-full min-w-0" data-loaded-session-id={sessionID()}>
       <div
         class="absolute left-1/2 -translate-x-1/2 z-[60] pointer-events-none transition-all duration-200 ease-out"
         classList={{

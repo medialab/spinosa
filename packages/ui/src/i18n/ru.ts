@@ -194,6 +194,8 @@ export const dict = {
   "ui.message.revertMessage": "Сбросить до этого момента",
   "ui.message.copyResponse": "Копировать ответ",
   "ui.message.copied": "Скопировано!",
+  "ui.toolBubble.copy": "Копировать",
+  "ui.toolBubble.copied": "Скопировано!",
   "ui.message.interrupted": "Прервано",
   "ui.message.queued": "В очереди",
   "ui.message.attachment.alt": "вложение",

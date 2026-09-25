@@ -191,6 +191,8 @@ export const dict = {
   "ui.message.revertMessage": "Restablecer a este punto",
   "ui.message.copyResponse": "Copiar respuesta",
   "ui.message.copied": "¡Copiado!",
+  "ui.toolBubble.copy": "Copiar",
+  "ui.toolBubble.copied": "¡Copiado!",
   "ui.message.interrupted": "Interrumpido",
   "ui.message.queued": "En cola",
   "ui.message.attachment.alt": "adjunto",

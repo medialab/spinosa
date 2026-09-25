@@ -179,6 +179,8 @@ export const dict = {
   "ui.message.revertMessage": "Врати ја пораката",
   "ui.message.copyResponse": "Копирај одговор",
   "ui.message.copied": "Копирано",
+  "ui.toolBubble.copy": "Копирај",
+  "ui.toolBubble.copied": "Копирано!",
   "ui.message.duration.seconds": "{{count}}с",
   "ui.message.duration.minutesSeconds": "{{minutes}} мин. {{seconds}} сек.",
   "ui.message.interrupted": "Прекинато",

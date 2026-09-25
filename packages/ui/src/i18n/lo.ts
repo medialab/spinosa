@@ -179,6 +179,8 @@ export const dict = {
   "ui.message.revertMessage": "ກັບຄືນຂໍ້ຄວາມ",
   "ui.message.copyResponse": "ສຳເນົາຄຳຕອບ",
   "ui.message.copied": "ສຳເນົາແລ້ວ",
+  "ui.toolBubble.copy": "ສຳເນົາ",
+  "ui.toolBubble.copied": "ສຳເນົາແລ້ວ!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "ຂັດຂວາງ",

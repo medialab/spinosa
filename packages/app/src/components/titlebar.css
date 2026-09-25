@@ -7,9 +7,20 @@
 }
 
 .session-unified-controls [data-slot="session-title-parent"],
-.session-unified-controls [data-slot="session-title-separator"],
-.session-unified-controls h1[data-slot="session-title-child"] {
+.session-unified-controls [data-slot="session-title-separator"] {
   display: none;
+}
+
+.session-unified-controls h1[data-slot="session-title-child"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .session-unified-controls [data-session-title] {

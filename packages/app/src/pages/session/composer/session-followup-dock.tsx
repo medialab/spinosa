@@ -77,12 +77,19 @@ export function SessionFollowupDock(props: {
           <For each={props.items}>
             {(item) => (
               <div class="flex items-center gap-2 min-w-0 py-1">
-                <span class="min-w-0 flex-1 truncate text-13-regular text-text-strong">{item.text}</span>
+                <span
+                  id={`followup-prompt-${item.id}`}
+                  class="min-w-0 flex-1 line-clamp-2 break-words text-13-regular text-text-strong"
+                  title={item.text}
+                >
+                  {item.text}
+                </span>
                 <Button
                   size="small"
                   variant="secondary"
                   class="shrink-0"
                   disabled={!!props.sending || (item.steered && !item.failed)}
+                  aria-describedby={`followup-prompt-${item.id}`}
                   onClick={() => props.onSteer(item.id)}
                 >
                   {item.failed ? language.t("session.followupDock.sendNow") : item.steered ? language.t("session.followupDock.upNext") : language.t("session.followupDock.steer")}
@@ -93,6 +100,7 @@ export function SessionFollowupDock(props: {
                   variant="ghost"
                   class="shrink-0"
                   disabled={!!props.sending}
+                  aria-describedby={`followup-prompt-${item.id}`}
                   onClick={() => props.onEdit(item.id)}
                   aria-label={language.t("session.followupDock.edit")}
                   title={language.t("session.followupDock.edit")}
@@ -103,6 +111,7 @@ export function SessionFollowupDock(props: {
                   variant="ghost"
                   class="shrink-0"
                   disabled={!!props.sending}
+                  aria-describedby={`followup-prompt-${item.id}`}
                   onClick={() => props.onRemove(item.id)}
                   aria-label={language.t("session.followupDock.remove")}
                   title={language.t("session.followupDock.remove")}

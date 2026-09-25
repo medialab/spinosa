@@ -13,6 +13,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "Yuklanmoqda...",
   "ui.sessionReview.image.placeholder": "Rasm",
   "ui.sessionReview.largeDiff.title": "Farq koʻrsatish uchun juda katta",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "Cheklov: {{limit}} o'zgartirilgan chiziqlar. Joriy: {{current}} o'zgartirilgan chiziqlar.",
   "ui.sessionReview.largeDiff.renderAnyway": "Baribir render",
@@ -27,6 +28,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReviewV2.nextFile": "Keyingi fayl",
   "ui.sessionReviewV2.diffView": "Farq ko'rinishi",
   "ui.sessionReviewV2.empty.noGit.title": "Kuzatilgan oʻzgarishlar yoʻq",
+  "ui.sessionReviewV2.empty.noGit.description": "Track, review, and undo changes in this project",
   "ui.sessionReviewV2.empty.noGit.description":
     "Ushbu loyihadagi oʻzgarishlarni kuzating, koʻrib chiqing va bekor qiling",
   "ui.sessionReviewV2.empty.noGit.action": "Git omborini yarating",
@@ -118,6 +120,7 @@ export const dict: Record<string, string> = {
   "ui.promptInput.removeAttachment": "Qo'shimchani olib tashlang",
   "ui.promptInput.label": "Tezkor",
   "ui.promptInput.placeholder.shell": "Shell buyrug'ini kiriting...",
+  "ui.promptInput.placeholder.normal": "Ask anything, {{slash}} for commands, {{at}} for context...",
   "ui.promptInput.placeholder.normal":
     "Har qanday narsani so'rang, buyruqlar uchun {{slash}}, kontekst uchun {{at}}...",
   "ui.promptInput.add": "Rasmlar va fayllarni qo'shing",
@@ -182,6 +185,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Xabarni qaytarish",
   "ui.message.copyResponse": "Javobni nusxalash",
   "ui.message.copied": "Koʻchirildi",
+  "ui.toolBubble.copy": "Nusxalash",
+  "ui.toolBubble.copied": "Koʻchirildi!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "Uzildi",

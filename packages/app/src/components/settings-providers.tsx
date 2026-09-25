@@ -85,8 +85,7 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
     return language.t("settings.providers.tag.other")
   }
 
-  const canDisconnect = (item: ProviderItem) =>
-    source(item) !== "env" && (protocol() === "v1" || !isConfigCustom(item.id))
+  const canDisconnect = (item: ProviderItem) => source(item) !== "env"
 
   const note = (id: string) => PROVIDER_NOTES.find((item) => item.match(id))?.key
 
@@ -99,7 +98,6 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
   }
 
   const disableProvider = async (providerID: string, name: string) => {
-    if (protocol() !== "v1") return
     const before = serverSync().data.config.disabled_providers ?? []
     const next = before.includes(providerID) ? before : [...before, providerID]
     serverSync().set("config", "disabled_providers", next)
@@ -124,13 +122,19 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
   const disconnect = async (providerID: string, name: string) => {
     const sdk = serverSDK()
     const client = sdk.client
-    const removeV2 = protocol() === "v2" ? clearV2ProviderCredentials(client, providerID) : Promise.resolve()
     const removeV1 = client.auth.remove({ providerID })
     if (isConfigCustom(providerID)) {
-      await Promise.all([removeV1.catch(() => undefined), removeV2])
+      try {
+        await removeV1
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        showToast({ title: language.t("common.requestFailed"), description: message })
+        return
+      }
       await disableProvider(providerID, name)
       return
     }
+    const removeV2 = protocol() === "v2" ? clearV2ProviderCredentials(client, providerID) : Promise.resolve()
     await Promise.all([removeV1, removeV2])
       .then(async () => {
         await client.global.dispose()

@@ -1,5 +1,13 @@
 import type { RawWorkspaceGraph } from "./raw-workspace-graph"
 
+export const GRAPH_SETTINGS_MIN_WIDTH = 640
+export const GRAPH_SETTINGS_MIN_HEIGHT = 480
+
+/** Settings panel needs the full pane when the graph viewport is constrained. Pure (testable without the canvas). */
+export function graphSettingsNeedFullPane(width: number, height: number) {
+  return width < GRAPH_SETTINGS_MIN_WIDTH || height < GRAPH_SETTINGS_MIN_HEIGHT
+}
+
 export type RawGraphFilters = {
   search: string
   attachments: boolean

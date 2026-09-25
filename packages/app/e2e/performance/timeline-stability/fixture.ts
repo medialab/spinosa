@@ -17,7 +17,6 @@ import { expect, type Page } from "@playwright/test"
 import { Schema } from "effect"
 import { mockOpenCodeServer } from "../../utils/mock-server"
 import { installSseTransport } from "../../utils/sse-transport"
-import { expectSessionTitle } from "../../utils/waits"
 
 export const directory = "C:/OpenCode/TimelineStability"
 export const projectID = "proj_timeline_stability"
@@ -161,7 +160,7 @@ export async function setupTimeline(
   }
   await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
   await transport.waitForConnection()
-  await expectSessionTitle(page, title)
+  await expect(page.locator("[data-loaded-session-id]")).toHaveAttribute("data-loaded-session-id", sessionID)
   if (input.cpuRate && input.cpuRate > 1) {
     const devtools = await page.context().newCDPSession(page)
     await devtools.send("Emulation.setCPUThrottlingRate", { rate: input.cpuRate })

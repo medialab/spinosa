@@ -13,6 +13,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "Betöltés...",
   "ui.sessionReview.image.placeholder": "Kép",
   "ui.sessionReview.largeDiff.title": "A különbség túl nagy a megjelenítéshez",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "Limit: {{limit}} megváltoztatta a sorokat. Aktuális: {{current}} sorokat váltott.",
   "ui.sessionReview.largeDiff.renderAnyway": "Mindenképpen rendereljen",
@@ -27,6 +28,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReviewV2.nextFile": "Következő fájl",
   "ui.sessionReviewV2.diffView": "Diff nézet",
   "ui.sessionReviewV2.empty.noGit.title": "Nincsenek nyomon követett változások",
+  "ui.sessionReviewV2.empty.noGit.description": "Track, review, and undo changes in this project",
   "ui.sessionReviewV2.empty.noGit.description":
     "Kövesse nyomon, tekintse át és vonja vissza a változtatásokat ebben a projektben",
   "ui.sessionReviewV2.empty.noGit.action": "Git tároló létrehozása",
@@ -181,6 +183,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Üzenet visszaállítása",
   "ui.message.copyResponse": "Válasz másolása",
   "ui.message.copied": "Másolva",
+  "ui.toolBubble.copy": "Másolás",
+  "ui.toolBubble.copied": "Másolva!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "Megszakított",

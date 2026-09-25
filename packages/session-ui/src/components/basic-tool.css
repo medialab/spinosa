@@ -66,6 +66,10 @@
   gap: 0px;
   justify-content: flex-start;
 
+  &[data-has-bubble] {
+    content-visibility: visible;
+  }
+
   &[data-clickable="true"] {
     cursor: pointer;
   }

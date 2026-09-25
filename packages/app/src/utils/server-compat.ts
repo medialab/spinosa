@@ -1,4 +1,5 @@
 import type { ServerApi } from "./server"
+import { apiKeyInputError, normalizeApiKeyInput } from "@spinosa/kernel-core/util/api-key"
 import type { ServerProtocol } from "./server-protocol"
 import type {
   AgentPartInput,
@@ -468,9 +469,10 @@ function createV1Api(input: CompatibleInput): CompatibleApi {
       connect: {
         ...(input.current.integration?.connect ?? {}),
         key: async (value: Parameters<ServerApi["integration"]["connect"]["key"]>[0]) => {
+          if (apiKeyInputError(value.key)) throw new Error("Invalid API key")
           await legacy(value.location).auth.set({
             providerID: value.integrationID,
-            auth: { type: "api", key: value.key },
+            auth: { type: "api", key: normalizeApiKeyInput(value.key) },
           })
           await legacy(value.location).instance.dispose()
           await input.legacy().instance.dispose()
@@ -1234,19 +1236,21 @@ function createV2Api(input: CompatibleInput): CompatibleApi {
       },
       connect: {
         key: async (value) => {
+          if (apiKeyInputError(value.key)) throw new Error("Invalid API key")
+          const key = normalizeApiKeyInput(value.key)
           // Dual-write: V2 first (surfaces missing-integration 400 before
           // touching auth.json), then V1 auth.set so the session LLM and
           // /config/providers see the key. Awaited; retry is idempotent. No
           // dispose — Spinosa's authSet handler reloads providers.
           await v2.integration.connect.key({
             integrationID: value.integrationID,
-            key: value.key,
+            key,
             label: value.label,
             ...at(value?.location),
           }, { throwOnError: true })
           await root(value.location).auth.set({
             providerID: value.integrationID,
-            auth: { type: "api", key: value.key },
+            auth: { type: "api", key },
           })
         },
       },

@@ -163,6 +163,8 @@ export const dict = {
   "ui.message.revertMessage": "메시지 되돌리기",
   "ui.message.copyResponse": "응답 복사",
   "ui.message.copied": "복사됨!",
+  "ui.toolBubble.copy": "복사",
+  "ui.toolBubble.copied": "복사됨!",
   "ui.message.interrupted": "중단됨",
   "ui.message.queued": "대기열에 추가됨",
   "ui.message.attachment.alt": "첨부 파일",

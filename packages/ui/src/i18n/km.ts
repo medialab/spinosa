@@ -13,6 +13,7 @@ export const dict = {
   "ui.sessionReview.image.loading": "កំពុងផ្ទុក...",
   "ui.sessionReview.image.placeholder": "រូបភាព",
   "ui.sessionReview.largeDiff.title": "ភាពខុសគ្នាធំពេកក្នុងការបង្ហាញ",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "ដែនកំណត់៖ {{limit}} បានផ្លាស់ប្តូរបន្ទាត់។ បច្ចុប្បន្ន៖ {{current}} បានផ្លាស់ប្តូរបន្ទាត់។",
   "ui.sessionReview.largeDiff.renderAnyway": "Render យ៉ាងណាក៏ដោយ",
@@ -180,6 +181,8 @@ export const dict = {
   "ui.message.revertMessage": "ត្រឡប់សារ",
   "ui.message.copyResponse": "ចម្លងការឆ្លើយតប",
   "ui.message.copied": "ចម្លង",
+  "ui.toolBubble.copy": "ចម្លង",
+  "ui.toolBubble.copied": "ចម្លង!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "រំខាន",

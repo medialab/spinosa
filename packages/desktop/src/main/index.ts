@@ -17,6 +17,7 @@ import { CHANNEL } from "./constants"
 import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
+import { shouldCaptureNetworkLog } from "./diagnostics"
 import { formatDiagnosticErrorChain } from "./diagnostics"
 import { absoluteAppRelaunchArgs } from "./relaunch"
 import { createMenu } from "./menu"
@@ -365,13 +366,15 @@ const main = Effect.gen(function* () {
   const updateTimer = setInterval(() => void updater.check(), 10 * 60 * 1000)
   updateTimer.unref()
   app.once("will-quit", () => clearInterval(updateTimer))
-  yield* Effect.promise(() => startNetLog()).pipe(
-    Effect.catch((error) =>
-      Effect.sync(() => {
-        writeLog("network", "failed to start net log", { error }, "warn")
-      }),
-    ),
-  )
+  if (shouldCaptureNetworkLog(process.env)) {
+    yield* Effect.promise(() => startNetLog()).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          writeLog("network", "failed to start net log", { error }, "warn")
+        }),
+      ),
+    )
+  }
 
   const loadingTask = yield* Effect.gen(function* () {
     writeLog("main", "spawning embedded spinosa sidecar")

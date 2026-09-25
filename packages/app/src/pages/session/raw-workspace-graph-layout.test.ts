@@ -69,14 +69,14 @@ describe("raw workspace graph layout", () => {
     expect(separation(longer)).toBeGreaterThan(separation(normal))
   })
 
-  test("keeps unlinked files as individual orphans rather than fake folder communities", () => {
+  test("groups unlinked files by immediate folder without adding file links", () => {
     const nodes = ["a", "b", "c", "d"].map((name, index) => ({
       path: `raw/Ex${index < 2 ? 1 : 2}/${name}.md`,
       fileName: `${name}.md`,
     }))
     const clusters = clusterRawWorkspaceGraph(nodes, [])
     expect(clusters.map((cluster) => cluster.nodePaths)).toEqual([
-      ["raw/Ex1/a.md"], ["raw/Ex1/b.md"], ["raw/Ex2/c.md"], ["raw/Ex2/d.md"],
+      ["raw/Ex1/a.md", "raw/Ex1/b.md"], ["raw/Ex2/c.md", "raw/Ex2/d.md"],
     ])
   })
 

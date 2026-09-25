@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import type { DesktopTheme, ResolvedTheme, ThemePaletteColors, ThemeSeedColors } from "./types"
 import { resolveTheme, resolveThemeVariant, themeToCss } from "./resolve"
+import oc2Theme from "./themes/oc-2.json"
+import { resolveThemeVariantV2 } from "./v2/resolve"
 
 const seeds: ThemeSeedColors = {
   neutral: "#6b7280",
@@ -103,4 +105,26 @@ test("themeToCss serializes tokens in insertion order", () => {
   expect(themeToCss({ first: "#111111", second: "var(--second)" })).toBe(
     "--first: #111111;\n  --second: var(--second);",
   )
+})
+
+test("OC-2 light uses warm neutral surfaces and ink actions without changing status colors", () => {
+  const light = resolveThemeVariant(oc2Theme.light as DesktopTheme["light"], false)
+  const v2 = resolveThemeVariantV2(oc2Theme.light as DesktopTheme["light"], false)
+
+  expect(light["background-base"]).toBe("#f5f5f5")
+  expect(light["background-strong"]).toBe("#fafafa")
+  expect(light["text-strong"]).toBe("#292524")
+  expect(light["button-primary-base"]).toBe("#292524")
+  expect(light["border-weak-base"]).toBe("#e7e5e4")
+  expect(v2["v2-background-bg-base"]).toBe("var(--v2-grey-100)")
+  expect(v2["v2-background-bg-deep"]).toBe("var(--v2-grey-200)")
+  expect(v2["v2-grey-100"]).toBe("#f5f5f5ff")
+  expect(v2["v2-blue-600"]).toBe("#3b5cf6ff")
+  expect(v2["v2-state-fg-info"]).toBe("var(--v2-blue-800)")
+  expect(oc2Theme.light.palette.error).toBe("#fc533a")
+  expect(oc2Theme.light.palette.success).toBe("#12c905")
+
+  const dark = resolveThemeVariant(oc2Theme.dark as DesktopTheme["dark"], true)
+  expect(dark["background-base"]).toBe("#121212")
+  expect(dark["button-primary-base"]).toBe("#ede8e4")
 })

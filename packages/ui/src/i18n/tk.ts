@@ -179,6 +179,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "Habary yzyna öwürmek",
   "ui.message.copyResponse": "Jogap göçüriň",
   "ui.message.copied": "Göçürildi",
+  "ui.toolBubble.copy": "Göçüriň",
+  "ui.toolBubble.copied": "Göçürildi!",
   "ui.message.duration.seconds": "{{count}}",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "Arakesdi",

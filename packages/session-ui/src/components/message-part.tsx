@@ -35,7 +35,7 @@ import { useData } from "../context"
 import { useFileComponent } from "@spinosa/ui/context/file"
 import { useDialog } from "@spinosa/ui/context/dialog"
 import { type UiI18n, useI18n } from "@spinosa/ui/context/i18n"
-import { BasicTool, GenericTool } from "./basic-tool"
+import { BasicTool, GenericTool, ToolBubble, toolBubbleCopyText, toolBubbleTag } from "./basic-tool"
 import { Accordion } from "@spinosa/ui/accordion"
 import { StickyAccordionHeader } from "@spinosa/ui/sticky-accordion-header"
 import { Collapsible } from "@spinosa/ui/collapsible"
@@ -1117,9 +1117,20 @@ export function ContextToolGroup(props: {
               const running = createMemo(
                 () => partAccessor().state.status === "pending" || partAccessor().state.status === "running",
               )
+              const bubble = createMemo(() => {
+                const part = partAccessor()
+                const input = part.state.input as Record<string, unknown> | undefined
+                const metadata = "metadata" in part.state ? part.state.metadata as Record<string, unknown> : undefined
+                return {
+                  tag: toolBubbleTag(part.tool),
+                  copyText: toolBubbleCopyText(part.tool, input, metadata) || part.tool,
+                  failed: part.state.status === "error",
+                }
+              })
               return (
                 <div data-slot="context-tool-group-item">
-                  <div data-component="tool-trigger">
+                  <div data-component="tool-trigger" data-has-bubble="">
+                    <ToolBubble {...bubble()} />
                     <div data-slot="basic-tool-tool-trigger-content">
                       <div data-slot="basic-tool-tool-info">
                         <div data-slot="basic-tool-tool-info-structured">

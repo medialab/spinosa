@@ -35,11 +35,18 @@ export function DialogQueuedPrompts(props: {
       >
         {(item) => (
           <div class="w-full flex items-center gap-2">
-            <span class="truncate flex-1 min-w-0 text-left font-normal">{item.text}</span>
+            <span
+              id={`queued-prompt-${item.id}`}
+              class="line-clamp-2 min-w-0 flex-1 break-words text-left font-normal"
+              title={item.text}
+            >
+              {item.text}
+            </span>
             <div class="flex shrink-0 gap-1" onClick={stop}>
               <Button
                 size="small"
                 variant="ghost"
+                aria-describedby={`queued-prompt-${item.id}`}
                 onClick={() => {
                   props.onSteer(item.id)
                   dialog.close()
@@ -47,7 +54,12 @@ export function DialogQueuedPrompts(props: {
               >
                 {language.t("dialog.queued.steer")}
               </Button>
-              <Button size="small" variant="ghost" onClick={() => props.onRemove(item.id)}>
+              <Button
+                size="small"
+                variant="ghost"
+                aria-describedby={`queued-prompt-${item.id}`}
+                onClick={() => props.onRemove(item.id)}
+              >
                 {language.t("common.remove")}
               </Button>
             </div>

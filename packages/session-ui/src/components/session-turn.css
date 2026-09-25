@@ -136,26 +136,30 @@
   }
 
   [data-slot="session-turn-diffs-toggle"] {
+    background: none;
+    border: 0;
+    padding: 0;
+    text-align: left;
     color: var(--text-interactive-base);
     font-family: var(--font-family-sans);
     font-size: var(--font-size-base);
     font-weight: var(--font-weight-regular);
     line-height: var(--line-height-large);
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s ease;
     margin-left: 4px;
   }
 
-  [data-component="session-turn-diffs-group"]:hover [data-slot="session-turn-diffs-toggle"] {
-    opacity: 1;
-  }
-
-  [data-component="session-turn-diffs-group"][data-show-all] [data-slot="session-turn-diffs-toggle"] {
-    opacity: 1;
+  [data-slot="session-turn-diffs-toggle"]:focus-visible,
+  [data-slot="session-turn-diffs-more"]:focus-visible {
+    outline: 2px solid var(--border-selected);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 
   [data-slot="session-turn-diffs-more"] {
+    background: none;
+    border: 0;
+    text-align: left;
     color: var(--text-weak);
     font-family: var(--font-family-sans);
     font-size: var(--font-size-small);

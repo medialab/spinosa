@@ -235,7 +235,7 @@ describe("createCompatibleApi", () => {
 
     await api.integration.connect.key({
       integrationID: "openrouter",
-      key: "secret",
+      key: "test-secret-key",
       location: { directory: "/repo" },
     })
 
@@ -246,6 +246,15 @@ describe("createCompatibleApi", () => {
     ])
     expect(requests[1]!.headers.get("x-spinosa-directory")).toBe("%2Frepo")
     expect(requests[2]!.headers.get("x-spinosa-directory")).toBeNull()
+  })
+
+  test("uses the same key hygiene on V1", async () => {
+    const { api, requests } = setup("v1")
+    await api.integration.connect.key({ integrationID: "openrouter", key: " Bearer example-test-key\n" })
+    expect(await requests[0]!.json()).toMatchObject({ type: "api", key: "example-test-key" })
+    const malformed = setup("v1")
+    await expect(malformed.api.integration.connect.key({ integrationID: "openrouter", key: "bad key" })).rejects.toThrow()
+    expect(malformed.requests).toHaveLength(0)
   })
 
   test("disposes the V1 instance after completing provider OAuth", async () => {
@@ -682,16 +691,29 @@ describe("createCompatibleApi V2 namespaces", () => {
     const { api, requests } = setup("v2", undefined, v2Routes)
     await api.integration.connect.key({
       integrationID: "openai",
-      key: "secret",
+      key: "test-secret-key",
       location: { directory: "/repo" },
     })
     expect(requests.map((request) => `${request.method} ${pathOf(request.url)}`)).toEqual([
       "POST /api/integration/openai/connect/key",
       "PUT /auth/openai",
     ])
-    expect(await requests[0]!.json()).toMatchObject({ key: "secret" })
-    expect(await requests[1]!.json()).toMatchObject({ type: "api", key: "secret" })
+    expect(await requests[0]!.json()).toMatchObject({ key: "test-secret-key" })
+    expect(await requests[1]!.json()).toMatchObject({ type: "api", key: "test-secret-key" })
     expect(requests[1]!.headers.get("x-spinosa-directory")).toBe("%2Frepo")
+  })
+
+  test("normalizes pasted provider keys before either credential store sees them", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await api.integration.connect.key({ integrationID: "openai", key: "  Bearer example-test-key\n" })
+    expect(await requests[0]!.json()).toMatchObject({ key: "example-test-key" })
+    expect(await requests[1]!.json()).toMatchObject({ key: "example-test-key" })
+  })
+
+  test("rejects malformed provider keys before writing credentials", async () => {
+    const { api, requests } = setup("v2", undefined, v2Routes)
+    await expect(api.integration.connect.key({ integrationID: "openai", key: "bad key" })).rejects.toThrow()
+    expect(requests).toHaveLength(0)
   })
 
   test("surfaces key validation failures instead of swallowing them", async () => {
@@ -703,7 +725,7 @@ describe("createCompatibleApi V2 namespaces", () => {
     // The SDK wraps non-2xx bodies into Errors carrying the parsed body and
     // status under .cause; the dialog formats .message for the form.
     const error = await api
-      .integration.connect.key({ integrationID: "openai", key: "bad" })
+      .integration.connect.key({ integrationID: "openai", key: "bad-test-key" })
       .then(() => undefined)
       .catch((value: unknown) => value)
     expect(error).toBeInstanceOf(Error)

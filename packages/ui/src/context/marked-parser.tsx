@@ -12,9 +12,32 @@ export function createMarkdownParser(highlight: (code: string, language: string)
         },
       },
     },
+    doubleTildeDel,
     katexExtension,
     markedShiki({ highlight }),
   )
+}
+
+/**
+ * marked v17 accepts a single `~` as a strikethrough delimiter, which swallows
+ * a backtick glued to the tilde and corrupts the adjacent code span
+ * (`~`code`` misparses). GFM only defines `~~`, so this override handles just
+ * double tildes; returning undefined skips the built-in single-tilde rule and
+ * leaves lone tildes literal.
+ */
+export const doubleTildeDel: MarkedExtension = {
+  tokenizer: {
+    del(src) {
+      const match = /^(~~)(?=[^\s~])((?:\\[\s\S]|[^\\])*?(?:\\[\s\S]|[^\s~\\]))\1(?=[^~]|$)/.exec(src)
+      if (!match) return
+      return {
+        type: "del",
+        raw: match[0],
+        text: match[2],
+        tokens: this.lexer.inlineTokens(match[2]),
+      }
+    },
+  },
 }
 
 const inlineMathRegex = /^\\\(((?:\\.|[^\\\n])*?)\\\)/

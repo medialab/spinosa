@@ -179,6 +179,8 @@ export const dict = {
   "ui.message.revertMessage": "Мессежийг буцаах",
   "ui.message.copyResponse": "Хариултыг хуулах",
   "ui.message.copied": "Хуулсан",
+  "ui.toolBubble.copy": "Хуулбарлах",
+  "ui.toolBubble.copied": "Хуулсан!",
   "ui.message.duration.seconds": "{{count}}сек",
   "ui.message.duration.minutesSeconds": "{{minutes}}м {{seconds}}сек",
   "ui.message.interrupted": "Тасалдсан",

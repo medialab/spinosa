@@ -13,6 +13,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReview.image.loading": "লোড হচ্ছে...",
   "ui.sessionReview.image.placeholder": "ছবি",
   "ui.sessionReview.largeDiff.title": "রেন্ডার করার জন্য পার্থক্য খুব বড়",
+  "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
   "ui.sessionReview.largeDiff.meta":
     "সীমা: {{limit}} লাইন পরিবর্তন করা হয়েছে। বর্তমান: {{current}} লাইন পরিবর্তন করা হয়েছে।",
   "ui.sessionReview.largeDiff.renderAnyway": "যাইহোক রেন্ডার",
@@ -27,6 +28,7 @@ export const dict: Record<string, string> = {
   "ui.sessionReviewV2.nextFile": "পরবর্তী ফাইল",
   "ui.sessionReviewV2.diffView": "ভিন্ন দৃশ্য",
   "ui.sessionReviewV2.empty.noGit.title": "কোন ট্র্যাক করা পরিবর্তন",
+  "ui.sessionReviewV2.empty.noGit.description": "Track, review, and undo changes in this project",
   "ui.sessionReviewV2.empty.noGit.description":
     "এই প্রকল্পের পরিবর্তনগুলি ট্র্যাক করুন, পর্যালোচনা করুন এবং পূর্বাবস্থায় ফেরান৷",
   "ui.sessionReviewV2.empty.noGit.action": "Git সংগ্রহস্থল তৈরি করুন",
@@ -181,6 +183,8 @@ export const dict: Record<string, string> = {
   "ui.message.revertMessage": "বার্তা প্রত্যাবর্তন করুন",
   "ui.message.copyResponse": "কপি প্রতিক্রিয়া",
   "ui.message.copied": "কপি করা হয়েছে",
+  "ui.toolBubble.copy": "কপি",
+  "ui.toolBubble.copied": "কপি করা হয়েছে!",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}মি {{seconds}}সেকেন্ড",
   "ui.message.interrupted": "বাধাপ্রাপ্ত",

@@ -1,7 +1,7 @@
 import { base64Encode } from "@spinosa/kernel-core/util/encode"
 import type { Page } from "@playwright/test"
 import { mockOpenCodeServer } from "../../utils/mock-server"
-import { expectAppVisible, expectSessionTitle } from "../../utils/waits"
+import { expectAppVisible } from "../../utils/waits"
 import { expect } from "../benchmark"
 
 const directory = "C:/OpenCode/TimelineStateRegression"
@@ -144,7 +144,7 @@ export async function setupTimelineBenchmark(
   const scroller = page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
   const text = page.locator(`[data-timeline-part-id="${textPartID}"]`).first()
   await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
-  await expectSessionTitle(page, title)
+  await expect(page.locator("[data-loaded-session-id]")).toHaveAttribute("data-loaded-session-id", sessionID)
   await expectAppVisible(scroller)
   return {
     scroller,

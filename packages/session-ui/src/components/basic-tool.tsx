@@ -75,6 +75,20 @@ export function toolBubbleTag(tool: string): string {
   return fallback || "TOOL"
 }
 
+export function toolDisplayName(tool: string): string {
+  const normalized = tool.trim()
+  if (!normalized) return normalized
+  return normalized
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((part, index) => {
+      const lower = part.toLowerCase()
+      if (index === 0) return lower
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join("")
+}
+
 function firstStringField(input: Record<string, unknown> | undefined, keys: string[]): string | undefined {
   if (!input) return undefined
   for (const key of keys) {
@@ -143,12 +157,26 @@ async function copyBubbleText(text: string): Promise<boolean> {
       return true
     }
   } catch {
-    // Clipboard unavailable (permissions, insecure context) — leave the bubble unchanged.
+    // Fall back to document copy when Clipboard API access is unavailable.
   }
-  return false
+  if (typeof document === "undefined" || !document.body) return false
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.setAttribute("readonly", "")
+  textarea.style.position = "fixed"
+  textarea.style.opacity = "0"
+  document.body.appendChild(textarea)
+  try {
+    textarea.select()
+    return document.execCommand("copy")
+  } catch {
+    return false
+  } finally {
+    textarea.remove()
+  }
 }
 
-function ToolBubble(props: { tag: string; copyText: string; failed?: boolean }) {
+export function ToolBubble(props: { tag: string; copyText: string; failed?: boolean }) {
   const i18n = useI18n()
   const [copied, setCopied] = createSignal(false)
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -337,6 +365,7 @@ export function BasicTool(props: BasicToolProps) {
   const trigger = () => (
     <div
       data-component="tool-trigger"
+      data-has-bubble={bubble() ? "" : undefined}
       data-clickable={props.clickable ? "true" : undefined}
       data-hide-details={props.hideDetails ? "true" : undefined}
     >
@@ -483,14 +512,12 @@ export function GenericTool(props: {
   metadata?: Record<string, unknown>
   output?: string
 }) {
-  const i18n = useI18n()
-
   return (
     <BasicTool
       icon="mcp"
       status={props.status}
       trigger={{
-        title: i18n.t("ui.basicTool.called", { tool: props.tool }),
+        title: toolDisplayName(props.tool),
         subtitle: label(props.input),
         args: args(props.input),
       }}
