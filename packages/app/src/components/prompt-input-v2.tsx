@@ -28,6 +28,18 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { showToast } from "@/utils/toast"
+
+const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  build: "Orchestrator-Editor",
+  plan: "Orchestrator-Planner",
+}
+
+export function agentDisplayName(name: string): string {
+  return (
+    AGENT_DISPLAY_NAMES[name] ??
+    name.replace(/\b\w/g, (c) => c.toUpperCase())
+  )
+}
 import { agentColor } from "@/utils/agent"
 import { PromptInputV2, type PromptInputV2Suggestion } from "@spinosa/session-ui/v2/prompt-input"
 import {
@@ -423,7 +435,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       get agent() {
         return props.controls.agents.visible && props.controls.agents.options.length > 0
           ? {
-              options: () => props.controls.agents.options.map((name) => ({ id: name, label: name })),
+              options: () => props.controls.agents.options.map((name) => ({ id: name, label: agentDisplayName(name) })),
               current: () => props.controls.agents.current,
               onSelect: (value: string) => props.controls.agents.select(value),
               keybind: () => command.keybindParts("agent.cycle"),

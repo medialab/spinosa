@@ -1766,7 +1766,7 @@ export function Prompt(props: PromptProps) {
       return `Enter a shell command… "${example}"`
     }
     if (!list().length) return undefined
-    return `Describe the task… "${list()[store.placeholder % list().length]}"`
+    return `Describe your task or use / for commands… "${list()[store.placeholder % list().length]}"`
   })
 
   const spinnerDef = createMemo(() => {

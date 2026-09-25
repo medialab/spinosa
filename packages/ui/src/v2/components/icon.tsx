@@ -25,6 +25,10 @@ const icons = {
     viewBox: "0 0 16 16",
     body: `<path d="M2.5 7.5 8 2.5l5.5 5M4 6.6V13.5h8V6.6" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round"/>`,
   },
+  "arrow-left": {
+    viewBox: "0 0 16 16",
+    body: `<path d="M10 3.5 5.5 8l4.5 4.5M5.8 8h8.7" stroke="currentColor" stroke-linecap="square"/>`,
+  },
   help: {
     viewBox: "0 0 16 16",
     body: `<path d="M6.33345 6.33349V5.00015H9.66679V7.00015L8.00015 8.00015V9.66679M8.27485 11.6819H7.71897M14.4446 8.00011C14.4446 11.5593 11.5593 14.4446 8.00011 14.4446C4.44094 14.4446 1.55566 11.5593 1.55566 8.00011C1.55566 4.44094 4.44094 1.55566 8.00011 1.55566C11.5593 1.55566 14.4446 4.44094 14.4446 8.00011Z" stroke="currentColor" stroke-linecap="square"/>`,

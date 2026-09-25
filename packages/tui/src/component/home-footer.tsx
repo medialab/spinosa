@@ -154,7 +154,7 @@ export function HomeFooter() {
                 </>
               )}
             </For>
-            <text fg={theme.textMuted}>{" · "}Type / for commands · tab agents · ctrl+p palette</text>
+            <text fg={theme.textMuted}>{" · "}ctrl+p palette</text>
           </box>
         }
       >

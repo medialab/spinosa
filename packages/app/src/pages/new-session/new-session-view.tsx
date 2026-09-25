@@ -1,7 +1,10 @@
 import { useDialog } from "@spinosa/ui/context/dialog"
 import { Tooltip } from "@spinosa/ui/tooltip"
 import { IconButton } from "@spinosa/ui/icon-button"
-import { Show, type Accessor } from "solid-js"
+import { Button } from "@spinosa/ui/button"
+import { Dialog } from "@spinosa/ui/dialog"
+import { TextField } from "@spinosa/ui/text-field"
+import { Show, createSignal, type Accessor } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useNavigate } from "@solidjs/router"
 import { PromptInputV2Composer } from "@/components/prompt-input-v2"
@@ -35,24 +38,49 @@ export function NewSessionView(props: {
     const worktree = workspaceWorktree()
     if (!worktree) return
     const name = workspaceName()
-    void import("@/components/dialog-confirm").then((x) =>
-      dialog.show(() => (
-        <x.DialogConfirm
-          title={language.t("dialog.workspace.delete.title")}
-          message={language.t("dialog.workspace.delete.message", { name })}
-          confirmLabel={language.t("common.delete")}
-          onConfirm={() => {
-            layout.projects.close(worktree)
-            showToast({
-              variant: "success",
-              title: language.t("toast.workspace.delete.success.title"),
-              description: name,
-            })
-            navigate("/")
-          }}
-        />
-      )),
-    )
+    dialog.show(() => {
+      const [value, setValue] = createSignal("")
+      const matches = () => value().trim() === name.trim() && name.trim().length > 0
+      return (
+        <Dialog title={language.t("dialog.workspace.delete.title")}>
+          <form
+            class="flex flex-col gap-4 px-4 py-3"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!matches()) return
+              layout.projects.close(worktree)
+              showToast({
+                variant: "success",
+                title: language.t("toast.workspace.delete.success.title"),
+                description: name,
+              })
+              dialog.close()
+              navigate("/")
+            }}
+          >
+            <p class="text-sm opacity-80">{language.t("dialog.workspace.delete.message", { name })}</p>
+            <p class="text-sm opacity-80">{language.t("dialog.workspace.delete.confirm.instruction", { name })}</p>
+            <TextField
+              autofocus
+              value={value()}
+              onChange={setValue}
+              placeholder={language.t("dialog.workspace.delete.confirm.placeholder")}
+              label={language.t("dialog.workspace.delete.confirm.placeholder")}
+              hideLabel
+              error={value().length > 0 && !matches() ? language.t("dialog.workspace.delete.confirm.mismatch") : undefined}
+            />
+            <div class="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => dialog.close()}>
+                {language.t("common.cancel")}
+              </Button>
+              <Button type="submit" variant="secondary" disabled={!matches()}>
+                {language.t("common.delete")}
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      )
+    })
   }
 
   return (
@@ -66,7 +94,7 @@ export function NewSessionView(props: {
             <IconButton
               icon="trash"
               variant="ghost"
-              class="titlebar-icon"
+              class="titlebar-icon new-session-delete-button"
               disabled={!workspaceWorktree()}
               onClick={confirmDeleteWorkspace}
               aria-label={language.t("dialog.workspace.delete.title")}
