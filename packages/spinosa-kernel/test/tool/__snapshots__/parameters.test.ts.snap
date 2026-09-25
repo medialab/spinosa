@@ -290,7 +290,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_report 1`] = `
       "type": "string",
     },
     "filename": {
-      "description": "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore.",
+      "description": "Exact runtime-assigned report filename in NN_{topic-slug}.md form. Do not choose a sequence number or slug. Must start with a 2-digit number followed by an underscore.",
       "type": "string",
     },
     "goal": {
@@ -298,7 +298,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_report 1`] = `
       "type": "string",
     },
     "pipeline": {
-      "description": "Agent chain, e.g. 'searcher → writer → verifier → evaluator'",
+      "description": "Runtime workflow ID/version and completed node IDs from run.json; do not provide a manually selected agent chain",
       "type": "string",
     },
     "query": {
@@ -312,7 +312,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_report 1`] = `
     "reproducibility": {
       "properties": {
         "agents": {
-          "description": "Agent chain",
+          "description": "Agent IDs recorded by run.json",
           "type": "string",
         },
         "filesRead": {
@@ -684,7 +684,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_map 1`] = `
       "type": "string",
     },
     "files": {
-      "description": "raw/ paths for begin",
+      "description": "complete assigned raw/ paths for begin and write_extraction",
       "items": {
         "type": "string",
       },
