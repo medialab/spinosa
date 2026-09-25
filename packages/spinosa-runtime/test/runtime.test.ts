@@ -53,11 +53,11 @@ describe("research runtime", () => {
 })
 
 describe("agent contracts", () => {
-  test("searcher may ask to screen grep hits with jev", () => {
+  test("searcher policy is read-only grep/glob screening", () => {
     expect(AGENT_CONTRACTS["spinosa-searcher"]?.defaultToolPolicy).toContainEqual({
-      tool: "jev",
+      tool: "grep",
       resource: "*",
-      effect: "ask",
+      effect: "allow",
     })
   })
 })

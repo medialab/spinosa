@@ -21,10 +21,7 @@ const READ_ONLY: readonly ToolRule[] = [
   { tool: "write", resource: "agent_reports/*", effect: "allow" },
 ]
 
-const SEARCHER: readonly ToolRule[] = [
-  ...READ_ONLY,
-  { tool: "jev", resource: "*", effect: "ask" },
-]
+const SEARCHER: readonly ToolRule[] = [...READ_ONLY]
 
 const WRITER: readonly ToolRule[] = [
   ...READ_ONLY,

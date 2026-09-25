@@ -471,16 +471,14 @@ it.instance("default permission includes doom_loop, web, and external_directory 
     const build = yield* load((svc) => svc.get("build"))
     expect(evalPerm(build, "doom_loop")).toBe("ask")
     expect(evalPerm(build, "web")).toBe("ask")
-    expect(evalPerm(build, "jev")).toBe("ask")
     expect(evalPerm(build, "external_directory")).toBe("ask")
   }),
 )
 
-it.instance("explore agent asks before web and jev", () =>
+it.instance("explore agent asks before web", () =>
   Effect.gen(function* () {
     const explore = yield* load((svc) => svc.get("explore"))
     expect(evalPerm(explore, "web")).toBe("ask")
-    expect(evalPerm(explore, "jev")).toBe("ask")
   }),
 )
 

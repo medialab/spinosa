@@ -33,7 +33,6 @@ import { Parameters as Todo } from "../../src/tool/todo"
 import { Parameters as WebFetch } from "../../src/tool/webfetch"
 import { Parameters as WebSearch } from "../../src/tool/websearch"
 import { Parameters as Web } from "../../src/tool/web"
-import { Parameters as Jev } from "../../src/tool/jev"
 import { Parameters as Write } from "../../src/tool/write"
 
 const parse = <S extends Schema.Decoder<unknown>>(schema: S, input: unknown): S["Type"] =>
@@ -70,7 +69,6 @@ describe("tool parameters", () => {
     test("webfetch", () => expect(toJsonSchema(WebFetch)).toMatchSnapshot())
     test("websearch", () => expect(toJsonSchema(WebSearch)).toMatchSnapshot())
     test("web", () => expect(toJsonSchema(Web)).toMatchSnapshot())
-    test("jev", () => expect(toJsonSchema(Jev)).toMatchSnapshot())
     test("write", () => expect(toJsonSchema(Write)).toMatchSnapshot())
 
     test("inlines named child schemas for provider compatibility", () => {
@@ -432,20 +430,6 @@ describe("tool parameters", () => {
     })
     test("rejects empty object", () => {
       expect(accepts(Web, {})).toBe(false)
-    })
-  })
-
-  describe("jev", () => {
-    test("accepts query plus passages", () => {
-      const value = parse(Jev, {
-        query: "causes of reversal",
-        passages: [{ path: "raw/earth.md", text: "geomagnetic reversal" }],
-      })
-      expect(value.query).toBe("causes of reversal")
-      expect(value.passages).toHaveLength(1)
-    })
-    test("rejects missing passages", () => {
-      expect(accepts(Jev, { query: "causes of reversal" })).toBe(false)
     })
   })
 

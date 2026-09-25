@@ -1,6 +1,6 @@
 import type { Hooks, PluginInput } from "@spinosa/plugin"
 
-/** Same id as `AUTH_ID` in `tool/jev.ts`. Kept local so this plugin does not import the tool module. */
+/** Provider id for TypeSafe auth. Kept local so this plugin does not import any tool module. */
 const PROVIDER_ID = "typesafe"
 
 export async function TypesafeAuthPlugin(_input: PluginInput): Promise<Hooks> {

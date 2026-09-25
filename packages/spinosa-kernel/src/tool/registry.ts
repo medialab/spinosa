@@ -35,7 +35,6 @@ import { Provider } from "@/provider/provider"
 import { Auth } from "@/auth"
 
 import { webSearchEnabled } from "./websearch"
-import { JevTool } from "./jev"
 import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
@@ -104,7 +103,6 @@ const layer = Layer.effect(
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
     const web = yield* WebTool
-    const jev = yield* JevTool
     const shell = yield* ShellTool
     const globtool = yield* GlobTool
     const writetool = yield* WriteTool
@@ -221,7 +219,6 @@ const layer = Layer.effect(
           task: Tool.init(task),
           web: Tool.init(web),
           todo: Tool.init(todo),
-          jev: Tool.init(jev),
           skill: Tool.init(skilltool),
           spinosaroute: Tool.init(spinosaroute),
           spinosaframe: Tool.init(spinosaframe),
@@ -252,7 +249,6 @@ const layer = Layer.effect(
             tool.task,
             tool.web,
             tool.todo,
-            tool.jev,
             tool.skill,
             tool.spinosaroute,
             tool.spinosaframe,

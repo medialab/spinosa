@@ -92,5 +92,4 @@ export const KERNEL_RELEASE_TESTS = [
   "test/provider/public-info.test.ts",
   "test/server/httpapi-provider.test.ts",
   "test/tool/parameters.test.ts",
-  "test/tool/jev.test.ts",
 ] as const

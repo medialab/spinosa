@@ -405,22 +405,6 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               }
             }
 
-            if (permission === "jev") {
-              const query = typeof data.query === "string" ? data.query : ""
-              const count = typeof data.count === "number" ? data.count : 0
-              return {
-                icon: "◈",
-                title: `Jev screen ${count} passages`,
-                body: (
-                  <Show when={query}>
-                    <box paddingLeft={1}>
-                      <text fg={theme.textMuted}>{"Query: " + query}</text>
-                    </box>
-                  </Show>
-                ),
-              }
-            }
-
             if (permission === "doom_loop") {
               return {
                 icon: "⟳",

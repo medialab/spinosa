@@ -1761,7 +1761,6 @@ export type PermissionConfig =
       webfetch?: PermissionActionConfig
       websearch?: PermissionActionConfig
       web?: PermissionActionConfig
-      jev?: PermissionActionConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig
       skill?: PermissionRuleConfig

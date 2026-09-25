@@ -1,9 +1,0 @@
-Screen corpus passages against a query. Use after grep (or after listing map hits) and before you read files.
-
-This is not a writer and not a searcher. You still grep/glob yourself. Then pass the query plus the hit snippets here. Jev returns a calibrated score per passage: read, maybe, or skip. Read only the `read` band next.
-
-Pass the researcher question in `query`. Pass each grep hit as `{ path, text }` (include the matching line plus a little context). Do not invent paths. Do not send whole files.
-
-Limits: at most 32 passages per call, 800 characters each. Batch if you have more. Output is ranked; the packet is still yours to write.
-
-This call sends passage text to TypeSafe over HTTPS. The user must allow it (same class of permission as web). Store the key with `spinosa auth login --provider typesafe`. TYPESAFE_API_KEY is an override only.
