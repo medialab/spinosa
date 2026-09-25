@@ -1,85 +1,58 @@
-# Goal Artifact Template
+# Runtime Goal Artifact
 
-The orchestrator writes this file **before** dispatching any sub-agent.
-Path: `agent_reports/g_{session_id}.md`
+The runtime writes this human-readable mirror before executing a workflow. The
+control plane is `.spinosa/runs/{run_id}/run.json`; never edit this mirror to
+change routing, dependencies, gates, retries, paths, or terminal state.
+
+The runtime-generated artifact contains these sections:
 
 ```markdown
 ---
 type: goal
-route: non-fast-path
-session_id: YYYYMMDD-{short_hash}
-created_at: YYYY-MM-DDTHH:MM:SS+TZ
-status: in_progress
+run_id: [runtime run ID]
+workflow_id: [selected workflow ID]
+workflow_version: [selected workflow version]
+operation: [runtime operation]
+strategy: [runtime-selected strategy]
+scope: [runtime scope]
+coverage: [opportunistic | sufficient | representative | exhaustive]
+verification: [runtime verification policy]
+status: running
 ---
 
 # Goal Artifact
 
 ## Cleaned Prompt
+[Runtime-normalized request]
 
-[One paragraph: user's request, stripped of noise]
+## Route Decision
+[Mode, operation, strategy, scope, coverage, verification, reason, confidence]
 
-## Goal Statement
+## Research Objective
+[Workflow-level objective]
 
-[What must be true when the route completes]
+## Scope and Denominator
+[Runtime scope, coverage contract, and expected outputs]
 
 ## Success Criteria
+[Workflow completion criteria]
 
-- [Measurable gate 1]
-- [Measurable gate 2]
+## Workflow Plan
+| Step | Kind | Agent | Depends on | Expected output |
+|------|------|-------|------------|-----------------|
+[Selected workflow node rows]
 
-## Planned Chain
-
-[Initial agent sequence — adapts after each inspect step.
- Example: searcher → analyst → serendippo → writer → verifier → evaluator]
-
-## First Agent
-
-`spinosa-searcher` (or other)
-
-## First Output Gate
-
-[What the first agent's artifact must contain to pass inspect]
-
-## Artifact Paths (session-scoped)
-
+## Artifact Paths
 | Role | Path |
 |------|------|
-| Goal | `agent_reports/g_{session_id}.md` |
-| Evidence | `agent_reports/evidence_packet_{session_id}.md` (parallel: `evidence_packet_{session_id}_{slug}.md`) |
-| Analysis | `agent_reports/analysis_{session_id}.md` (if analyst runs) |
-| Serendipity | `agent_reports/serendipity_{session_id}.md` (if serendippo runs) |
-| Report | `agent_reports/NN_{topic-slug}.md` — slug = plain-language topic (see `artifact-naming.md`) |
-| Verifier | In-place edit on terminal `NN_*.md` (`status` + corrections); optional audit log only if goal lists one |
-| Evaluator | `agent_reports/e_{session_id}.md` |
+[Exact paths from the selected workflow]
 
-## Route Decisions
+## Step Decisions
+[Runtime-recorded workflow events]
 
-Append one line after each inspect step. Example:
-
-- YYYY-MM-DD HH:MM — Searcher gate PASS → analyst
-- YYYY-MM-DD HH:MM — Analyst gate PASS → writer (serendippo skipped: analyst taxonomy sufficient)
-- YYYY-MM-DD HH:MM — Writer gate PASS → verifier
-- YYYY-MM-DD HH:MM — Verifier pass_with_corrections → evaluator
-- YYYY-MM-DD HH:MM — Evaluator no_edit → deliver
-
-## Sub-Agent Handoffs
-
-Before each dispatch, append a fenced block (markers only — not a spawn substitute):
-
-```spinosa-subagent
-agent: spinosa-searcher
-role: Searcher
-task: [task for this step]
-inputs:
-  - goal_artifact_path
-  - session_id
-outputs:
-  - agent_reports/evidence_packet_{session_id}.md
-```
+## Blockers and Limitations
+[Runtime-recorded blockers and limitations]
 ```
 
-## Rules
-
-- Record every inspect decision under `## Route Decisions` — do not rely on chat memory.
-- List planned artifact paths up front so later agents and recovery know where to look.
-- Do not paste evidence or raw excerpts into the goal file.
+Workers receive their individual node scope, inputs, and exact output path
+separately. They do not infer work from this table or select the next node.
