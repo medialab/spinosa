@@ -11,6 +11,7 @@
     "postinstall": "bun run --cwd packages/core fix-node-pty",
     "typecheck": "bun run --cwd packages/core typecheck && bun run --cwd packages/sdk typecheck && bun run --cwd packages/tui typecheck && bun run --cwd packages/spinosa-kernel typecheck && bun run --cwd packages/spinosa-core typecheck && bun run --cwd packages/spinosa-runtime typecheck && bun run --cwd packages/spinosa-cli typecheck",
     "typecheck:all": "bun scripts/typecheck-all.ts",
+    "docs:sync-workflows": "bun scripts/sync-workflow-docs.ts",
     "test:core": "bun scripts/run-tests.ts core",
     "test:tui": "bun scripts/run-tests.ts tui",
     "test:kernel": "bun scripts/run-tests.ts kernel",
