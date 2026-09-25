@@ -92,7 +92,7 @@ Please also add appropriate CSS containment hints and make sure we don't break t
         {
           id: `static-agent-${Date.now()}`,
           type: "agent",
-          name: "explore",
+          name: "spinosa-generalist",
           source: { start: 4, end: 12 },
         } as AgentPart,
       ]
@@ -354,9 +354,9 @@ const TOOL_SAMPLES = {
   },
   task: {
     tool: "task",
-    input: { description: "Explore components", subagent_type: "explore", prompt: "Find all session components" },
+    input: { description: "Explore components", subagent_type: "spinosa-generalist", prompt: "Find all session components" },
     output: "Found 12 session-related components across 3 directories.",
-    title: "Agent (Explore)",
+    title: "Agent (Spinosa-Generalist)",
     metadata: { sessionId: "sub-session-1" },
   },
   "task build": {
@@ -1244,7 +1244,7 @@ function Playground() {
 
   const data = createMemo(() => ({
     session: [session()],
-    agent: [{ name: "build" }, { name: "plan" }, { name: "explore" }, { name: "review" }],
+    agent: [{ name: "build" }, { name: "plan" }, { name: "spinosa-generalist" }, { name: "review" }],
     session_status: {},
     session_diff: {},
     message: { [session().id]: state.messages },

@@ -64,7 +64,7 @@ function taskMessage(sessionID: string, status: "running" | "completed" | "inter
             status: "running",
             input: {
               description: "Scan reducer paths",
-              subagent_type: "explore",
+              subagent_type: "spinosa-generalist",
             },
             title: "Reducer touchpoints",
             metadata: {
@@ -92,7 +92,7 @@ function taskMessage(sessionID: string, status: "running" | "completed" | "inter
             status: "error",
             input: {
               description: "Scan reducer paths",
-              subagent_type: "explore",
+              subagent_type: "spinosa-generalist",
             },
             error: "Tool execution aborted",
             metadata: {
@@ -120,7 +120,7 @@ function taskMessage(sessionID: string, status: "running" | "completed" | "inter
           status: "completed",
           input: {
             description: "Scan reducer paths",
-            subagent_type: "explore",
+            subagent_type: "spinosa-generalist",
           },
           output: "",
           title: "Reducer touchpoints",
@@ -188,7 +188,7 @@ function childMessage(input: {
       providerID: "openai",
       modelID: "gpt-5",
       mode: "default",
-      agent: "explore",
+      agent: "spinosa-generalist",
       path: {
         cwd: "/tmp",
         root: "/tmp",
@@ -517,7 +517,7 @@ describe("run subagent data", () => {
           providerID: "openai",
           modelID: "gpt-5",
           mode: "default",
-          agent: "explore",
+          agent: "spinosa-generalist",
           path: {
             cwd: "/tmp",
             root: "/tmp",

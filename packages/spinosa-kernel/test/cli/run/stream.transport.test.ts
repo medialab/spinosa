@@ -1208,7 +1208,7 @@ describe("run stream transport", () => {
                   tool: "task",
                   body: {
                     description: "Explore run folder",
-                    subagent_type: "explore",
+                    subagent_type: "spinosa-generalist",
                   },
                   metadata: {
                     sessionId: "child-1",
@@ -1261,7 +1261,7 @@ describe("run stream transport", () => {
                     tool: "task",
                     body: {
                       description: "Explore run folder",
-                      subagent_type: "explore",
+                      subagent_type: "spinosa-generalist",
                     },
                     metadata: {
                       sessionId: "child-1",
@@ -1419,7 +1419,7 @@ describe("run stream transport", () => {
                     tool: "task",
                     body: {
                       description: "Explore run.ts",
-                      subagent_type: "explore",
+                      subagent_type: "spinosa-generalist",
                     },
                     metadata: {
                       sessionId: "child-1",
@@ -1502,7 +1502,7 @@ describe("run stream transport", () => {
                     tool: "task",
                     body: {
                       description: "Explore run.ts",
-                      subagent_type: "explore",
+                      subagent_type: "spinosa-generalist",
                     },
                     metadata: {
                       sessionId: "child-1",
@@ -1607,7 +1607,7 @@ describe("run stream transport", () => {
               tool: "task",
               body: {
                 description: "Explore run.ts",
-                subagent_type: "explore",
+                subagent_type: "spinosa-generalist",
               },
               metadata: {
                 sessionId: "child-1",
@@ -1682,7 +1682,7 @@ describe("run stream transport", () => {
               tool: "task",
               body: {
                 description: "Explore run.ts",
-                subagent_type: "explore",
+                subagent_type: "spinosa-generalist",
               },
               metadata: {
                 sessionId: "child-1",

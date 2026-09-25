@@ -929,7 +929,7 @@ test("does not emit blank patch snapshots between edit and task", async () => {
           status: "completed",
           input: {
             description: "Scan run/* for reducer touchpoints",
-            subagent_type: "explore",
+            subagent_type: "spinosa-generalist",
           },
           output: "",
           title: "task",
@@ -1056,7 +1056,7 @@ test("renders promoted task markdown without a leading blank row", async () => {
           status: "completed",
           input: {
             description: "Explore run.ts",
-            subagent_type: "explore",
+            subagent_type: "spinosa-generalist",
           },
           output: [
             '<task id="child-1" state="completed">',

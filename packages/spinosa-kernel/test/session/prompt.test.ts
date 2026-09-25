@@ -427,7 +427,7 @@ const addSubtask = (sessionID: SessionID, messageID: MessageID, model = ref) =>
       type: "subtask",
       prompt: "look into the cache key path",
       description: "inspect bug",
-      agent: "general",
+      agent: "spinosa-generalist",
       model,
     })
   })
@@ -882,7 +882,7 @@ it.instance("failed subtask preserves metadata on error tool state", () =>
     const { llm } = yield* useServerConfig((url) => ({
       ...providerCfg(url),
       agent: {
-        general: {
+        "spinosa-generalist": {
           model: "test/missing-model",
         },
       },
@@ -893,7 +893,7 @@ it.instance("failed subtask preserves metadata on error tool state", () =>
     yield* llm.tool("task", {
       description: "inspect bug",
       prompt: "look into the cache key path",
-      subagent_type: "general",
+      subagent_type: "spinosa-generalist",
     })
     yield* llm.text("done")
     const msg = yield* user(chat.id, "hello")
@@ -904,7 +904,7 @@ it.instance("failed subtask preserves metadata on error tool state", () =>
     expect(yield* llm.calls).toBe(2)
 
     const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
-    const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "general")
+    const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "spinosa-generalist")
     expect(taskMsg?.info.role).toBe("assistant")
     if (!taskMsg || taskMsg.info.role !== "assistant") return
 
@@ -992,7 +992,7 @@ it.instance(
       const tool = yield* pollWithTimeout(
         Effect.gen(function* () {
           const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
-          const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "general")
+          const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "spinosa-generalist")
           const tool = taskMsg?.parts.find((part): part is SessionV1.ToolPart => part.type === "tool")
           if (tool?.state.status === "running" && tool.state.metadata?.sessionId) return tool
         }),
@@ -1024,7 +1024,7 @@ it.instance(
       yield* llm.tool("task", {
         description: "inspect bug",
         prompt: "look into the cache key path",
-        subagent_type: "general",
+        subagent_type: "spinosa-generalist",
       })
       yield* llm.hang
       yield* user(chat.id, "hello")
@@ -1248,7 +1248,7 @@ noLLMServer.instance(
       yield* awaitWithTimeout(Deferred.await(aborted), "timed out waiting for task tool abort", "10 seconds")
 
       const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
-      const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "general")
+      const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "spinosa-generalist")
       expect(taskMsg?.info.role).toBe("assistant")
       if (!taskMsg || taskMsg.info.role !== "assistant") return
 
@@ -1281,7 +1281,7 @@ it.instance(
       yield* llm.wait(1)
 
       const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
-      const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "general")
+      const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "spinosa-generalist")
       const tool = taskMsg ? toolPart(taskMsg.parts) : undefined
       const sessionID = tool?.state.status === "running" ? tool.state.metadata?.sessionId : undefined
       expect(typeof sessionID).toBe("string")
