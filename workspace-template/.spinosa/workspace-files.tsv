@@ -3,10 +3,7 @@ AGENTS.md	framework	always_replace
 README.md	framework	replace_if_unmodified
 .bin/spinosa	framework	replace_if_unmodified
 startup-prompt.md	framework	always_replace
-.opencode/	framework	replace_if_unmodified
-.codex/	framework	replace_if_unmodified
-.claude/	framework	replace_if_unmodified
-.hermes/	framework	replace_if_unmodified
+.spinosa/agents/	framework	replace_if_unmodified
 .spinosa/memory/	user_state	never_replace
 .spinosa/archive/	user_state	never_replace
 .spinosa/archive/.gitkeep	user_state	never_replace
@@ -16,7 +13,6 @@ startup-prompt.md	framework	always_replace
 .agents/	framework	replace_if_unmodified
 .trash/AGENTS.md	framework	replace_if_unmodified
 .trash/.gitkeep	framework	replace_if_unmodified
-CLAUDE.md	generated_state	exclude_from_update
 system/yaml_header_template.md	framework	replace_if_unmodified
 system/AGENTS.md	framework	replace_if_unmodified
 system/system_architecture_map.md	framework	replace_if_unmodified

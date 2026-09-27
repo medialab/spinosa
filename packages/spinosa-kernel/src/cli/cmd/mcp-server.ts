@@ -101,10 +101,7 @@ function textResult(payload: unknown, isError = false) {
 function skillRoots(workspacePath: string): string[] {
   return [
     path.join(workspacePath, ".agents", "skills"),
-    path.join(workspacePath, ".claude", "skills"),
-    path.join(workspacePath, ".codex", "skills"),
-    path.join(workspacePath, ".opencode", "skills"),
-    path.join(workspacePath, ".hermes", "skills"),
+    path.join(workspacePath, ".spinosa", "skills"),
   ].filter((dir) => existsSync(dir) && statSync(dir).isDirectory())
 }
 
@@ -494,7 +491,7 @@ export async function createSpinosaMcpServer(options?: { initialWorkspace?: stri
       inputSchema: {
         action: z.enum(["begin", "write_extraction", "write_map", "check", "cover"]),
         batchId: z.string().optional(),
-        files: z.array(z.string()).optional(),
+        files: z.array(z.string()).optional().describe("Complete assigned raw/ paths for begin and write_extraction"),
         mapPath: z.string().optional(),
         mapKind: z.enum(["hub", "group", "theme"]).optional(),
         title: z.string().optional(),

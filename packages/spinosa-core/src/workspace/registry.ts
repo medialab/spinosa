@@ -749,7 +749,6 @@ export async function writeSetupFiles(
   const contextPath = path.join(root, "system", "context.md")
   const configPath = path.join(root, "system", "configuration.md")
   const agentsPath = path.join(root, "AGENTS.md")
-  const claudePath = path.join(root, "CLAUDE.md")
 
   const date = today()
 
@@ -856,7 +855,4 @@ preferred_llm_cli: "${preferredCli}"
   await Bun.write(contextPath, contextContent)
   await Bun.write(configPath, configContent)
 
-  if (preferredCli === "Claude Code" && existsSync(agentsPath)) {
-    await Bun.write(claudePath, Bun.file(agentsPath))
-  }
 }

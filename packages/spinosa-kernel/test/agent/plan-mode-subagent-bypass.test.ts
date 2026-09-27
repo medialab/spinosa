@@ -29,10 +29,10 @@ function testAgent(input: {
 it.instance("subagent permissions take precedence over parent agent restrictions", () =>
   Effect.gen(function* () {
     const planAgent = yield* Agent.use.get("plan")
-    const generalAgent = yield* Agent.use.get("general")
+    const generalistAgent = yield* Agent.use.get("spinosa-generalist")
 
     expect(planAgent).toBeDefined()
-    expect(generalAgent).toBeDefined()
+    expect(generalistAgent).toBeDefined()
     // Sanity: the plan agent itself blocks edit. (Note: `write` and
     // `apply_patch` route through the `edit` permission at the runtime
     // tool layer — see Permission.disabled / EDIT_TOOLS.)
@@ -42,12 +42,12 @@ it.instance("subagent permissions take precedence over parent agent restrictions
 
     const subagentSessionPermission = deriveSubagentSessionPermission({
       parentSessionPermission,
-      subagent: generalAgent!,
+      subagent: generalistAgent!,
     })
 
     // Mirror the runtime evaluation in session/prompt.ts (~line 410, 639):
     //   ruleset: Permission.merge(agent.permission, session.permission ?? [])
-    const effective = Permission.merge(generalAgent!.permission, subagentSessionPermission)
+    const effective = Permission.merge(generalistAgent!.permission, subagentSessionPermission)
 
     expect(Permission.evaluate("edit", "/some/file.ts", effective).action).not.toBe("deny")
     expect(Permission.disabled(["edit", "write", "apply_patch"], effective)).toEqual(new Set())
@@ -56,15 +56,15 @@ it.instance("subagent permissions take precedence over parent agent restrictions
 
 it.instance("subagent's own read-only restriction remains effective", () =>
   Effect.gen(function* () {
-    const explore = yield* Agent.use.get("explore")
-    expect(explore).toBeDefined()
+    const plan = yield* Agent.use.get("plan")
+    expect(plan).toBeDefined()
 
     const parentSessionPermission: PermissionV1.Ruleset = []
     const subagentSessionPermission = deriveSubagentSessionPermission({
       parentSessionPermission,
-      subagent: explore!,
+      subagent: plan!,
     })
-    const effective = Permission.merge(explore!.permission, subagentSessionPermission)
+    const effective = Permission.merge(plan!.permission, subagentSessionPermission)
 
     expect(Permission.evaluate("edit", "/x.ts", effective).action).toBe("deny")
   }),

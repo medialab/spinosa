@@ -63,4 +63,13 @@ describe("util.error", () => {
     expect(dumpErrorChain(wrapped)).toContain("ENOENT")
     expect(dumpErrorChain(wrapped)).toContain("cause:")
   })
+
+  test("does not append a matching structured HTTP response cause", () => {
+    const message = "Session not found: ses_missing"
+    const error = new Error(message, {
+      cause: { status: 404, body: { name: "NotFoundError", data: { message } } },
+    })
+
+    expect(errorMessage(error)).toBe(message)
+  })
 })

@@ -56,7 +56,7 @@ describe("template pack freshness", () => {
     const root = mkdtempSync(path.join(tmpdir(), "spinosa-pack-fresh-"))
     try {
       mkdirSync(path.join(root, ".agents", "references"), { recursive: true })
-      mkdirSync(path.join(root, ".agents", "agents"), { recursive: true })
+      mkdirSync(path.join(root, ".spinosa", "agents"), { recursive: true })
       mkdirSync(path.join(root, ".agents", "skills", "spinosa-overseer"), { recursive: true })
       writeFileSync(
         path.join(root, "startup-prompt.md"),
@@ -75,7 +75,7 @@ describe("template pack freshness", () => {
       )
       writeFileSync(path.join(root, "AGENTS.md"), "old agents contract\n")
       writeFileSync(path.join(root, ".agents", "references", "classification.md"), "old classification\n")
-      writeFileSync(path.join(root, ".agents", "agents", "spinosa-overseer.md"), "old overseer\n")
+      writeFileSync(path.join(root, ".spinosa", "agents", "spinosa-overseer.md"), "old overseer\n")
       writeFileSync(path.join(root, ".agents", "skills", "spinosa-overseer", "SKILL.md"), "old skill\n")
 
       const freshness = inspectTemplatePackFreshness({
@@ -99,13 +99,13 @@ describe("template pack freshness", () => {
     const root = mkdtempSync(path.join(tmpdir(), "spinosa-pack-current-"))
     try {
       mkdirSync(path.join(root, ".agents", "references"), { recursive: true })
-      mkdirSync(path.join(root, ".agents", "agents"), { recursive: true })
+      mkdirSync(path.join(root, ".spinosa", "agents"), { recursive: true })
       mkdirSync(path.join(root, ".agents", "skills", "spinosa-overseer"), { recursive: true })
       for (const relative of [
         "startup-prompt.md",
         "AGENTS.md",
         ".agents/references/classification.md",
-        ".agents/agents/spinosa-overseer.md",
+        ".spinosa/agents/spinosa-overseer.md",
         ".agents/skills/spinosa-overseer/SKILL.md",
       ]) {
         mkdirSync(path.dirname(path.join(root, relative)), { recursive: true })

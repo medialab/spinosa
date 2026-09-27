@@ -392,8 +392,8 @@ async function updateWorkspaceUnlocked(options: UpdateOptions): Promise<UpdateRe
     changedPaths.push(entry.path)
   }
 
-  // Substitute placeholders in workspace files (AGENTS.md, CLAUDE.md, etc.)
-  for (const relPath of ["AGENTS.md", "CLAUDE.md"]) {
+  // Substitute placeholders in the canonical workspace guidance.
+  for (const relPath of ["AGENTS.md"]) {
     const filePath = path.join(workspacePath, relPath)
     if (!existsSync(filePath)) continue
     let content = readFileSync(filePath, "utf-8")

@@ -594,8 +594,8 @@ description: A skill in the .agents/skills directory.
               Bun.write(
                 path.join(dir, ".spinosa", "skill", "agent-skill", "SKILL.md"),
                 `---
-name: opencode-skill
-description: A skill in the .opencode/skill directory.
+name: spinosa-singular-skill
+description: A skill in the .spinosa/skill directory.
 ---
 
 # Spinosa Skill
@@ -604,8 +604,8 @@ description: A skill in the .opencode/skill directory.
               Bun.write(
                 path.join(dir, ".spinosa", "skills", "agent-skill", "SKILL.md"),
                 `---
-name: opencode-skill
-description: A skill in the .opencode/skills directory.
+name: spinosa-plural-skill
+description: A skill in the .spinosa/skills directory.
 ---
 
 # Spinosa Skill

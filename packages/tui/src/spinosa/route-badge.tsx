@@ -1,5 +1,5 @@
 import { Show } from "solid-js"
-import { workflowLabel } from "@spinosa/core"
+import { isStartupIndexingPrompt, workflowLabel } from "@spinosa/core"
 import { useTheme } from "../context/theme"
 import { spinosaToolOutcome } from "../util/tool-display"
 
@@ -17,6 +17,7 @@ export const CHAT_PATH_LABEL = "Chat"
 
 export type RouteBadgeInfo =
   | { kind: "general"; routedBy?: "rules" | "model"; confidence?: number }
+  | { kind: "indexing" }
   | {
       kind: "workflow"
       workflowID: string
@@ -44,18 +45,27 @@ function partMetadata(part: unknown): Record<string, unknown> | undefined {
 }
 
 /** True when parts hold a genuine user text payload (not just scaffolding). */
+function userTextContent(parts: readonly unknown[] | undefined): string {
+  if (!parts) return ""
+  const texts: string[] = []
+  for (const part of parts) {
+    if (!part || typeof part !== "object") continue
+    const candidate = part as { type?: unknown; text?: unknown; synthetic?: unknown }
+    if (candidate.type === "text" && candidate.synthetic !== true && typeof candidate.text === "string") {
+      texts.push(candidate.text)
+    }
+  }
+  return texts.join("\n\n").trim()
+}
+
 function hasUserTextContent(parts: readonly unknown[] | undefined): boolean {
-  if (!parts) return false
-  return parts.some((part) => {
-    if (!part || typeof part !== "object") return false
-    const candidate = part as { type?: unknown; synthetic?: unknown }
-    return candidate.type === "text" && candidate.synthetic !== true
-  })
+  return userTextContent(parts).length > 0
 }
 
 /** Extract route info from synced message parts (tolerates unknown shapes). */
 export function routeBadgeFromParts(parts: readonly unknown[] | undefined): RouteBadgeInfo | undefined {
   if (!parts) return
+  if (isStartupIndexingPrompt(userTextContent(parts))) return { kind: "indexing" }
   let sawRouteKey = false
   for (const part of parts) {
     const info = partMetadata(part)?.[SPINOSA_ROUTE_METADATA]
@@ -137,6 +147,7 @@ export function routeBadgeChatTone(info: RouteBadgeInfo): boolean {
 
 export function routeBadgeLabel(info: RouteBadgeInfo): string {
   if (info.kind === "general") return "General prompt"
+  if (info.kind === "indexing") return "INDEXING TASK"
   if (info.kind === "path") {
     return info.label === CHAT_PATH_LABEL ? CHAT_PATH_LABEL : `◈ ${info.label}`
   }

@@ -99,12 +99,12 @@ describe("run permission shared", () => {
           permission: "task",
           metadata: {
             description: "investigate stream",
-            subagent_type: "general",
+            subagent_type: "spinosa-generalist",
           },
         }),
       ),
     ).toMatchObject({
-      title: "General Task",
+      title: "Spinosa-Generalist Task",
       lines: ["◉ investigate stream"],
     })
 

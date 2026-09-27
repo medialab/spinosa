@@ -1,44 +1,48 @@
-# Tool Conventions — General-Harness Operation
+# Tool Conventions — Runtime-Owned Workflows
 
-The workflow engine is paused. Orchestration is model-led through the general
-harness (Task dispatches + subagents). These deterministic tools replace the
-engine's control plane. Use them — never reimplement their logic by hand.
+For routed Spinosa work, the WorkflowEngine and `run.json` are authoritative.
+They select runnable nodes, enforce dependencies, apply retries and gates, and
+determine terminal state. Agents execute only the supplied workflow node.
 
-## The loop
+A host may provide its own worker-dispatch mechanism, but workers must not
+route, dispatch, mint artifact paths, choose the next phase, or reinterpret
+gates. The host must supply the node scope, coverage contract, input artifact
+paths, and exact output path.
 
-1. **Route** every non-trivial request with `spinosa_route` first.
-   General answers need nothing else. Orchestrated work continues below.
-   Provisional fallbacks invite your judgment: override when the request
-   clearly needs more or less than the fallback claims.
-2. **Start the run** with `spinosa_frame` before you dispatch research subagents.
-   Pass the `spinosa_route` decision through unchanged. It writes a goal file.
-   Skip this for a normal chat answer.
-3. **Mint** every artifact path with `spinosa_mint_paths` before writing.
-   Never invent filenames — parallel runs collide otherwise.
-4. **Work** through subagents, passing artifact paths (not content) between steps.
-5. **Gate** source-grounded claims with `spinosa_gate` before delivery.
-6. **Verify** every artifact with `spinosa_verify` before passing or
-   delivering it. Mechanical checks pass here; quote-level truth against
-   original sources remains agent judgment.
-7. **Audit**: end orchestrated work by dispatching `spinosa-evaluator`.
-   The evaluator audits the trace and decides whether framework evolution
-   is justified. No gate blocks on it — the audit is convention, not control.
+## Runtime loop
 
-## Role mapping
+1. The router selects a workflow strategy.
+2. The engine creates the versioned plan and run control file.
+3. Runnable nodes receive bounded prompts and their declared tool policy.
+4. The engine validates artifacts, applies retries, and evaluates gates.
+5. The run reaches a terminal state only when required nodes and gates pass.
 
-| Agent | Must call |
-|-------|-----------|
-| searcher | `spinosa_mint_paths` before writing packets |
-| mapper | `spinosa_map` for extraction packets and maps |
-| analyst, writer | `spinosa_mint_paths`, then `spinosa_verify` on the artifact |
-| verifier | `spinosa_verify` on every target; quote-truth stays judgment |
-| overseer, janitor | `spinosa_gate` for coverage claims, `spinosa_verify` on findings |
-| evaluator | Runs last via dispatcher; writes `e_{runID}.md` |
+The portable startup prompt is a compatibility fallback for hosts without the
+runtime. It must follow the same phase order and completion gates; it is not a
+second orchestration design.
 
-## Rules
+## Worker contract
 
-- Tools decide structure; you decide meaning. Never eyeball coverage,
-  filenames, or verification status when a tool computes them.
-- A failed gate or verification is a finding, not a suggestion:
-  gather the missing coverage or fix the artifact, then re-run the tool.
-- Record outcomes back into the goal artifact as the run proceeds.
+- Read only the supplied scope and input artifacts.
+- Use only permitted tools.
+- Write only the declared artifact paths.
+- Return the artifact path, completion status, and explicit coverage gaps.
+- Do not call routing, framing, minting, gating, verification, or evaluator
+  controls as part of the worker step.
+
+The coordinator/runtime owns routing, dispatch, artifact naming, gates,
+verification, retries, and evaluation.
+
+## Tool boundaries
+
+| Capability | Owner |
+|---|---|
+| Route and choose strategy | router/runtime |
+| Build and schedule workflow nodes | WorkflowEngine |
+| Mint paths and enforce artifact contracts | runtime/tools |
+| Read, search, and write a bounded artifact | worker |
+| Verify claims and apply verification status | verifier/runtime |
+| Audit workflow quality | evaluator/runtime |
+
+Legacy `Q1`–`Q5` route labels remain only for migration of old run records. New
+instructions and runs use the strategies in `classification.md`.

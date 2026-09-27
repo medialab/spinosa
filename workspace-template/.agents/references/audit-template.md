@@ -1,26 +1,27 @@
-# Route Audit Template
+# Workflow Audit Template
 
 ```markdown
 ---
-type: route_audit
+type: workflow_audit
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 status: pass | pass_with_findings | blocked
-session_id: YYYYMMDD-HHMMSS-route
-route: fast_path | non-fast-path
+run_id: YYYYMMDD-{short_hash}
+strategy: [runtime-selected strategy]
+workflow: [workflow id and version]
 decision: no_edit | edit_recommended
-goal_artifact: agent_reports/g_{session_id}.md
-terminal_artifact: agent_reports/NN_{topic-slug}.md | agent_reports/janitor_{session_id}.md | other artifact path
+goal_artifact: [runtime-supplied path, if present]
+terminal_artifact: [runtime-supplied path]
 ---
 
-# Route Audit: [short title]
+# Workflow Audit: [short title]
 
-## Route Summary
+## Run Summary
 - Prompt: [one-sentence cleaned prompt]
-- Route: [fast_path | non-fast-path]
-- Goal artifact: [path]
-- Chain: [agent sequence]
-- Verifier outcome: [pass | pass_with_corrections | partial | fail | not_applicable]
+- Strategy and workflow: [runtime-selected values]
+- Run state: [terminal state from run.json]
+- Node outcomes: [completed, retried, blocked, or skipped nodes]
+- Verification outcome: [pass | pass_with_corrections | partial | fail | blocked]
 
 ## Findings
 - What worked:
@@ -30,8 +31,8 @@ terminal_artifact: agent_reports/NN_{topic-slug}.md | agent_reports/janitor_{ses
 
 ## Signal Review
 - Trigger types: [integrity_issue, sequence_issue, ...]
-- Metrics used: [short summary of counts or route observations]
-- Evidence for the finding: [short grounded rationale]
+- Metrics used: [counts or run observations]
+- Evidence: [short grounded rationale]
 
 ## Decision
 - Verdict: `no_edit` | `edit_recommended`
@@ -40,9 +41,9 @@ terminal_artifact: agent_reports/NN_{topic-slug}.md | agent_reports/janitor_{ses
 ## Proposed Evolution
 - Target files: [paths or `none`]
 - Smallest safe change: [concise implementation target]
-- Expected effect on future requests: [concise]
+- Expected effect on future workflows: [concise]
 
 ## Validation Notes
 - Required next validation: [static checks, targeted dry run, or `none`]
-- Current route impact: applies to future requests only
+- Run impact: [record whether this changes the current run or future workflows]
 ```

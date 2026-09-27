@@ -19,10 +19,3 @@ Do not write a sentence. Do not write a chain like `search -> write`.
 | To apply an approved cleanup | `cleanup_apply` | Apply cleanup (`maintenance.cleanup_apply` v1) |
 | A coverage check | `coverage_audit` | Check coverage (`meta.coverage_audit` v1) |
 | A tightly scoped framework edit | `framework_evolution` | Update the framework (`meta.framework_evolution` v1) |
-
-## Notes
-
-- Index the workspace (`startup_index`) while setup is `cli_started`, or when the user asks to index. Never dispatch `spinosa-overseer` then.
-- Check coverage (`coverage_audit`) only after `workspace_started`.
-- Cleanup never moves files until the user approves.
-- Analyst organizes evidence the Searcher already found. Serendippo looks in `raw/` for links Searcher missed.

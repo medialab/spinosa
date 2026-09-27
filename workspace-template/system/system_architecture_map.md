@@ -2,130 +2,100 @@
 type: system_architecture_map
 role: framework_map
 purpose:
-  - show how the orchestrator
-  - sub-agents
-  - file layers
-  - and evidence pipeline connect
-description: Architecture map for Spinosa's orchestration, evidence, and output layers.
+  - describe runtime-owned workflows
+  - explain bounded worker responsibilities
+  - show workspace data boundaries
+description: Architecture map for Spinosa runtime workflows and evidence artifacts.
 scope:
   - repo-wide architecture
 connects_to:
   - AGENTS.md
   - docs/diagrams.md
   - .agents/agents/
+  - .spinosa/agents/
   - system/dictionary.md
   - system/workspace_index.md
 created: 2026-05-26
-updated: 2026-06-28
+updated: 2026-09-23
 status: active
 ---
 
 # System Architecture Map
 
-> **Full Mermaid diagrams live in [`docs/diagrams.md`](../docs/diagrams.md) — 9 diagrams with GitHub-native rendering.**
-> This file is the ASCII/agent reference. See `docs/diagrams.md` for the external-facing versions.
+Full Mermaid diagrams are in [`docs/diagrams.md`](../docs/diagrams.md).
+This page summarizes the runtime contract and workspace boundaries.
 
-## Core Architecture
+## Runtime control plane
 
-Spinosa is a two-layer research framework with a CLI onboarding layer, an agent orchestration layer, and a persistent file-based memory.
+For routed Spinosa work, the WorkflowEngine and `.spinosa/runs/{run_id}/run.json`
+are authoritative. The router selects a strategy from `BUILTIN_WORKFLOWS`; the
+engine schedules runnable nodes, enforces dependencies, validates artifacts,
+applies retries and gates, and records terminal state. A host may dispatch a
+worker but does not replace runtime routing or gates.
 
-```txt
-CLI onboarding (spinosa new)
-  scans, classifies, converts, imports
-  writes system/context.md + system/configuration.md
-        |
-        v
-Workspace (system/, raw/, maps/, agent_reports/)
-  indexed corpus with YAML headers, dictionary, navigation maps
-        |
-        | orchestrator reads user prompt
-        | routes to sub-agent chain
-        | every chain ends with verifier + evaluator
-        v
-Answer report (agent_reports/NN_*.md)
-  checked against raw/ before finalization
-```
+Each worker receives one node scope, its input artifact paths, coverage
+contract, permitted tools, and exact output path. It reads supplied inputs,
+writes only declared artifacts, then returns path, completion status, and any
+explicit coverage gap.
 
-## Orchestrator Loop
+## Workflow roles
 
-```txt
-1. Log          — Read .spinosa/memory/orchestrator-notes.md
-2. Route split  — fast_path (direct) or non-fast-path (orchestrated)
-3. Frame        — Write goal artifact agent_reports/g_{session_id}.md
-4. Loop:
-   a. Dispatch sub-agent with goal + prior artifact paths
-   b. Inspect output against gate
-   c. Decide: continue / retry / re-route / abort
-   d. Loop back to 4a
-5. Close:
-   a. spinosa-verifier — factual gate (mandatory)
-   b. spinosa-evaluator — process gate (mandatory after verifier)
-   c. spinosa-evolver — framework fix (only if evaluator recommends)
-   d. Deliver — update orchestrator-notes.md
-6. Periodic — spinosa-overseer every 5 routes (coverage audit)
-```
+| Worker | Bounded responsibility |
+|---|---|
+| `spinosa-searcher` | Retrieve source-grounded evidence under the supplied coverage contract |
+| `spinosa-mapper` | Extract assigned files or write explicitly assigned maps |
+| `spinosa-analyst` | Separate supported findings, context-derived hypotheses, and retrieval questions |
+| `spinosa-serendippo` | Record evidence-backed connections, alternatives, and limitations |
+| `spinosa-writer` | Synthesize supplied artifacts into the assigned report path |
+| `spinosa-verifier` | Check claims against supplied original sources and record a valid status |
+| `spinosa-evaluator` | Audit supplied run events and process quality |
+| `spinosa-evolver` | Apply a change explicitly approved by the runtime gate |
+| `spinosa-janitor` | Report independent hygiene counts and propose cleanup |
+| `spinosa-overseer` | Perform a coverage audit only when its runtime workflow is selected |
 
-## Sub-Agent Pipeline
+No role owns workflow sequencing. Coverage audits use `meta.coverage_audit`;
+they are not triggered by a route-count counter. Startup never runs Overseer or
+external session interception.
 
-| Agent               | Role                  | Produces                                    |
-|---------------------|-----------------------|---------------------------------------------|
-| spinosa-searcher    | Evidence retrieval    | evidence_packet_{session_id}.md             |
-| spinosa-mapper      | Startup indexing      | extraction_{batch_id}.md, maps/, dictionary |
-| spinosa-serendippo  | Hidden connections    | serendipity_{session_id}.md                 |
-| spinosa-analyst     | Contextual analysis   | analysis_{session_id}.md                  |
-| spinosa-writer      | Report synthesis      | NN_descriptive-name.md                      |
-| spinosa-verifier    | Claim verification    | in-place on `NN_*.md` (status + corrections) |
-| spinosa-evaluator   | Route audit           | e_{session_id}.md                           |
-| spinosa-evolver     | Framework evolution   | changed files summary                       |
-| spinosa-janitor     | Hygiene audit         | cleanup artifact                            |
-| spinosa-overseer    | Coverage audit        | c_{session_id}.md + Orchestrator Advisories |
+## Startup lifecycle
 
-## File Layers
-
-```txt
-Framework (template — always_replace / replace_if_unmodified via workspace-files.tsv):
-  AGENTS.md, startup-prompt.md, .agents/, .bin/, docs/, system/templates
-
-User state (per workspace — never_replace):
-  raw/            corpus copies with YAML headers
-  maps/           navigation maps (Obsidian wikilink graph)
-  system/         context.md, configuration.md, dictionary.md, workspace_index.md
-  agent_reports/  all agent output artifacts
-  .spinosa/memory/  orchestrator-notes.md
-  .trash/         archived intermediates
-
-Operational (hidden):
-  .logs/          import/conversion traces (onboarding.log, NDJSON)
-
-Archive (pre-memory-migration):
-  .spinosa/archive/  frozen session records migrated from legacy logs/
-```
-
-## Setup Lifecycle
-
-```txt
+```text
 not_started
-    |
-    | spinosa new (CLI)
-    v
-cli_started
-    |
-    | startup-prompt.md (orchestrator)
-    |   Phase 1: Verify onboarding
-    |   Phase 2: Survey corpus
-    |   Phase 3: Extract + build dictionary (parallel mappers)
-    |   Phase 4: Write navigation maps
-    |   Phase 5: Serendipitous connection discovery
-    |   Phase 6: Validate + verifier + evaluator
-    v
-workspace_started
+  → cli_started
+  → validate → survey → partition → extraction fan-out → merge → dictionary
+  → header enrichment → map write → connection analysis → verification
+  → evaluation → commit workspace_started
 ```
 
-## Key Patterns
+Optional artifacts do not silently skip a scheduled phase. Recovery validates
+assigned file sets, terminal extraction statuses, metadata, and artifact
+contents; a filename alone is not proof of completion. The runtime commits
+`workspace_started` only after required dictionary, index, map, coverage, and
+verification gates pass.
 
-- **File-to-file handoff:** Agents pass artifact paths, never inline content. Every step writes a durable file.
-- **Adaptive chain:** The orchestrator picks the next agent based on what arrived — no frozen pipeline.
-- **Dual gate:** verifier (factual) + evaluator (process) close every non-fast-path route.
-- **Single notepad:** orchestrator-notes.md replaces the old events.jsonl + per-session index files.
-- **Fallback:** If native agent spawn fails, inject the agent definition as the task prompt.
-- **Idempotent indexing:** Mappers operate per-batch with no shared state; startup resumes from the last checkpoint.
+## Evidence and status semantics
+
+- Search scope follows `opportunistic`, `sufficient`, `representative`, or
+  `exhaustive`; the WorkflowEngine applies the corresponding evidence gate.
+- Reports distinguish files inspected from files not observed, concepts
+  mentioned from concepts not observed, and freshness evidence from staleness
+  conclusions. Absence of a mention is not proof of absence.
+- Verification statuses are `pass`, `pass_with_corrections`, `partial`, `fail`,
+  and `blocked`. A minor discrepancy is recorded as `pass_with_corrections`
+  with a note.
+- `spinosa_figure` supports only `bar`, `sparkline`, `stacked_bar`, and
+  `status_matrix`; unsupported chart kinds use prose or a table.
+
+## Workspace data layers
+
+```text
+Framework instructions: AGENTS.md, startup-prompt.md, .agents/, .spinosa/agents/
+Sources:                raw/ (source copies; bodies are read-only)
+Navigation:             maps/ (wikilinks over the corpus)
+Context and index:      system/ (configuration, dictionary, workspace index)
+Run state:              .spinosa/runs/{run_id}/run.json
+Artifacts:              agent_reports/ (goals, evidence, reports, verification)
+Memory:                 .spinosa/memory/orchestrator-notes.md
+Archive:                .trash/ (only through the approved cleanup workflow)
+Logs:                   .logs/ (import and conversion traces)
+```

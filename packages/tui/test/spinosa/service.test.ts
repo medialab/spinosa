@@ -120,7 +120,7 @@ describe("service fixture workspace", () => {
 
   test("framework health passes", async () => {
     const health = await getFrameworkHealth(fixture)
-    const fixtureScope = health.filter((row) => !row.label.startsWith(".claude/") && !row.label.startsWith(".codex/") && !row.label.startsWith(".hermes/") && !row.label.startsWith(".opencode/skills/"))
+    const fixtureScope = health.filter((row) => !row.label.startsWith(".agents/skills/"))
     expect(fixtureScope.every((row) => row.ok)).toBe(true)
   })
 

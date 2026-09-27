@@ -374,15 +374,15 @@ describe("tool parameters", () => {
 
   describe("task", () => {
     test("accepts description + prompt + subagent_type", () => {
-      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "general" })
-      expect(parsed.subagent_type).toBe("general")
+      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "spinosa-generalist" })
+      expect(parsed.subagent_type).toBe("spinosa-generalist")
     })
     test("accepts optional background flag", () => {
-      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "general", background: true })
+      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "spinosa-generalist", background: true })
       expect(parsed.background).toBe(true)
     })
     test("rejects missing prompt", () => {
-      expect(accepts(Task, { description: "d", subagent_type: "general" })).toBe(false)
+      expect(accepts(Task, { description: "d", subagent_type: "spinosa-generalist" })).toBe(false)
     })
   })
 

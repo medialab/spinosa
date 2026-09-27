@@ -9,5 +9,7 @@ Required for direct quotes:
 ```
 
 - Author in normal text. Title in italics. Date and place in parentheses. Key passage in **bold**.
-- Minimum 2 sentences or 1 full paragraph.
+- Quote the shortest passage that supports the claim, retaining enough context
+  to avoid changing its meaning.
 - Always in a blockquote.
+- Include the source path and line or page location whenever available.

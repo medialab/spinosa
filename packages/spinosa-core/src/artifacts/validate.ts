@@ -8,6 +8,7 @@ import type { ArtifactValidatorID, ValidationResult } from "./contracts"
 import { parseVerificationStatus } from "./contracts"
 import { parseYamlFrontmatter } from "./parser"
 import { looksLikeMarkdownFigure } from "../application/markdown-figure"
+import { validateExtractionManifest } from "./extraction"
 
 function contained(workspacePath: string, relative: string): boolean {
   const resolved = path.resolve(workspacePath, relative)
@@ -88,9 +89,8 @@ export async function validateArtifact(input: {
       return { ok: true }
     }
     case "extraction": {
-      if (!/batch_id|batch id|files? processed|processed/i.test(text)) {
-        return { ok: false, error: "extraction missing batch metadata", retryable: true }
-      }
+      const checked = validateExtractionManifest(text)
+      if (!checked.ok) return { ok: false, error: checked.error, retryable: true }
       return { ok: true }
     }
     case "map":

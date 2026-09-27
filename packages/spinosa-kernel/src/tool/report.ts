@@ -18,7 +18,7 @@ const Reproducibility = Schema.Struct({
   filesScanned: Schema.optional(Schema.Number).annotate({ description: "Files scanned" }),
   filesRead: Schema.optional(Schema.Number).annotate({ description: "Files read" }),
   searchRounds: Schema.optional(Schema.Number).annotate({ description: "Search rounds" }),
-  agents: Schema.String.annotate({ description: "Agent chain" }),
+  agents: Schema.String.annotate({ description: "Agent IDs recorded by run.json" }),
   tags: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({ description: "Keywords/terms used" }),
   gaps: Schema.optional(Schema.String).annotate({ description: "Coverage gaps" }),
   sources: Schema.mutable(Schema.Array(Schema.String)).annotate({ description: "Source paths referenced" }),
@@ -27,12 +27,12 @@ const Reproducibility = Schema.Struct({
 export const Parameters = Schema.Struct({
   filename: Schema.String.annotate({
     description:
-      "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore.",
+      "Exact runtime-assigned report filename in NN_{topic-slug}.md form. Do not choose a sequence number or slug. Must start with a 2-digit number followed by an underscore.",
   }),
   title: Schema.String.annotate({ description: "H1 headline for the report (mirrors the goal statement)" }),
   scope: Schema.String.annotate({ description: "One-line description of the report scope" }),
   pipeline: Schema.String.annotate({
-    description: "Agent chain, e.g. 'searcher → writer → verifier → evaluator'",
+    description: "Runtime workflow ID/version and completed node IDs from run.json; do not provide a manually selected agent chain",
   }),
   query: Schema.String.annotate({ description: "Original user query" }),
   // Authoring cannot award a verdict: the writer has not checked any claim

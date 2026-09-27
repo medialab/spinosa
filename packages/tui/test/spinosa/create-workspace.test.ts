@@ -79,8 +79,12 @@ describe("E2E: Workspace creation flow", () => {
     expect(existsSync(path.join(ws, ".spinosa", "framework-checksums.json"))).toBe(true)
     const checksums = await Bun.file(path.join(ws, ".spinosa", "framework-checksums.json")).json() as Record<string, string>
     expect(Object.keys(checksums).length).toBeGreaterThan(10)
-    expect(existsSync(path.join(ws, ".opencode", "node_modules"))).toBe(false)
-    expect(await Bun.file(path.join(ws, ".hermes", "workspace.config.yaml")).text()).toContain(`cwd: ${ws}`)
+    expect(existsSync(path.join(ws, ".spinosa", "agents"))).toBe(true)
+    expect(existsSync(path.join(ws, ".opencode"))).toBe(false)
+    expect(existsSync(path.join(ws, ".claude"))).toBe(false)
+    expect(existsSync(path.join(ws, ".codex"))).toBe(false)
+    expect(existsSync(path.join(ws, ".hermes"))).toBe(false)
+    expect(existsSync(path.join(ws, "CLAUDE.md"))).toBe(false)
 
     // Check user-state directories
     expect(existsSync(path.join(ws, "raw"))).toBe(true)
