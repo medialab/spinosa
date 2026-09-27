@@ -10,7 +10,7 @@ import { BackgroundImportProvider } from "./spinosa/import-background"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
-import { createCliRenderer, MouseButton } from "@opentui/core"
+import { createCliRenderer, MouseButton, type RGBA } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
 import { WaitProvider, useWait } from "./context/wait"
 import { WaitOverlay, WaitFallback, Waiting } from "./context/wait-ui"
@@ -1388,6 +1388,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     return pickSubagentAccent(theme, current.id, siblingSubagentIDs(sync.data.session, current))
   })
 
+  // NOTE: the renderer repaints the border whenever borderColor is (re)set,
+  // even with border={false} — so the color must keep a stable identity
+  // across the hide transition. This memo holds the last accent instead of
+  // flipping to undefined (see test/app-root-border.test.tsx).
+  const frameColor = createMemo((prev: RGBA | undefined) => subagentBorder() ?? prev)
+
   return (
     <box
       width={dimensions().width}
@@ -1395,7 +1401,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       flexDirection="column"
       backgroundColor={theme.background}
       border={Boolean(subagentBorder())}
-      borderColor={subagentBorder()}
+      borderColor={frameColor()}
       onMouseDown={(evt) => {
         if (!Flag.SPINOSA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
         if (evt.button !== MouseButton.RIGHT) return
