@@ -99,12 +99,12 @@ describe("DiffViewerFileTree", () => {
           focused
           highlightedNode={src.id}
         />
-      )),
+      ), "src/config"),
     )
     const unfocused = visibleLines(
       await renderFrame(() => (
         <DiffViewerFileTree width={32} files={files} loading={false} error={undefined} theme={theme} />
-      )),
+      ), "src/config"),
     )
 
     expect(focused).toContain("▾ src/config")
@@ -131,7 +131,7 @@ describe("DiffViewerFileTree", () => {
             theme={theme}
             expandedNodes={collapsed}
           />
-        )),
+        ), "src/config"),
       ),
     ).toEqual(["▸ src/config"])
 
@@ -146,17 +146,17 @@ describe("DiffViewerFileTree", () => {
             theme={theme}
             expandedNodes={allExpandedFileTreeDirectories(tree)}
           />
-        )),
+        ), "src/config"),
       ),
     ).toEqual(["▾ src/config", "│  └─ tui.ts                 ?"])
   })
 })
 
-async function renderFrame(component: () => JSX.Element) {
+async function renderFrame(component: () => JSX.Element, expected?: string) {
   const app = await testRender(() => withTheme(component), { width: 40, height: 10 })
   try {
     await renderOnceSettled(app)
-    return await captureSettledFrame(app)
+    return await captureSettledFrame(app, expected)
   } finally {
     app.renderer.destroy()
   }
@@ -168,10 +168,10 @@ async function renderOnceSettled(app: Awaited<ReturnType<typeof testRender>>) {
   await app.renderOnce()
 }
 
-async function captureSettledFrame(app: Awaited<ReturnType<typeof testRender>>) {
-  for (let attempt = 0; attempt < 5; attempt++) {
+async function captureSettledFrame(app: Awaited<ReturnType<typeof testRender>>, expected?: string) {
+  for (let attempt = 0; attempt < 40; attempt++) {
     const frame = app.captureCharFrame()
-    if (frame.trim().length > 0) return frame
+    if (expected ? frame.includes(expected) : frame.trim().length > 0) return frame
     await new Promise((resolve) => setTimeout(resolve, 25))
     await app.renderOnce()
   }

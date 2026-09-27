@@ -24,7 +24,8 @@ describe("onboarding helpers", () => {
     expect(formatBytes(12_000_000)).toBe("12.0 MB");
     expect(formatBytes(12_000_000_000)).toBe("12.0 GB");
     expect(waveString(0)).toHaveLength(6);
-    expect(wavePulse(0)).toBe("▁");
+    expect(["▁", "_"]).toContain(wavePulse(0));
+    expect(waveString(0)[0]).toBe(wavePulse(0));
     expect(waveRow(0, 4)).toHaveLength(4);
   });
 

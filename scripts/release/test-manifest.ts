@@ -67,6 +67,8 @@ export const TUI_RELEASE_TESTS = [
   "test/util/session.test.ts",
   "test/util/stop-sessions.test.ts",
   "test/component/home-footer.test.ts",
+  "test/cli/tui/diff-viewer.test.tsx",
+  "test/spinosa/app-route-e2e.test.tsx",
   "test/spinosa/update-workspace.test.ts",
   "test/spinosa/create-workspace.test.ts",
   "test/spinosa/install-release.test.ts",
