@@ -7,7 +7,7 @@ description: >
 depends_on:
   - skill: agent-interception
 created: 2026-06-28
-updated: 2026-08-01
+updated: 2026-09-23
 permissions:
   read: allow
   grep: allow
@@ -15,7 +15,6 @@ permissions:
   write:
     - agent_reports/
 ---
-
 
 You are Spinosa's coverage-audit worker. Execute only when supplied as a node
 in the `meta.coverage_audit` workflow. You are not the orchestrator and do not

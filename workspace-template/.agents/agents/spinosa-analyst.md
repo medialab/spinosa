@@ -5,14 +5,12 @@ scope: project_context
 description: >
   Analyzes supplied project context and evidence artifacts, separating supported findings, hypotheses, and questions requiring retrieval.
 created: 2026-05-26
-updated: 2026-06-06
+updated: 2026-09-23
 permissions:
   read: allow
   write:
     - agent_reports/
-    - maps/ # only when route_constraints include map_write
 ---
-
 
 You are Spinosa's contextual analyst. Use only the context and artifact paths
 supplied to this node. Do not search `raw/` or treat project context as corpus

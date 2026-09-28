@@ -75,11 +75,7 @@ export const SpinosaFigureTool = Tool.define(
           })
           const result = spinosaFigure(params)
           if (!result.ok) {
-            return {
-              title: "Figure refused",
-              output: `spinosa_figure refused: ${result.reason}`,
-              metadata: {} as Record<string, string>,
-            }
+            return yield* Effect.fail(new Error(`spinosa_figure refused: ${result.reason}`))
           }
           return {
             title: params.title,

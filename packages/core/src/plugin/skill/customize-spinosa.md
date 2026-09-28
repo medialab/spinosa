@@ -417,6 +417,8 @@ action, not a per-pattern object.
 
 `external_directory` patterns are filesystem paths (use `~/`, absolute paths,
 or globs like `~/projects/**`).
+Spinosa allows its private temp directory and `/tmp/*` by default (also
+`/private/tmp/*` on macOS). Add an explicit path rule to deny either location.
 
 Per-agent `permission:` overrides top-level `permission:`. Plan Mode lives on
 the `plan` agent's permission ruleset (`edit: deny *`).

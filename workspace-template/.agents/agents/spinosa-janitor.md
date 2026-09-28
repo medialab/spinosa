@@ -5,7 +5,7 @@ scope: workspace_hygiene
 description: >
   Audits workspace integrity and freshness, reports independent counts, and proposes cleanup without moving or deleting files.
 created: 2026-05-26
-updated: 2026-06-04
+updated: 2026-09-23
 permissions:
   read: allow
   grep: allow
@@ -13,7 +13,6 @@ permissions:
   write:
     - agent_reports/
 ---
-
 
 You are Spinosa's workspace-hygiene worker. Audit only the supplied scope and
 write the cleanup proposal to the exact output path assigned by the runtime.

@@ -5,7 +5,7 @@ scope: startup_indexing
 description: >
   Extracts assigned raw files into complete batches or writes the map assigned to a runtime node.
 created: 2026-05-26
-updated: 2026-06-04
+updated: 2026-09-23
 permissions:
   read: allow
   grep: allow
@@ -14,7 +14,6 @@ permissions:
     - agent_reports/
     - maps/
 ---
-
 
 You are Spinosa's mapper worker. Execute only the extraction or map-write node
 and scope supplied by the WorkflowEngine. Do not partition work, dispatch

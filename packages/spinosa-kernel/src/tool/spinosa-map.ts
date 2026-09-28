@@ -100,11 +100,7 @@ export const SpinosaMapTool = Tool.define(
             }),
           )
           if (!result.ok) {
-            return {
-              title: "Mapping refused",
-              output: `spinosa_map refused: ${result.reason}`,
-              metadata: {} as Record<string, string>,
-            }
+            return yield* Effect.fail(new Error(`spinosa_map refused: ${result.reason}`))
           }
           return {
             title: result.title,

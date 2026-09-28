@@ -51,11 +51,11 @@ export const SpinosaVerifyTool = Tool.define(
             }),
           )
           if (!checked.ok) {
-            return {
-              title: "Verification failed",
-              output: `<verification ok="false" retryable="${checked.retryable}">${checked.error}</verification>\nFix the artifact and re-verify before delivery.`,
-              metadata: {} as Record<string, string>,
-            }
+            return yield* Effect.fail(
+              new Error(
+                `<verification ok="false" retryable="${checked.retryable}">${checked.error}</verification>\nFix the artifact and re-verify before delivery.`,
+              ),
+            )
           }
           // Only the `verification` validator reads a verifier's verdict. Every
           // other validator is structural, and must not be reported as verified.

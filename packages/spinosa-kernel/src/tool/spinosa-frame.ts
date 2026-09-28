@@ -83,11 +83,7 @@ export const SpinosaFrameTool = Tool.define(
             })),
           )
           if (!framed.ok) {
-            return {
-              title: "Couldn't start this run",
-              output: framed.reason,
-              metadata: {} as Record<string, string>,
-            }
+            return yield* Effect.fail(new Error(framed.reason))
           }
           return {
             title: `Started: ${framed.planLabel}`,

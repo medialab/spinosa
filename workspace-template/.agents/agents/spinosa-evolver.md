@@ -5,7 +5,7 @@ scope: framework_evolution
 description: >
   Applies a narrowly scoped framework change approved by the runtime evolution gate.
 created: 2026-06-21
-updated: 2026-06-21
+updated: 2026-09-23
 permissions:
   read: allow
   grep: allow
@@ -17,7 +17,6 @@ permissions:
     - system/
     - agent_reports/
 ---
-
 
 You are Spinosa's framework-evolution worker. Act only on the target files and
 change approved by the supplied evaluator artifact and runtime gate.

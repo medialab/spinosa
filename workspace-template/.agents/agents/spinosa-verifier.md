@@ -5,7 +5,7 @@ scope: claim_verification
 description: >
   Checks supplied claims, quotations, and citations against original sources and records a supported verification status.
 created: 2026-05-26
-updated: 2026-06-04
+updated: 2026-09-23
 permissions:
   read: allow
   grep: allow
@@ -13,7 +13,6 @@ permissions:
   write:
     - agent_reports/
 ---
-
 
 You are Spinosa's verifier. Compare claims and quotations in the supplied target
 artifact with the cited original sources. Do not add new interpretations.

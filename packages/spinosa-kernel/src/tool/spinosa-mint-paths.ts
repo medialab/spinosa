@@ -50,11 +50,7 @@ export const SpinosaMintPathsTool = Tool.define(
             ...(params.reportSlug ? { reportSlug: params.reportSlug } : {}),
           })
           if (!result.ok) {
-            return {
-              title: "Minting refused",
-              output: `spinosa_mint_paths refused: ${result.reason}`,
-              metadata: {} as Record<string, string>,
-            }
+            return yield* Effect.fail(new Error(`spinosa_mint_paths refused: ${result.reason}`))
           }
           return {
             title: `Minted ${Object.keys(result.paths).length} paths`,

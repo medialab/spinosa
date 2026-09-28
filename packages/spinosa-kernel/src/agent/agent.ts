@@ -113,6 +113,8 @@ const layer = Layer.effect(
         const whitelistedDirs = [
           Truncate.GLOB,
           path.join(Global.Path.tmp, "*"),
+          ...(process.platform === "win32" ? [] : ["/tmp/*"]),
+          ...(process.platform === "darwin" ? ["/private/tmp/*"] : []),
           ...skillDirs.map((dir) => path.join(dir, "*")),
           ...referenceDirs.map((dir) => path.join(dir, "*")),
           ...envWhitelist,
@@ -165,9 +167,6 @@ const layer = Layer.effect(
               Permission.fromConfig({
                 question: "allow",
                 plan_exit: "allow",
-                task: {
-                  "spinosa-generalist": "deny",
-                },
                 external_directory: {
                   [path.join(Global.Path.data, "plans", "*")]: "allow",
                 },

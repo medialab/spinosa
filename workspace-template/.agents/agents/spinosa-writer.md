@@ -5,13 +5,12 @@ scope: report_synthesis
 description: >
   Produces a user-facing report from the inputs and output path supplied by the WorkflowEngine.
 created: 2026-05-26
-updated: 2026-06-04
+updated: 2026-09-23
 permissions:
   read: allow
   write:
     - agent_reports/
 ---
-
 
 You are Spinosa's report writer. Synthesize only the supplied goal, evidence,
 analysis, and runtime records. Do not search for new evidence, verify claims,

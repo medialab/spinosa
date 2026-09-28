@@ -81,28 +81,28 @@ it.instance("plan agent denies edits except .spinosa/plans/*", () =>
   }),
 )
 
-it.instance("plan agent denies the spinosa-generalist subagent by default", () =>
+it.instance("plan agent allows the spinosa-generalist subagent by default", () =>
   Effect.gen(function* () {
     const plan = yield* load((svc) => svc.get("plan"))
     expect(plan).toBeDefined()
-    expect(Permission.evaluate("task", "spinosa-generalist", plan!.permission).action).toBe("deny")
+    expect(Permission.evaluate("task", "spinosa-generalist", plan!.permission).action).toBe("allow")
     expect(Permission.evaluate("task", "custom", plan!.permission).action).toBe("allow")
   }),
 )
 
 it.instance(
-  "user permission can allow the spinosa-generalist subagent from plan mode",
+  "user permission can deny the spinosa-generalist subagent from plan mode",
   () =>
     Effect.gen(function* () {
       const plan = yield* load((svc) => svc.get("plan"))
       expect(plan).toBeDefined()
-      expect(Permission.evaluate("task", "spinosa-generalist", plan!.permission).action).toBe("allow")
+      expect(Permission.evaluate("task", "spinosa-generalist", plan!.permission).action).toBe("deny")
     }),
   {
     config: {
       permission: {
         task: {
-          "spinosa-generalist": "allow",
+          "spinosa-generalist": "deny",
         },
       },
     },
@@ -557,8 +557,36 @@ it.instance("global tmp directory children are allowed for external_directory", 
     expect(
       Permission.evaluate("external_directory", path.join(Global.Path.tmp, "scratch"), build!.permission).action,
     ).toBe("allow")
+    if (process.platform !== "win32") {
+      expect(Permission.evaluate("external_directory", "/tmp/scratch/*", build!.permission).action).toBe("allow")
+    }
+    if (process.platform === "darwin") {
+      expect(Permission.evaluate("external_directory", "/private/tmp/scratch/*", build!.permission).action).toBe("allow")
+    }
     expect(Permission.evaluate("external_directory", "/some/other/path", build!.permission).action).toBe("ask")
   }),
+)
+
+it.instance(
+  "explicit tmp denial overrides the default allow",
+  () =>
+    Effect.gen(function* () {
+      const build = yield* load((svc) => svc.get("build"))
+      expect(Permission.evaluate("external_directory", "/tmp/scratch/*", build!.permission).action).toBe("deny")
+      if (process.platform === "darwin") {
+        expect(Permission.evaluate("external_directory", "/private/tmp/scratch/*", build!.permission).action).toBe("deny")
+      }
+    }),
+  {
+    config: {
+      permission: {
+        external_directory: {
+          "/tmp/*": "deny",
+          "/private/tmp/*": "deny",
+        },
+      },
+    },
+  },
 )
 
 it.instance(

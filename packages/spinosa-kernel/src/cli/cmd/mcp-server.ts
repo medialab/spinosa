@@ -402,14 +402,13 @@ export async function createSpinosaMcpServer(options?: { initialWorkspace?: stri
     async (args) => {
       try {
         const ws = session.resolveWorkspace(args.workspacePath)
-        return textResult(
-          await spinosaVerify({
-            workspacePath: ws,
-            relativePath: args.relativePath,
-            validator: args.validator,
-            ...(args.runID ? { runID: args.runID } : {}),
-          }),
-        )
+        const result = await spinosaVerify({
+          workspacePath: ws,
+          relativePath: args.relativePath,
+          validator: args.validator,
+          ...(args.runID ? { runID: args.runID } : {}),
+        })
+        return textResult(result, !result.ok)
       } catch (error) {
         return textResult({ ok: false, error: error instanceof Error ? error.message : String(error) }, true)
       }
@@ -453,29 +452,29 @@ export async function createSpinosaMcpServer(options?: { initialWorkspace?: stri
           units: args.units,
         }
         if (args.kind === "bar") {
-          return textResult(spinosaFigure({ kind: "bar", ...base, items: args.items ?? [] }))
+          const result = spinosaFigure({ kind: "bar", ...base, items: args.items ?? [] })
+          return textResult(result, !result.ok)
         }
         if (args.kind === "sparkline") {
-          return textResult(
-            spinosaFigure({
-              kind: "sparkline",
-              ...base,
-              values: args.values ?? [],
-              ...(args.label ? { label: args.label } : {}),
-            }),
-          )
+          const result = spinosaFigure({
+            kind: "sparkline",
+            ...base,
+            values: args.values ?? [],
+            ...(args.label ? { label: args.label } : {}),
+          })
+          return textResult(result, !result.ok)
         }
         if (args.kind === "stacked_bar") {
-          return textResult(spinosaFigure({ kind: "stacked_bar", ...base, segments: args.segments ?? [] }))
+          const result = spinosaFigure({ kind: "stacked_bar", ...base, segments: args.segments ?? [] })
+          return textResult(result, !result.ok)
         }
-        return textResult(
-          spinosaFigure({
-            kind: "status_matrix",
-            ...base,
-            columns: args.columns ?? [],
-            rows: args.rows ?? [],
-          }),
-        )
+        const result = spinosaFigure({
+          kind: "status_matrix",
+          ...base,
+          columns: args.columns ?? [],
+          rows: args.rows ?? [],
+        })
+        return textResult(result, !result.ok)
       } catch (error) {
         return textResult({ ok: false, error: error instanceof Error ? error.message : String(error) }, true)
       }
@@ -525,7 +524,8 @@ export async function createSpinosaMcpServer(options?: { initialWorkspace?: stri
       try {
         const ws = session.resolveWorkspace(args.workspacePath)
         const { workspacePath: _w, ...rest } = args
-        return textResult(await spinosaMap({ workspacePath: ws, ...rest }))
+        const result = await spinosaMap({ workspacePath: ws, ...rest })
+        return textResult(result, !result.ok)
       } catch (error) {
         return textResult({ ok: false, error: error instanceof Error ? error.message : String(error) }, true)
       }

@@ -10,6 +10,20 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2-beta.5] — 2026-09-28
+
+### Fixed
+
+- Tool refusals now settle as errors. Failed validation no longer looks like success.
+- MCP `spinosa_map`, `spinosa_figure`, and `spinosa_verify` refusals set `isError`. External agents see the failure.
+- A refusal regression suite pins the error status. The release gate runs it.
+
+### Changed
+
+- Template agent mirrors match the canonical source. Stale `maps/` grants are gone.
+- Plan mode allows the `spinosa-generalist` subagent. Kernel matches V2 and the prompts.
+- Spinosa allows `/tmp/*` by default. macOS also allows `/private/tmp/*`. Explicit deny still wins.
+
 ## [1.2.2-beta.4] — 2026-09-25
 
 ### Added
