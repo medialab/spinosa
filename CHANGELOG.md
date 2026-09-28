@@ -17,6 +17,7 @@ Release rule: The maintainer must approve a release. No automatic release.
 - Tool refusals now settle as errors. Failed validation no longer looks like success.
 - MCP `spinosa_map`, `spinosa_figure`, and `spinosa_verify` refusals set `isError`. External agents see the failure.
 - A refusal regression suite pins the error status. The release gate runs it.
+- Launch upgrade check awaits a stale version cache. New releases appear on the first launch.
 
 ### Changed
 

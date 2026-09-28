@@ -626,8 +626,14 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
 
   const channel = await spinosaReleaseChannel()
   const now = Math.floor(Date.now() / 1000)
-  refreshIfStaleOrMissing(channel, now)
-  if (channel === "beta") refreshIfStaleOrMissing("stable", now)
+  // Await the refresh when the cache is stale or missing: deciding from data
+  // just classified as untrustworthy hid just-released updates until the next
+  // launch. Bounded by the launch-check timeout; fresh-cache launches stay
+  // instant because refreshIfStaleOrMissing resolves without network I/O.
+  await Promise.all([
+    refreshIfStaleOrMissing(channel, now),
+    ...(channel === "beta" ? [refreshIfStaleOrMissing("stable", now)] : []),
+  ])
 
   const target = pickLaunchUpgradeTarget({
     channel,
@@ -642,8 +648,8 @@ export async function checkUpgradeAvailable(): Promise<AutoUpgradeResult> {
   }
 }
 
-function refreshChannelCache(channel: ReleaseChannel): void {
-  void resolveReleaseVersionForChannel(channel, {
+function refreshChannelCache(channel: ReleaseChannel): Promise<void> {
+  return resolveReleaseVersionForChannel(channel, {
     timeoutMs: LAUNCH_UPGRADE_CHECK_TIMEOUT_MS,
   })
     .then((latest) => {
@@ -652,9 +658,10 @@ function refreshChannelCache(channel: ReleaseChannel): void {
     .catch(() => {})
 }
 
-function refreshIfStaleOrMissing(channel: ReleaseChannel, now: number): void {
+function refreshIfStaleOrMissing(channel: ReleaseChannel, now: number): Promise<void> {
   const cache = readVersionCache(channel)
   if (!cache?.version || now - cache.timestamp >= versionCacheTtlSec(channel)) {
-    refreshChannelCache(channel)
+    return refreshChannelCache(channel)
   }
+  return Promise.resolve()
 }
