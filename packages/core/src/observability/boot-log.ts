@@ -111,10 +111,16 @@ export function bootLogError(tag: string, error: unknown): void {
 export function installProcessFailureLogs(): void {
   if (processHandlersInstalled) return
   processHandlersInstalled = true
+  // Rejections remain diagnostic-only by policy: some long-running operations
+  // deliberately report rejected work without crashing the parent process.
   process.on("unhandledRejection", (reason) => {
     bootLogError("process.unhandledRejection", reason)
   })
   process.on("uncaughtException", (error) => {
     bootLogError("process.uncaughtException", error)
+    // Installing an uncaughtException listener disables the runtime's default
+    // fatal exit. The synchronous log is complete here, so terminate explicitly
+    // rather than allowing unrelated timers and state mutation to continue.
+    process.exit(1)
   })
 }

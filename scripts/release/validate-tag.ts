@@ -1,16 +1,17 @@
 #!/usr/bin/env bun
 /**
- * CI/local gate for tag-triggered beta releases.
+ * CI/local gate for tag-triggered releases (beta and stable).
  *
  * A pushed tag IS the release approval, so this validates it fail-closed:
- *   1. tag parses as `v<semver>` on the beta line (v1.1.0-beta.N[.M…])
- *   2. tag is semver-greater than every previous beta tag
+ *   1. tag parses as `v<semver>` on the beta line or the stable line
+ *   2. tag is semver-greater than every previous tag on the same line
  *   3. root package.json version equals the tag version
  *   4. CHANGELOG.md has a section for the tag version
  *
  * Usage:
  *   bun scripts/release/validate-tag.ts v1.1.0-beta.17.18
- *   bun scripts/release/validate-tag.ts v1.1.0-beta.17.18 --tags v1.1.0-beta.17.17,v1.1.0-beta.14
+ *   bun scripts/release/validate-tag.ts v1.2.0
+ *   bun scripts/release/validate-tag.ts v1.2.0 --tags v1.1.0,v1.2.0-beta.4
  *
  * Pure helpers are exported for unit tests.
  */
@@ -31,6 +32,18 @@ export function isBetaVersion(version: string): boolean {
   return !!pre && String(pre[0]) === "beta"
 }
 
+export function isStableVersion(version: string): boolean {
+  return !!semver.valid(version) && !semver.prerelease(version)
+}
+
+export type ReleaseLine = "beta" | "stable"
+
+export function releaseLine(version: string): ReleaseLine | undefined {
+  if (isBetaVersion(version)) return "beta"
+  if (isStableVersion(version)) return "stable"
+  return undefined
+}
+
 /** Greatest beta version among tags (without the leading v). */
 export function previousBetaVersion(tags: string[]): string | undefined {
   const betas = tags
@@ -38,6 +51,15 @@ export function previousBetaVersion(tags: string[]): string | undefined {
     .filter((v) => semver.valid(v) && isBetaVersion(v))
     .sort(semver.compare)
   return betas.at(-1)
+}
+
+/** Greatest stable version among tags (without the leading v). */
+export function previousStableVersion(tags: string[]): string | undefined {
+  const stables = tags
+    .map((t) => t.trim().replace(/^v/, ""))
+    .filter((v) => semver.valid(v) && isStableVersion(v))
+    .sort(semver.compare)
+  return stables.at(-1)
 }
 
 export interface TagReleaseChecks {
@@ -52,14 +74,16 @@ export function validateTagRelease(checks: TagReleaseChecks): string[] {
   const errors: string[] = []
   const version = cleanTag(checks.tag)
   if (!version) {
-    return [`tag ${checks.tag} is not v<semver> (want e.g. v1.1.0-beta.17.18)`]
+    return [`tag ${checks.tag} is not v<semver> (want e.g. v1.2.0 or v1.1.0-beta.17.18)`]
   }
-  if (!isBetaVersion(version)) {
-    errors.push(`tag ${checks.tag} is not on the beta line (this gate releases betas only)`)
+  const line = releaseLine(version)
+  if (!line) {
+    errors.push(`tag ${checks.tag} is not on the beta or stable line (rc/alpha tags are not released)`)
   }
-  const previous = previousBetaVersion(checks.previousTags.filter((t) => t !== checks.tag))
+  const previousTags = checks.previousTags.filter((t) => t !== checks.tag)
+  const previous = line === "beta" ? previousBetaVersion(previousTags) : line === "stable" ? previousStableVersion(previousTags) : undefined
   if (previous && semver.lte(version, previous)) {
-    errors.push(`tag ${checks.tag} is not greater than previous beta v${previous} — tags must increase`)
+    errors.push(`tag ${checks.tag} is not greater than previous ${line} v${previous} — tags must increase`)
   }
   const pkg = checks.packageVersion.replace(/^v/, "")
   if (pkg !== version) {
@@ -85,7 +109,7 @@ function argValue(flag: string): string | undefined {
 if (import.meta.main) {
   const tag = process.argv[2]
   if (!tag || tag === "--help" || tag === "-h") {
-    console.log("Usage: bun scripts/release/validate-tag.ts v1.1.0-beta.17.18 [--tags a,b,c]")
+    console.log("Usage: bun scripts/release/validate-tag.ts v1.2.0|v1.1.0-beta.17.18 [--tags a,b,c]")
     process.exit(tag ? 0 : 1)
   }
   const previousTags = argValue("--tags")?.split(",").map((s) => s.trim()).filter(Boolean)
@@ -97,5 +121,7 @@ if (import.meta.main) {
     for (const error of errors) console.error(`✗ ${error}`)
     process.exit(1)
   }
-  console.log(`✓ tag ${tag} may release (greater than previous beta, version + changelog match)`)
+  const version = cleanTag(tag)!
+  const line = releaseLine(version) ?? "beta"
+  console.log(`✓ tag ${tag} may release (greater than previous ${line}, version + changelog match)`)
 }

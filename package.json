@@ -42,6 +42,7 @@
     "lint:shell": "bash scripts/lint-shell.sh",
     "lint:actions": "bash scripts/lint-actions.sh",
     "test:installer": "bats tests/installer",
+    "audit:deps": "bun audit --audit-level high",
     "lint:deps": "depcruise 'packages/*/src' script --config .dependency-cruiser.cjs",
     "lint:unused": "knip --no-config-hints",
     "lint:syncpack": "syncpack lint --dependency-types prod,dev"

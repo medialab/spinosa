@@ -13,7 +13,7 @@ export const TOOLS_DIRNAME = "tools"
 export const TOOLS_MANIFEST_FILENAME = "TOOLS_MANIFEST.json"
 
 export function spinosaHomeDir(home = process.env.SPINOSA_HOME): string {
-  if (home) return home
+  if (home) return path.resolve(home)
   return productHomeDir()
 }
 

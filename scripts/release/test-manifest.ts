@@ -25,6 +25,17 @@ export const CORE_RELEASE_TESTS = [
   "test/uninstall.test.ts",
   "test/version-cache.test.ts",
   "test/distribution.test.ts",
+  "test/distribution-tools.test.ts",
+  "test/standalone.test.ts",
+  "test/fs-truncate.test.ts",
+  "test/destinations.test.ts",
+  "test/zip-hardened.test.ts",
+  "test/resume.test.ts",
+  "test/filesystem-boundaries.test.ts",
+  "test/import-progress.test.ts",
+  "test/job-runner.test.ts",
+  "test/manifest.test.ts",
+  "test/manifest-partial.test.ts",
   "test/workflow-gates.test.ts",
   "test/yaml-config.test.ts",
   "../../scripts/release/github.test.ts",
@@ -35,6 +46,7 @@ export const CORE_RELEASE_TESTS = [
   "../../scripts/release/tools-build.test.ts",
   "../../scripts/release/validate-tag.test.ts",
   "../../scripts/release/workflow-sync.test.ts",
+  "../../scripts/release/workflow-security.test.ts",
   "../../scripts/set-version.test.ts",
   "../../scripts/smoke-install.test.ts",
   "../../packages/core/test/models.test.ts",
@@ -48,17 +60,10 @@ export const CORE_RELEASE_TESTS = [
  * `bun run test:core` but stay out of the CI gate to keep it fast.
  */
 export const CORE_EXTENDED_TESTS = [
-  "test/fs-truncate.test.ts",
-  "test/distribution-tools.test.ts",
   "test/pdf-engine.test.ts",
   "test/pdf-scanned-ocr.test.ts",
-  "test/manifest-partial.test.ts",
-  "test/destinations.test.ts",
-  "test/zip-hardened.test.ts",
   "test/vision-abort.test.ts",
-  "test/standalone.test.ts",
   "test/ocr-support.test.ts",
-  "test/resume.test.ts",
 ] as const
 
 /** Run from `packages/tui`. */
@@ -76,6 +81,8 @@ export const TUI_RELEASE_TESTS = [
   "test/spinosa/preflight.test.ts",
   "test/spinosa/entry.test.ts",
   "test/spinosa/logging.test.ts",
+  "test/spinosa/outbound-queue.test.ts",
+  "test/spinosa/import-progress-ui.test.ts",
   "test/cli/cmd/tui/provider-options.test.ts",
 ] as const
 
@@ -93,6 +100,9 @@ export const TUI_LOCAL_TEST_PATHS = [
 export const KERNEL_RELEASE_TESTS = [
   "test/provider/public-info.test.ts",
   "test/server/httpapi-provider.test.ts",
+  "test/server/httpapi-host-validation.test.ts",
+  "test/server/httpapi-cors.test.ts",
+  "test/server/httpapi-listen.test.ts",
   "test/tool/parameters.test.ts",
   "test/tool/spinosa-refusal.test.ts",
 ] as const

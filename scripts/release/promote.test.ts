@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { productBinaryAssetName, PRODUCT_BINARY_TARGETS } from "../../packages/spinosa-core/src/distribution/contract.ts"
@@ -68,6 +68,46 @@ describe("verifyPromotedDist", () => {
     try {
       writeFileSync(join(dir, productBinaryAssetName("darwin-arm64")), "tampered\n")
       await expect(verifyPromotedDist(root, version)).rejects.toThrow("checksum mismatch")
+    } finally {
+      cleanup()
+    }
+  })
+
+  test("rejects an empty checksum file", async () => {
+    const { root, dir, cleanup } = fixture()
+    try {
+      writeFileSync(join(dir, "checksums.txt"), "\n")
+      await expect(verifyPromotedDist(root, version)).rejects.toThrow("missing checksum")
+    } finally {
+      cleanup()
+    }
+  })
+
+  test("rejects a missing checksum entry even when the binary exists", async () => {
+    const { root, dir, cleanup } = fixture()
+    try {
+      const file = join(dir, "checksums.txt")
+      const binary = productBinaryAssetName("linux-x64")
+      writeFileSync(file, readFileSync(file, "utf-8").split("\n").filter((line) => !line.endsWith(binary)).join("\n"))
+      await expect(verifyPromotedDist(root, version)).rejects.toThrow(`missing checksum: ${binary}`)
+    } finally {
+      cleanup()
+    }
+  })
+
+  test("rejects malformed, duplicate and unexpected checksum entries", async () => {
+    const { root, dir, cleanup } = fixture()
+    try {
+      const file = join(dir, "checksums.txt")
+      const valid = readFileSync(file, "utf-8")
+      for (const [extra, error] of [
+        ["malformed line\n", "malformed checksum"],
+        [valid.split("\n")[0]! + "\n", "duplicate checksum"],
+        ["0".repeat(64) + "  ../outside\n", "unexpected checksum asset"],
+      ]) {
+        writeFileSync(file, valid + extra)
+        await expect(verifyPromotedDist(root, version)).rejects.toThrow(error)
+      }
     } finally {
       cleanup()
     }

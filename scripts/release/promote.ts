@@ -63,14 +63,23 @@ export async function verifyPromotedDist(distRoot: string, version: string): Pro
   }
   // checksums.txt pins every immutable asset: hash everything it lists.
   const lines = readFileSync(join(dir, "checksums.txt"), "utf-8").split("\n")
+  const immutableAssets = new Set(expected.filter((name) => name !== "checksums.txt"))
+  const checked = new Set<string>()
   for (const line of lines) {
-    const match = line.match(/^([0-9a-f]{64})\s+\*?(.+)$/)
-    if (!match) continue
+    if (!line.trim()) continue
+    const match = line.trim().match(/^([0-9a-f]{64})\s+\*?(.+)$/i)
+    if (!match) throw new Error("promoted checksums.txt contains a malformed checksum")
     const [, want, rel] = match
+    if (!immutableAssets.has(rel!)) throw new Error(`promoted unexpected checksum asset: ${rel}`)
+    if (checked.has(rel!)) throw new Error(`promoted duplicate checksum: ${rel}`)
     const abs = join(dir, rel)
     if (!existsSync(abs)) throw new Error(`promoted checksums.txt lists missing file: ${rel}`)
     const got = createHash("sha256").update(readFileSync(abs)).digest("hex")
-    if (got !== want) throw new Error(`promoted checksum mismatch: ${rel}`)
+    if (got !== want!.toLowerCase()) throw new Error(`promoted checksum mismatch: ${rel}`)
+    checked.add(rel!)
+  }
+  for (const name of immutableAssets) {
+    if (!checked.has(name)) throw new Error(`promoted missing checksum: ${name}`)
   }
 }
 

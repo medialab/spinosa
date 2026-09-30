@@ -83,6 +83,16 @@ describe("waitForOcrChild cancel race", () => {
     expect(result.aborted).toBe(true)
     expect(child.exitCode !== null || child.signalCode !== null).toBe(true)
   })
+
+  test("timeout termination remains a failure rather than cancellation", async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+      detached: true,
+    })
+    const result = await waitForOcrChild(child, undefined, undefined, 10)
+    expect(result.timedOut).toBe(true)
+    expect(result.aborted).toBe(false)
+  })
 })
 
 describe("import processor registry", () => {

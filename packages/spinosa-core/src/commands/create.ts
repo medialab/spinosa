@@ -181,7 +181,7 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
     // ── Step 1: Copy workspace-template/ → workspace root ───────────────
     const srcTemplate = resolveTemplateRootFromFrameworkRoot(frameworkRoot)
     if (!srcTemplate || !existsSync(srcTemplate)) {
-      rmSync(workspacePath, { recursive: true, force: true })
+      if (!reservation.resumed) rmSync(workspacePath, { recursive: true, force: true })
       return { workspacePath, projectName, success: false }
     }
     if (!reservation.resumed) {

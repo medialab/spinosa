@@ -1310,6 +1310,36 @@ type MarkitdownWorkerState = {
   renamed: number
   recoverable: { src: string; dest: string }[]
   errors: string[]
+  doneSeen?: boolean
+}
+
+type MarkitdownOutputSnapshot = {
+  exists: boolean
+  dev?: number
+  ino?: number
+  size?: number
+  mtimeMs?: number
+}
+
+function snapshotMarkitdownOutput(file: ClassifiedEntry): MarkitdownOutputSnapshot {
+  try {
+    if (!convertedOutputExists(file.dest)) return { exists: false }
+    const stat = statSync(file.dest)
+    return { exists: true, dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs }
+  } catch {
+    return { exists: false }
+  }
+}
+
+function markitdownOutputChanged(before: MarkitdownOutputSnapshot, file: ClassifiedEntry): boolean {
+  if (!before.exists) return convertedOutputExists(file.dest)
+  try {
+    if (!convertedOutputExists(file.dest)) return false
+    const stat = statSync(file.dest)
+    return stat.dev !== before.dev || stat.ino !== before.ino || stat.size !== before.size || stat.mtimeMs !== before.mtimeMs
+  } catch {
+    return false
+  }
 }
 
 export function consumeMarkitdownWorkerNdjsonLine(
@@ -1337,6 +1367,7 @@ export function consumeMarkitdownWorkerNdjsonLine(
         options?.onLog?.(String(msg.message ?? ""))
         break
       case "done":
+        state.doneSeen = true
         state.converted = Number(msg.converted ?? 0)
         state.skipped = Number(msg.skipped ?? 0)
         state.failed = Number(msg.failed ?? 0)
@@ -1369,6 +1400,8 @@ async function runMarkitdownViaChild(
   hooks?: MarkitdownHooks,
 ): Promise<PhaseResult> {
   throwIfSpinosaCancelled(shouldAbort)
+  const outputBefore = new Map(files.map((file) => [file, snapshotMarkitdownOutput(file)] as const))
+  const initiallySkipped = new Set(files.filter((file) => !file.force && outputBefore.get(file)?.exists))
   const mode = resolveMarkitdownWorkerMode()
   const workerPayload = encodeWorkerPayload({ files, logsDir, ocrModelId: hooks?.ocrModelId })
   let child: ReturnType<typeof spawn>
@@ -1406,13 +1439,15 @@ async function runMarkitdownViaChild(
     renamed: 0,
     recoverable: [],
     errors: [],
+    doneSeen: false,
   }
 
   let stdoutCarry = ""
   let stderrBuf = ""
+  const progressKey = (value: string) => value.replace(/\s+→\s+.*$/, "").trim().replace(/\s+\(.*\)$/, "").trim()
   // Track rels that reached a terminal state via NDJSON progress so we can
   // reconcile any lost final `done`/`failed` events caused by stdout truncation.
-  const terminalSeen = new Set<string>()
+  const terminalSeen = new Map<string, "done" | "failed">()
   const onProgress = (current: number, total: number, relPath: string, status?: string) => {
     const st =
       status === "queued" || status === "processing" || status === "done" || status === "failed" || status === "error"
@@ -1420,8 +1455,8 @@ async function runMarkitdownViaChild(
         : undefined
     if (st === "done" || st === "failed" || st === "error") {
       // Key matches applyImportProgressStatus stripping (arrow + page suffixes).
-      const key = String(relPath).replace(/\s+→\s+.*$/, "").trim().replace(/\s+\(.*\)$/, "").trim()
-      if (key) terminalSeen.add(key)
+      const key = progressKey(String(relPath))
+      if (key) terminalSeen.set(key, st === "done" ? "done" : "failed")
     }
     prog?.file("MarkItDown", current, total, relPath, st)
   }
@@ -1447,22 +1482,6 @@ async function runMarkitdownViaChild(
     onLog?.(msg)
   }
   if (stdoutCarry.trim()) consumeMarkitdownWorkerNdjsonLine(stdoutCarry, state, { onLog, onProgress })
-  // Reconcile any files whose terminal progress was lost to truncation:
-  // emit a synthetic terminal event so TUI's `Files (… pending)` does not leak
-  // a stale `›` row (e.g. `survey-results.csv` stuck as processing).
-  if (!aborted) {
-    for (const f of files) {
-      const key = String(f.rel).replace(/\s+→\s+.*$/, "").trim().replace(/\s+\(.*\)$/, "").trim()
-      if (!key || terminalSeen.has(key)) continue
-      const exists = (() => {
-        try { return convertedOutputExists(f.dest) } catch { return false }
-      })()
-      const status = exists ? ("done" as const) : ("failed" as const)
-      // Use total as current so bar can reach 100% even when last event was lost.
-      onProgress(files.length, files.length, f.rel, status)
-    }
-  }
-
   try {
     child.unref()
   } catch {
@@ -1489,6 +1508,63 @@ async function runMarkitdownViaChild(
     onLog?.(msg)
   }
 
+  // Always settle missing terminal progress so the TUI cannot retain pending
+  // rows after a successful summary. If the summary itself was lost or the
+  // child failed, also rebuild result counters from terminal events and output.
+  const rebuildResult = !state.doneSeen || timedOut || Boolean(signal) || (code !== 0 && code !== null)
+  let converted = 0
+  let skipped = 0
+  let failed = 0
+  const recoverable: { src: string; dest: string }[] = []
+  for (const file of files) {
+    const key = progressKey(file.rel)
+    const terminal = terminalSeen.get(key)
+    const outputExists = (() => {
+      try {
+        return convertedOutputExists(file.dest)
+      } catch {
+        return false
+      }
+    })()
+    const outputChanged = markitdownOutputChanged(outputBefore.get(file) ?? { exists: false }, file)
+    const status =
+      terminal === "failed"
+        ? "failed"
+        : initiallySkipped.has(file)
+          ? "skipped"
+          : terminal === "done" || (outputExists && outputChanged)
+            ? "done"
+            : "failed"
+    if (rebuildResult) {
+      if (status === "skipped") skipped += 1
+      else if (status === "done") {
+        converted += 1
+        if (outputExists) recoverable.push({ src: file.src, dest: file.dest })
+      } else failed += 1
+    }
+
+    if (!terminal) {
+      const progressStatus = status === "failed" ? "failed" : "done"
+      // Use total as current so the progress bar and pending rows settle.
+      onProgress(files.length, files.length, file.rel, progressStatus)
+      if (rebuildResult) {
+        recordPhaseResult(
+          logsDir,
+          file,
+          "markitdown",
+          progressStatus === "failed" ? "failed" : "done",
+          "markitdown-worker",
+        )
+      }
+    }
+  }
+  if (rebuildResult) {
+    state.converted = converted
+    state.skipped = skipped
+    state.failed = failed
+    state.recoverable = recoverable
+  }
+
   for (const err of state.errors) onLog?.(err)
 
   return {
@@ -1512,7 +1588,7 @@ export async function waitForOcrChild(
 ): Promise<{ code: number | null; signal: string | null; aborted: boolean; timedOut?: boolean }> {
   return new Promise((resolve) => {
     let settled = false
-    let terminating = false
+    let terminationReason: "abort" | "timeout" | undefined
     const abortRequested = () => Boolean(shouldAbort?.() || signal?.aborted)
 
     const finish = (result: { code: number | null; signal: string | null; aborted: boolean; timedOut?: boolean }) => {
@@ -1531,8 +1607,8 @@ export async function waitForOcrChild(
     }
 
     const requestTerminate = (timedOut = false) => {
-      if (settled || terminating) return
-      terminating = true
+      if (settled || terminationReason) return
+      terminationReason = timedOut ? "timeout" : "abort"
       clearInterval(poll)
       void terminateChild(child).then(() => {
         finish({ code: null, signal: "SIGTERM", aborted: !timedOut, timedOut })
@@ -1543,10 +1619,20 @@ export async function waitForOcrChild(
 
     child.on("close", (c, s) => {
       // Cancel kill often races the abort poll: treat as aborted if cancel already requested.
-      finish({ code: c, signal: s, aborted: abortRequested() || terminating })
+      finish({
+        code: c,
+        signal: s,
+        aborted: abortRequested() || terminationReason === "abort",
+        ...(terminationReason === "timeout" ? { timedOut: true } : {}),
+      })
     })
     child.on("error", () => {
-      finish({ code: 1, signal: null, aborted: abortRequested() || terminating })
+      finish({
+        code: 1,
+        signal: null,
+        aborted: abortRequested() || terminationReason === "abort",
+        ...(terminationReason === "timeout" ? { timedOut: true } : {}),
+      })
     })
 
     const poll = setInterval(() => {
@@ -1564,6 +1650,11 @@ export async function waitForOcrChild(
 
     // Immediate check in case abort was already requested via shouldAbort.
     if (abortRequested()) requestTerminate()
+    // A test hook or external owner may kill the child before listeners above
+    // are attached. Do not wait for a close event that already happened.
+    else if (child.exitCode !== null || child.signalCode !== null) {
+      finish({ code: child.exitCode, signal: child.signalCode, aborted: false })
+    }
   })
 }
 

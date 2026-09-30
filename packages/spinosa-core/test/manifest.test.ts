@@ -26,6 +26,28 @@ function makeSource(root: string, rel: string, content: string): string {
 }
 
 describe("import manifest", () => {
+  test("persistence failures warn while keeping import recoverable", () => {
+    const { root, logsDir } = makeLogs()
+    const originalHome = process.env.SPINOSA_HOME
+    process.env.SPINOSA_HOME = path.join(root, "home")
+    try {
+      mkdirSync(manifestPath(logsDir))
+      const src = makeSource(root, "a.txt", "hello")
+      expect(() => recordResult({ logsDir, rel: "a.txt", ext: "txt", route: "direct", status: "done", srcFile: src, dest: "raw/a.txt", engine: "direct" })).not.toThrow()
+      expect(loadManifest(logsDir).records.size).toBe(0)
+      expect(pruneManifest(logsDir, ["a.txt"])).toBe(0)
+      const log = readFileSync(path.join(process.env.SPINOSA_HOME, "logs", "spinosa.log"), "utf8")
+      expect(log).toContain("manifest append failed")
+      expect(log).toContain("manifest read failed")
+      expect(log).toContain("manifest prune failed")
+      expect(log).not.toContain(root)
+    } finally {
+      if (originalHome === undefined) delete process.env.SPINOSA_HOME
+      else process.env.SPINOSA_HOME = originalHome
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("missing file loads empty, corrupt lines are skipped", () => {
     const { root, logsDir } = makeLogs()
     try {

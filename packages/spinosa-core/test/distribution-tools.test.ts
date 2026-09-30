@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import {
   bundledToolsBinDir,
   bundledToolsRoot,
+  spinosaHomeDir,
   toolsPlatformTag,
   verifyBundledTools,
 } from "../src/distribution/tools"
@@ -17,6 +18,10 @@ afterEach(() => {
 })
 
 describe("legacy tools layout helpers (no engine ships)", () => {
+  test("normalizes a relative product home", () => {
+    expect(spinosaHomeDir("./relative-spinosa")).toBe(path.resolve("./relative-spinosa"))
+  })
+
   test("toolsPlatformTag mirrors installer mapping", () => {
     expect(toolsPlatformTag("darwin", "arm64")).toBe("darwin-arm64")
     expect(toolsPlatformTag("darwin", "x64")).toBe("darwin-x64")

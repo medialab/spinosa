@@ -96,6 +96,7 @@ Contract: [docs/release/binary-distribution-contract.md](docs/release/binary-dis
 | Command | When | What |
 | ------- | ---- | ---- |
 | `bun run quality` | Every beta cut / `release:validate` | Parallel: product typechecks, shellcheck, actionlint, release-critical unit/TUI tests, installer bats, repo smoke |
+| `bun run audit:deps` | Local review / CI dry run (informational) | High/critical dependency advisories; no automatic upgrades or release blocking |
 | `bun run quality:binary` | Before binary cut / local binary sign-off | Distribution contract tests, installer bats, host binary build, installer HTTP smoke when assets exist |
 | `bun run smoke` | Local iteration | Repo-root `version`/`doctor` + cwd |
 | `bun run quality:full` | Before stable / deep sweep | Full typecheck-all, knip, syncpack, depcruise, all core+tui spinosa tests |
@@ -103,6 +104,13 @@ Contract: [docs/release/binary-distribution-contract.md](docs/release/binary-dis
 Quality runs locally (`release:validate`), in the CI validate job, and as the
 required PR gate (`quality.yml` functional-quality). The metrics baseline
 (`quality:report`) is advisory only; coverage/mutation run manually.
+Dependency advisories are reported separately in dry runs. Review applicability
+and remediation individually; a scan finding does not mandate an upgrade.
+
+Release-critical tests include workspace containment and resume safety, import
+worker failure accounting, outbound queue recovery, and HTTP host validation.
+Release actions are pinned to commits; checkout credentials are not persisted,
+and `GH_TOKEN` is supplied only to promotion and publication steps.
 
 Three levels, in order — each catches a different failure class:
 

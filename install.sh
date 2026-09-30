@@ -73,6 +73,14 @@ redact_user_home() {
   printf '%s' "$msg"
 }
 
+redact_log_text() {
+  redact_user_home "${1:-}" | sed -E \
+    -e 's#([Hh][Tt][Tt][Pp][Ss]?://)[^/[:space:]]*@#\1[REDACTED]@#g' \
+    -e 's#([Hh][Tt][Tt][Pp][Ss]?://[^?[:space:]]*)\?[^[:space:]]*#\1?[REDACTED]#g' \
+    -e 's#([Bb]asic|[Bb]earer)[[:space:]]+[A-Za-z0-9._~+/=-]+#\1 [REDACTED]#g' \
+    -e 's#([Pp]assword|[Ss]ecret|[Tt]oken|[Aa][Pp][Ii][_-]?[Kk]ey)=[^[:space:]]+#\1=[REDACTED]#g'
+}
+
 spinosa_log_init() {
   [ "${SPINOSA_LOG_DISABLED:-0}" = "1" ] && return 0
   local component="${1:-install}"
@@ -84,9 +92,10 @@ spinosa_log_init() {
     printf '\n---\n'
     printf '%s component=%s pid=%s ppid=%s shell=%s cwd=%s' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      "$component" "$$" "$PPID" "${BASH_VERSION:-sh}" "$(redact_user_home "$PWD")"
+      "$component" "$$" "$PPID" "${BASH_VERSION:-sh}" "$(redact_log_text "$PWD")"
     if [ $# -gt 0 ]; then
-      printf ' argv=%q' "$@"
+      local arg
+      for arg in "$@"; do printf ' argv=%q' "$(redact_log_text "$arg")"; done
     fi
     printf '\n'
   } >> "$log_file" 2>/dev/null || true
@@ -99,7 +108,7 @@ spinosa_log() {
   local log_file
   log_file="$(spinosa_log_file)"
   mkdir -p "$(dirname "$log_file")" 2>/dev/null || return 0
-  printf '%s level=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$level" "$(redact_user_home "$*")" >> "$log_file" 2>/dev/null || true
+  printf '%s level=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$level" "$(redact_log_text "$*")" >> "$log_file" 2>/dev/null || true
 }
 
 _spinosa_install_err_trap() {
@@ -2689,9 +2698,9 @@ main() {
   {
     printf '\n---\n'
     printf '%s early component=install pid=%s ppid=%s shell=%s cwd=%s\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$PPID" "${BASH_VERSION:-sh}" "$PWD"
-    printf 'argv=%q\n' "$0 $*"
-    printf 'version=%s home=%s bin=%s\n' "${VERSION:-}" "${SPINOSA_HOME:-}" "${SPINOSA_BIN_DIR:-}"
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$PPID" "${BASH_VERSION:-sh}" "$(redact_log_text "$PWD")"
+    printf 'argv=%q\n' "$(redact_log_text "$0 $*")"
+    printf 'version=%s home=%s bin=%s\n' "$(redact_log_text "${VERSION:-}")" "$(redact_log_text "${SPINOSA_HOME:-}")" "$(redact_log_text "${SPINOSA_BIN_DIR:-}")"
   } >> "$early_log" 2>/dev/null || true
   vinfo "install attempt log: $early_log"
 

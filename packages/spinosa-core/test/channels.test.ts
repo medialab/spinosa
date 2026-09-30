@@ -8,6 +8,7 @@ import {
   readAutoUpgrade,
   spinosaBetaToggleChannel,
   spinosaReleaseChannel,
+  spinosaConfigFile,
 } from "../src/system/channels"
 
 let testHome = ""
@@ -30,6 +31,14 @@ afterEach(() => {
 })
 
 describe("release channel config", () => {
+  test("normalizes relative product home and metadata overrides", () => {
+    resetTestHome()
+    process.env.SPINOSA_HOME = "relative-spinosa"
+    expect(spinosaConfigFile()).toBe(path.resolve("relative-spinosa", "metadata", "config.yaml"))
+    process.env.SPINOSA_METADATA_DIR = "relative-metadata"
+    expect(spinosaConfigFile()).toBe(path.resolve("relative-metadata", "config.yaml"))
+  })
+
   test("uses beta toggle as canonical config key", async () => {
     resetTestHome()
     await setReleaseChannel("beta")

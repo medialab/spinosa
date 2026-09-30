@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "../fixture/fixture"
 import { spinosaLogInfo } from "@spinosa/core/utils/log"
@@ -7,6 +7,26 @@ import { dbg } from "../../src/util/debug-log"
 import { stat } from "node:fs/promises"
 
 describe("Spinosa logging", () => {
+  test("warns once without private details when logging is unavailable", async () => {
+    await using tmp = await tmpdir()
+    const originalHome = process.env.SPINOSA_HOME
+    process.env.SPINOSA_HOME = path.join(tmp.path, "home-is-a-file")
+    await Bun.write(process.env.SPINOSA_HOME, "occupied")
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true)
+    try {
+      expect(() => tuiLog("token=private-value")).not.toThrow()
+      tuiLog("second failure")
+      expect(stderr).toHaveBeenCalledTimes(1)
+      expect(String(stderr.mock.calls[0]?.[0])).toContain("unable to write TUI log")
+      expect(String(stderr.mock.calls[0]?.[0])).not.toContain(tmp.path)
+      expect(String(stderr.mock.calls[0]?.[0])).not.toContain("private-value")
+    } finally {
+      stderr.mockRestore()
+      if (originalHome === undefined) delete process.env.SPINOSA_HOME
+      else process.env.SPINOSA_HOME = originalHome
+    }
+  })
+
   test("respects SPINOSA_HOME and avoids full workspace paths", async () => {
     await using tmp = await tmpdir()
     const originalHome = process.env.SPINOSA_HOME

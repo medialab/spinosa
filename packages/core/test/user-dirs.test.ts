@@ -90,6 +90,12 @@ describe("user dirs", () => {
     expect(dirs.repos).toBe(path.join(dirs.data, "repos"))
   })
 
+  test("normalizes relative product home overrides", () => {
+    const env = { SPINOSA_HOME: "./relative-spinosa" }
+    expect(productHomeDir({ home, env })).toBe(path.resolve(env.SPINOSA_HOME))
+    expect(productLogDir({ home, env })).toBe(path.join(path.resolve(env.SPINOSA_HOME), "logs"))
+  })
+
   test("product path keeps install home and drops workspace .spinosa markers", () => {
     expect(isRuntimeProductPath("/Users/name/.spinosa/logs/boot.tui.ndjson")).toBe(true)
     expect(isRuntimeProductPath("~/.spinosa/logs/effect.tui.log")).toBe(true)

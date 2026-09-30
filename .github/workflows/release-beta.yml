@@ -54,7 +54,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   BUN_VERSION: "1.3.14"
 
 jobs:
@@ -97,16 +96,22 @@ jobs:
             echo "checkout_ref=${GITHUB_REF}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ steps.version.outputs.checkout_ref }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
+
+      - name: Dependency advisories (informational)
+        if: steps.version.outputs.dry_run == 'true'
+        continue-on-error: true
+        run: bun run audit:deps
 
       - run: bun scripts/release/validate-tag.ts "${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.version.outputs.version) || github.ref_name }}"
 
@@ -141,12 +146,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ needs.validate.outputs.checkout_ref }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -163,7 +169,7 @@ jobs:
       # native target compile". The assembled artifact is smoked exactly once
       # per platform in verify (full end-to-end installer run).
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-${{ matrix.target }}
           path: dist/v${{ needs.validate.outputs.version }}/spinosa-${{ matrix.target }}
@@ -180,18 +186,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ needs.validate.outputs.checkout_ref }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: release-*
           merge-multiple: true
@@ -209,7 +216,7 @@ jobs:
             bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
           fi
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           # Both dist/v<version>/ and dist/<channel>/ — ci-publish needs the channel installer.
           # Uploaded in dry runs too: verify downloads it to prove the full pipeline.
@@ -225,7 +232,7 @@ jobs:
       # its own tiny artifact and promote.ts matches on content, not metadata.
       - run: git rev-parse HEAD > dist/commit-sha.txt
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-sha
           path: dist/commit-sha.txt
@@ -257,11 +264,12 @@ jobs:
     # slow/cold hosts; 30min keeps headroom without masking a hung install.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           ref: ${{ needs.validate.outputs.checkout_ref }}
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: assembled-dist
           # Artifact root holds dist/ contents, so download into dist/.
@@ -323,12 +331,13 @@ jobs:
       # Cross-run artifact download (promote the dry-run's bytes).
       actions: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ needs.validate.outputs.checkout_ref }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -338,10 +347,14 @@ jobs:
       # this exact commit and re-verify layout + checksums. No rebuild —
       # a tag with no green dry-run fails closed here.
       - run: bun scripts/release/promote.ts "${{ needs.validate.outputs.version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - run: bun run release ci-publish "v${{ needs.validate.outputs.version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/attest-build-provenance@v3
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: |
             dist/v${{ needs.validate.outputs.version }}/install.sh

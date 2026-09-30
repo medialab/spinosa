@@ -69,7 +69,13 @@ import * as SessionExecutionLocal from "@spinosa/kernel-core/session/execution/l
 import { SessionExecutionStatus } from "@spinosa/kernel-core/session/execution-status"
 import { SessionExecutionStatusBridge } from "@/session/execution-status-bridge"
 import { lazy } from "@/util/lazy"
-import { CorsConfig, isAllowedRequestOrigin, type CorsOptions } from "@spinosa/server/cors"
+import {
+  CorsConfig,
+  isAllowedRequestHost,
+  isAllowedRequestOrigin,
+  type CorsOptions,
+  type RequestHostPolicy,
+} from "@spinosa/server/cors"
 import { ServerAuth as SharedServerAuth } from "@spinosa/server/auth"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
@@ -122,16 +128,29 @@ import { schemaErrorLayer } from "./middleware/schema-error"
 
 export const context = Context.makeUnsafe<unknown>(new Map())
 
-const cors = (corsOptions?: CorsOptions) =>
+const cors = (corsOptions?: CorsOptions, hostPolicy?: RequestHostPolicy) =>
   HttpRouter.middleware(
     (httpApp) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
         const host = request.headers.host
         return yield* HttpMiddleware.cors({
-          allowedOrigins: (origin) => isAllowedRequestOrigin(origin, host, corsOptions),
+          allowedOrigins: (origin) => isAllowedRequestOrigin(origin, host, corsOptions, hostPolicy),
           maxAge: 86_400,
         })(httpApp)
+      }),
+    { global: true },
+  )
+
+const requestHost = (policy?: RequestHostPolicy) =>
+  HttpRouter.middleware(
+    (httpApp) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        if (!isAllowedRequestHost(request.headers.host, policy)) {
+          return HttpServerResponse.text("Misdirected request", { status: 421 })
+        }
+        return yield* httpApp
       }),
     { global: true },
   )
@@ -269,6 +288,7 @@ const app = LayerNode.group([
 
 export function createRoutes(
   corsOptions?: CorsOptions,
+  hostPolicy?: RequestHostPolicy,
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
   const locationServiceMapV2 = buildLocationServiceMap()
 
@@ -285,7 +305,8 @@ export function createRoutes(
       compressionLayer,
       corsVaryFix,
       fenceLayer,
-      cors(corsOptions),
+      cors(corsOptions, hostPolicy),
+      requestHost(hostPolicy),
       AppNodeBuilderV1.build(MoveSession.node, [[LocationServiceMap.node, locationServiceMapV2]]),
       HttpServer.layerServices,
     ]),

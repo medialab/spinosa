@@ -8,6 +8,7 @@ import path from "node:path"
 import { isSpinosaWorkspace } from "../workspace/meta"
 import { validateArtifact } from "../artifacts/validate"
 import { extractionCompleteness, normalizeExtractionPath } from "../artifacts/extraction"
+import { resolvePathWithinRoot } from "../utils/path"
 
 export type MapAction = "begin" | "write_extraction" | "write_map" | "check" | "cover"
 
@@ -203,7 +204,12 @@ function extractPacketPaths(text: string): string[] {
 }
 
 async function listMaps(workspacePath: string): Promise<string[]> {
-  const root = path.join(workspacePath, "maps")
+  let root: string
+  try {
+    root = resolvePathWithinRoot(workspacePath, "maps", "map path")
+  } catch {
+    return []
+  }
   const out: string[] = []
   async function walk(dir: string, prefix: string) {
     let entries
@@ -225,14 +231,19 @@ async function listMaps(workspacePath: string): Promise<string[]> {
 }
 
 async function readWorkspaceFile(workspacePath: string, relative: string): Promise<string | undefined> {
-  if (!contained(workspacePath, relative)) return undefined
-  const file = Bun.file(path.join(workspacePath, relative))
+  let absolute: string
+  try {
+    absolute = resolvePathWithinRoot(workspacePath, relative, "workspace artifact path")
+  } catch {
+    return undefined
+  }
+  const file = Bun.file(absolute)
   if (!(await file.exists())) return undefined
   return file.text()
 }
 
 async function writeWorkspaceFile(workspacePath: string, relative: string, content: string): Promise<void> {
-  const abs = path.join(workspacePath, relative)
+  const abs = resolvePathWithinRoot(workspacePath, relative, "workspace artifact path")
   await mkdir(path.dirname(abs), { recursive: true })
   await writeFile(abs, content)
 }
@@ -363,7 +374,11 @@ async function writeExtraction(input: SpinosaMapInput): Promise<SpinosaMapResult
     files,
     packets: packets.map((p) => ({ ...p, path: normalizeRawPath(p.path) })),
   })
-  await writeWorkspaceFile(input.workspacePath, relativePath, markdown)
+  try {
+    await writeWorkspaceFile(input.workspacePath, relativePath, markdown)
+  } catch (error) {
+    return fail(`refused to write ${relativePath}: ${error instanceof Error ? error.message : String(error)}`)
+  }
   const checked = await validateArtifact({
     workspacePath: input.workspacePath,
     relativePath,
@@ -441,7 +456,11 @@ async function writeMap(input: SpinosaMapInput): Promise<SpinosaMapResult> {
     return fail("map body must include at least one wikilink")
   }
 
-  await writeWorkspaceFile(input.workspacePath, mapPath, markdown)
+  try {
+    await writeWorkspaceFile(input.workspacePath, mapPath, markdown)
+  } catch (error) {
+    return fail(`refused to write ${mapPath}: ${error instanceof Error ? error.message : String(error)}`)
+  }
   const checked = await validateArtifact({
     workspacePath: input.workspacePath,
     relativePath: mapPath,

@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import * as path from "node:path"
+import { spinosaLogWarn } from "../utils/log"
 
 export const IMPORT_MANIFEST_FILENAME = "import-manifest.ndjson"
 
@@ -67,9 +68,7 @@ export function manifestDest(logsDir: string, dest: string): string {
 }
 
 function ensureLogsDir(logsDir: string): void {
-  try {
-    mkdirSync(logsDir, { recursive: true })
-  } catch {}
+  mkdirSync(logsDir, { recursive: true })
 }
 
 /** Cheap identity: stat only, no content read. */
@@ -157,6 +156,7 @@ export function loadManifest(logsDir: string): { records: Map<string, ManifestRe
   try {
     text = readFileSync(file, "utf-8")
   } catch {
+    spinosaLogWarn("import", "manifest read failed; resume history unavailable")
     return { records, corruptLines }
   }
   let lineCount = 0
@@ -176,7 +176,9 @@ export function loadManifest(logsDir: string): { records: Map<string, ManifestRe
       const lines: string[] = []
       for (const record of records.values()) lines.push(JSON.stringify(record))
       writeFileSync(file, lines.length > 0 ? `${lines.join("\n")}\n` : "")
-    } catch {}
+    } catch {
+      spinosaLogWarn("import", "manifest compaction failed; resume history may be incomplete")
+    }
   }
   return { records, corruptLines }
 }
@@ -222,7 +224,9 @@ export function recordResult(entry: {
       pendingPages: entry.pendingPages,
     }
     appendFileSync(manifestPath(logsDir), JSON.stringify(record) + "\n", "utf-8")
-  } catch {}
+  } catch {
+    spinosaLogWarn("import", "manifest append failed; result may be reprocessed on resume")
+  }
 }
 
 /**
@@ -299,6 +303,7 @@ export function pruneManifest(logsDir: string, removeRels: readonly string[]): n
     writeFileSync(manifestPath(logsDir), lines.length > 0 ? lines.join("\n") + "\n" : "", "utf-8")
     return pruned
   } catch {
+    spinosaLogWarn("import", "manifest prune failed; removed records may remain")
     return 0
   }
 }

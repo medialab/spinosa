@@ -11,10 +11,12 @@ import { HttpApiApp } from "./routes/instance/httpapi/server"
 import { disposeMiddleware } from "./routes/instance/httpapi/lifecycle"
 import { WebSocketTracker } from "./routes/instance/httpapi/websocket-tracker"
 import { PublicApi } from "./routes/instance/httpapi/public"
-import type { CorsOptions } from "@spinosa/server/cors"
+import { isLoopbackHostname, type CorsOptions, type RequestHostPolicy } from "@spinosa/server/cors"
 import { httpDiagnostic, logHttpFailure, logHttpFinish, logHttpStart } from "@/server/http-diagnostics"
 import { lazy } from "@/util/lazy"
 import { Flag } from "@spinosa/kernel-core/flag/flag"
+
+export { isLoopbackHostname }
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -86,6 +88,8 @@ export let url: URL | undefined
 
 export async function listen(opts: ListenOptions): Promise<Listener> {
   assertSecureBind(opts.hostname)
+  const warning = insecureRemoteTransportWarning(opts.hostname)
+  if (warning) console.warn(warning)
   const listener = await Effect.runPromise(listenEffect(opts))
   return {
     hostname: listener.hostname,
@@ -95,21 +99,18 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
   }
 }
 
-export function isLoopbackHostname(hostname: string) {
-  const value = hostname.toLowerCase().replace(/^\[|\]$/g, "")
-  return (
-    value === "localhost" ||
-    value.endsWith(".localhost") ||
-    value === "::1" ||
-    value === "::ffff:127.0.0.1" ||
-    /^127(?:\.\d{1,3}){3}$/.test(value)
-  )
-}
-
 export function assertSecureBind(hostname: string) {
   if (isLoopbackHostname(hostname) || (Flag.SPINOSA_SERVER_PASSWORD ?? "") !== "") return
   throw new Error(
     `Refusing to expose the Spinosa server on ${hostname} without SPINOSA_SERVER_PASSWORD. Set a password or bind to a loopback hostname.`,
+  )
+}
+
+export function insecureRemoteTransportWarning(hostname: string) {
+  if (isLoopbackHostname(hostname) || (Flag.SPINOSA_SERVER_PASSWORD ?? "") === "") return
+  return (
+    "Warning: Spinosa Basic authentication over HTTP does not encrypt credentials or traffic. " +
+    "Put an HTTPS reverse proxy in front of a loopback-bound server or use an encrypted tunnel."
   )
 }
 
@@ -131,7 +132,10 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
 )
 
 function listenerLayer(opts: ListenOptions, port: number) {
-  return HttpRouter.serve(HttpApiApp.createRoutes(opts), {
+  const hostPolicy: RequestHostPolicy = {
+    loopbackOnly: isLoopbackHostname(opts.hostname) && (Flag.SPINOSA_SERVER_PASSWORD ?? "") === "",
+  }
+  return HttpRouter.serve(HttpApiApp.createRoutes(opts, hostPolicy), {
     middleware: disposeMiddleware,
     disableLogger: true,
     disableListenLog: true,

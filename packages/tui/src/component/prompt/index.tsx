@@ -84,6 +84,7 @@ import {
   peekDispatchable,
   peekOutbound,
   registerPump,
+  recoverOutboundPumpFailure,
   releaseOutboundPump,
   removeOutbound,
   ownsOutboundPump,
@@ -467,7 +468,7 @@ export function Prompt(props: PromptProps) {
           setStore("interrupt", 0)
           interruptTarget = undefined
           void sdk.client.session.abort({ sessionID }).finally(() => {
-            void pumpOutbound(sessionID)
+            startOutboundPump(sessionID)
           })
           dialog.clear()
         },
@@ -1306,6 +1307,7 @@ export function Prompt(props: PromptProps) {
     if (!dispatchFn) return
     const lease = acquireOutboundPump(sessionID)
     if (lease === undefined) return
+    let activeKey: string | undefined
     try {
       for (;;) {
         if (!ownsOutboundPump(sessionID, lease)) return
@@ -1313,6 +1315,7 @@ export function Prompt(props: PromptProps) {
         if (!head) return
         if (!isDispatchIdle(sessionID)) return
         if (!markOutboundSent(sessionID, head.key)) continue
+        activeKey = head.key
         try {
           const result = await dispatchFn(sessionID, {
             key: head.key,
@@ -1331,25 +1334,34 @@ export function Prompt(props: PromptProps) {
             }
             if (failed) {
               markOutboundFailed(sessionID, head.key)
+              activeKey = undefined
               continue
             }
             admittedID = result.admitted?.() ?? admittedUserIDFromResponse(settled)
             if (admittedID) setOutboundAdmittedID(sessionID, head.key, admittedID)
           }
           void watchEchoThenSettle(sessionID, head.key, admittedID)
+          activeKey = undefined
         } catch (err) {
-          if (!markOutboundFailed(sessionID, head.key)) {
-            toast.show({
-              title: "Couldn’t send prompt",
-              message: errorMessage(err),
-              variant: "error",
-            })
-          }
+          recoverOutboundPumpFailure(sessionID, head.key)
+          logError(`prompt.outbound.dispatch.${sessionID}`, err)
+          activeKey = undefined
         }
       }
+    } catch (error) {
+      if (activeKey) recoverOutboundPumpFailure(sessionID, activeKey)
+      throw error
     } finally {
       releaseOutboundPump(sessionID, lease)
     }
+  }
+
+  function reportOutboundPumpFailure(sessionID: string, error: unknown): void {
+    logError(`prompt.outbound.pump.${sessionID}`, error)
+  }
+
+  function startOutboundPump(sessionID: string): void {
+    void pumpOutbound(sessionID).catch((error) => reportOutboundPumpFailure(sessionID, error))
   }
 
   // Run completions surface as status flips (busy → idle): queued prompts
@@ -1357,7 +1369,7 @@ export function Prompt(props: PromptProps) {
   createEffect(() => {
     const s = status()
     const sid = props.sessionID
-    if (s.type === "idle" && sid && peekOutbound(sid)) void pumpOutbound(sid)
+    if (s.type === "idle" && sid && peekOutbound(sid)) startOutboundPump(sid)
   })
 
   // Other views (steer buttons) kick the pump through the registry.
@@ -1367,7 +1379,11 @@ export function Prompt(props: PromptProps) {
     const sid = props.sessionID
     if (!sid) return
     dispatchRef.fn = dispatchEntry
-    const generation = registerPump(sid, () => void pumpOutbound(sid))
+    const generation = registerPump(
+      sid,
+      () => pumpOutbound(sid),
+      (error) => reportOutboundPumpFailure(sid, error),
+    )
     onCleanup(() => {
       unregisterPump(sid, generation)
       if (dispatchRef.fn === dispatchEntry) dispatchRef.fn = undefined
@@ -1605,7 +1621,7 @@ export function Prompt(props: PromptProps) {
       if (finishMoveProgress) move.finishSubmit()
       if (routeNeed) {
         enqueueOutbound(sessionID, snapshot, dispatchBase)
-        void pumpOutbound(sessionID)
+        startOutboundPump(sessionID)
         return true
       }
       void dispatchEntry(sessionID, { snapshot, dispatch: dispatchBase })
@@ -1616,7 +1632,7 @@ export function Prompt(props: PromptProps) {
       enqueueOutbound(sessionID, snapshot, dispatchBase)
       clearPromptUi()
       if (finishMoveProgress) move.finishSubmit()
-      void pumpOutbound(sessionID)
+      startOutboundPump(sessionID)
       return true
     }
     await dispatchEntry(sessionID!, { snapshot, dispatch: dispatchBase })
