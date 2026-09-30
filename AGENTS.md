@@ -40,8 +40,9 @@ Dry-run without publishing (after workflow changes):
 prints remote steps — a green local dry-run (with complete `dist/`)
 predicts a green publish. Anticipate CI before pushing: run
 `validate-tag`, `ci-assemble --dry-run`, and `quality` locally (`quality`
-covers typechecks, release-critical tests, installer bats, shellcheck, and
-actionlint for the workflows themselves); clean-runner gaps get fixed by
+covers typechecks, release-critical tests, installer bats, shellcheck,
+actionlint for the workflows themselves, and the quality-baseline check —
+refresh drift with `bun run quality:baseline`); clean-runner gaps get fixed by
 making the job provision them, never by weakening gates.
 
 `.github/workflows/release-beta.yml` must exist on `main` (GitHub runs tag

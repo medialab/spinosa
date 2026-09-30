@@ -93,6 +93,12 @@ const wave1 = await wave("wave 1: typecheck + light checks", [
     const result = await $`bun scripts/release/workflow-sync.ts`.cwd(root).nothrow()
     if (result.exitCode !== 0) throw new Error("release workflow differs from the default branch")
   }),
+  // Hygiene metrics baseline: refresh with `bun run quality:baseline` after
+  // any change that moves LOC/token counts, then commit the baseline file.
+  runJob("quality baseline check", async () => {
+    const result = await $`bun run quality:report -- --check`.cwd(root).nothrow()
+    if (result.exitCode !== 0) throw new Error("quality baseline drifted — run bun run quality:baseline")
+  }),
   runJob("core release unit tests", () =>
     bunTest(path.join(root, "packages/spinosa-core"), CORE_RELEASE_TESTS, 30_000),
   ),
