@@ -379,7 +379,8 @@ function DiffViewer(props: { api: TuiPluginApi }) {
       const contentHeight = Math.max(
         ...entries.map((node) => scroll!.scrollTop + node.y - scroll!.viewport.y + node.height),
       )
-      setPatchFillerHeight(Math.max(0, scroll.viewport.height - contentHeight))
+      const neededHeight = scroll.viewport.height - contentHeight
+      setPatchFillerHeight((height) => Math.max(height, neededHeight))
     })
   }
 

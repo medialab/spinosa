@@ -214,6 +214,7 @@ test("branch diff source requests branch VCS diff", async () => {
     params: { mode: "branch", sessionID: "session-1", returnRoute: startRoute },
   })
   try {
+    await viewer.app.waitFor(() => viewer.vcsDiffInput() !== undefined)
     expect(viewer.current()).toEqual({
       name: "diff",
       params: { mode: "branch", sessionID: "session-1", returnRoute: startRoute },
@@ -231,6 +232,7 @@ test("last-turn diff source requests session diff", async () => {
     params: { mode: "last-turn", sessionID: "session-1", messageID: "message-1", returnRoute: startRoute },
   })
   try {
+    await viewer.app.waitFor(() => viewer.sessionDiffInput() !== undefined)
     expect(viewer.current()).toEqual({
       name: "diff",
       params: { mode: "last-turn", sessionID: "session-1", messageID: "message-1", returnRoute: startRoute },

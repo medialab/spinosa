@@ -9,6 +9,7 @@ import { Global } from "@spinosa/kernel-core/global"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
 import { createEventSource, createFetch, directory, json, type FetchHandler } from "../fixture/tui-sdk"
 import { createWorkspaceID, type SpinosaWorkspaceID } from "@spinosa/core/workspace/identity"
+import { runSpinosaBootHealth } from "@spinosa/core/system/boot"
 
 type SpinosaRoute = "workspace" | "global" | "onboarding" | "add-files" | "visualizer"
 type TestRenderer = Awaited<ReturnType<typeof createTestRenderer>>
@@ -23,6 +24,7 @@ async function renderRouteFrame(
     height?: number
     fetchOverride?: FetchHandler
     enableSlots?: boolean
+    beforeStart?: () => Promise<void>
     act?: (setup: TestRenderer) => Promise<void> | void
   } = {},
 ) {
@@ -70,6 +72,7 @@ async function renderRouteFrame(
   let slots: { dispose(): void } | undefined
 
   try {
+    await options.beforeStart?.()
     const { run } = await import("../../src/app")
     const fiber = Effect.runFork(
       run({
@@ -389,11 +392,8 @@ test("boot cleanup removes stale installer files before the homepage renders", a
     const frame = await renderRouteFrame("workspace", {
       home,
       height: 50,
-      act: async (setup) => {
-        for (let attempt = 0; attempt < 30 && existsSync(stale); attempt++) {
-          await setup.renderOnce()
-          await new Promise((resolve) => setTimeout(resolve, 25))
-        }
+      beforeStart: async () => {
+        await runSpinosaBootHealth({ minimumOperationDurationMs: 0 })
       },
     })
     expect(frame).not.toContain("leftover install file")
