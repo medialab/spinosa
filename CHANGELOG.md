@@ -10,6 +10,20 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2-beta.6] — 2026-09-30
+
+### Fixed
+
+- Workspace and import paths stay inside allowed roots. Escape attempts fail closed.
+- Server checks HTTP host and CORS origin. Unlisted hosts receive an error.
+- Import pipeline reports progress and counts worker failures. Partial results do not pass.
+- Release actions use pinned commits. Checkout does not persist credentials.
+
+### Changed
+
+- Quality checks run on each push to `main` and `beta-dev`. Failures show before a tag.
+- Dry runs report high and critical dependency advisories. Findings stay informational.
+
 ## [1.2.2-beta.5] — 2026-09-28
 
 ### Fixed
