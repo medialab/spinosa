@@ -1,6 +1,8 @@
 name: Quality gates
 
 on:
+  push:
+    branches: [main, beta-dev]
   pull_request:
   workflow_dispatch:
 

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs"
+import { existsSync, lstatSync, readdirSync } from "node:fs"
 import path from "node:path"
 import { buildLaunchCommand } from "../handoff/builder"
 import { copyToClipboard } from "../handoff/runner"
@@ -172,12 +172,19 @@ async function readDirRecursive(dirPath: string): Promise<string[]> {
 
 async function readDir(dirPath: string): Promise<{ name: string; isDirectory: boolean }[]> {
   if (!existsSync(dirPath)) return []
+  try {
+    const root = lstatSync(dirPath)
+    if (root.isSymbolicLink() || !root.isDirectory()) return []
+  } catch {
+    return []
+  }
   const entries: { name: string; isDirectory: boolean }[] = []
   const items = readdirSync(dirPath)
   for (const name of items) {
     const full = path.join(dirPath, name)
     try {
-      const s = statSync(full)
+      const s = lstatSync(full)
+      if (s.isSymbolicLink()) continue
       entries.push({ name, isDirectory: s.isDirectory() })
     } catch {
       // skip unreadable

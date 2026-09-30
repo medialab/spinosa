@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import path from "node:path"
 import {
   applyImportProgressStatus,
   countImportProgress,
@@ -32,6 +33,17 @@ import {
 } from "../../src/routes/spinosa/wizard-ui"
 
 describe("import progress UI helpers", () => {
+  test("log hints use the normalized product log directory", () => {
+    const originalHome = process.env.SPINOSA_HOME
+    process.env.SPINOSA_HOME = "./relative-spinosa"
+    try {
+      expect(resolveSpinosaLogsDir()).toBe(path.resolve("./relative-spinosa/logs"))
+    } finally {
+      if (originalHome === undefined) delete process.env.SPINOSA_HOME
+      else process.env.SPINOSA_HOME = originalHome
+    }
+  })
+
   test("shortImportFileName keeps basename and ellipsizes long names", () => {
     expect(shortImportFileName("spinosa-markitdown-test/vivatech_subset.xlsx")).toBe("vivatech_subset.xlsx")
     const long = "a".repeat(50) + ".xlsx"

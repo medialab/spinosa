@@ -1,9 +1,9 @@
-import { homedir } from "node:os"
 import path from "node:path"
 import { mkdirSync } from "node:fs"
 import { parseInstallPinnedVersion } from "../utils/version"
 import { readYamlScalar, writeYamlConfig } from "../utils/yaml-config"
 import { spinosaLogWarn } from "../utils/log"
+import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 
 export type ReleaseChannel = "stable" | "beta"
 
@@ -27,9 +27,8 @@ export type ChannelFetchOptions = {
 }
 
 export function spinosaConfigFile(): string {
-  const metaDir = process.env.SPINOSA_METADATA_DIR ??
-    `${process.env.SPINOSA_HOME ?? `${homedir()}/.spinosa`}/metadata`
-  return `${metaDir}/config.yaml`
+  const metaDir = process.env.SPINOSA_METADATA_DIR ?? path.join(productHomeDir(), "metadata")
+  return path.resolve(metaDir, "config.yaml")
 }
 
 export function spinosaBetaToggleChannel(value: string): ReleaseChannel {

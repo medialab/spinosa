@@ -146,7 +146,7 @@ export function resolveUserDirs(input: UserDirsInput = {}): {
 /** Product install root (`$SPINOSA_HOME`, default `~/.spinosa` on Linux and macOS). */
 export function productHomeDir(input: UserDirsInput = {}): string {
   const env = input.env ?? process.env
-  if (env.SPINOSA_HOME) return env.SPINOSA_HOME
+  if (env.SPINOSA_HOME) return path.resolve(env.SPINOSA_HOME)
   return path.join(userHome(input), ".spinosa")
 }
 

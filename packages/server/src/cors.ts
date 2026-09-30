@@ -2,6 +2,8 @@ import { Context } from "effect"
 
 export type CorsOptions = { readonly cors?: ReadonlyArray<string> }
 
+export type RequestHostPolicy = { readonly loopbackOnly: boolean }
+
 export const CorsConfig = Context.Reference<CorsOptions | undefined>("@opencode/ServerCorsConfig", {
   defaultValue: () => undefined,
 })
@@ -19,10 +21,40 @@ export function isAllowedCorsOrigin(input: string | undefined, opts?: CorsOption
   return opts?.cors?.includes(input) ?? false
 }
 
-export function isAllowedRequestOrigin(input: string | undefined, host: string | undefined, opts?: CorsOptions) {
+export function isAllowedRequestOrigin(
+  input: string | undefined,
+  host: string | undefined,
+  opts?: CorsOptions,
+  hostPolicy?: RequestHostPolicy,
+) {
   if (!input) return true
+  if (!isAllowedRequestHost(host, hostPolicy)) return false
   if (host && sameHost(input, host)) return true
   return isAllowedCorsOrigin(input, opts)
+}
+
+export function isAllowedRequestHost(input: string | undefined, policy?: RequestHostPolicy) {
+  if (!policy?.loopbackOnly) return true
+  if (!input) return false
+
+  try {
+    const url = new URL(`http://${input}`)
+    if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return false
+    return isLoopbackHostname(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+export function isLoopbackHostname(hostname: string) {
+  const value = hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  return (
+    value === "localhost" ||
+    value.endsWith(".localhost") ||
+    value === "::1" ||
+    value === "::ffff:127.0.0.1" ||
+    /^127(?:\.\d{1,3}){3}$/.test(value)
+  )
 }
 
 function sameHost(origin: string, host: string) {

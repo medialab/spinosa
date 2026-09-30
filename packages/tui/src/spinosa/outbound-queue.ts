@@ -417,6 +417,17 @@ export function markOutboundFailed(sessionID: string, key: string): boolean {
   return true
 }
 
+/**
+ * Recover an unexpected pump failure for the one prompt it was dispatching.
+ * An admitted prompt must stay sent so a late echo can settle it; changing it
+ * to failed would invite a duplicate retry after the server accepted it.
+ */
+export function recoverOutboundPumpFailure(sessionID: string, key: string): boolean {
+  const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
+  if (!entry || entry.admittedID) return false
+  return markOutboundFailed(sessionID, key)
+}
+
 /** Echo overdue: the sent-but-blocked row rests in place, flagged stale. Never deletes. */
 export function markOutboundStale(sessionID: string, key: string): boolean {
   const entry = entriesBySession[sessionID]?.find((candidate) => candidate.key === key)
@@ -509,7 +520,11 @@ export function steerOutbound(sessionID: string, key: string): boolean {
 }
 
 /** Pump registry: the prompt component owns dispatch; other views kick it. */
-type PumpRegistration = { generation: number; kick: () => void }
+type PumpRegistration = {
+  generation: number
+  kick: () => void | Promise<void>
+  onError?: (error: unknown) => void
+}
 const pumpHandlers = new Map<string, PumpRegistration>()
 let pumpOwnerCounter = 0
 
@@ -518,10 +533,14 @@ let pumpOwnerCounter = 0
  * the generation back: a stale unmount must never remove a newer mount's
  * registration for the same session.
  */
-export function registerPump(sessionID: string, kick: () => void): number {
+export function registerPump(
+  sessionID: string,
+  kick: () => void | Promise<void>,
+  onError?: (error: unknown) => void,
+): number {
   pumpOwnerCounter += 1
   const generation = pumpOwnerCounter
-  pumpHandlers.set(sessionID, { generation, kick })
+  pumpHandlers.set(sessionID, { generation, kick, onError })
   return generation
 }
 
@@ -534,10 +553,12 @@ export function unregisterPump(sessionID: string, generation?: number): boolean 
 }
 
 export function kickPump(sessionID: string): void {
+  const registration = pumpHandlers.get(sessionID)
+  if (!registration) return
   try {
-    pumpHandlers.get(sessionID)?.kick()
-  } catch {
-    /* pump kicks never throw into views */
+    void Promise.resolve(registration.kick()).catch((error) => registration.onError?.(error))
+  } catch (error) {
+    registration.onError?.(error)
   }
 }
 

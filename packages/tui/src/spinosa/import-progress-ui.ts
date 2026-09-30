@@ -1,6 +1,6 @@
 import { homedir } from "node:os"
-import path from "node:path"
 import type { FileProgressStatus } from "@spinosa/core/progress/progress"
+import { productLogDir } from "@spinosa/kernel-core/util/user-dirs"
 
 export type ImportFileProgressItem = {
   rel: string
@@ -33,7 +33,7 @@ export function formatPageMarker(page: number, total?: number): string {
 
 /** Product log dir: `$SPINOSA_HOME/logs` or `~/.spinosa/logs`. */
 export function resolveSpinosaLogsDir(): string {
-  return path.join(process.env.SPINOSA_HOME ?? path.join(homedir(), ".spinosa"), "logs")
+  return productLogDir()
 }
 
 /** Home-relative display form (`~/.spinosa/logs`) for wizard chrome. */

@@ -709,3 +709,18 @@ EOF
   [ "$output" = "install complete home=~/.spinosa" ]
   [[ "$output" != *"/Users/name/"* ]]
 }
+
+@test "installer logs redact URL credentials, query secrets and authorization" {
+  export SPINOSA_LOG_DISABLED=0
+  export SPINOSA_LOG_FILE="$BATS_TEST_TMPDIR/install.log"
+  local url="https://user:url-secret@example.test/download?token=query-secret"
+  spinosa_log_init "test" "$url"
+  spinosa_log ERROR "download $url Authorization: Bearer auth-secret password=pass-secret"
+  run cat "$SPINOSA_LOG_FILE"
+  [ "$status" -eq 0 ]
+  [[ "$output" = *"example.test/download"* ]]
+  [[ "$output" != *"url-secret"* ]]
+  [[ "$output" != *"query-secret"* ]]
+  [[ "$output" != *"auth-secret"* ]]
+  [[ "$output" != *"pass-secret"* ]]
+}

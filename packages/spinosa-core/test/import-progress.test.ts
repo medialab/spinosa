@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { processDirectCopy, processMarkitdown, processOcr, type ClassifiedEntry } from "../src/import/pipeline"
@@ -112,6 +112,55 @@ describe("import per-file progress", () => {
     expect(result.converted).toBe(3)
     expect(result.failed).toBe(0)
     expect(local.some((e) => e.current === 3)).toBe(true)
+  })
+
+  test("markitdown child crash fails unfinished files instead of returning zero counts", async () => {
+    const { files, logsDir } = makeInlineMdFiles(2)
+    writeFileSync(files[0]!.dest, "# already converted\n")
+    const events: Array<{ relPath: string; status?: string }> = []
+    const logs: string[] = []
+    const prog = new ProgressEmitter()
+    prog.on((event) => events.push({ relPath: event.relPath, status: event.status }))
+
+    const result = await processMarkitdown(files, logsDir, prog, (line) => logs.push(line), undefined, {
+      onChild: (child) => child.kill("SIGKILL"),
+    })
+
+    expect(result).toMatchObject({ converted: 0, skipped: 1, failed: 1 })
+    expect(events.some((event) => event.relPath === files[1]!.rel && event.status === "failed")).toBe(true)
+    expect(logs.some((line) => line.includes("terminated by signal"))).toBe(true)
+  })
+
+  test("markitdown child crash does not count an untouched forced destination as converted", async () => {
+    const { files, logsDir } = makeInlineMdFiles(1)
+    writeFileSync(files[0]!.dest, "# stale output\n")
+    files[0]!.force = true
+
+    const result = await processMarkitdown(files, logsDir, undefined, undefined, undefined, {
+      onChild: (child) => child.kill("SIGKILL"),
+    })
+
+    expect(result).toMatchObject({ converted: 0, skipped: 0, failed: 1 })
+  })
+
+  test("markitdown child crash preserves output completed before the final summary", async () => {
+    const { files, logsDir } = makeInlineMdFiles(20)
+    const logs: string[] = []
+
+    const result = await processMarkitdown(files, logsDir, undefined, (line) => logs.push(line), undefined, {
+      onChild: (child) => {
+        const poll = setInterval(() => {
+          if (!existsSync(files[0]!.dest)) return
+          clearInterval(poll)
+          child.kill("SIGKILL")
+        }, 1)
+        child.once("close", () => clearInterval(poll))
+      },
+    })
+
+    expect(result.converted).toBeGreaterThanOrEqual(1)
+    expect(result.converted + result.skipped + result.failed).toBe(files.length)
+    expect(logs.some((line) => line.includes("terminated by signal"))).toBe(true)
   })
 
   test("N invalid OCR inputs count as failed (not skipped)", async () => {

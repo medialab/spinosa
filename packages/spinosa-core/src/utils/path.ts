@@ -1,5 +1,5 @@
 import { homedir } from "node:os"
-import { existsSync, realpathSync } from "node:fs"
+import { existsSync, lstatSync, realpathSync } from "node:fs"
 import path from "node:path"
 
 export function resolveUserPath(value: string): string | undefined {
@@ -70,14 +70,41 @@ export function resolvePathWithinRoot(root: string, relativePath: string, label 
     throw new Error(`Unsafe ${label}: ${JSON.stringify(relativePath)}`)
   }
 
-  const realRoot = existsSync(resolvedRoot) ? realpathSync(resolvedRoot) : resolvedRoot
-  let existingAncestor = candidate
-  while (!existsSync(existingAncestor) && existingAncestor !== resolvedRoot) {
-    existingAncestor = path.dirname(existingAncestor)
+  let realRoot = resolvedRoot
+  let rootExists = false
+  try {
+    lstatSync(resolvedRoot)
+    rootExists = true
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code !== "ENOENT") {
+      throw new Error(`Unsafe ${label}: cannot resolve root ${JSON.stringify(root)}`, { cause: error })
+    }
   }
-  if (existsSync(existingAncestor)) {
-    const realAncestor = realpathSync(existingAncestor)
-    if (!isWithinRoot(realRoot, realAncestor)) {
+  if (rootExists) {
+    try {
+      realRoot = realpathSync(resolvedRoot)
+    } catch (error) {
+      throw new Error(`Unsafe ${label}: root ${JSON.stringify(root)} is a dangling symlink`, { cause: error })
+    }
+  }
+
+  let current = resolvedRoot
+  for (const segment of path.relative(resolvedRoot, candidate).split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment)
+    try {
+      lstatSync(current)
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") break
+      throw new Error(`Unsafe ${label}: cannot inspect ${JSON.stringify(relativePath)}`, { cause: error })
+    }
+
+    let realCurrent: string
+    try {
+      realCurrent = realpathSync(current)
+    } catch (error) {
+      throw new Error(`Unsafe ${label}: ${JSON.stringify(relativePath)} crosses a dangling symlink`, { cause: error })
+    }
+    if (!isWithinRoot(realRoot, realCurrent)) {
       throw new Error(`Unsafe ${label}: ${JSON.stringify(relativePath)} crosses a symlink outside its root`)
     }
   }

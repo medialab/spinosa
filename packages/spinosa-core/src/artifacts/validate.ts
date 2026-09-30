@@ -3,16 +3,11 @@
 // frontmatter, and kind-specific gates. Returns retryable=false for
 // structural violations the agent cannot fix by rerunning (e.g. blocked).
 
-import path from "node:path"
 import type { ArtifactValidatorID, ValidationResult } from "./contracts"
 import { parseVerificationStatus } from "./contracts"
 import { parseYamlFrontmatter } from "./parser"
 import { looksLikeMarkdownFigure } from "../application/markdown-figure"
-
-function contained(workspacePath: string, relative: string): boolean {
-  const resolved = path.resolve(workspacePath, relative)
-  return resolved === path.resolve(workspacePath) || resolved.startsWith(path.resolve(workspacePath) + path.sep)
-}
+import { resolvePathWithinRoot } from "../utils/path"
 
 async function readIfExists(absolute: string): Promise<string | undefined> {
   const f = Bun.file(absolute)
@@ -27,10 +22,16 @@ export async function validateArtifact(input: {
   runID?: string
 }): Promise<ValidationResult> {
   const { workspacePath, relativePath, validator, runID } = input
-  if (!contained(workspacePath, relativePath)) {
-    return { ok: false, error: `artifact path escapes workspace: ${relativePath}`, retryable: false }
+  let absolute: string
+  try {
+    absolute = resolvePathWithinRoot(workspacePath, relativePath, "artifact path")
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : `artifact path escapes workspace: ${relativePath}`,
+      retryable: false,
+    }
   }
-  const absolute = path.join(workspacePath, relativePath)
   const text = await readIfExists(absolute)
   if (text === undefined) {
     return { ok: false, error: `missing artifact: ${relativePath}`, retryable: true }

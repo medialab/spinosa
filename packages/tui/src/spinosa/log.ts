@@ -27,6 +27,7 @@ type LogEvent =
   | "tui"
 
 const MAX_LOG_BYTES = 5 * 1024 * 1024
+let warnedLogFailure = false
 
 function logPath(): string {
   const logDir = productLogDir()
@@ -58,7 +59,10 @@ function logEntry(level: LogLevel, event: LogEvent, data: Record<string, unknown
     appendFileSync(file, JSON.stringify(entry) + "\n", { mode: 0o600 })
     chmodSync(file, 0o600)
   } catch {
-    // best-effort
+    if (!warnedLogFailure) {
+      warnedLogFailure = true
+      try { process.stderr.write("spinosa: unable to write TUI log; diagnostics may be unavailable\n") } catch {}
+    }
   }
 }
 
@@ -112,4 +116,3 @@ export function persistImportWizardLogLines(lines: string[], context = "import-w
     logEntry("info", "tui", { context, msg })
   }
 }
-

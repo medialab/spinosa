@@ -1,6 +1,7 @@
 import path from "node:path"
 import type { OrchestratedDecision, WorkflowPlan } from "@spinosa/runtime"
 import { writeTextAtomic } from "../utils/fs"
+import { resolvePathWithinRoot } from "../utils/path"
 
 // WP10: legacy Q goal writers removed. New runs use buildWorkflowGoalBody /
 // writeWorkflowGoalArtifact below. Legacy goal *parsing* stays in parser.ts
@@ -120,7 +121,7 @@ export async function writeWorkflowGoalArtifact(
 ): Promise<{ goalPath: string }> {
   const relative = path.join("agent_reports", `g_${input.runID}.md`)
   const body = buildWorkflowGoalBody({ ...input, goalPath: relative })
-  writeTextAtomic(path.join(workspacePath, relative), body)
+  writeTextAtomic(resolvePathWithinRoot(workspacePath, relative, "goal artifact path"), body)
   return { goalPath: relative }
 }
 

@@ -1,0 +1,87 @@
+/**
+ * Single source of truth for release-critical tests.
+ * Paths are relative to the package directory in each group.
+ */
+
+/** Run from `packages/spinosa-core`. */
+export const CORE_RELEASE_TESTS = [
+  "test/agent-tools.test.ts",
+  "test/bun-launch.test.ts",
+  "test/checksums.test.ts",
+  "test/version.test.ts",
+  "test/preflight.test.ts",
+  "test/channels.test.ts",
+  "test/upgrade-errors.test.ts",
+  "test/upgrade-network.test.ts",
+  "test/uninstall.test.ts",
+  "test/version-cache.test.ts",
+  "test/distribution.test.ts",
+  "test/distribution-tools.test.ts",
+  "test/standalone.test.ts",
+  "test/fs-truncate.test.ts",
+  "test/destinations.test.ts",
+  "test/zip-hardened.test.ts",
+  "test/resume.test.ts",
+  "test/filesystem-boundaries.test.ts",
+  "test/import-progress.test.ts",
+  "test/job-runner.test.ts",
+  "test/manifest.test.ts",
+  "test/manifest-partial.test.ts",
+  "test/workflow-gates.test.ts",
+  "test/yaml-config.test.ts",
+  "../../scripts/release/github.test.ts",
+  "../../scripts/release/bump.test.ts",
+  "../../scripts/release/lib.test.ts",
+  "../../scripts/release/index.test.ts",
+  "../../scripts/release/promote.test.ts",
+  "../../scripts/release/tools-build.test.ts",
+  "../../scripts/release/validate-tag.test.ts",
+  "../../scripts/release/workflow-sync.test.ts",
+  "../../scripts/release/workflow-security.test.ts",
+  "../../scripts/set-version.test.ts",
+  "../../scripts/smoke-install.test.ts",
+  "../../packages/core/test/models.test.ts",
+  "../../packages/core/test/sanitize-log.test.ts",
+  "../../packages/core/test/user-dirs.test.ts",
+  "../../packages/core/test/boot-log.test.ts",
+] as const
+
+export const CORE_EXTENDED_TESTS = [
+  "test/pdf-engine.test.ts",
+  "test/pdf-scanned-ocr.test.ts",
+  "test/vision-abort.test.ts",
+  "test/ocr-support.test.ts",
+] as const
+
+/** Run from `packages/tui`. */
+export const TUI_RELEASE_TESTS = [
+  "test/context/local.test.ts",
+  "test/util/session.test.ts",
+  "test/util/stop-sessions.test.ts",
+  "test/cli/tui/diff-viewer.test.tsx",
+  "test/spinosa/app-route-e2e.test.tsx",
+  "test/spinosa/update-workspace.test.ts",
+  "test/spinosa/create-workspace.test.ts",
+  "test/spinosa/install-release.test.ts",
+  "test/spinosa/boot.test.ts",
+  "test/spinosa/preflight.test.ts",
+  "test/spinosa/entry.test.ts",
+  "test/spinosa/logging.test.ts",
+  "test/spinosa/outbound-queue.test.ts",
+  "test/spinosa/import-progress-ui.test.ts",
+  "test/cli/cmd/tui/provider-options.test.ts",
+] as const
+
+export const TUI_LOCAL_TEST_PATHS = [
+  "test/spinosa/",
+  ...TUI_RELEASE_TESTS.filter((file) => !file.startsWith("test/spinosa/")),
+] as const
+
+/** Run from `packages/spinosa-kernel`. */
+export const KERNEL_RELEASE_TESTS = [
+  "test/server/httpapi-provider.test.ts",
+  "test/server/httpapi-host-validation.test.ts",
+  "test/server/httpapi-cors.test.ts",
+  "test/server/httpapi-listen.test.ts",
+  "test/tool/parameters.test.ts",
+] as const

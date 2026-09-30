@@ -25,10 +25,12 @@ import {
   peekDispatchable,
   peekOutbound,
   registerPump,
+  recoverOutboundPumpFailure,
   releaseOutboundPump,
   removeOutbound,
   ownsOutboundPump,
   shouldRestoreCancelledText,
+  setOutboundAdmittedID,
   SPINOSA_PROMPT_METADATA,
   steerOutbound,
   unregisterPump,
@@ -226,6 +228,26 @@ describe("outbound queue", () => {
     expect(kicks).toBe(1)
   })
 
+  test("pump registry reports synchronous and asynchronous kick failures", async () => {
+    const sid = "ses-queue-kick-failure"
+    const errors: string[] = []
+    registerPump(
+      sid,
+      () => {
+        throw new Error("sync pump failure")
+      },
+      (error) => errors.push(String(error)),
+    )
+    kickPump(sid)
+    expect(errors.some((error) => error.includes("sync pump failure"))).toBe(true)
+
+    registerPump(sid, async () => Promise.reject(new Error("async pump failure")), (error) => errors.push(String(error)))
+    kickPump(sid)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(errors.some((error) => error.includes("async pump failure"))).toBe(true)
+    unregisterPump(sid)
+  })
+
   test("live split keeps interrupted out of the trailing queue", () => {
     const sid = "ses-queue-split"
     const first = enqueueOutbound(sid, snapshot("one"), dispatch())
@@ -395,6 +417,21 @@ describe("prompt id echo correlation", () => {
 })
 
 describe("failed and stale receipts", () => {
+  test("unexpected pump recovery fails only the affected unadmitted prompt", () => {
+    const sid = "ses-queue-pump-recovery"
+    const affected = enqueueOutbound(sid, snapshot("affected"), dispatch())
+    const admitted = enqueueOutbound(sid, snapshot("admitted"), dispatch())
+    expect(markOutboundSent(sid, affected)).toBe(true)
+    expect(markOutboundSent(sid, admitted)).toBe(true)
+    expect(setOutboundAdmittedID(sid, admitted, "msg-admitted")).toBe(true)
+
+    expect(recoverOutboundPumpFailure(sid, affected)).toBe(true)
+    expect(outboundEntryState(sid, affected)).toBe("failed")
+    expect(recoverOutboundPumpFailure(sid, admitted)).toBe(false)
+    expect(outboundEntryState(sid, admitted)).toBe("sent")
+    clearOutbound(sid)
+  })
+
   test("failed rows rest in place with their text", () => {
     const sid = "ses-queue-failed"
     const key = enqueueOutbound(sid, snapshot("doomed"), dispatch())
