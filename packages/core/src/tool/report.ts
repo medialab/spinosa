@@ -72,6 +72,28 @@ export type Output = typeof Output.Type
 
 const FILENAME_PATTERN = /^\d{2}_.+\.md$/
 
+const FIELD_HINTS: Array<readonly [marker: string, hint: string]> = [
+  [
+    `["reproducibility"]["agents"]`,
+    `Hint: reproducibility.agents is one string like 'searcher → writer → verifier', not an array.`,
+  ],
+  [
+    `["reproducibility"]["sources"]`,
+    `Hint: reproducibility.sources is an array of paths like ['agent_reports/05_topic.md'], even for a single path.`,
+  ],
+]
+
+/**
+ * Plain-language wrapper over the raw schema error. The raw message names
+ * the failing path but agents have misread which field each failure belongs
+ * to, so append a targeted hint per confused field.
+ */
+export function formatReportValidationError(error: unknown): string {
+  const base = String(error)
+  const hints = FIELD_HINTS.filter(([marker]) => base.includes(marker)).map(([, hint]) => hint)
+  return hints.length > 0 ? `${base}\n${hints.join("\n")}` : base
+}
+
 function formatArray(items: readonly string[] | undefined): string {
   if (!items || items.length === 0) return "—"
   if (items.length === 1) return items[0]!
@@ -166,6 +188,7 @@ The report template includes: YAML frontmatter (type, dates, status, scope, pipe
 Use this tool to produce numbered agent_reports/NN_topic-slug.md files. Every required section must be non-empty. The filename must start with a 2-digit number followed by an underscore (e.g. 05_coastal-erosion.md).`,
             input: Input,
             output: Output,
+            formatValidationError: formatReportValidationError,
             toModelOutput: ({ output }) => [{ type: "text", text: `Report written: ${output.path}` }],
             execute: (input, context) => {
               const toFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

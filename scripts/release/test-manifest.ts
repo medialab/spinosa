@@ -53,6 +53,7 @@ export const CORE_RELEASE_TESTS = [
   "../../packages/core/test/sanitize-log.test.ts",
   "../../packages/core/test/user-dirs.test.ts",
   "../../packages/core/test/boot-log.test.ts",
+  "../../packages/core/test/tool-validation-error.test.ts",
 ] as const
 
 /**
