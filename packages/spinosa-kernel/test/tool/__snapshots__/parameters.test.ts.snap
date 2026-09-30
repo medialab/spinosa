@@ -290,7 +290,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_report 1`] = `
       "type": "string",
     },
     "filename": {
-      "description": "Exact runtime-assigned report filename in NN_{topic-slug}.md form. Do not choose a sequence number or slug. Must start with a 2-digit number followed by an underscore.",
+      "description": "Exact runtime-assigned report filename in NN_{topic-slug}.md form. Do not choose a sequence number or slug. Must start with a 2-digit number followed by an underscore (05_topic.md, not 05-topic.md).",
       "type": "string",
     },
     "goal": {
@@ -312,7 +312,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_report 1`] = `
     "reproducibility": {
       "properties": {
         "agents": {
-          "description": "Agent IDs recorded by run.json",
+          "description": "Agent chain as one string, e.g. 'searcher → writer → verifier'. Join run.json agent IDs with ' → '. Not an array.",
           "type": "string",
         },
         "filesRead": {
@@ -350,7 +350,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_report 1`] = `
           "type": "number",
         },
         "sources": {
-          "description": "Source paths referenced",
+          "description": "Source paths referenced, e.g. ['agent_reports/05_topic.md']. Must be an array, even for a single path.",
           "items": {
             "type": "string",
           },
@@ -459,6 +459,7 @@ exports[`tool parameters JSON Schema (wire shape) spinosa_frame 1`] = `
           "type": "string",
         },
         "mode": {
+          "description": "Must be 'orchestrated'. Only call this tool when spinosa_route returned mode 'orchestrated' and pass its decision through unchanged. A 'general' decision means answer directly without this tool.",
           "enum": [
             "orchestrated",
           ],

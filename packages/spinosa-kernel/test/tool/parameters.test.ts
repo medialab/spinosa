@@ -19,9 +19,11 @@ import { Parameters as Plan } from "../../src/tool/plan"
 import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
 import { Parameters as Report } from "../../src/tool/report"
+import { formatReportValidationError } from "../../src/tool/report"
 import { Parameters as Shell } from "../../src/tool/shell"
 import { Parameters as Skill } from "../../src/tool/skill"
 import { Parameters as SpinosaFrame } from "../../src/tool/spinosa-frame"
+import { formatFrameValidationError } from "../../src/tool/spinosa-frame"
 import { Parameters as SpinosaGate } from "../../src/tool/spinosa-gate"
 import { Parameters as SpinosaMintPaths } from "../../src/tool/spinosa-mint-paths"
 import { Parameters as SpinosaMap } from "../../src/tool/spinosa-map"
@@ -40,6 +42,17 @@ const parse = <S extends Schema.Decoder<unknown>>(schema: S, input: unknown): S[
 
 const accepts = (schema: Schema.Decoder<unknown>, input: unknown): boolean =>
   Result.isSuccess(Schema.decodeUnknownResult(schema)(input))
+
+// Capture the decode failure exactly as the tool runtime sees it, so
+// formatValidationError assertions pin production behavior, not a copy.
+const captureFailure = (schema: Schema.Decoder<unknown>, input: unknown): unknown => {
+  try {
+    Schema.decodeUnknownSync(schema)(input)
+  } catch (error) {
+    return error
+  }
+  throw new Error("expected input to fail decoding")
+}
 
 const toJsonSchema = ToolJsonSchema.fromSchema
 
@@ -281,6 +294,11 @@ describe("tool parameters", () => {
     test("rejects general-mode decision", () => {
       expect(accepts(SpinosaFrame, { cleanedPrompt: "p", decision: { mode: "general" } })).toBe(false)
     })
+    test("general-mode rejection points back to orchestrated-only use", () => {
+      const input = { cleanedPrompt: "p", decision: { ...decision, mode: "general" } }
+      expect(accepts(SpinosaFrame, input)).toBe(false)
+      expect(formatFrameValidationError(captureFailure(SpinosaFrame, input))).toContain("orchestrated")
+    })
   })
 
   describe("spinosa_mint_paths", () => {
@@ -355,10 +373,24 @@ describe("tool parameters", () => {
     })
 
     // The writer authors; only the verifier may promote a status. Accepting a
-    // verdict here would let an agent self-declare verification.
+    // verdict here would let an agent declare verification.
     test("rejects a self-declared verified status", () => {
       expect(accepts(Report, { ...report, status: "pass" })).toBe(false)
       expect(accepts(Report, { ...report, status: "pass_with_corrections" })).toBe(false)
+    })
+
+    // Smoke-test regression: agents is one string, sources is an array.
+    // Swapping the shapes must fail closed with a hint naming the field.
+    test("rejects array agents with a targeted hint", () => {
+      const input = { ...report, reproducibility: { agents: ["searcher"], sources: ["raw/a.pdf"] } }
+      expect(accepts(Report, input)).toBe(false)
+      expect(formatReportValidationError(captureFailure(Report, input))).toContain("reproducibility.agents")
+    })
+
+    test("rejects string sources with a targeted hint", () => {
+      const input = { ...report, reproducibility: { agents: "searcher", sources: "raw/a.pdf" } }
+      expect(accepts(Report, input)).toBe(false)
+      expect(formatReportValidationError(captureFailure(Report, input))).toContain("reproducibility.sources")
     })
   })
 

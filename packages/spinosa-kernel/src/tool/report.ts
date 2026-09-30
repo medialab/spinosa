@@ -18,16 +18,22 @@ const Reproducibility = Schema.Struct({
   filesScanned: Schema.optional(Schema.Number).annotate({ description: "Files scanned" }),
   filesRead: Schema.optional(Schema.Number).annotate({ description: "Files read" }),
   searchRounds: Schema.optional(Schema.Number).annotate({ description: "Search rounds" }),
-  agents: Schema.String.annotate({ description: "Agent IDs recorded by run.json" }),
+  agents: Schema.String.annotate({
+    description:
+      "Agent chain as one string, e.g. 'searcher → writer → verifier'. Join run.json agent IDs with ' → '. Not an array.",
+  }),
   tags: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({ description: "Keywords/terms used" }),
   gaps: Schema.optional(Schema.String).annotate({ description: "Coverage gaps" }),
-  sources: Schema.mutable(Schema.Array(Schema.String)).annotate({ description: "Source paths referenced" }),
+  sources: Schema.mutable(Schema.Array(Schema.String)).annotate({
+    description:
+      "Source paths referenced, e.g. ['agent_reports/05_topic.md']. Must be an array, even for a single path.",
+  }),
 })
 
 export const Parameters = Schema.Struct({
   filename: Schema.String.annotate({
     description:
-      "Exact runtime-assigned report filename in NN_{topic-slug}.md form. Do not choose a sequence number or slug. Must start with a 2-digit number followed by an underscore.",
+      "Exact runtime-assigned report filename in NN_{topic-slug}.md form. Do not choose a sequence number or slug. Must start with a 2-digit number followed by an underscore (05_topic.md, not 05-topic.md).",
   }),
   title: Schema.String.annotate({ description: "H1 headline for the report (mirrors the goal statement)" }),
   scope: Schema.String.annotate({ description: "One-line description of the report scope" }),
@@ -134,6 +140,28 @@ function renderReport(params: Parameters): string {
   return lines.join("\n")
 }
 
+const FIELD_HINTS: Array<readonly [marker: string, hint: string]> = [
+  [
+    `["reproducibility"]["agents"]`,
+    `Hint: reproducibility.agents is one string like 'searcher → writer → verifier', not an array.`,
+  ],
+  [
+    `["reproducibility"]["sources"]`,
+    `Hint: reproducibility.sources is an array of paths like ['agent_reports/05_topic.md'], even for a single path.`,
+  ],
+]
+
+/**
+ * Plain-language wrapper over the raw schema error. The raw message names
+ * the failing path but agents have misread which field each failure belongs
+ * to, so append a targeted hint per confused field.
+ */
+export function formatReportValidationError(error: unknown): string {
+  const base = String(error)
+  const hints = FIELD_HINTS.filter(([marker]) => base.includes(marker)).map(([, hint]) => hint)
+  return hints.length > 0 ? `${base}\n${hints.join("\n")}` : base
+}
+
 export const ReportTool = Tool.define<typeof Parameters, Metadata, FSUtil.Service>(
   "spinosa_report",
   Effect.gen(function* () {
@@ -146,6 +174,7 @@ Not a generic file write — use the write tool for arbitrary files. This tool o
 
 Every required section must be non-empty. The filename must start with a 2-digit number followed by an underscore (e.g. 05_coastal-erosion.md).`,
       parameters: Parameters,
+      formatValidationError: formatReportValidationError,
       execute: (params: Parameters, ctx: Tool.Context<Metadata>) =>
         Effect.gen(function* () {
           if (!FILENAME_PATTERN.test(params.filename)) {

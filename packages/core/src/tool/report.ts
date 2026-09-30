@@ -19,16 +19,22 @@ export const Reproducibility = Schema.Struct({
   filesScanned: Schema.optional(Schema.Number).annotate({ description: "Files scanned" }),
   filesRead: Schema.optional(Schema.Number).annotate({ description: "Files read" }),
   searchRounds: Schema.optional(Schema.Number).annotate({ description: "Search rounds" }),
-  agents: Schema.String.annotate({ description: "Agent chain" }),
+  agents: Schema.String.annotate({
+    description:
+      "Agent chain as one string, e.g. 'searcher → writer → verifier'. Join run.json agent IDs with ' → '. Not an array.",
+  }),
   tags: Schema.optional(Schema.Array(Schema.String)).annotate({ description: "Keywords/terms used" }),
   gaps: Schema.optional(Schema.String).annotate({ description: "Coverage gaps" }),
-  sources: Schema.Array(Schema.String).annotate({ description: "Source paths referenced" }),
+  sources: Schema.Array(Schema.String).annotate({
+    description:
+      "Source paths referenced, e.g. ['agent_reports/05_topic.md']. Must be an array, even for a single path.",
+  }),
 })
 
 export const Input = Schema.Struct({
   filename: Schema.String.annotate({
     description:
-      "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore.",
+      "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore (05_topic.md, not 05-topic.md).",
   }),
   title: Schema.String.annotate({ description: "H1 headline for the report (mirrors the goal statement)" }),
   scope: Schema.String.annotate({ description: "One-line description of the report scope" }),
