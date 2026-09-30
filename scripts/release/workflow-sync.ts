@@ -1,12 +1,22 @@
 #!/usr/bin/env bun
+/**
+ * Guards the invariant that `RELEASE_GUIDE.md` and `AGENTS.md` state in prose:
+ * tag-triggered workflows run from the DEFAULT BRANCH, so the copy reviewed on a
+ * feature branch is not the copy that ships unless the two are identical.
+ *
+ * Fails when a synced workflow differs from the default branch's copy. Run from
+ * `bun run quality`.
+ */
 import { $ } from "bun"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "../..")
 
+/** Workflows that must be byte-identical on the default branch. */
 export const SYNCED_WORKFLOWS = [".github/workflows/release-beta.yml"] as const
 
+/** Ignore line-ending and trailing-whitespace noise; everything else is drift. */
 export function normalizeWorkflow(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "").replace(/\n+$/, "\n")
 }
@@ -27,9 +37,11 @@ async function defaultBranch(): Promise<string> {
   return name || "main"
 }
 
+/** Default-branch copy of `file`, or undefined when it cannot be retrieved. */
 async function remoteCopy(branch: string, file: string): Promise<string | undefined> {
   const tracked = await git("show", `origin/${branch}:${file}`)
   if (tracked.ok) return tracked.text
+  // Shallow CI checkouts have no origin/<branch> ref: fetch just that commit.
   const fetched = await git("fetch", "--depth=1", "--quiet", "origin", branch)
   if (!fetched.ok) return undefined
   const afterFetch = await git("show", `FETCH_HEAD:${file}`)
@@ -50,6 +62,7 @@ if (import.meta.main) {
     const remote = await remoteCopy(branch, file)
     if (remote === undefined) {
       const message = `workflow-sync: could not read ${file} from origin/${branch}`
+      // Fail closed in CI; a local offline run cannot prove sync either way.
       if (process.env.CI) {
         console.error(`${message} — cannot prove the shipped pipeline matches this branch`)
         process.exit(1)
