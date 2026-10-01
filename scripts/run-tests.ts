@@ -20,19 +20,39 @@ import {
 
 const root = path.resolve(import.meta.dir, "..")
 
+export interface TestGroup {
+  readonly cwd: string
+  readonly files: readonly string[]
+  readonly isolate: boolean
+}
+
 const GROUPS = {
   core: { cwd: "packages/spinosa-core", files: [...CORE_RELEASE_TESTS, ...CORE_EXTENDED_TESTS], isolate: false },
   tui: { cwd: "packages/tui", files: [...TUI_LOCAL_TEST_PATHS], isolate: true },
   kernel: { cwd: "packages/spinosa-kernel", files: [...KERNEL_RELEASE_TESTS], isolate: false },
-} as const
+} as const satisfies Record<string, TestGroup>
 
-const name = process.argv[2] as keyof typeof GROUPS | undefined
-if (!name || !(name in GROUPS)) {
-  console.error(`Usage: bun scripts/run-tests.ts <${Object.keys(GROUPS).join("|")}>`)
-  process.exit(1)
+// Per-test timeouts matching the quality gate so local runs predict CI.
+const GROUP_TIMEOUTS = { core: 30_000, tui: 60_000, kernel: 60_000 } as const
+
+/**
+ * Single implementation of "run one bun test group", shared by this CLI and
+ * `scripts/quality-release.ts` so timeout/isolate handling cannot drift.
+ */
+export async function runTestGroup(group: TestGroup, timeoutMs: number): Promise<void> {
+  const args = group.isolate ? ["--isolate", ...group.files] : group.files
+  const result = await $`bun test --timeout ${timeoutMs} ${args}`.cwd(path.join(root, group.cwd)).nothrow()
+  if (result.exitCode !== 0) {
+    throw new Error(`bun test failed in ${group.cwd} (exit ${result.exitCode})`)
+  }
 }
 
-const group = GROUPS[name]
-const args = group.isolate ? ["--isolate", ...group.files] : group.files
-const result = await $`bun test ${args}`.cwd(path.join(root, group.cwd)).nothrow()
-process.exit(result.exitCode ?? 1)
+if (import.meta.main) {
+  const name = process.argv[2] as keyof typeof GROUPS | undefined
+  if (!name || !(name in GROUPS)) {
+    console.error(`Usage: bun scripts/run-tests.ts <${Object.keys(GROUPS).join("|")}>`)
+    process.exit(1)
+  }
+
+  await runTestGroup(GROUPS[name], GROUP_TIMEOUTS[name])
+}

@@ -58,7 +58,7 @@ Binary releases should be built where native verification is possible. Cross-com
 | `bun run release:validate` | Preflight only (branch + quality) |
 | `bun run release plan beta patch` | Show version bump without publishing |
 | `bun scripts/release/validate-tag.ts vX.Y.Z` | Gate a tag before pushing (greater-than-previous, version + changelog match) |
-| `bun run release ci-assemble vX.Y.Z [--dry-run] [--finalize-only]` | Finalize dist/ + local gates; `--finalize-only` runs structural checks only (CI assemble job — runtime proof lives in the verify matrix); `--dry-run` keeps the full installer smoke for local prediction |
+| `bun run release ci-assemble vX.Y.Z [--dry-run] [--finalize-only]` | Finalize dist/ + local gates; `--finalize-only` runs structural checks only (no runtime smoke); `--dry-run` keeps the full installer smoke for local prediction |
 | `bun run release ci-publish vX.Y.Z` | Publish immutable release + roll channel — CI only, after every native verify passes |
 | `bun run release:resume` | Resume the latest incomplete release |
 | `bun run release:republish -- vX.Y.Z` | Republish only when checksums match (immutable) |
@@ -103,7 +103,9 @@ Contract: [docs/release/binary-distribution-contract.md](docs/release/binary-dis
 
 Quality runs locally (`release:validate`), in the CI validate job, and as the
 required PR gate (`quality.yml` functional-quality). The metrics baseline
-(`quality:report`) is advisory only; coverage/mutation run manually.
+(`quality:report --check`) gates with it — refresh drift with
+`bun run quality:baseline`. Coverage/mutation run manually (dispatch-only);
+a green manual run is a stable-promotion prerequisite.
 Dependency advisories are reported separately in dry runs. Review applicability
 and remediation individually; a scan finding does not mandate an upgrade.
 

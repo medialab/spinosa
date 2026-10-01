@@ -108,3 +108,17 @@ export const KERNEL_RELEASE_TESTS = [
   "test/tool/parameters.test.ts",
   "test/tool/spinosa-refusal.test.ts",
 ] as const
+
+/** Kernel launch/thread regression. Run from `packages/spinosa-kernel`. */
+export const KERNEL_THREAD_TESTS = ["test/cli/tui/thread.test.ts"] as const
+
+/** Kernel smoke aggregation. Run from `packages/spinosa-kernel`. */
+export const KERNEL_SMOKE_TESTS = [
+  "src/cli/cmd/internal-smoke.test.ts",
+  "test/cli/tui/worker-boot.test.ts",
+  "test/native/boot-noise.test.ts",
+  "test/native/dom-matrix-polyfill.test.ts",
+  "test/cli/cmd/doctor-probes.test.ts",
+  "test/provider/provider-catalog.test.ts",
+  "script/embedded-span.test.ts",
+] as const

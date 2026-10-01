@@ -32,6 +32,7 @@ Complete at least one beta soak after the first binary beta before cutting stabl
 - [ ] No `spinosa-v*.tar.gz` product archive
 - [ ] Rolling channel points at the soaked immutable version
 - [ ] `bun run quality` and `bun run quality:binary` green on release host
+- [ ] Manual coverage and mutation gates green (`gh workflow run quality.yml -f ...` dispatch or local `quality:coverage:check` + `quality:mutation`)
 - [ ] Sign-off file completed (`docs/release-signoff-template.md`)
 
 Do not run `release:stable:*` until every item is checked.
