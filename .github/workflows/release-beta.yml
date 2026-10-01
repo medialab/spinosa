@@ -11,7 +11,8 @@
 #             same commit implies same bytes, already proven.
 #   build     each native target compiles (no runtime smoke here)
 #   assemble  the release is internally consistent (manifest, installers,
-#             checksums, structural validation only — no runtime smoke)
+#             checksums plus a local installer smoke; per-platform proof
+#             lives in verify, not here)
 #   verify    the exact artifact users receive installs and runs on every
 #             supported platform (checksum + ONE end-to-end installer smoke:
 #             version, doctor, native-imports, provider-catalog, pdf-runtime, tui-worker)
@@ -210,11 +211,9 @@ jobs:
             --version "${{ needs.validate.outputs.version }}" \
             --channel "${{ needs.validate.outputs.channel }}" \
             --manifest-only
-          if [ "${{ needs.validate.outputs.dry_run }}" = "true" ]; then
-            bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --dry-run
-          else
-            bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
-          fi
+          # This job only runs on dry runs (see job-level if above): run the
+          # full smoke so a green dry-run predicts a green publish.
+          bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --dry-run
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
