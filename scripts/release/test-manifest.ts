@@ -48,6 +48,7 @@ export const CORE_RELEASE_TESTS = [
   "../../scripts/release/workflow-sync.test.ts",
   "../../scripts/release/workflow-security.test.ts",
   "../../scripts/set-version.test.ts",
+  "../../scripts/quality-report.test.ts",
   "../../scripts/smoke-install.test.ts",
   "../../packages/core/test/models.test.ts",
   "../../packages/core/test/sanitize-log.test.ts",
