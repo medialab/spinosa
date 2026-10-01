@@ -10,6 +10,21 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2-beta.7] — 2026-10-01
+
+### Fixed
+
+- Report and frame tools describe each field shape. Agents pass strings and arrays correctly.
+- Failed tool calls name the field and show a hint. Agents self-correct in one retry.
+- Token counts ignore comments and strings. Prose no longer trips the quality gate.
+
+### Changed
+
+- Quality checks run through one test runner. Local runs match CI exactly.
+- Workflow guard tests live in one file. The OCR guard has a clear name.
+- The advisory report job is gone. The baseline check gates with the rest.
+- Coverage and mutation stay manual. A green run is a stable requirement.
+
 ## [1.2.2-beta.6] — 2026-09-30
 
 ### Fixed
