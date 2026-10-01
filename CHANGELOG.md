@@ -10,6 +10,25 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-10-01
+
+### Fixed
+
+- Workspace and import paths stay inside allowed roots. Escape attempts fail closed.
+- Server checks HTTP host and CORS origin. Unlisted hosts receive an error.
+- Tool refusals settle as errors. Failed validation no longer looks like success.
+- Launch upgrade check awaits a stale version cache. New releases appear on first launch.
+- Import pipeline reports progress and counts worker failures. Partial results do not pass.
+- Report and frame tools describe each field shape. Agents pass strings and arrays correctly.
+- Token counts ignore comments and strings. Prose no longer trips the quality gate.
+
+### Changed
+
+- Stable tags use the same CI dry-run, promote, and publish path as beta.
+- Release actions use pinned commits. Checkout does not persist credentials.
+- Quality checks run on each push to `main` and `beta-dev`. Failures show before a tag.
+- Quality checks run through one test runner. Local runs match CI exactly.
+
 ## [1.2.2-beta.7] — 2026-10-01
 
 ### Fixed
