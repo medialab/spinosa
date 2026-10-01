@@ -210,11 +210,9 @@ jobs:
             --version "${{ needs.validate.outputs.version }}" \
             --channel "${{ needs.validate.outputs.channel }}" \
             --manifest-only
-          if [ "${{ needs.validate.outputs.dry_run }}" = "true" ]; then
-            bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --dry-run
-          else
-            bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --finalize-only
-          fi
+          # This job only runs on dry runs (see job-level if above): run the
+          # full smoke so a green dry-run predicts a green publish.
+          bun run release ci-assemble "v${{ needs.validate.outputs.version }}" --dry-run
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

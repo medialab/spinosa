@@ -12,6 +12,9 @@ permissions:
 jobs:
   # Functional quality gate: the same checks that guard a release
   # (typechecks, release-critical + installer tests, shellcheck, baseline).
+  # This is the only job that may be a required status check: Release runs on
+  # tags/dispatch only and quality-gates on dispatch only, so requiring either
+  # would deadlock pull requests.
   functional-quality:
     name: Functional quality (release gate)
     runs-on: ubuntu-latest
