@@ -5,7 +5,10 @@ import * as Tool from "./tool"
 import DESCRIPTION from "./spinosa-frame.txt"
 
 const DecisionSchema = Schema.Struct({
-  mode: Schema.Literal("orchestrated"),
+  mode: Schema.Literal("orchestrated").annotate({
+    description:
+      "Must be 'orchestrated'. Only call this tool when spinosa_route returned mode 'orchestrated' and pass its decision through unchanged. A 'general' decision means answer directly without this tool.",
+  }),
   operation: Schema.Union([
     Schema.Literal("research"),
     Schema.Literal("corpus"),
@@ -56,12 +59,25 @@ export const Parameters = Schema.Struct({
   ),
 })
 
+/**
+ * Plain-language wrapper over the raw schema error. The common failure is
+ * passing a 'general' route decision through; that means answer directly.
+ */
+export function formatFrameValidationError(error: unknown): string {
+  const base = String(error)
+  if (base.includes(`["decision"]["mode"]`) || base.includes(`["mode"]`)) {
+    return `${base}\nHint: spinosa_frame only accepts mode 'orchestrated'. A 'general' route decision means answer directly without this tool.`
+  }
+  return base
+}
+
 export const SpinosaFrameTool = Tool.define(
   "spinosa_frame",
   Effect.gen(function* () {
     return {
       description: DESCRIPTION,
       parameters: Parameters,
+      formatValidationError: formatFrameValidationError,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
           yield* ctx.ask({
@@ -83,11 +99,7 @@ export const SpinosaFrameTool = Tool.define(
             })),
           )
           if (!framed.ok) {
-            return {
-              title: "Couldn't start this run",
-              output: framed.reason,
-              metadata: {} as Record<string, string>,
-            }
+            return yield* Effect.fail(new Error(framed.reason))
           }
           return {
             title: `Started: ${framed.planLabel}`,

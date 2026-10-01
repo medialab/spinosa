@@ -19,9 +19,11 @@ import { Parameters as Plan } from "../../src/tool/plan"
 import { Parameters as Question } from "../../src/tool/question"
 import { Parameters as Read } from "../../src/tool/read"
 import { Parameters as Report } from "../../src/tool/report"
+import { formatReportValidationError } from "../../src/tool/report"
 import { Parameters as Shell } from "../../src/tool/shell"
 import { Parameters as Skill } from "../../src/tool/skill"
 import { Parameters as SpinosaFrame } from "../../src/tool/spinosa-frame"
+import { formatFrameValidationError } from "../../src/tool/spinosa-frame"
 import { Parameters as SpinosaGate } from "../../src/tool/spinosa-gate"
 import { Parameters as SpinosaMintPaths } from "../../src/tool/spinosa-mint-paths"
 import { Parameters as SpinosaMap } from "../../src/tool/spinosa-map"
@@ -32,6 +34,7 @@ import { Parameters as Task } from "../../src/tool/task"
 import { Parameters as Todo } from "../../src/tool/todo"
 import { Parameters as WebFetch } from "../../src/tool/webfetch"
 import { Parameters as WebSearch } from "../../src/tool/websearch"
+import { Parameters as Web } from "../../src/tool/web"
 import { Parameters as Write } from "../../src/tool/write"
 
 const parse = <S extends Schema.Decoder<unknown>>(schema: S, input: unknown): S["Type"] =>
@@ -39,6 +42,17 @@ const parse = <S extends Schema.Decoder<unknown>>(schema: S, input: unknown): S[
 
 const accepts = (schema: Schema.Decoder<unknown>, input: unknown): boolean =>
   Result.isSuccess(Schema.decodeUnknownResult(schema)(input))
+
+// Capture the decode failure exactly as the tool runtime sees it, so
+// formatValidationError assertions pin production behavior, not a copy.
+const captureFailure = (schema: Schema.Decoder<unknown>, input: unknown): unknown => {
+  try {
+    Schema.decodeUnknownSync(schema)(input)
+  } catch (error) {
+    return error
+  }
+  throw new Error("expected input to fail decoding")
+}
 
 const toJsonSchema = ToolJsonSchema.fromSchema
 
@@ -54,7 +68,7 @@ describe("tool parameters", () => {
     test("plan", () => expect(toJsonSchema(Plan)).toMatchSnapshot())
     test("question", () => expect(toJsonSchema(Question)).toMatchSnapshot())
     test("read", () => expect(toJsonSchema(Read)).toMatchSnapshot())
-    test("write_report", () => expect(toJsonSchema(Report)).toMatchSnapshot())
+    test("spinosa_report", () => expect(toJsonSchema(Report)).toMatchSnapshot())
     test("skill", () => expect(toJsonSchema(Skill)).toMatchSnapshot())
     test("spinosa_frame", () => expect(toJsonSchema(SpinosaFrame)).toMatchSnapshot())
     test("spinosa_gate", () => expect(toJsonSchema(SpinosaGate)).toMatchSnapshot())
@@ -67,6 +81,7 @@ describe("tool parameters", () => {
     test("todo", () => expect(toJsonSchema(Todo)).toMatchSnapshot())
     test("webfetch", () => expect(toJsonSchema(WebFetch)).toMatchSnapshot())
     test("websearch", () => expect(toJsonSchema(WebSearch)).toMatchSnapshot())
+    test("web", () => expect(toJsonSchema(Web)).toMatchSnapshot())
     test("write", () => expect(toJsonSchema(Write)).toMatchSnapshot())
 
     test("inlines named child schemas for provider compatibility", () => {
@@ -279,6 +294,11 @@ describe("tool parameters", () => {
     test("rejects general-mode decision", () => {
       expect(accepts(SpinosaFrame, { cleanedPrompt: "p", decision: { mode: "general" } })).toBe(false)
     })
+    test("general-mode rejection points back to orchestrated-only use", () => {
+      const input = { cleanedPrompt: "p", decision: { ...decision, mode: "general" } }
+      expect(accepts(SpinosaFrame, input)).toBe(false)
+      expect(formatFrameValidationError(captureFailure(SpinosaFrame, input))).toContain("orchestrated")
+    })
   })
 
   describe("spinosa_mint_paths", () => {
@@ -334,6 +354,46 @@ describe("tool parameters", () => {
     })
   })
 
+  describe("spinosa_report", () => {
+    const report = {
+      filename: "01_topic.md",
+      title: "T",
+      scope: "s",
+      pipeline: "searcher → writer",
+      query: "q",
+      goal: "g",
+      tldr: "t",
+      report: "body",
+      conclusions: "c",
+      reproducibility: { agents: "searcher → writer", sources: ["raw/a.pdf"] },
+    }
+
+    test("defaults status to draft", () => {
+      expect(parse(Report, report).status).toBe("draft")
+    })
+
+    // The writer authors; only the verifier may promote a status. Accepting a
+    // verdict here would let an agent declare verification.
+    test("rejects a self-declared verified status", () => {
+      expect(accepts(Report, { ...report, status: "pass" })).toBe(false)
+      expect(accepts(Report, { ...report, status: "pass_with_corrections" })).toBe(false)
+    })
+
+    // Smoke-test regression: agents is one string, sources is an array.
+    // Swapping the shapes must fail closed with a hint naming the field.
+    test("rejects array agents with a targeted hint", () => {
+      const input = { ...report, reproducibility: { agents: ["searcher"], sources: ["raw/a.pdf"] } }
+      expect(accepts(Report, input)).toBe(false)
+      expect(formatReportValidationError(captureFailure(Report, input))).toContain("reproducibility.agents")
+    })
+
+    test("rejects string sources with a targeted hint", () => {
+      const input = { ...report, reproducibility: { agents: "searcher", sources: "raw/a.pdf" } }
+      expect(accepts(Report, input)).toBe(false)
+      expect(formatReportValidationError(captureFailure(Report, input))).toContain("reproducibility.sources")
+    })
+  })
+
   describe("spinosa_verify", () => {
     test("accepts relativePath + validator", () => {
       const parsed = parse(SpinosaVerify, { relativePath: "agent_reports/01_x.md", validator: "report" })
@@ -346,15 +406,15 @@ describe("tool parameters", () => {
 
   describe("task", () => {
     test("accepts description + prompt + subagent_type", () => {
-      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "general" })
-      expect(parsed.subagent_type).toBe("general")
+      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "spinosa-generalist" })
+      expect(parsed.subagent_type).toBe("spinosa-generalist")
     })
     test("accepts optional background flag", () => {
-      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "general", background: true })
+      const parsed = parse(Task, { description: "d", prompt: "p", subagent_type: "spinosa-generalist", background: true })
       expect(parsed.background).toBe(true)
     })
     test("rejects missing prompt", () => {
-      expect(accepts(Task, { description: "d", subagent_type: "general" })).toBe(false)
+      expect(accepts(Task, { description: "d", subagent_type: "spinosa-generalist" })).toBe(false)
     })
   })
 
@@ -386,6 +446,22 @@ describe("tool parameters", () => {
   describe("websearch", () => {
     test("accepts query", () => {
       expect(parse(WebSearch, { query: "opencode" }).query).toBe("opencode")
+    })
+  })
+
+  describe("web", () => {
+    test("accepts query (search mode)", () => {
+      const value = parse(Web, { query: "opencode" })
+      expect("query" in value && value.query).toBe("opencode")
+    })
+    test("accepts url (fetch mode)", () => {
+      expect(parse(Web, { url: "https://example.com" })).toMatchObject({
+        url: "https://example.com",
+        format: "markdown",
+      })
+    })
+    test("rejects empty object", () => {
+      expect(accepts(Web, {})).toBe(false)
     })
   })
 

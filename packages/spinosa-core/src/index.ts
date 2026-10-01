@@ -38,6 +38,7 @@ export * from "./distribution/workspace-launcher"
 // --- workspace
 export * from "./workspace/meta"
 export * from "./workspace/registry"
+export * from "./workspace/delete"
 export * from "./workspace/archive"
 
 // --- tools

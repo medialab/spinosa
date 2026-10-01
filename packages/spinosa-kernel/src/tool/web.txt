@@ -1,0 +1,15 @@
+One outbound web tool. Pass exactly one of:
+
+- `query` — search the web (Exa or Parallel). Use for current events and facts beyond knowledge cutoff.
+- `url` — fetch a page. Returns markdown by default (or text / html).
+
+Do not pass both. Do not use this for in-workspace files — use read / grep / glob.
+
+Search options (query mode only):
+  - numResults, livecrawl (`fallback` | `preferred`), type (`auto` | `fast` | `deep`), contextMaxCharacters
+
+Fetch options (url mode only):
+  - format (`markdown` default, `text`, `html`), timeout in seconds (max 120)
+  - URL must be http(s); http is upgraded where applicable
+
+The current year is {{year}}. Use this year in search queries for recent information.

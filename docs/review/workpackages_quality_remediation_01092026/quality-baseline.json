@@ -12,50 +12,50 @@
       "scripts/quality-report.ts"
     ],
     "locDefinition": "UTF-8 text files counted by logical lines; trailing newline does not add an empty line; binary files have null per-file LOC.",
-    "tokenDefinition": "Lexical word matches in TypeScript-family files; comments and strings are included and counts are inventory signals, not type-check results."
+    "tokenDefinition": "Lexical word matches in TypeScript-family files after stripping comments and strings; counts are inventory signals, not type-check results."
   },
   "guardrails": {
     "production": {
       "maxFileLoc": 14972,
-      "filesAtOrAbove500Loc": 101,
-      "anyTokens": 298,
-      "unknownTokens": 1602,
-      "files": 1711
+      "filesAtOrAbove500Loc": 222,
+      "anyTokens": 254,
+      "unknownTokens": 1883,
+      "files": 2414
     },
     "test": {
       "maxFileLoc": 4902,
-      "filesAtOrAbove500Loc": 69,
-      "anyTokens": 415,
-      "unknownTokens": 639,
-      "files": 726
+      "filesAtOrAbove500Loc": 74,
+      "anyTokens": 381,
+      "unknownTokens": 722,
+      "files": 1007
     },
     "generated": {
-      "maxFileLoc": 13648,
-      "filesAtOrAbove500Loc": 4,
-      "anyTokens": 35,
-      "unknownTokens": 436,
-      "files": 35
+      "maxFileLoc": 15599,
+      "filesAtOrAbove500Loc": 5,
+      "anyTokens": 139,
+      "unknownTokens": 472,
+      "files": 39
     },
     "fixture": {
       "maxFileLoc": 117299,
-      "filesAtOrAbove500Loc": 1,
+      "filesAtOrAbove500Loc": 2,
       "anyTokens": 0,
-      "unknownTokens": 13,
-      "files": 128
+      "unknownTokens": 25,
+      "files": 131
     },
     "script": {
       "maxFileLoc": 2913,
       "filesAtOrAbove500Loc": 5,
-      "anyTokens": 5,
-      "unknownTokens": 56,
-      "files": 63
+      "anyTokens": 1,
+      "unknownTokens": 49,
+      "files": 51
     },
     "unknown": {
-      "maxFileLoc": 3708,
-      "filesAtOrAbove500Loc": 6,
-      "anyTokens": 5,
-      "unknownTokens": 21,
-      "files": 201
+      "maxFileLoc": 4799,
+      "filesAtOrAbove500Loc": 8,
+      "anyTokens": 1,
+      "unknownTokens": 82,
+      "files": 276
     }
   }
 }

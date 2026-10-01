@@ -29,8 +29,13 @@ export async function createSpinosaServer(options?: ServerOptions) {
     options ?? {},
   )
 
-  const args = [`serve`, `--hostname=${options.hostname}`, `--port=${options.port}`]
-  if (options.config?.logLevel) args.push(`--log-level=${options.config.logLevel}`)
+  const args = [
+    `serve`,
+    `--hostname=${options.hostname}`,
+    `--port=${options.port}`,
+  ]
+  if (options.config?.logLevel)
+    args.push(`--log-level=${options.config.logLevel}`)
 
   const proc = launch(`spinosa`, args, {
     env: {
@@ -44,7 +49,11 @@ export async function createSpinosaServer(options?: ServerOptions) {
     const id = setTimeout(() => {
       clear()
       stop(proc)
-      reject(new Error(`Timeout waiting for server to start after ${options.timeout}ms`))
+      reject(
+        new Error(
+          `Timeout waiting for server to start after ${options.timeout}ms`,
+        ),
+      )
     }, options.timeout)
     let output = ""
     let resolved = false

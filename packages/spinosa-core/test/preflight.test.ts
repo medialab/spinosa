@@ -70,17 +70,25 @@ describe("launch preflight", () => {
   })
 
   test("exits after a Spinosa upgrade without updating workspaces", async () => {
+    const upgrades: Array<{ version?: string } | undefined> = []
     const { deps, output, updated } = dependencies({
       checkUpgradeAvailable: async () => ({ available: true, currentVersion: "1.0.0", latestVersion: "1.1.0" }),
       confirm: async () => true,
+      upgradeFramework: async (options) => {
+        upgrades.push(options)
+        return { success: true, newVersion: "1.1.0", workspaceUpgradesNeeded: [] }
+      },
     })
 
     expect(await runLaunchPreflight(deps)).toBe("exit")
+    expect(upgrades).toEqual([{ version: "1.1.0" }])
     expect(updated).toEqual([])
     expect(output.at(-1)).toBe(LAUNCH_STATUS_UPGRADE_DONE)
   })
 
-  test("does not claim success when the framework upgrade fails", async () => {
+  // A failed *offered* upgrade must not block launch: the user would lose
+  // access to their workspace over an optional update (tui.ts exits 1 on throw).
+  test("reports a failed framework upgrade and still continues into the TUI", async () => {
     const { deps, output } = dependencies({
       checkUpgradeAvailable: async () => ({ available: true, currentVersion: "1.0.0", latestVersion: "1.1.0" }),
       confirm: async () => true,
@@ -91,10 +99,12 @@ describe("launch preflight", () => {
       }),
     })
 
-    await expect(runLaunchPreflight(deps)).rejects.toThrow(
-      "Spinosa upgrade failed: Installer checksum verification failed",
+    expect(await runLaunchPreflight(deps)).toBe("continue")
+    expect(output).not.toContain(LAUNCH_STATUS_UPGRADE_DONE)
+    expect(output.some((line) => line.includes("Spinosa upgrade failed: Installer checksum verification failed"))).toBe(
+      true,
     )
-    expect(output).toEqual([LAUNCH_STATUS_CHECKING])
+    expect(output.some((line) => line.includes("Run 'spinosa upgrade' for details."))).toBe(true)
   })
 
   test("offers stale template pack update and continues into TUI after accept", async () => {

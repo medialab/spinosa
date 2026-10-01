@@ -7,6 +7,8 @@ import { resolveTemplateRootFromFrameworkRoot } from "../framework/discovery"
 
 export const STARTUP_PROGRESS_THRESHOLD_MS = 2_000
 export const STARTUP_PROGRESS_INTERVAL_MS = 500
+export const STARTUP_PROMPT_FALLBACK =
+  "Run Spinosa startup indexing for this workspace. Follow startup-prompt.md: survey corpus, batch mapper extraction, write maps, validate, and set setup_status to workspace_started."
 
 // WP8: Short explicit trigger for native startup indexing. The workflow
 // definition (corpus.startup_index) — not this text — owns the sequence.

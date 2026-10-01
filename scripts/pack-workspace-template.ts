@@ -4,7 +4,7 @@
  * workspace-template tree (manifest-driven, no node_modules).
  *
  * Files are stored flat under generated/template-blobs/ as <sha256> to avoid
- * nested vendor dirs (.claude etc.) that some workspaces block.
+ * nested adapter dirs that some workspaces block.
  *
  * Usage:
  *   bun scripts/pack-workspace-template.ts

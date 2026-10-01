@@ -8,6 +8,7 @@ import { Flock } from "./util/flock"
 import { Flag } from "./flag/flag"
 import { makeGlobalNode } from "./effect/app-node"
 import { productLogDir, resolveUserDirs } from "./util/user-dirs"
+import { ensurePrivateDirectory } from "./util/private-storage"
 
 const legacyApp = ["open", "code"].join("")
 const app = "spinosa"
@@ -147,19 +148,19 @@ Flock.setGlobal({ state: globalPath.state })
 let globalDirsReady = false
 function ensureGlobalDirs() {
   if (globalDirsReady) return
-  globalDirsReady = true
   for (const dir of [globalPath.data, globalPath.config, globalPath.state, globalPath.tmp, globalPath.log, globalPath.bin, globalPath.repos]) {
-    mkdirSync(dir, { recursive: true })
+    if (dir === globalPath.data) ensurePrivateDirectory(dir)
+    else mkdirSync(dir, { recursive: true })
   }
+  globalDirsReady = true
 }
 
 /** Legacy-path migration runs after mkdir. Boot awaits this before CLI parse. */
 export const GlobalReady = Promise.resolve()
   .then(() => {
     ensureGlobalDirs()
-    return migrateLegacyPaths({ legacy: legacyPaths, spinosa: spinosaPaths })
+    return migrateLegacyPaths({ legacy: legacyPaths, spinosa: spinosaPaths }).catch(() => [] as MigrationResult[])
   })
-  .catch(() => [] as MigrationResult[])
 
 export namespace Global {
   export const Path = globalPath

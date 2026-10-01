@@ -167,6 +167,15 @@ export function errorMessage(error: unknown, seen = new Set<unknown>()): string 
   const message = shallowMessage(error)
   const cause = readCause(error)
   if (cause === undefined || cause === error) return message
+  if (
+    error instanceof Error &&
+    isRecord(cause) &&
+    isRecord(cause.body) &&
+    isRecord(cause.body.data) &&
+    cause.body.data.message === message
+  ) {
+    return message
+  }
 
   const nested = errorMessage(cause, seen)
   if (!nested || nested === "unknown error" || nested === message) return message

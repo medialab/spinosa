@@ -211,7 +211,7 @@ describe("run entry body", () => {
             status: "running",
             input: {
               description: "Inspect reducer",
-              subagent_type: "explore",
+              subagent_type: "spinosa-generalist",
             },
             time: { start: 1 },
           },
@@ -231,7 +231,7 @@ describe("run entry body", () => {
             status: "completed",
             input: {
               description: "Inspect reducer",
-              subagent_type: "explore",
+              subagent_type: "spinosa-generalist",
             },
             title: "",
             output: [
@@ -261,7 +261,7 @@ describe("run entry body", () => {
             status: "completed",
             input: {
               description: "Inspect reducer",
-              subagent_type: "explore",
+              subagent_type: "spinosa-generalist",
             },
             title: "",
             output: ['<task id="child-1" state="completed">', "<task_result>", "", "</task_result>", "</task>"].join(
@@ -276,7 +276,7 @@ describe("run entry body", () => {
       ),
     ).toEqual({
       kind: "task",
-      title: "# Explore Task",
+      title: "# Spinosa-Generalist Task",
       rows: ["Inspect reducer"],
       tail: "",
     })

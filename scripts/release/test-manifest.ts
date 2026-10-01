@@ -1,10 +1,17 @@
 /**
  * Single source of truth for release-critical tests.
+ *
+ * `bun run quality` (the only functional gate in CI) and `bun run test:core` /
+ * `bun run test:tui` all read these lists. Two hand-maintained lists drifted in
+ * both directions before this existed — `validate-tag.test.ts`, which guards
+ * every tag push, was in no CI gate at all.
+ *
  * Paths are relative to the package directory in each group.
  */
 
 /** Run from `packages/spinosa-core`. */
 export const CORE_RELEASE_TESTS = [
+  "test/agent-model-policy.test.ts",
   "test/agent-tools.test.ts",
   "test/bun-launch.test.ts",
   "test/checksums.test.ts",
@@ -13,6 +20,8 @@ export const CORE_RELEASE_TESTS = [
   "test/channels.test.ts",
   "test/upgrade-errors.test.ts",
   "test/upgrade-network.test.ts",
+  "test/upgrade-channel-restore.test.ts",
+  "test/launch-upgrade-target.test.ts",
   "test/uninstall.test.ts",
   "test/version-cache.test.ts",
   "test/distribution.test.ts",
@@ -34,18 +43,23 @@ export const CORE_RELEASE_TESTS = [
   "../../scripts/release/lib.test.ts",
   "../../scripts/release/index.test.ts",
   "../../scripts/release/promote.test.ts",
-  "../../scripts/release/tools-build.test.ts",
+  "../../scripts/release/ocr-removal-guard.test.ts",
   "../../scripts/release/validate-tag.test.ts",
-  "../../scripts/release/workflow-sync.test.ts",
-  "../../scripts/release/workflow-security.test.ts",
+  "../../scripts/release/workflow-guards.test.ts",
   "../../scripts/set-version.test.ts",
+  "../../scripts/quality-report.test.ts",
   "../../scripts/smoke-install.test.ts",
   "../../packages/core/test/models.test.ts",
   "../../packages/core/test/sanitize-log.test.ts",
   "../../packages/core/test/user-dirs.test.ts",
   "../../packages/core/test/boot-log.test.ts",
+  "../../packages/core/test/tool-validation-error.test.ts",
 ] as const
 
+/**
+ * Extra `test:core` members that are slower or not release-gating. They run in
+ * `bun run test:core` but stay out of the CI gate to keep it fast.
+ */
 export const CORE_EXTENDED_TESTS = [
   "test/pdf-engine.test.ts",
   "test/pdf-scanned-ocr.test.ts",
@@ -58,6 +72,7 @@ export const TUI_RELEASE_TESTS = [
   "test/context/local.test.ts",
   "test/util/session.test.ts",
   "test/util/stop-sessions.test.ts",
+  "test/component/home-footer.test.ts",
   "test/cli/tui/diff-viewer.test.tsx",
   "test/spinosa/app-route-e2e.test.tsx",
   "test/spinosa/update-workspace.test.ts",
@@ -72,6 +87,11 @@ export const TUI_RELEASE_TESTS = [
   "test/cli/cmd/tui/provider-options.test.ts",
 ] as const
 
+/**
+ * Broad local sweep for `test:tui`: the whole Spinosa suite (62 files) plus the
+ * gate members that live outside `test/spinosa/` — the old script was
+ * `bun test --isolate test/spinosa/`, which could not reach `test/component/`.
+ */
 export const TUI_LOCAL_TEST_PATHS = [
   "test/spinosa/",
   ...TUI_RELEASE_TESTS.filter((file) => !file.startsWith("test/spinosa/")),
@@ -79,9 +99,25 @@ export const TUI_LOCAL_TEST_PATHS = [
 
 /** Run from `packages/spinosa-kernel`. */
 export const KERNEL_RELEASE_TESTS = [
+  "test/provider/public-info.test.ts",
   "test/server/httpapi-provider.test.ts",
   "test/server/httpapi-host-validation.test.ts",
   "test/server/httpapi-cors.test.ts",
   "test/server/httpapi-listen.test.ts",
   "test/tool/parameters.test.ts",
+  "test/tool/spinosa-refusal.test.ts",
+] as const
+
+/** Kernel launch/thread regression. Run from `packages/spinosa-kernel`. */
+export const KERNEL_THREAD_TESTS = ["test/cli/tui/thread.test.ts"] as const
+
+/** Kernel smoke aggregation. Run from `packages/spinosa-kernel`. */
+export const KERNEL_SMOKE_TESTS = [
+  "src/cli/cmd/internal-smoke.test.ts",
+  "test/cli/tui/worker-boot.test.ts",
+  "test/native/boot-noise.test.ts",
+  "test/native/dom-matrix-polyfill.test.ts",
+  "test/cli/cmd/doctor-probes.test.ts",
+  "test/provider/provider-catalog.test.ts",
+  "script/embedded-span.test.ts",
 ] as const

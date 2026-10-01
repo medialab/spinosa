@@ -18,25 +18,34 @@ const Reproducibility = Schema.Struct({
   filesScanned: Schema.optional(Schema.Number).annotate({ description: "Files scanned" }),
   filesRead: Schema.optional(Schema.Number).annotate({ description: "Files read" }),
   searchRounds: Schema.optional(Schema.Number).annotate({ description: "Search rounds" }),
-  agents: Schema.String.annotate({ description: "Agent chain" }),
+  agents: Schema.String.annotate({
+    description:
+      "Agent chain as one string, e.g. 'searcher → writer → verifier'. Join run.json agent IDs with ' → '. Not an array.",
+  }),
   tags: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({ description: "Keywords/terms used" }),
   gaps: Schema.optional(Schema.String).annotate({ description: "Coverage gaps" }),
-  sources: Schema.mutable(Schema.Array(Schema.String)).annotate({ description: "Source paths referenced" }),
+  sources: Schema.mutable(Schema.Array(Schema.String)).annotate({
+    description:
+      "Source paths referenced, e.g. ['agent_reports/05_topic.md']. Must be an array, even for a single path.",
+  }),
 })
 
 export const Parameters = Schema.Struct({
   filename: Schema.String.annotate({
     description:
-      "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore.",
+      "Exact runtime-assigned report filename in NN_{topic-slug}.md form. Do not choose a sequence number or slug. Must start with a 2-digit number followed by an underscore (05_topic.md, not 05-topic.md).",
   }),
   title: Schema.String.annotate({ description: "H1 headline for the report (mirrors the goal statement)" }),
   scope: Schema.String.annotate({ description: "One-line description of the report scope" }),
   pipeline: Schema.String.annotate({
-    description: "Agent chain, e.g. 'searcher → writer → verifier → evaluator'",
+    description: "Runtime workflow ID/version and completed node IDs from run.json; do not provide a manually selected agent chain",
   }),
   query: Schema.String.annotate({ description: "Original user query" }),
-  status: Schema.Literals(["draft", "pass", "pass_with_corrections"])
-    .annotate({ description: "Verification status (default: draft)" })
+  // Authoring cannot award a verdict: the writer has not checked any claim
+  // against a source. Only the verifier promotes this, by editing the
+  // frontmatter after recording a verification artifact.
+  status: Schema.Literals(["draft"])
+    .annotate({ description: "Always 'draft' — only the verifier may promote a report's status" })
     .pipe(Schema.withDecodingDefault(Effect.succeed("draft" as const))),
   goal: Schema.String.annotate({ description: "What the research aimed to answer" }),
   tldr: Schema.String.annotate({ description: "Short natural-language answer, 1–3 sentences" }),
@@ -131,18 +140,41 @@ function renderReport(params: Parameters): string {
   return lines.join("\n")
 }
 
+const FIELD_HINTS: Array<readonly [marker: string, hint: string]> = [
+  [
+    `["reproducibility"]["agents"]`,
+    `Hint: reproducibility.agents is one string like 'searcher → writer → verifier', not an array.`,
+  ],
+  [
+    `["reproducibility"]["sources"]`,
+    `Hint: reproducibility.sources is an array of paths like ['agent_reports/05_topic.md'], even for a single path.`,
+  ],
+]
+
+/**
+ * Plain-language wrapper over the raw schema error. The raw message names
+ * the failing path but agents have misread which field each failure belongs
+ * to, so append a targeted hint per confused field.
+ */
+export function formatReportValidationError(error: unknown): string {
+  const base = String(error)
+  const hints = FIELD_HINTS.filter(([marker]) => base.includes(marker)).map(([, hint]) => hint)
+  return hints.length > 0 ? `${base}\n${hints.join("\n")}` : base
+}
+
 export const ReportTool = Tool.define<typeof Parameters, Metadata, FSUtil.Service>(
-  "write_report",
+  "spinosa_report",
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
 
     return {
-      description: `Write a structured Spinosa report to agent_reports/ following the canonical report template. You provide the content for each section as free text; the tool assembles the YAML frontmatter, section headers, separators, and reproducibility table.
+      description: `Assemble a structured Spinosa report under agent_reports/ using the canonical report template. You provide section content as free text; the tool builds YAML frontmatter, section headers, separators, and the reproducibility table.
 
-The report template includes: YAML frontmatter (type, dates, status, scope, pipeline, query), H1 title, Goal, TLDR, Report, Conclusions, optional Serendipity, and Reproducibility table with sources.
+Not a generic file write — use the write tool for arbitrary files. This tool only produces numbered agent_reports/NN_topic-slug.md reports.
 
-Use this tool to produce numbered agent_reports/NN_topic-slug.md files. Every required section must be non-empty. The filename must start with a 2-digit number followed by an underscore (e.g. 05_coastal-erosion.md).`,
+Every required section must be non-empty. The filename must start with a 2-digit number followed by an underscore (e.g. 05_coastal-erosion.md).`,
       parameters: Parameters,
+      formatValidationError: formatReportValidationError,
       execute: (params: Parameters, ctx: Tool.Context<Metadata>) =>
         Effect.gen(function* () {
           if (!FILENAME_PATTERN.test(params.filename)) {

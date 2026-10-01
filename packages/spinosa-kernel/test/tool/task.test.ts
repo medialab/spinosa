@@ -116,8 +116,8 @@ function reply(input: SessionPrompt.PromptInput, text: string): SessionV1.WithPa
       role: "assistant",
       parentID: input.messageID ?? MessageID.ascending(),
       sessionID: input.sessionID,
-      mode: input.agent ?? "general",
-      agent: input.agent ?? "general",
+      mode: input.agent ?? "spinosa-generalist",
+      agent: input.agent ?? "spinosa-generalist",
       cost: 0,
       path: { cwd: "/tmp", root: "/tmp" },
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -156,14 +156,12 @@ describe("tool.task", () => {
         expect(first).toBe(second)
 
         const alpha = first.indexOf("- alpha: Alpha agent")
-        const explore = first.indexOf("- explore:")
-        const general = first.indexOf("- general:")
+        const generalist = first.indexOf("- spinosa-generalist:")
         const zebra = first.indexOf("- zebra: Zebra agent")
 
         expect(alpha).toBeGreaterThan(-1)
-        expect(explore).toBeGreaterThan(alpha)
-        expect(general).toBeGreaterThan(explore)
-        expect(zebra).toBeGreaterThan(general)
+        expect(generalist).toBeGreaterThan(alpha)
+        expect(zebra).toBeGreaterThan(generalist)
       }),
     {
       config: {
@@ -230,7 +228,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           task_id: child.id,
         },
         {
@@ -268,7 +266,7 @@ describe("tool.task", () => {
           {
             description: "inspect bug",
             prompt: "look into the cache key path",
-            subagent_type: "general",
+            subagent_type: "spinosa-generalist",
           },
           {
             sessionID: chat.id,
@@ -291,11 +289,11 @@ describe("tool.task", () => {
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual({
         permission: "task",
-        patterns: ["general"],
+        patterns: ["spinosa-generalist"],
         always: ["*"],
         metadata: {
           description: "inspect bug",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
         },
       })
     }),
@@ -327,7 +325,7 @@ describe("tool.task", () => {
           {
             description: "inspect bug",
             prompt: "look into the cache key path",
-            subagent_type: "general",
+            subagent_type: "spinosa-generalist",
           },
           {
             sessionID: chat.id,
@@ -364,7 +362,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           task_id: "ses_missing",
         },
         {
@@ -467,7 +465,7 @@ describe("tool.task", () => {
           {
             description: "inspect bug",
             prompt: "look into the cache key path",
-            subagent_type: "general",
+            subagent_type: "spinosa-generalist",
             background: true,
           },
           {
@@ -518,7 +516,7 @@ describe("tool.task", () => {
           {
             description: "inspect bug",
             prompt: "look into the cache key path",
-            subagent_type: "general",
+            subagent_type: "spinosa-generalist",
           },
           {
             sessionID: chat.id,
@@ -564,7 +562,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           background: true,
         },
         {
@@ -630,7 +628,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           background: true,
         },
         context,
@@ -639,7 +637,7 @@ describe("tool.task", () => {
         {
           description: "add investigation scope",
           prompt: "also inspect cancellation",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           task_id: started.metadata.sessionId,
         },
         context,
@@ -676,7 +674,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           background: true,
         },
         {
@@ -709,7 +707,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           background: true,
         },
         {
@@ -748,7 +746,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           background: true,
         },
         {
@@ -787,7 +785,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           background: true,
         },
         {
@@ -826,7 +824,7 @@ describe("tool.task", () => {
         {
           description: "inspect bug",
           prompt: "look into the cache key path",
-          subagent_type: "general",
+          subagent_type: "spinosa-generalist",
           background: true,
         },
         {

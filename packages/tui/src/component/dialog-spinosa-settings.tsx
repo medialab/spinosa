@@ -51,12 +51,20 @@ export function DialogSpinosaSettings() {
   }
 
   const updateChannel = async (channel: ReleaseChannel) => {
-    await setReleaseChannel(channel)
-    setCurrentChannel(channel)
-    toast.show({
-      variant: "success",
-      message: `Release channel set to ${channel}`,
-    })
+    try {
+      await setReleaseChannel(channel)
+      setCurrentChannel(channel)
+      toast.show({
+        variant: "success",
+        message: `Release channel set to ${channel}`,
+      })
+    } catch {
+      toast.show({
+        variant: "error",
+        title: "Settings update failed",
+        message: `Could not switch to the ${channel} channel.`,
+      })
+    }
   }
 
   const options = createMemo<DialogSelectOption<SettingsValue>[]>(() => [

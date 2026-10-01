@@ -10,7 +10,7 @@ import { ToolRegistry } from "./registry"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
 
-export const name = "write_report"
+export const name = "spinosa_report"
 
 export const Reproducibility = Schema.Struct({
   mapsAccessed: Schema.optional(Schema.Number).annotate({ description: "Number of maps accessed" }),
@@ -19,16 +19,22 @@ export const Reproducibility = Schema.Struct({
   filesScanned: Schema.optional(Schema.Number).annotate({ description: "Files scanned" }),
   filesRead: Schema.optional(Schema.Number).annotate({ description: "Files read" }),
   searchRounds: Schema.optional(Schema.Number).annotate({ description: "Search rounds" }),
-  agents: Schema.String.annotate({ description: "Agent chain" }),
+  agents: Schema.String.annotate({
+    description:
+      "Agent chain as one string, e.g. 'searcher → writer → verifier'. Join run.json agent IDs with ' → '. Not an array.",
+  }),
   tags: Schema.optional(Schema.Array(Schema.String)).annotate({ description: "Keywords/terms used" }),
   gaps: Schema.optional(Schema.String).annotate({ description: "Coverage gaps" }),
-  sources: Schema.Array(Schema.String).annotate({ description: "Source paths referenced" }),
+  sources: Schema.Array(Schema.String).annotate({
+    description:
+      "Source paths referenced, e.g. ['agent_reports/05_topic.md']. Must be an array, even for a single path.",
+  }),
 })
 
 export const Input = Schema.Struct({
   filename: Schema.String.annotate({
     description:
-      "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore.",
+      "Report filename: NN_{topic-slug}.md (e.g. 05_coastal-erosion-normandy.md). Must start with a 2-digit number followed by an underscore (05_topic.md, not 05-topic.md).",
   }),
   title: Schema.String.annotate({ description: "H1 headline for the report (mirrors the goal statement)" }),
   scope: Schema.String.annotate({ description: "One-line description of the report scope" }),
@@ -36,8 +42,11 @@ export const Input = Schema.Struct({
     description: "Agent chain, e.g. 'searcher → writer → verifier → evaluator'",
   }),
   query: Schema.String.annotate({ description: "Original user query" }),
-  status: Schema.Literals(["draft", "pass", "pass_with_corrections"])
-    .annotate({ description: "Verification status (default: draft)" })
+  // Authoring cannot award a verdict: the writer has not checked any claim
+  // against a source. Only the verifier promotes this, by editing the
+  // frontmatter after recording a verification artifact.
+  status: Schema.Literals(["draft"])
+    .annotate({ description: "Always 'draft' — only the verifier may promote a report's status" })
     .pipe(Schema.withDecodingDefault(Effect.succeed("draft" as const))),
   goal: Schema.String.annotate({ description: "What the research aimed to answer" }),
   tldr: Schema.String.annotate({ description: "Short natural-language answer, 1–3 sentences" }),
@@ -62,6 +71,28 @@ export const Output = Schema.Struct({
 export type Output = typeof Output.Type
 
 const FILENAME_PATTERN = /^\d{2}_.+\.md$/
+
+const FIELD_HINTS: Array<readonly [marker: string, hint: string]> = [
+  [
+    `["reproducibility"]["agents"]`,
+    `Hint: reproducibility.agents is one string like 'searcher → writer → verifier', not an array.`,
+  ],
+  [
+    `["reproducibility"]["sources"]`,
+    `Hint: reproducibility.sources is an array of paths like ['agent_reports/05_topic.md'], even for a single path.`,
+  ],
+]
+
+/**
+ * Plain-language wrapper over the raw schema error. The raw message names
+ * the failing path but agents have misread which field each failure belongs
+ * to, so append a targeted hint per confused field.
+ */
+export function formatReportValidationError(error: unknown): string {
+  const base = String(error)
+  const hints = FIELD_HINTS.filter(([marker]) => base.includes(marker)).map(([, hint]) => hint)
+  return hints.length > 0 ? `${base}\n${hints.join("\n")}` : base
+}
 
 function formatArray(items: readonly string[] | undefined): string {
   if (!items || items.length === 0) return "—"
@@ -157,6 +188,7 @@ The report template includes: YAML frontmatter (type, dates, status, scope, pipe
 Use this tool to produce numbered agent_reports/NN_topic-slug.md files. Every required section must be non-empty. The filename must start with a 2-digit number followed by an underscore (e.g. 05_coastal-erosion.md).`,
             input: Input,
             output: Output,
+            formatValidationError: formatReportValidationError,
             toModelOutput: ({ output }) => [{ type: "text", text: `Report written: ${output.path}` }],
             execute: (input, context) => {
               const toFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

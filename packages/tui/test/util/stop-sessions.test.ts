@@ -55,7 +55,7 @@ describe("stop-sessions", () => {
   test("aborts listed sessions and cancels workflows", async () => {
     const aborted: string[] = []
     const cancelled: string[] = []
-    await stopBusySessions({
+    const failures = await stopBusySessions({
       sessionIDs: ["a", "b"],
       abort: async (id) => {
         aborted.push(id)
@@ -66,11 +66,14 @@ describe("stop-sessions", () => {
     })
     expect(aborted.sort()).toEqual(["a", "b"])
     expect(cancelled.sort()).toEqual(["a", "b"])
+    expect(failures).toEqual([])
   })
 
-  test("continues when abort or cancel rejects", async () => {
+  // One failure must not block the other sessions, but it must be reported:
+  // a silently failed stop leaves a run consuming tokens behind the user's back.
+  test("continues when abort or cancel rejects, and reports every failure", async () => {
     const aborted: string[] = []
-    await stopBusySessions({
+    const failures = await stopBusySessions({
       sessionIDs: ["a", "b"],
       abort: async (id) => {
         if (id === "a") throw new Error("offline")
@@ -81,5 +84,10 @@ describe("stop-sessions", () => {
       },
     })
     expect(aborted).toEqual(["b"])
+    expect(failures.filter((failure) => failure.stage === "abort").map((failure) => failure.sessionID)).toEqual(["a"])
+    expect(failures.filter((failure) => failure.stage === "cancel").map((failure) => failure.sessionID).sort()).toEqual([
+      "a",
+      "b",
+    ])
   })
 })

@@ -232,7 +232,148 @@ function lineCount(text: string): number {
 }
 
 function lexicalCount(text: string, token: "any" | "unknown"): number {
-  return text.match(new RegExp(`\\b${token}\\b`, "g"))?.length ?? 0
+  return stripNonCodeSegments(text).match(new RegExp(`\\b${token}\\b`, "g"))?.length ?? 0
+}
+
+/**
+ * Remove comments and string literals so lexical token counts only see real
+ * code. Prose regularly contains the English words "any"/"unknown" ("after
+ * every change" was once "after any change" and tripped the gate); a bare
+ * keyword search cannot tell those from `x: any` annotations.
+ *
+ * Handles // line comments, /* block comments *\/, single/double-quoted
+ * strings with escapes, and template literals including ${} interpolation
+ * (interpolated code IS counted). Regex literals are not special-cased: a
+ * pattern like /any/ still counts, which errs toward visibility.
+ */
+export function stripNonCodeSegments(text: string): string {
+  let out = ""
+  let i = 0
+  const n = text.length
+
+  while (i < n) {
+    const char = text[i]!
+    const next = i + 1 < n ? text[i + 1]! : ""
+
+    // Braces are inert here: template interpolation is handled recursively
+    // inside skipTemplateSegment/emitExpressionSegment.
+    if (char === "/" && next === "/") {
+      while (i < n && text[i] !== "\n") i++
+      continue
+    }
+    if (char === "/" && next === "*") {
+      i += 2
+      while (i < n && !(text[i] === "*" && i + 1 < n && text[i + 1] === "/")) i++
+      i += 2
+      continue
+    }
+    if (char === "'" || char === '"') {
+      i = skipQuoted(text, i, char)
+      continue
+    }
+    if (char === "`") {
+      const literal = skipTemplateSegment(text, i)
+      out += literal.emitted
+      i = literal.next
+      continue
+    }
+    out += char
+    i++
+  }
+  return out
+}
+
+function skipQuoted(text: string, start: number, quote: "'" | '"'): number {
+  let i = start + 1
+  while (i < text.length) {
+    if (text[i] === "\\") {
+      i += 2
+      continue
+    }
+    if (text[i] === quote) return i + 1
+    i++
+  }
+  return i
+}
+
+/**
+ * Skip one template literal starting at its opening backtick. Literal text is
+ * dropped; interpolated ${} code is emitted so real `any`/`unknown` usage
+ * inside expressions still counts. Returns the emitted code and the index
+ * just past the closing backtick (or end of input when unterminated).
+ */
+function skipTemplateSegment(text: string, start: number): { emitted: string; next: number } {
+  let emitted = ""
+  let i = start + 1
+  while (i < text.length) {
+    const char = text[i]!
+    const next = i + 1 < text.length ? text[i + 1]! : ""
+    if (char === "\\") {
+      i += 2
+      continue
+    }
+    if (char === "`") return { emitted, next: i + 1 }
+    if (char === "$" && next === "{") {
+      const expression = emitExpressionSegment(text, i + 2)
+      emitted += "${" + expression.emitted + "}"
+      i = expression.next
+      continue
+    }
+    i++
+  }
+  return { emitted, next: i }
+}
+
+/**
+ * Emit expression code starting just past "${" until (and including) its
+ * matching closing brace. Strings, comments, nested templates, and nested
+ * braces are handled; the closing brace of the interpolation itself is not
+ * emitted since it belongs to template syntax, not code.
+ */
+function emitExpressionSegment(text: string, start: number): { emitted: string; next: number } {
+  let emitted = ""
+  let i = start
+  let depth = 0
+  while (i < text.length) {
+    const char = text[i]!
+    const next = i + 1 < text.length ? text[i + 1]! : ""
+    if (char === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") i++
+      continue
+    }
+    if (char === "/" && next === "*") {
+      i += 2
+      while (i < text.length && !(text[i] === "*" && i + 1 < text.length && text[i + 1] === "/")) i++
+      i += 2
+      continue
+    }
+    if (char === "'" || char === '"') {
+      i = skipQuoted(text, i, char)
+      continue
+    }
+    if (char === "`") {
+      const literal = skipTemplateSegment(text, i)
+      emitted += literal.emitted
+      i = literal.next
+      continue
+    }
+    if (char === "{") {
+      depth++
+      emitted += char
+      i++
+      continue
+    }
+    if (char === "}") {
+      if (depth === 0) return { emitted, next: i + 1 }
+      depth--
+      emitted += char
+      i++
+      continue
+    }
+    emitted += char
+    i++
+  }
+  return { emitted, next: i }
 }
 
 function isTextPath(filePath: string): boolean {
@@ -532,7 +673,7 @@ async function main(): Promise<number> {
       excluded: [...excludedPaths].sort(),
       includedAdditionalPaths,
       locDefinition: "UTF-8 text files counted by logical lines; trailing newline does not add an empty line; binary files have null per-file LOC.",
-      tokenDefinition: "Lexical word matches in TypeScript-family files; comments and strings are included and counts are inventory signals, not type-check results.",
+      tokenDefinition: "Lexical word matches in TypeScript-family files after stripping comments and strings; counts are inventory signals, not type-check results.",
     },
     buckets: summary.buckets,
     totals: summary.totals,
@@ -573,9 +714,11 @@ async function main(): Promise<number> {
   return report.regressions.length > 0 ? 1 : 0
 }
 
-try {
-  process.exitCode = await main()
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exitCode = 1
+if (import.meta.main) {
+  try {
+    process.exitCode = await main()
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  }
 }

@@ -38,15 +38,44 @@ export function sessionsToStopOnOpen(input: {
   return ids
 }
 
+export type StopSessionFailure = { sessionID: string; stage: "cancel" | "abort"; error: unknown }
+
+/**
+ * Shared copy for every "we asked the server to stop and it refused" path.
+ * A silently failed stop keeps burning tokens and writing files, so the UI must
+ * never imply the run ended.
+ */
+export const ABORT_FAILED_TOAST = {
+  variant: "error",
+  title: "Could not stop the running agent",
+  message: "It may still be working in the background — check the session list.",
+} as const
+
+/**
+ * Stops every listed session. One failure never blocks the others, but the
+ * failures are returned so the caller can tell the user.
+ */
 export async function stopBusySessions(input: {
   sessionIDs: readonly string[]
   abort: (sessionID: string) => Promise<unknown>
   cancelWorkflow?: (sessionID: string) => Promise<unknown>
-}): Promise<void> {
+}): Promise<StopSessionFailure[]> {
+  const failures: StopSessionFailure[] = []
   await Promise.all(
     input.sessionIDs.map(async (sessionID) => {
-      await input.cancelWorkflow?.(sessionID).catch(() => {})
-      await input.abort(sessionID).catch(() => {})
+      if (input.cancelWorkflow) {
+        try {
+          await input.cancelWorkflow(sessionID)
+        } catch (error) {
+          failures.push({ sessionID, stage: "cancel", error })
+        }
+      }
+      try {
+        await input.abort(sessionID)
+      } catch (error) {
+        failures.push({ sessionID, stage: "abort", error })
+      }
     }),
   )
+  return failures
 }

@@ -46,6 +46,15 @@ spinosa list
 spinosa list --json    # Machine-readable output
 ```
 
+### spinosa delete <path>
+
+Trash a present Spinosa workspace (or unregister a missing path). Requires `--yes`.
+
+```bash
+spinosa delete ~/research/old-workspace-spinosa --yes
+spinosa delete ~/research/old-workspace-spinosa --yes --json
+```
+
 ### spinosa status [workspace]
 
 Check workspace health.
@@ -56,6 +65,21 @@ spinosa status my-papers-spinosa
 ```
 
 Reports framework version, workspace status, and document tool availability.
+
+## External agents (MCP)
+
+### spinosa mcp-server
+
+MCP stdio server for Claude, Codex, Cursor, and other hosts. Starts unbound. Agents call `workspace_list` / `workspace_use`, then Spinosa tools and skills. The host model stays the LLM.
+
+```bash
+spinosa mcp-server
+spinosa mcp-server --workspace /path/to/workspace
+```
+
+Full guide: [MCP for agents](/spinosa/docs/mcp).
+
+Global agent-friendly flags on workspace commands: `--json`, `--quiet`.
 
 ## Updates
 
@@ -131,6 +155,7 @@ During `spinosa create` and `spinosa add`, files are classified automatically:
 |----------|---------|
 | `SPINOSA_HOME` | Override install directory (default: `~/.spinosa`) |
 | `SPINOSA_NO_UPGRADE_CHECK=1` | Skip launch-time and background upgrade checks |
+| `SPINOSA_WORKSPACE` | Optional initial workspace for `spinosa mcp-server` |
 | `NO_COLOR=1` | Disable ANSI colors |
 
 ## Common tasks
@@ -143,5 +168,7 @@ During `spinosa create` and `spinosa add`, files are classified automatically:
 | Update workspace templates | `spinosa update <workspace>` |
 | Upgrade CLI | `spinosa upgrade` |
 | List workspaces | `spinosa list` |
+| Delete workspace | `spinosa delete <path> --yes` |
+| MCP for host agents | `spinosa mcp-server` |
 | Check health | `spinosa doctor` |
 | Uninstall | `spinosa uninstall --yes` |

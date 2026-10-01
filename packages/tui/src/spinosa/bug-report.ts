@@ -16,7 +16,7 @@ export const BUG_REPORT_CONFIRM_MESSAGE =
 
 const CONTENT_KEYS =
   /^(content|prompt|text|body|messages|output|input|args|argv|parts|transcript|completion|response|delta)$/i
-const REPORT_FILES = ["boot.ndjson.1", "boot.ndjson", "tui.ndjson.1", "tui.ndjson"] as const
+const REPORT_FILES = ["boot.tui.ndjson.1", "boot.tui.ndjson", "tui.ndjson.1", "tui.ndjson"] as const
 const TRUNCATE_MARKER = "\n... (truncated)"
 const MAX_MSG_CHARS = 400
 const MAX_STACK_CHARS = 800

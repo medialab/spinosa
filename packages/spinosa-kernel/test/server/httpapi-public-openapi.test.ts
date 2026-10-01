@@ -70,6 +70,14 @@ function isBuiltInEndpointError(name: string) {
 }
 
 describe("PublicApi OpenAPI v2 errors", () => {
+  test("documents Spinosa workspace startup, freshness, and update routes for SDK generation", () => {
+    const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
+
+    expect(spec.paths["/experimental/spinosa/workspace/startup-prompt"]?.get).toBeDefined()
+    expect(spec.paths["/experimental/spinosa/workspace/freshness"]?.get).toBeDefined()
+    expect(spec.paths["/experimental/spinosa/workspace/update"]?.post).toBeDefined()
+  })
+
   test("includes plugin-facing core schemas", () => {
     const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
 

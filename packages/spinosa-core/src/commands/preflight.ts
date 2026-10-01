@@ -67,7 +67,7 @@ export interface PreflightDependencies {
   ): Promise<UpdateResult>
   out(message: string): void
   checkUpgradeAvailable(): Promise<AutoUpgradeResult>
-  upgradeFramework(): Promise<UpgradeResult>
+  upgradeFramework(options?: { version?: string }): Promise<UpgradeResult>
   /** Current install root used for pack freshness + update (optional override for tests). */
   currentFrameworkRoot?(): string | undefined
   /** Resolve workspaces to scan for stale packs (optional override for tests). */
@@ -134,7 +134,7 @@ export async function defaultListPackCheckCandidates(targetWorkspace?: string): 
 
 const defaults: PreflightDependencies = {
   checkUpgradeAvailable,
-  upgradeFramework: () => upgradeFramework({ yes: true }),
+  upgradeFramework: (options) => upgradeFramework({ yes: true, version: options?.version }),
   updateWorkspace: (workspacePath, frameworkRoot, options) =>
     updateWorkspace({ workspacePath, frameworkRoot, force: options?.force }),
   confirm: (question, defaultYes) => confirmPrompt(question, defaultYes),
@@ -330,10 +330,16 @@ export async function runLaunchPreflight(
     return "continue"
   }
 
-  const upgraded = await resolved.upgradeFramework()
+  const upgraded = await resolved.upgradeFramework({ version: available.latestVersion })
   if (!upgraded.success || !upgraded.newVersion) {
+    // An offered upgrade is optional: a network blip or a 404 on the pinned
+    // asset must not cost the user access to their workspace. Report and
+    // continue on the installed version — the same contract as declining.
     const detail = upgraded.error ? `: ${upgraded.error}` : ""
-    throw new Error(`Spinosa upgrade failed${detail}. Run 'spinosa upgrade' for details.`)
+    resolved.out(`\x1b[31m●\x1b[0m Spinosa upgrade failed${detail}. Run 'spinosa upgrade' for details.`)
+    spinosaLogInfo("preflight", `upgrade failed, continuing on installed version${detail}`)
+    await offerStaleTemplatePackUpdates(resolved, options)
+    return "continue"
   }
 
   resolved.out(LAUNCH_STATUS_UPGRADE_DONE)

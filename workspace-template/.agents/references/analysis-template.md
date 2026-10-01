@@ -3,8 +3,14 @@
 ```markdown
 ## Contextual Analysis: [query summary]
 
-### What the corpus suggests
-[Broad thematic observations based on project context, dictionary concepts, and research vocabulary. What themes, patterns, or connections does the project framing imply?]
+### Supported findings
+[Findings supported by supplied artifacts, with source paths and locations.]
+
+### Context-derived hypotheses
+[Hypotheses based on project context, dictionary concepts, and research vocabulary. Label these as hypotheses, not retrieved findings.]
+
+### Questions requiring retrieval
+[Questions that a supplied evidence artifact must answer before they can be stated as findings.]
 
 ### What's potentially missing
 [Gaps in coverage that a search might not surface — topics adjacent to the query, underrepresented perspectives, temporal or geographic blind spots]

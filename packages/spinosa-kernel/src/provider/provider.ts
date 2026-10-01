@@ -154,8 +154,26 @@ export type ConfigProvidersResult = Types.DeepMutable<
   Schema.Schema.Type<typeof ConfigProvidersResult>
 >;
 
+/** `options` entries that carry credentials and must never cross the public boundary. */
+const SECRET_OPTION_KEYS = [
+  "apiKey",
+  "api_key",
+  "accessToken",
+  "access_token",
+  "refreshToken",
+  "refresh_token",
+  "token",
+  "password",
+  "secret",
+] as const;
+
+/**
+ * Redaction boundary for provider info: HTTP responses and plugin input.
+ * Structurally clones, then drops the credential fields. Internal callers that
+ * need `key` must read the raw `Info` instead of this projection.
+ */
 export function toPublicInfo(provider: Info): Info {
-  return JSON.parse(
+  const clone: Info = JSON.parse(
     JSON.stringify(provider, (_, value) => {
       if (
         typeof value === "function" ||
@@ -167,6 +185,10 @@ export function toPublicInfo(provider: Info): Info {
       return value;
     }),
   );
+  delete clone.key;
+  if (clone.options)
+    for (const name of SECRET_OPTION_KEYS) delete clone.options[name];
+  return clone;
 }
 
 export function defaultModelIDs<

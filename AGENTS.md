@@ -44,26 +44,25 @@ Dry-run without publishing (after workflow changes):
 prints remote steps — a green local dry-run (with complete `dist/`)
 predicts a green publish. Anticipate CI before pushing: run
 `validate-tag`, `ci-assemble --dry-run`, and `quality` locally (`quality`
-covers typechecks, release-critical tests, installer bats, shellcheck, and
-actionlint for the workflows themselves); clean-runner gaps get fixed by
+covers typechecks, release-critical tests, installer bats, shellcheck,
+actionlint for the workflows themselves, and the quality-baseline check —
+refresh drift with `bun run quality:baseline`); clean-runner gaps get fixed by
 making the job provision them, never by weakening gates.
 
 `.github/workflows/release-beta.yml` must exist on `main` (GitHub runs tag
 workflows from the default branch) and stay in sync with `beta-dev`.
 
-## Building binaries and tools tarballs (what runs where)
+## Building binaries (what runs where)
 
 - Product binaries (`spinosa-<os>-<arch>`): `bun scripts/build-release-binaries.ts
   --out-dir dist/vX.Y.Z --version X.Y.Z --channel beta [--only <target>]`.
   `--manifest-only` stages just the template manifest (CI assemble job).
-- OCR tools tarballs (`spinosa-tools-<os>-<arch>.tar.gz`): from pinned
-  source, `bun scripts/build-tools-tarballs.ts --out-dir dist/vX.Y.Z
-  [--only <target>]`. Linux targets build natively on matching-arch hosts
-  (CI runners) and inside Lima guests locally — never downloaded as binaries.
-- Both scripts log timestamped, per-phase lines via `scripts/release/log.ts`
+  These are the only per-platform assets: no tools tarballs exist (see
+  "Repo conventions" below).
+- The script logs timestamped, per-phase lines via `scripts/release/log.ts`
   (`step`/`info`/`ok`/`warn`/`fail`). Keep that convention: long compiles
-  and guest provisioning must stay followable. Never pipe script output
-  through `tail` when diagnosing — it hides errors.
+  must stay followable. Never pipe script output through `tail` when
+  diagnosing — it hides errors.
 - Release pipeline entry: `bun scripts/release/index.ts`
   (`validate` · `plan` · `beta|stable` · `ci-assemble` · `ci-publish` · `publish` · `resume`).
   CI uses `ci-assemble --finalize-only` then `ci-publish` (after the verify

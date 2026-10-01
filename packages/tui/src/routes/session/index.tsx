@@ -68,7 +68,6 @@ import { extractMdPaths } from "./extract-md-paths"
 import { toolPartsFingerprint } from "./tool-callout-fingerprint"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogQueuedPrompts } from "../../component/dialog-queued-prompts"
-import { SessionFooter } from "./footer"
 import {
   assistantPartGapBefore,
   steerControlLabel,
@@ -105,6 +104,7 @@ import { usePathFormatter } from "../../context/path-format"
 import { LocationProvider } from "../../context/location"
 import { agentDisplayName } from "../../util/agent"
 import { resolveSessionRuntimeStatus, sessionIsBusy } from "../../util/session"
+import { ABORT_FAILED_TOAST } from "../../util/stop-sessions"
 import { isSilentResearchAssistant } from "../../spinosa/visibility"
 import { RouteBadge, resolveRouteBadge, routeBadgeChatTone, type RouteBadgeInfo } from "../../spinosa/route-badge"
 import {
@@ -572,7 +572,7 @@ const resolveExportPath = (filename: string): string => {
       const tag = count > 1 ? `${summary.tag} x${count}` : summary.tag
       const commands = count > 1 ? group.parts.map((p) => buildCopyCommand(p.tool, p.state.input ?? {}, { tag: summary.tag, command: summary.command })) : undefined
       const groupSummary: ToolCalloutSummary = { tag, command: summary.command, commands }
-      const side = ["bash", "read", "grep", "glob", "webfetch", "websearch"].includes(group.display) ? "left" : "right"
+      const side = ["bash", "read", "grep", "glob", "webfetch", "websearch", "web"].includes(group.display) ? "left" : "right"
       const offsetTop = side === "left" ? leftHeight : rightHeight
       sides.set(first.callID, { side, offsetTop, summary: groupSummary })
       const height = estimateToolCalloutHeight(groupSummary, layout.railWidth, first.tool, first.state.status === "pending" ? {} : (first.state.metadata ?? {}), first.state.input ?? {})
@@ -955,7 +955,9 @@ const resolveExportPath = (filename: string): string => {
       run: async () => {
         const status = sync.data.session_status?.[route.sessionID]
         if (sessionIsBusy(status, sync.session.status(route.sessionID))) {
-          await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
+          await sdk.client.session
+            .abort({ sessionID: route.sessionID })
+            .catch(() => toast.show(ABORT_FAILED_TOAST))
         }
         const revert = session()?.revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
@@ -1435,7 +1437,7 @@ const resolveExportPath = (filename: string): string => {
                     },
                   )
                   if (!leave) return
-                  await sdk.client.session.abort({ sessionID: currentID }).catch(() => {})
+                  await sdk.client.session.abort({ sessionID: currentID }).catch(() => toast.show(ABORT_FAILED_TOAST))
                 }
                 navigate(dest)
               }}
@@ -1675,7 +1677,6 @@ const resolveExportPath = (filename: string): string => {
                     </box>
                   </pluginRuntime.Slot>
                 </Show>
-                <SessionFooter sessionID={route.sessionID} />
               </box>
               </Show>
             </box>
@@ -1759,6 +1760,7 @@ const toolCalloutColor = (tool: string, theme: ReturnType<typeof useTheme>["them
     glob: theme.warning,
     webfetch: theme.info,
     websearch: theme.info,
+    web: theme.info,
     write: theme.accent,
     edit: theme.accent,
     apply_patch: theme.error,
@@ -1892,9 +1894,9 @@ function buildCopyCommand(tool: string, input: Record<string, unknown>, summary:
     const url = stringValue(input.url)
     return url ? `curl -sL "${url}"` : summary.command
   }
-  if (display === "websearch") {
+  if (display === "websearch" || display === "web") {
     const url = stringValue(input.url)
-    if (url) return url
+    if (url) return `curl -sL "${url}"`
     const query = stringValue(input.query)
     return query ? `search: ${query}` : summary.command
   }
@@ -2635,6 +2637,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
           <Match when={display() === "websearch"}>
             <WebSearch {...toolprops} />
           </Match>
+          <Match when={display() === "web"}>
+            <Web {...toolprops} />
+          </Match>
           <Match when={display() === "write"}>
             <Write {...toolprops} />
           </Match>
@@ -2715,6 +2720,15 @@ export function buildToolCalloutSummary(
   if (display === "websearch") {
     return {
       tag: webSearchProviderLabel(metadata.provider).toUpperCase(),
+      command: stringValue(inputValue.query) ?? "Search",
+    }
+  }
+  if (display === "web") {
+    if (stringValue(inputValue.url)) {
+      return { tag: "WEB", command: stringValue(inputValue.url) ?? "Fetch" }
+    }
+    return {
+      tag: "WEB",
       command: stringValue(inputValue.query) ?? "Search",
     }
   }
@@ -3273,6 +3287,11 @@ function WebSearch(props: ToolProps) {
   )
 }
 
+function Web(props: ToolProps) {
+  if (stringValue(props.input.url)) return <WebFetch {...props} />
+  return <WebSearch {...props} />
+}
+
 function Task(props: ToolProps) {
   const { theme } = useTheme()
   const { navigate } = useRoute()
@@ -3327,7 +3346,7 @@ function Task(props: ToolProps) {
     if (!description) return ""
     let content = [
       formatSubagentTitle(
-        agentDisplayName(stringValue(props.input.subagent_type) ?? "general"),
+        agentDisplayName(stringValue(props.input.subagent_type) ?? "spinosa-generalist"),
         description,
         props.metadata.background === true,
       ),
@@ -3642,6 +3661,7 @@ const toolDisplays = new Set([
   "grep",
   "webfetch",
   "websearch",
+  "web",
   "write",
   "edit",
   "task",

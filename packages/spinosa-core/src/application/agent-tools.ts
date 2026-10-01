@@ -9,6 +9,7 @@ import {
   heuristicAmbiguousRoute,
   WorkflowRegistry,
   workflowLabel,
+  isStartupIndexingPrompt,
   type OrchestratedDecision,
   type RouteDecision,
   type RouteInput,
@@ -20,7 +21,7 @@ import { evidenceGate, validateArtifact, verificationOutcome } from "../artifact
 import { parseVerificationStatus } from "../artifacts/contracts"
 
 export type { OrchestratedDecision, RouteDecision } from "@spinosa/runtime"
-export { ROUTE_STRATEGIES, formatRouteTitle, workflowLabel } from "@spinosa/runtime"
+export { ROUTE_STRATEGIES, formatRouteTitle, isStartupIndexingPrompt, workflowLabel } from "@spinosa/runtime"
 
 // --- spinosa_route ---
 
@@ -38,6 +39,8 @@ export type SpinosaRouteResult = {
 
 export function spinosaRoute(input: {
   text: string
+  /** Latest user-authored turn, used to prevent model summaries hiding startup intent. */
+  userPrompt?: string
   isSpinosa: boolean
   setupStatus: RouteInput["workspace"]["setupStatus"]
   fileCount?: number
@@ -47,8 +50,9 @@ export function spinosaRoute(input: {
   explicitAgent?: string
   command?: string
 }): SpinosaRouteResult {
+  const routeText = input.userPrompt && isStartupIndexingPrompt(input.userPrompt) ? input.userPrompt : input.text
   const routeInput: RouteInput = {
-    text: input.text,
+    text: routeText,
     workspace: { isSpinosa: input.isSpinosa, setupStatus: input.setupStatus },
     references: {
       fileCount: input.fileCount ?? 0,
@@ -216,7 +220,7 @@ export type SpinosaVerifyResult =
     }
   | { ok: false; error: string; retryable: boolean }
 
-const VERIFY_VALIDATORS = [
+export const VERIFY_VALIDATORS = [
   "goal",
   "evidence_packet",
   "analysis",
@@ -232,6 +236,9 @@ const VERIFY_VALIDATORS = [
 ] as const
 
 export type VerifyValidator = (typeof VERIFY_VALIDATORS)[number]
+
+/** Shape-only outcome. Never `pass`: no claim was checked against a source. */
+export const STRUCTURE_OK_STATUS = "structure_ok"
 
 export async function spinosaVerify(input: {
   workspacePath: string
@@ -256,5 +263,8 @@ export async function spinosaVerify(input: {
     const status = parseVerificationStatus(text) ?? "fail"
     return { ok: true, status, action: verificationOutcome(status) }
   }
-  return { ok: true, status: "pass", action: "complete" }
+  // Every other validator is a shape check: nothing was compared against a
+  // source. `pass` is reserved for the verification branch so a structural
+  // check cannot be laundered into a verification verdict.
+  return { ok: true, status: STRUCTURE_OK_STATUS, action: "complete" }
 }

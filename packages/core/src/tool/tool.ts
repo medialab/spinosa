@@ -59,6 +59,11 @@ type Config<
     readonly input: Schema.Schema.Type<Input>
     readonly output: Output["Encoded"]
   }) => ReadonlyArray<Content>
+  /**
+   * Plain-language wrapper over the raw schema decode error, surfaced to the
+   * calling agent when input validation fails. Defaults to the raw message.
+   */
+  readonly formatValidationError?: (error: unknown) => string
 }
 
 type Runtime = {
@@ -91,7 +96,14 @@ export function make<
     },
     settle: (call, context) =>
       Schema.decodeUnknownEffect(config.input)(call.input).pipe(
-        Effect.mapError((error) => new ToolFailure({ message: `Invalid tool input: ${error.message}` })),
+        Effect.mapError(
+          (error) =>
+            new ToolFailure({
+              message: config.formatValidationError
+                ? config.formatValidationError(error)
+                : `Invalid tool input: ${error.message}`,
+            }),
+        ),
       Effect.flatMap((input) =>
         config.execute(input as Schema.Schema.Type<Input>, context).pipe(
             Effect.flatMap((output) =>

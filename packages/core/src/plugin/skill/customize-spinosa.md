@@ -276,7 +276,7 @@ file, `disable: true` in frontmatter.
 
 ### Built-in agents
 
-opencode ships with `build` (Orchestrator-Editor), `plan` (Orchestrator-Planner), `general`, `explore`. Hidden internal agents:
+opencode ships with `build` (Orchestrator-Editor), `plan` (Orchestrator-Planner), `spinosa-generalist` (Spinosa-aware generalist subagent). Hidden internal agents:
 `compaction`, `title`, `summary`. To override a built-in's fields, define the
 same key in `agent: { <name>: { ... } }`.
 
@@ -410,13 +410,15 @@ rules last.
 everything" and is rarely what the user wants.
 
 Known permission keys: `read, edit, glob, grep, list, bash, task,
-external_directory, todowrite, question, webfetch, websearch, lsp, doom_loop,
+external_directory, todowrite, question, webfetch, websearch, web, lsp, doom_loop,
 skill`. Some of these (`todowrite,
-question, webfetch, websearch, doom_loop`) only accept a flat
+question, webfetch, websearch, web, doom_loop`) only accept a flat
 action, not a per-pattern object.
 
 `external_directory` patterns are filesystem paths (use `~/`, absolute paths,
 or globs like `~/projects/**`).
+Spinosa allows its private temp directory and `/tmp/*` by default (also
+`/private/tmp/*` on macOS). Add an explicit path rule to deny either location.
 
 Per-agent `permission:` overrides top-level `permission:`. Plan Mode lives on
 the `plan` agent's permission ruleset (`edit: deny *`).

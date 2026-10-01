@@ -1,8 +1,19 @@
 import { Effect, Schema } from "effect"
 import { formatRouteTitle, isSpinosaWorkspace, readWorkspaceMarker, spinosaRoute } from "@spinosa/core"
+import { SessionV1 } from "@spinosa/kernel-core/v1/session"
 import { InstanceState } from "@/effect/instance-state"
 import * as Tool from "./tool"
 import DESCRIPTION from "./spinosa-route.txt"
+
+export function latestUserRequest(messages: SessionV1.WithParts[]): string | undefined {
+  const latest = [...messages].reverse().find((message) => message.info.role === "user")
+  const text = latest?.parts
+    .filter((part): part is SessionV1.TextPart => part.type === "text" && !part.synthetic)
+    .map((part) => part.text)
+    .join("\n\n")
+    .trim()
+  return text || undefined
+}
 
 export const Parameters = Schema.Struct({
   text: Schema.String.annotate({ description: "The user request to classify" }),
@@ -41,8 +52,10 @@ export const SpinosaRouteTool = Tool.define(
               setupStatus: "unknown" as SetupStatus,
             })),
           )
+          const userPrompt = latestUserRequest(ctx.messages)
           const result = spinosaRoute({
             text: params.text,
+            ...(userPrompt ? { userPrompt } : {}),
             isSpinosa: isSpinosaWorkspace(instance.directory),
             setupStatus: (marker.setupStatus ?? params.setupStatus) as SetupStatus,
             ...(params.fileCount !== undefined ? { fileCount: params.fileCount } : {}),

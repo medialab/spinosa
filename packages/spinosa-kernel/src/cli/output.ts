@@ -17,6 +17,22 @@ export function log(format: OutputFormat, message: string): void {
   else if (format === "json") process.stderr.write(`${message}\n`)
 }
 
+export function logProgress(
+  format: OutputFormat,
+  phase: string,
+  message: string,
+  detail?: Record<string, unknown>,
+): void {
+  if (format === "quiet") return
+  if (format === "json") {
+    process.stderr.write(
+      `${JSON.stringify({ type: "progress", phase, message, ...(detail ?? {}) })}\n`,
+    )
+    return
+  }
+  process.stdout.write(`${message}\n`)
+}
+
 export function errorOut(format: OutputFormat, message: string): void {
   process.stderr.write(`${message}\n`)
 }

@@ -34,6 +34,57 @@ export function parseModel(model: string) {
   }
 }
 
+export type ModelEntry = { providerID: string; modelID: string }
+
+export type ModelPreference = {
+  /** `--model` for this launch only. Scoped to the run, so it outranks the saved pick. */
+  launch?: string
+  /** The model the user last picked, restored from disk. */
+  selected?: ModelEntry
+  /** A model declared by the active agent. Spinosa's own agents declare none. */
+  agent?: ModelEntry
+  /** `model` from config: the default before the user has ever picked. */
+  config?: string
+  /** Most-recently-used models, newest first. */
+  recent?: readonly ModelEntry[]
+  /** Last resort when nothing above resolves. */
+  providerDefault?: ModelEntry
+}
+
+/**
+ * One model for the session, chosen by precedence. Subagents inherit it, so
+ * there is no per-agent variant to reconcile. Every candidate must pass
+ * `isValid`: a stale saved pick or a model the provider dropped falls through
+ * instead of leaving the session unusable.
+ */
+export function resolveModelPreference(
+  preference: ModelPreference,
+  isValid: (model: ModelEntry) => boolean,
+): ModelEntry | undefined {
+  const candidates = [
+    preference.launch ? parseModel(preference.launch) : undefined,
+    preference.selected,
+    preference.agent,
+    preference.config ? parseModel(preference.config) : undefined,
+    ...(preference.recent ?? []),
+    preference.providerDefault,
+  ]
+  for (const candidate of candidates) {
+    if (!candidate?.providerID || !candidate.modelID) continue
+    if (isValid(candidate)) return { providerID: candidate.providerID, modelID: candidate.modelID }
+  }
+  return undefined
+}
+
+/** Reads a persisted model entry, ignoring anything that is not a usable pair. */
+export function parseStoredModel(value: unknown) {
+  if (!value || typeof value !== "object") return undefined
+  const entry = value as { providerID?: unknown; modelID?: unknown }
+  if (typeof entry.providerID !== "string" || !entry.providerID) return undefined
+  if (typeof entry.modelID !== "string" || !entry.modelID) return undefined
+  return { providerID: entry.providerID, modelID: entry.modelID }
+}
+
 export function recentModels(
   model: { providerID: string; modelID: string },
   recent: { providerID: string; modelID: string }[],
@@ -66,14 +117,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     function isModelValid(model: { providerID: string; modelID: string }) {
       const provider = sync.data.provider.find((item) => item.id === model.providerID)
       return !!provider?.models[model.modelID]
-    }
-
-    function getFirstValidModel(...modelFns: (() => { providerID: string; modelID: string } | undefined)[]) {
-      for (const modelFn of modelFns) {
-        const model = modelFn()
-        if (!model) continue
-        if (isModelValid(model)) return model
-      }
     }
 
     function createAgent() {
@@ -139,13 +182,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     function createModel() {
       const [modelStore, setModelStore] = createStore<{
         ready: boolean
-        model: Record<
-          string,
-          {
-            providerID: string
-            modelID: string
-          }
-        >
+        // One model for the whole session. Subagents inherit the orchestrator's
+        // model, so there is nothing to key per agent.
+        selected:
+          | {
+              providerID: string
+              modelID: string
+            }
+          | undefined
         recent: {
           providerID: string
           modelID: string
@@ -157,7 +201,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         variant: Record<string, string | undefined>
       }>({
         ready: false,
-        model: {},
+        selected: undefined,
         recent: [],
         favorite: [],
         variant: {},
@@ -175,6 +219,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
         state.pending = false
         void writeJsonAtomic(filePath, {
+          selected: modelStore.selected,
           recent: modelStore.recent,
           favorite: modelStore.favorite,
           variant: modelStore.variant,
@@ -185,6 +230,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         .then((x) => {
           if (!x || typeof x !== "object") return
           const value = x as Record<string, unknown>
+          const selected = parseStoredModel(value.selected)
+          if (selected) setModelStore("selected", selected)
           if (Array.isArray(value.recent)) setModelStore("recent", value.recent)
           if (Array.isArray(value.favorite)) setModelStore("favorite", value.favorite)
           if (typeof value.variant === "object" && value.variant !== null)
@@ -200,33 +247,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (state.pending) save()
         })
 
-      const fallbackModel = createMemo(() => {
-        if (args.model) {
-          const { providerID, modelID } = parseModel(args.model)
-          if (isModelValid({ providerID, modelID })) {
-            return {
-              providerID,
-              modelID,
-            }
-          }
-        }
-
-        if (sync.data.config.model) {
-          const { providerID, modelID } = parseModel(sync.data.config.model)
-          if (isModelValid({ providerID, modelID })) {
-            return {
-              providerID,
-              modelID,
-            }
-          }
-        }
-
-        for (const item of modelStore.recent) {
-          if (isModelValid(item)) {
-            return item
-          }
-        }
-
+      const providerDefaultModel = createMemo(() => {
         const provider = sync.data.provider[0]
         if (!provider) return undefined
         const defaultModel = sync.data.provider_default[provider.id]
@@ -239,16 +260,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
       })
 
-      const currentModel = createMemo(() => {
-        const a = agent.current()
-        return (
-          getFirstValidModel(
-            () => a && modelStore.model[a.name],
-            () => a && a.model,
-            fallbackModel,
-          ) ?? undefined
-        )
-      })
+      const currentModel = createMemo(() =>
+        resolveModelPreference(
+          {
+            launch: args.model,
+            selected: modelStore.selected,
+            agent: agent.current()?.model,
+            config: sync.data.config.model,
+            recent: modelStore.recent,
+            providerDefault: providerDefaultModel(),
+          },
+          isModelValid,
+        ),
+      )
 
       return {
         current: currentModel,
@@ -289,9 +313,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (next >= recent.length) next = 0
           const val = recent[next]
           if (!val) return
-          const a = agent.current()
-          if (!a) return
-          setModelStore("model", a.name, { ...val })
+          setModelStore("selected", { ...val })
+          save()
         },
         cycleFavorite(direction: 1 | -1) {
           const favorites = modelStore.favorite.filter((item) => isModelValid(item))
@@ -317,9 +340,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
           const next = favorites[index]
           if (!next) return
-          const a = agent.current()
-          if (!a) return
-          setModelStore("model", a.name, { ...next })
+          setModelStore("selected", { ...next })
           setModelStore("recent", recentModels(next, modelStore.recent))
           save()
         },
@@ -333,13 +354,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
               return
             }
-            const a = agent.current()
-            if (!a) return
-            setModelStore("model", a.name, model)
-            if (options?.recent) {
-              setModelStore("recent", recentModels(model, modelStore.recent))
-              save()
-            }
+            setModelStore("selected", { ...model })
+            if (options?.recent) setModelStore("recent", recentModels(model, modelStore.recent))
+            save()
           })
         },
         toggleFavorite(model: { providerID: string; modelID: string }) {

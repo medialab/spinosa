@@ -8,10 +8,14 @@ import { InstallationVersion } from "@spinosa/kernel-core/installation/version"
 import { Effect, Queue, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
-import { HttpApiBuilder } from "effect/unstable/httpapi"
+import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
 import { RootHttpApi } from "../api"
 import { GlobalUpgradeInput } from "../groups/global"
+import { listRegisteredWorkspaces, unregisterWorkspace } from "@spinosa/core/workspace/registry"
+import { parseWorkspaceID } from "@spinosa/core/workspace/identity"
+import { recoverWorkspaceAtPath, scanAndRecoverWorkspace } from "@spinosa/core/workspace/recovery"
+import { readWorkspaceMeta } from "@spinosa/core/workspace/meta"
 
 function eventData(data: unknown): Sse.Event {
   return {
@@ -126,6 +130,46 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       return result
     })
 
+    const workspaces = Effect.fn("GlobalHttpApi.workspaces")(function* () {
+      return yield* Effect.tryPromise({
+        try: async () => {
+          const registered = await listRegisteredWorkspaces()
+          return Promise.all(registered.map(async (workspace) => ({
+            ...workspace,
+            sourceLocation: (await readWorkspaceMeta(workspace.path).catch(() => undefined))?.sourceLocation,
+          })))
+        },
+        catch: () => new HttpApiError.BadRequest({}),
+      })
+    })
+
+    const workspaceRecover = Effect.fn("GlobalHttpApi.workspaceRecover")(function* (ctx) {
+      const workspaceID = ctx.payload.workspaceID ? parseWorkspaceID(ctx.payload.workspaceID) : undefined
+      if (ctx.payload.workspaceID && !workspaceID) return yield* new HttpApiError.BadRequest({})
+      const recovered = yield* Effect.tryPromise({
+        try: () => recoverWorkspaceAtPath({ ...ctx.payload, workspaceID }),
+        catch: () => new HttpApiError.BadRequest({}),
+      })
+      return { path: recovered }
+    })
+
+    const workspaceScanRecover = Effect.fn("GlobalHttpApi.workspaceScanRecover")(function* (ctx) {
+      const workspaceID = parseWorkspaceID(ctx.payload.workspaceID)
+      if (!workspaceID) return yield* new HttpApiError.BadRequest({})
+      return yield* Effect.tryPromise({
+        try: () => scanAndRecoverWorkspace({ ...ctx.payload, workspaceID }),
+        catch: () => new HttpApiError.BadRequest({}),
+      })
+    })
+
+    const workspaceUnregister = Effect.fn("GlobalHttpApi.workspaceUnregister")(function* (ctx) {
+      yield* Effect.tryPromise({
+        try: () => unregisterWorkspace(ctx.payload.path),
+        catch: () => new HttpApiError.BadRequest({}),
+      })
+      return true
+    })
+
     const upgradeRaw = Effect.fn("GlobalHttpApi.upgradeRaw")(function* (ctx: {
       request: HttpServerRequest.HttpServerRequest
     }) {
@@ -152,5 +196,9 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       .handle("configUpdate", configUpdate)
       .handle("dispose", dispose)
       .handleRaw("upgrade", upgradeRaw)
+      .handle("workspaces", workspaces)
+      .handle("workspaceRecover", workspaceRecover)
+      .handle("workspaceScanRecover", workspaceScanRecover)
+      .handle("workspaceUnregister", workspaceUnregister)
   }),
 )

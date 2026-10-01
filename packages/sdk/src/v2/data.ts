@@ -2,7 +2,11 @@ import type { Part, UserMessage } from "./client.js"
 import { randomUUID } from "node:crypto"
 
 export const message = {
-  user(input: Omit<UserMessage, "role" | "time" | "id"> & { parts: Omit<Part, "id" | "sessionID" | "messageID">[] }): {
+  user(
+    input: Omit<UserMessage, "role" | "time" | "id"> & {
+      parts: Omit<Part, "id" | "sessionID" | "messageID">[]
+    },
+  ): {
     info: UserMessage
     parts: Part[]
   } {

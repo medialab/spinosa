@@ -3,7 +3,7 @@ import type { Argv, CommandModule } from "yargs"
 import { isSpinosaWorkspace } from "@spinosa/core/workspace/meta"
 import { resolveFrameworkRoot } from "@spinosa/core/framework/discovery"
 import { updateWorkspace } from "@spinosa/core/commands/update"
-import { getFormat, emitResult, log, type OutputFormat } from "../output"
+import { getFormat, emitResult, logProgress, type OutputFormat } from "../output"
 
 interface UpdateArgs {
   workspace?: string
@@ -34,7 +34,7 @@ export const WorkspaceUpdateCommand = {
       frameworkRoot,
       dryRun: Boolean(args["dry-run"]),
       force: Boolean(args.force),
-      onPhase: (_phase: string, detail: string) => log(fmt, detail),
+      onPhase: (_phase: string, detail: string) => logProgress(fmt, _phase, detail),
     })
     emitResult(fmt, "update", { ...(result as unknown as Record<string, unknown>) }, `Update: ${result.added} added, ${result.updated} updated, ${result.removed} removed, ${result.skipped} preserved`)
     if (!result.success) process.exitCode = 1

@@ -4,21 +4,21 @@ import { isRuntimeProductPath, productHomeDir, productLogDir } from "../util/use
 
 export { productHomeDir, productLogDir }
 
-const SENSITIVE_KEY = /(authorization|cookie|password|secret|token|api[_-]?key)/i
+const SENSITIVE_KEY = /(authorization|proxy[_-]?authorization|set[_-]?cookie|cookie|password|secret|token|api[_-]?key|provider[_-]?key|credential|prompt|body|content|sourceText)/i
 const PATH_FIELD =
   /(workspacePath|sourcePath|corpusPath|frameworkRoot|worktree|directory|workdir|cwd|filepath|filename|relPath|hostDir|workspaceDir|destDir|importMeta|dir|file|path|workspace|source|corpus|dest|target|argv|args|pattern)$/i
 const NAME_FIELD = /^(projectName|workspaceName)$/i
 const KEY_MATERIAL =
   /\b(sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9]{8,}|xox[baprs]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9]+|AIza[A-Za-z0-9_-]{10,}|AKIA[A-Z0-9]{10,})\b/g
 const PRODUCT_BASENAME =
-  /^(tui\.json|boot\.ndjson|tui\.ndjson|debug\.ndjson|effect\.log|spinosa\.log)$/i
+  /^(tui\.json|boot\.ndjson|boot\.tui\.ndjson|tui\.ndjson|debug\.ndjson|debug\.tui\.ndjson|effect\.log|effect\.tui\.log|spinosa\.log)$/i
 const DOC_EXT = "md|txt|pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|webp|tiff?|csv|html|xml|rtf|odt|epub|zip|mp[34]|mov|heic|pages|key|numbers"
 const RELATIVE_DOC = new RegExp(
   `(^|[\\s"'\`:(→])((?:[^\\s"'\`/]+/)+[^\\s"'\`/]+\\.(?:${DOC_EXT})|[^\\s"'\`/]+\\.(?:${DOC_EXT}))\\b`,
   "gi",
 )
 const PATH_ASSIGN =
-  /\b(workspacePath|sourcePath|corpusPath|frameworkRoot|directory|workdir|cwd|worktree|dest|destDir|relPath|filepath|filename|pattern|resolved)=([^\s]+)/gi
+  /\b(workspacePath|sourcePath|corpusPath|frameworkRoot|directory|workdir|cwd|worktree|dest|destDir|relPath|filepath|filename|pattern|resolved)=([^\s,)}\]]+)/gi
 
 function collapseHomePrefix(text: string, home: string): string {
   if (!home) return text
@@ -62,9 +62,9 @@ export function sanitizeLogText(value: string, workspacePath?: string): string {
       return "$URL"
     }
   })
-  text = text.replace(/file:\/\/[^\s"'`]+/gi, (url) => anonymizePathToken(url.slice("file://".length)))
+  text = text.replace(/file:\/\/[^\s"'`)\]},;]+/gi, (url) => anonymizePathToken(url.slice("file://".length)))
   text = text.replace(
-    /(^|[\s="'`(\[{<,;])((?:[A-Za-z]:)?(?:\/|\\)[^\s"'`]+|~\/[^\s"'`]+|\$SPINOSA_HOME[^\s"'`]*)/g,
+    /(^|[\s="'`(\[{<,;])((?:[A-Za-z]:)?(?:\/|\\)[^\s"'`)\]},;]+|~\/[^\s"'`)\]},;]+|\$SPINOSA_HOME[^\s"'`)\]},;]*)/g,
     (_match, prefix: string, token: string) => `${prefix}${anonymizePathToken(token)}`,
   )
   text = text.replace(PATH_ASSIGN, (_match, key: string, raw: string) => {
@@ -72,7 +72,7 @@ export function sanitizeLogText(value: string, workspacePath?: string): string {
   })
   text = text.replace(/\bfile=([^\s]+)/g, (_match, raw: string) => `file=$PATH${path.extname(raw)}`)
   text = redactRelativeDocuments(text)
-  text = text.replace(/\b(authorization|cookie|password|secret|token|api[_-]?key)=([^\s]+)/gi, "$1=[REDACTED]")
+  text = text.replace(/\b(authorization|proxy[_-]?authorization|set[_-]?cookie|cookie|password|secret|token|api[_-]?key|provider[_-]?key|credential)=([^\s]+)/gi, "$1=[REDACTED]")
   text = text.replace(/\b(Basic|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
   text = text.replace(KEY_MATERIAL, "[REDACTED]")
   text = text.replace(/((?:api[_-]?key|token)["']?\s*[:=]\s*["']?)[A-Za-z0-9._~+/-]{12,}/gi, "$1[REDACTED]")

@@ -379,6 +379,34 @@ describe("provider HttpApi", () => {
   )
 
   it.instance(
+    "never serves the configured provider api key",
+    Effect.gen(function* () {
+      const directory = (yield* TestInstance).directory
+      yield* setEnvScoped(
+        "SPINOSA_AUTH_CONTENT",
+        JSON.stringify({ anthropic: { type: "api", key: "sk-test-must-not-leak" } }),
+      )
+      const headers = { "x-opencode-directory": directory }
+      const providerResponse = yield* request("/provider", { headers })
+      const configResponse = yield* request("/config/providers", { headers })
+
+      expect(providerResponse.status).toBe(200)
+      expect(configResponse.status).toBe(200)
+
+      const providerBody = yield* providerResponse.text
+      const configBody = yield* configResponse.text
+      expect(providerBody).not.toContain("sk-test-must-not-leak")
+      expect(configBody).not.toContain("sk-test-must-not-leak")
+
+      // Guard against a false green: the provider must actually be in the
+      // response, otherwise "no key" would hold trivially.
+      expect(providerByID(JSON.parse(providerBody), "all", "anthropic")).toBeDefined()
+      expect(providerByID(JSON.parse(configBody), "providers", "anthropic")).toBeDefined()
+    }),
+    projectOptions,
+  )
+
+  it.instance(
     "keeps provider.models hook input mutations out of provider state",
     Effect.gen(function* () {
       const directory = (yield* TestInstance).directory

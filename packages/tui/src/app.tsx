@@ -10,7 +10,7 @@ import { BackgroundImportProvider } from "./spinosa/import-background"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
-import { createCliRenderer, MouseButton } from "@opentui/core"
+import { createCliRenderer, MouseButton, type RGBA } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
 import { WaitProvider, useWait } from "./context/wait"
 import { WaitOverlay, WaitFallback, Waiting } from "./context/wait-ui"
@@ -91,7 +91,7 @@ import * as TuiAudio from "./audio"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
 import { registerTuiExitHook, runTuiExitHooks } from "./util/tui-exit-hooks"
-import { listBusySessionIDs, stopBusySessions } from "./util/stop-sessions"
+import { ABORT_FAILED_TOAST, listBusySessionIDs, stopBusySessions } from "./util/stop-sessions"
 
 const Onboarding = lazy(async () => ({
   default: (await import("./routes/spinosa/onboarding")).Onboarding,
@@ -528,6 +528,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         sessionStatus: sync.data.session_status,
         extraIDs: extra,
       })
+      // Exit path: failures are unreportable here (the UI is already tearing
+      // down), so they are returned and intentionally dropped.
       await stopBusySessions({
         sessionIDs,
         abort: (sessionID) => sdk.client.session.abort({ sessionID }),
@@ -838,7 +840,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             return
           }
           const sessionID = current.sessionID
-          await sdk.client.session.abort({ sessionID }).catch(() => {})
+          await sdk.client.session.abort({ sessionID }).catch(() => toast.show(ABORT_FAILED_TOAST))
         }
       }
       const restore = () => spinosa.restorePickerRoute()
@@ -908,7 +910,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           const cur = route.data
           if (cur.type === "workspace" && cur.sessionID) {
             const st = sync.data.session_status?.[cur.sessionID]
-            if (st?.type !== "idle") await sdk.client.session.abort({ sessionID: cur.sessionID }).catch(() => {})
+            if (st?.type !== "idle")
+              await sdk.client.session
+                .abort({ sessionID: cur.sessionID })
+                .catch(() => toast.show(ABORT_FAILED_TOAST))
           }
           route.navigate({ type: "global" })
           dialog.clear()
@@ -1282,8 +1287,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "permission.mode",
+        // Session-scoped on purpose: auto-approve must not survive a restart.
         title:
-          local.permission.mode === "auto" ? "Disable auto-approve permissions" : "Enable auto-approve permissions",
+          local.permission.mode === "auto"
+            ? "Disable auto-approve permissions (this session)"
+            : "Enable auto-approve permissions (this session)",
         category: "System",
         run: () => {
           local.permission.toggle()
@@ -1380,6 +1388,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     return pickSubagentAccent(theme, current.id, siblingSubagentIDs(sync.data.session, current))
   })
 
+  // NOTE: the renderer repaints the border whenever borderColor is (re)set,
+  // even with border={false} — so the color must keep a stable identity
+  // across the hide transition. This memo holds the last accent instead of
+  // flipping to undefined (see test/app-root-border.test.tsx).
+  const frameColor = createMemo((prev: RGBA | undefined) => subagentBorder() ?? prev)
+
   return (
     <box
       width={dimensions().width}
@@ -1387,7 +1401,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       flexDirection="column"
       backgroundColor={theme.background}
       border={Boolean(subagentBorder())}
-      borderColor={subagentBorder()}
+      borderColor={frameColor()}
       onMouseDown={(evt) => {
         if (!Flag.SPINOSA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
         if (evt.button !== MouseButton.RIGHT) return

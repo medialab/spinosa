@@ -42,7 +42,7 @@ export const Parameters = Schema.Struct({
   batchId: Schema.optional(
     Schema.String.annotate({ description: "Descriptive kebab batch slug for extraction actions" }),
   ),
-  files: Schema.optional(Schema.Array(Schema.String).annotate({ description: "raw/ paths for begin" })),
+  files: Schema.optional(Schema.Array(Schema.String).annotate({ description: "complete assigned raw/ paths for begin and write_extraction" })),
   packets: Schema.optional(Schema.Array(Packet).annotate({ description: "Structured packets for write_extraction" })),
   mapPath: Schema.optional(Schema.String.annotate({ description: "maps/... path for write_map" })),
   mapKind: Schema.optional(
@@ -100,11 +100,7 @@ export const SpinosaMapTool = Tool.define(
             }),
           )
           if (!result.ok) {
-            return {
-              title: "Mapping refused",
-              output: `spinosa_map refused: ${result.reason}`,
-              metadata: {} as Record<string, string>,
-            }
+            return yield* Effect.fail(new Error(`spinosa_map refused: ${result.reason}`))
           }
           return {
             title: result.title,

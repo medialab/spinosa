@@ -1,5 +1,6 @@
 export * as ConfigAgent from "./agent"
 
+import { existsSync } from "node:fs"
 import path from "path"
 import { Exit, Schema } from "effect"
 import { Glob } from "@spinosa/kernel-core/util/glob"
@@ -10,22 +11,28 @@ import { ConfigParse } from "./parse"
 
 export async function load(dir: string) {
   const result: Record<string, ConfigAgentV1.Info> = {}
-  for (const item of await Glob.scan("{agent,agents}/**/*.md", {
-    cwd: dir,
-    absolute: true,
-    dot: true,
-    symlink: true,
-  })) {
-    const md = await ConfigMarkdown.parse(item).catch(() => undefined)
-    if (!md) continue
+  const roots =
+    path.basename(dir) === ".spinosa" && existsSync(path.join(path.dirname(dir), ".opencode"))
+      ? [path.join(path.dirname(dir), ".opencode"), dir]
+      : [dir]
+  for (const root of roots) {
+    for (const item of await Glob.scan("{agent,agents}/**/*.md", {
+      cwd: root,
+      absolute: true,
+      dot: true,
+      symlink: true,
+    })) {
+      const md = await ConfigMarkdown.parse(item).catch(() => undefined)
+      if (!md) continue
 
-    const name = configEntryNameFromPath(path.relative(dir, item), ["agent/", "agents/"])
-    const config = {
-      name,
-      ...md.data,
-      prompt: md.content.trim(),
+      const name = configEntryNameFromPath(path.relative(root, item), ["agent/", "agents/"])
+      const config = {
+        name,
+        ...md.data,
+        prompt: md.content.trim(),
+      }
+      result[config.name] = ConfigParse.schema(ConfigAgentV1.Info, config, item)
     }
-    result[config.name] = ConfigParse.schema(ConfigAgentV1.Info, config, item)
   }
   return result
 }

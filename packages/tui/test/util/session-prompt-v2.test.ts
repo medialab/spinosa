@@ -21,12 +21,12 @@ describe("session-prompt-v2", () => {
         { type: "text", text: "hello" },
         { type: "text", text: "ignored", ignored: true },
         { type: "file", url: "file:///tmp/a.png", filename: "a.png", mime: "image/png" },
-        { type: "agent", name: "explore" },
+        { type: "agent", name: "spinosa-generalist" },
       ]),
     ).toEqual({
       text: "hello",
       files: [{ uri: "file:///tmp/a.png", name: "a.png", mime: "image/png" }],
-      agents: [{ name: "explore" }],
+      agents: [{ name: "spinosa-generalist" }],
     })
   })
 

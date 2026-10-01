@@ -1,0 +1,64 @@
+.new-session-page button:not(:disabled) {
+  transition: background-color 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out,
+    opacity 150ms ease-out, filter 150ms ease-out;
+}
+
+.new-session-page [data-action="prompt-submit"]:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.new-session-page [data-action="prompt-submit"]:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.new-session-page [data-component="button-v2"][data-variant="contrast"]:hover:not(:disabled):not(:active) {
+  background-image:
+    linear-gradient(180deg, var(--v2-alpha-light-20) 0%, var(--v2-alpha-light-0) 100%),
+    linear-gradient(90deg, var(--v2-background-bg-contrast) 0%, var(--v2-background-bg-contrast) 100%);
+  filter: brightness(1.08);
+}
+
+.new-session-page [data-action="prompt-submit"]:focus-visible:not(:disabled) {
+  outline: 2px solid var(--v2-border-border-focus);
+  outline-offset: 2px;
+}
+
+.new-session-page .new-session-delete-button:focus-visible:not(:disabled) {
+  outline: none;
+}
+
+[data-component="icon-button"][data-variant="ghost"].new-session-delete-button:not(:disabled) {
+  background-color: var(--v2-state-bg-danger);
+}
+
+[data-component="icon-button"][data-variant="ghost"].new-session-delete-button:not(:disabled) [data-slot="icon-svg"] {
+  color: var(--v2-state-fg-danger);
+}
+
+[data-component="icon-button"][data-variant="ghost"].new-session-delete-button:hover:not(:disabled),
+[data-component="icon-button"][data-variant="ghost"].new-session-delete-button:focus-visible:not(:disabled) {
+  background-color: color-mix(in srgb, var(--v2-state-bg-danger) 70%, var(--v2-state-fg-danger));
+  box-shadow: 0 0 0 0.5px var(--v2-state-fg-danger);
+}
+
+[data-component="icon-button"][data-variant="ghost"].new-session-delete-button:hover:not(:disabled) [data-slot="icon-svg"],
+[data-component="icon-button"][data-variant="ghost"].new-session-delete-button:focus-visible:not(:disabled) [data-slot="icon-svg"] {
+  color: var(--v2-state-fg-danger);
+  filter: brightness(0.85);
+}
+
+[data-component="icon-button"][data-variant="ghost"].new-session-delete-button:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--v2-state-bg-danger) 70%, var(--v2-state-fg-danger));
+}
+
+[data-slot="segmented-control-v2-item"].new-session-view-toggle:hover:not(:disabled):not([data-pressed]) {
+  background-color: var(--v2-overlay-simple-overlay-hover);
+  color: var(--v2-text-text-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-session-page button:not(:disabled),
+  .new-session-view-toggle {
+    transition: none;
+  }
+}

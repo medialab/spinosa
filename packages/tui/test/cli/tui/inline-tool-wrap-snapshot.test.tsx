@@ -229,6 +229,7 @@ async function renderFrame(component: () => JSX.Element, options: { width: numbe
 describe("TUI inline tool wrapping", () => {
   test("falls back for unknown tool names", () => {
     expect(toolDisplay("bash")).toBe("bash")
+    expect(toolDisplay("jev")).toBe("generic")
     expect(toolDisplay("plugin_tool")).toBe("generic")
   })
 
@@ -281,6 +282,7 @@ describe("TUI inline tool wrapping", () => {
       tag: "GREP",
       command: '"Session" in /repo/src',
     })
+
 
     expect(
       buildToolCalloutSummary(

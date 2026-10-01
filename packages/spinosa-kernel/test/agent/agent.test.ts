@@ -50,8 +50,9 @@ it.instance("returns default native agents when no config", () =>
     const names = agents.map((a) => a.name)
     expect(names).toContain("build")
     expect(names).toContain("plan")
-    expect(names).toContain("general")
-    expect(names).toContain("explore")
+    expect(names).toContain("spinosa-generalist")
+    expect(names).not.toContain("general")
+    expect(names).not.toContain("explore")
     expect(names).toContain("compaction")
     expect(names).toContain("title")
     expect(names).toContain("summary")
@@ -80,55 +81,42 @@ it.instance("plan agent denies edits except .spinosa/plans/*", () =>
   }),
 )
 
-it.instance("plan agent denies the general subagent by default", () =>
+it.instance("plan agent allows the spinosa-generalist subagent by default", () =>
   Effect.gen(function* () {
     const plan = yield* load((svc) => svc.get("plan"))
     expect(plan).toBeDefined()
-    expect(Permission.evaluate("task", "general", plan!.permission).action).toBe("deny")
-    expect(Permission.evaluate("task", "explore", plan!.permission).action).toBe("allow")
+    expect(Permission.evaluate("task", "spinosa-generalist", plan!.permission).action).toBe("allow")
     expect(Permission.evaluate("task", "custom", plan!.permission).action).toBe("allow")
   }),
 )
 
 it.instance(
-  "user permission can allow the general subagent from plan mode",
+  "user permission can deny the spinosa-generalist subagent from plan mode",
   () =>
     Effect.gen(function* () {
       const plan = yield* load((svc) => svc.get("plan"))
       expect(plan).toBeDefined()
-      expect(Permission.evaluate("task", "general", plan!.permission).action).toBe("allow")
+      expect(Permission.evaluate("task", "spinosa-generalist", plan!.permission).action).toBe("deny")
     }),
   {
     config: {
       permission: {
         task: {
-          general: "allow",
+          "spinosa-generalist": "deny",
         },
       },
     },
   },
 )
 
-it.instance("explore agent denies edit and write", () =>
+it.instance("spinosa-generalist is a Spinosa-aware subagent", () =>
   Effect.gen(function* () {
-    const explore = yield* load((svc) => svc.get("explore"))
-    expect(explore).toBeDefined()
-    expect(explore?.mode).toBe("subagent")
-    expect(evalPerm(explore, "edit")).toBe("deny")
-    expect(evalPerm(explore, "write")).toBe("deny")
-    expect(evalPerm(explore, "todowrite")).toBe("deny")
-  }),
-)
-
-it.instance("explore agent asks for external directories and allows whitelisted external paths", () =>
-  Effect.gen(function* () {
-    const explore = yield* load((svc) => svc.get("explore"))
-    expect(explore).toBeDefined()
-    expect(Permission.evaluate("external_directory", "/some/other/path", explore!.permission).action).toBe("ask")
-    expect(Permission.evaluate("external_directory", Truncate.GLOB, explore!.permission).action).toBe("allow")
-    expect(
-      Permission.evaluate("external_directory", path.join(Global.Path.tmp, "agent-work"), explore!.permission).action,
-    ).toBe("allow")
+    const generalist = yield* load((svc) => svc.get("spinosa-generalist"))
+    expect(generalist).toBeDefined()
+    expect(generalist?.mode).toBe("subagent")
+    expect(generalist?.native).toBe(true)
+    expect(evalPerm(generalist, "todowrite")).toBe("deny")
+    expect(generalist?.prompt).toContain("Spinosa")
   }),
 )
 
@@ -160,13 +148,13 @@ it.instance(
   },
 )
 
-it.instance("general agent denies todo tools", () =>
+it.instance("spinosa-generalist agent denies todo tools", () =>
   Effect.gen(function* () {
-    const general = yield* load((svc) => svc.get("general"))
-    expect(general).toBeDefined()
-    expect(general?.mode).toBe("subagent")
-    expect(general?.hidden).toBeUndefined()
-    expect(evalPerm(general, "todowrite")).toBe("deny")
+    const generalist = yield* load((svc) => svc.get("spinosa-generalist"))
+    expect(generalist).toBeDefined()
+    expect(generalist?.mode).toBe("subagent")
+    expect(generalist?.hidden).toBeUndefined()
+    expect(evalPerm(generalist, "todowrite")).toBe("deny")
   }),
 )
 
@@ -466,18 +454,40 @@ it.instance("Agent.get returns undefined for non-existent agent", () =>
   }),
 )
 
-it.instance("default permission includes doom_loop and external_directory as ask", () =>
+it.instance("default permission includes doom_loop, web, and external_directory as ask", () =>
   Effect.gen(function* () {
     const build = yield* load((svc) => svc.get("build"))
     expect(evalPerm(build, "doom_loop")).toBe("ask")
+    expect(evalPerm(build, "web")).toBe("ask")
     expect(evalPerm(build, "external_directory")).toBe("ask")
   }),
 )
 
-it.instance("webfetch is allowed by default", () =>
+it.instance("spinosa-generalist agent asks before web", () =>
+  Effect.gen(function* () {
+    const generalist = yield* load((svc) => svc.get("spinosa-generalist"))
+    expect(evalPerm(generalist, "web")).toBe("ask")
+  }),
+)
+
+it.instance("user config can allow or deny web", () =>
   Effect.gen(function* () {
     const build = yield* load((svc) => svc.get("build"))
-    expect(evalPerm(build, "webfetch")).toBe("allow")
+    expect(evalPerm(build, "web")).toBe("deny")
+  }),
+  {
+    config: {
+      permission: {
+        web: "deny",
+      },
+    },
+  },
+)
+
+it.instance("web asks by default", () =>
+  Effect.gen(function* () {
+    const build = yield* load((svc) => svc.get("build"))
+    expect(evalPerm(build, "web")).toBe("ask")
   }),
 )
 
@@ -547,8 +557,36 @@ it.instance("global tmp directory children are allowed for external_directory", 
     expect(
       Permission.evaluate("external_directory", path.join(Global.Path.tmp, "scratch"), build!.permission).action,
     ).toBe("allow")
+    if (process.platform !== "win32") {
+      expect(Permission.evaluate("external_directory", "/tmp/scratch/*", build!.permission).action).toBe("allow")
+    }
+    if (process.platform === "darwin") {
+      expect(Permission.evaluate("external_directory", "/private/tmp/scratch/*", build!.permission).action).toBe("allow")
+    }
     expect(Permission.evaluate("external_directory", "/some/other/path", build!.permission).action).toBe("ask")
   }),
+)
+
+it.instance(
+  "explicit tmp denial overrides the default allow",
+  () =>
+    Effect.gen(function* () {
+      const build = yield* load((svc) => svc.get("build"))
+      expect(Permission.evaluate("external_directory", "/tmp/scratch/*", build!.permission).action).toBe("deny")
+      if (process.platform === "darwin") {
+        expect(Permission.evaluate("external_directory", "/private/tmp/scratch/*", build!.permission).action).toBe("deny")
+      }
+    }),
+  {
+    config: {
+      permission: {
+        external_directory: {
+          "/tmp/*": "deny",
+          "/private/tmp/*": "deny",
+        },
+      },
+    },
+  },
 )
 
 it.instance(
@@ -696,10 +734,10 @@ it.instance(
 
 it.instance(
   "defaultAgent throws when default_agent points to subagent",
-  () => expectDefaultAgentError('default agent "explore" is a subagent'),
+  () => expectDefaultAgentError('default agent "spinosa-generalist" is a subagent'),
   {
     config: {
-      default_agent: "explore",
+      default_agent: "spinosa-generalist",
     },
   },
 )

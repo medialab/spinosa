@@ -14,6 +14,7 @@ import type { Connection } from "effect/unstable/sql/SqlConnection"
 import { classifySqliteError, SqlError } from "effect/unstable/sql/SqlError"
 import * as Statement from "effect/unstable/sql/Statement"
 import { Sqlite } from "./sqlite"
+import { protectPrivateFile } from "../util/private-storage"
 
 const ATTR_DB_SYSTEM_NAME = "db.system.name"
 
@@ -156,6 +157,7 @@ const nativeLayer = (config: Config) =>
         open: true,
       })
       yield* Effect.addFinalizer(() => Effect.sync(() => native.close()))
+      if (!config.readonly) protectPrivateFile(config.filename)
       if (config.disableWAL !== true && config.readonly !== true) native.exec("PRAGMA journal_mode = WAL;")
       return native
     }),

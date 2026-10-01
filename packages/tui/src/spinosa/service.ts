@@ -1,5 +1,4 @@
 import { existsSync, statSync } from "node:fs"
-import { homedir } from "node:os"
 import path from "node:path"
 import {
   buildMapTree,
@@ -7,7 +6,6 @@ import {
   emptyWorkspaceIndex,
   parseWorkspaceIndex,
 } from "@spinosa/core/corpus/index"
-import { productHomeDir } from "@spinosa/kernel-core/util/user-dirs"
 import {
   parseGoalArtifact,
   parseOrchestratorAdvisories,
@@ -36,7 +34,7 @@ import {
   listRegisteredWorkspaces,
   unregisterWorkspace,
 } from "@spinosa/core/workspace/registry"
-import { moveToTrash } from "@spinosa/core/utils/trash"
+import { deleteWorkspace as deleteWorkspaceCore } from "@spinosa/core/workspace/delete"
 import { readFrameworkVersionFromRoot, resolveFrameworkRoot, resolveTemplateRootFromFrameworkRoot } from "@spinosa/core/framework/discovery"
 import {
   inspectTemplatePackFreshness,
@@ -79,24 +77,8 @@ export async function readBundledFrameworkVersion() {
 
 /** Move a Spinosa workspace folder to the OS trash and remove it from the registry. */
 export async function deleteWorkspace(workspacePath: string, options?: { home?: string }): Promise<void> {
-  const resolved = path.resolve(workspacePath)
-  if (!isSpinosaWorkspace(resolved)) {
-    throw new Error(`Not a Spinosa workspace: ${resolved}`)
-  }
-
-  const home = path.resolve(homedir())
-  const protectedPaths = new Set([
-    home,
-    path.sep,
-    path.resolve(home, ".spinosa"),
-    path.resolve(productHomeDir()),
-  ])
-  if (protectedPaths.has(resolved)) {
-    throw new Error(`Refusing to delete protected path: ${resolved}`)
-  }
-
-  await moveToTrash(resolved, options?.home ? { home: options.home } : undefined)
-  await unregisterWorkspace(resolved)
+  const result = await deleteWorkspaceCore(workspacePath, options)
+  if (!result.ok) throw new Error(result.error)
 }
 
 // --- Re-exports from spinosa-core ---

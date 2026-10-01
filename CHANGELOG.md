@@ -10,6 +10,144 @@ Release rule: The maintainer must approve a release. No automatic release.
 
 ## [Unreleased]
 
+## [1.2.2-beta.7] — 2026-10-01
+
+### Fixed
+
+- Report and frame tools describe each field shape. Agents pass strings and arrays correctly.
+- Failed tool calls name the field and show a hint. Agents self-correct in one retry.
+- Token counts ignore comments and strings. Prose no longer trips the quality gate.
+
+### Changed
+
+- Quality checks run through one test runner. Local runs match CI exactly.
+- Workflow guard tests live in one file. The OCR guard has a clear name.
+- The advisory report job is gone. The baseline check gates with the rest.
+- Coverage and mutation stay manual. A green run is a stable requirement.
+
+## [1.2.2-beta.6] — 2026-09-30
+
+### Fixed
+
+- Workspace and import paths stay inside allowed roots. Escape attempts fail closed.
+- Server checks HTTP host and CORS origin. Unlisted hosts receive an error.
+- Import pipeline reports progress and counts worker failures. Partial results do not pass.
+- Release actions use pinned commits. Checkout does not persist credentials.
+
+### Changed
+
+- Quality checks run on each push to `main` and `beta-dev`. Failures show before a tag.
+- Dry runs report high and critical dependency advisories. Findings stay informational.
+
+## [1.2.2-beta.5] — 2026-09-28
+
+### Fixed
+
+- Tool refusals now settle as errors. Failed validation no longer looks like success.
+- MCP `spinosa_map`, `spinosa_figure`, and `spinosa_verify` refusals set `isError`. External agents see the failure.
+- A refusal regression suite pins the error status. The release gate runs it.
+- Launch upgrade check awaits a stale version cache. New releases appear on the first launch.
+
+### Changed
+
+- Template agent mirrors match the canonical source. Stale `maps/` grants are gone.
+- Plan mode allows the `spinosa-generalist` subagent. Kernel matches V2 and the prompts.
+- Spinosa allows `/tmp/*` by default. macOS also allows `/private/tmp/*`. Explicit deny still wins.
+
+## [1.2.2-beta.4] — 2026-09-25
+
+### Added
+
+- The searcher screens grep hits with its own relevance ranking. It does not use a separate screening tool.
+
+### Changed
+
+- Workspace instructions now ship only `.agents` and `.spinosa` trees. The vendor mirrors are gone.
+- Extraction recovery rejects partial batches. Each assigned file needs one packet.
+- The route tool reads the latest user text. Model summaries no longer hide startup briefs.
+
+## [1.2.2-beta.3] — 2026-09-25
+
+### Added
+
+- The desktop app confirms workspace deletion with a name entry. Type the workspace name to enable Delete.
+- The desktop composer shows TUI agent names. `build` is Orchestrator-Editor. `plan` is Orchestrator-Planner.
+- Desktop command parity tiers 0-2 plus a markdown viewer.
+- The searcher ranks grep hits itself. It does not use a separate screening tool.
+
+### Changed
+
+- The view toggle shows only the moving pill. It has no outer container.
+- The back-to-workspace button shows a back arrow. It no longer falls back to a plus icon.
+- Focus rings use the neutral border stroke. Blue contours are gone.
+- Conversation tool headers show the camelCase tool name. They no longer say Called.
+- The TUI session footer is gone. Context and cost live in the prompt box.
+- The TUI home bar keeps `ctrl+p palette`. It drops the `/` and tab hints.
+- The TUI prompt placeholder reads `Describe your task or use / for commands`.
+- Desktop workspace and conversation UX refinements across session state, prompt exits, and permission lists.
+
+### Removed
+
+- The `jev` passage-screening tool and its permission, prompts, and UI. Remove stored TypeSafe keys if you added them only for `jev`.
+- The TUI session footer bar.
+
+## [1.2.2-beta.2] — 2026-09-21
+
+### Added
+
+- `spinosa mcp-server` exposes Spinosa tools and skill resources over MCP stdio. The outer agent stays the LLM. No Spinosa model turn. The server starts unbound. Agents call `workspace_list` and `workspace_use`, then run tools.
+- `workspace_delete` (MCP) and `spinosa delete --yes` (CLI) trash or unregister a workspace.
+- Workspace CLI progress can emit JSON lines on stderr when you pass `--json`.
+- Agent guide: `docs/agents/external-agent-spinosa.md`.
+- Website docs page: `/docs/mcp` (MCP for agents).
+
+### Fixed
+
+- `spinosa mcp-server` stays running after connect. The CLI no longer exits before the MCP client disconnects.
+
+### Changed
+
+- Global `--json` and `--quiet` work under the kernel CLI strict parser.
+- `spinosa new` defaults to `--launch copy` so headless and agent runs do not open an LLM CLI.
+- Web search asks for permission. You can allow or deny it for this session.
+- `write_report` is now `spinosa_report`. It is not the generic `write` tool.
+- `websearch` and `webfetch` are one `web` tool. Pass a query to search. Pass a URL to fetch.
+- `spinosa_gate` covers evidence counts. `spinosa_verify` covers artifact shape. Keep them separate.
+
+## [1.2.2-beta.1] — 2026-09-20
+
+### Security
+
+- The `/provider` and `/config/providers` responses no longer contain your provider API key.
+- Plugins no longer receive your API key in provider information.
+- All versions up to 1.2.1 sent the key to local HTTP clients and to plugins.
+- The server binds to loopback only, unless you set `SPINOSA_SERVER_PASSWORD`. This limited the exposure to your own machine.
+- Rotate your provider API keys if you used a non-loopback bind.
+- Rotate your provider API keys if you ran plugins or MCP servers that you do not trust.
+
+### Fixed
+
+- `spinosa_verify` reports `structure_ok` for structure checks. It no longer reports `pass`.
+- Only a verification artifact can produce a `pass` status.
+- `spinosa_report` accepts the `draft` status only. The verifier promotes the status after it checks the sources.
+- A failed upgrade at launch no longer blocks launch. Spinosa prints the error and opens your workspace.
+- Spinosa restores your beta track after the installer runs. A failed install no longer moves you to stable.
+- `spinosa upgrade` and launch agree about the newest version. The command no longer refuses a false downgrade.
+- The release channel row in Settings reports a failed write.
+- The TUI reports a failed stop. It no longer implies that the agent stopped.
+
+### Changed
+
+- Spinosa keeps one model for the session. Sub-agents use the model of the orchestrator.
+- The model picker no longer stores a different model for each agent.
+- Spinosa remembers your model after you close the TUI. It no longer forgets your choice.
+- The `--model` option applies to one launch. It does not change your saved model.
+- Cheap work keeps the small model. Session titles do not use your main model.
+- The auto-approve permission command states that it applies to the current session.
+- One manifest lists every release-critical test. The `quality`, `test:core`, and `test:tui` commands read it.
+- The `quality` gate fails when the release workflow differs from the copy on the default branch.
+- The release documentation no longer lists OCR tools tarballs as published assets.
+
 ## [1.2.1] — 2026-09-20
 
 ### Changed

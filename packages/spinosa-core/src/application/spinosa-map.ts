@@ -6,8 +6,8 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { isSpinosaWorkspace } from "../workspace/meta"
-import { parseYamlFrontmatter } from "../artifacts/parser"
 import { validateArtifact } from "../artifacts/validate"
+import { extractionCompleteness, normalizeExtractionPath } from "../artifacts/extraction"
 import { resolvePathWithinRoot } from "../utils/path"
 
 export type MapAction = "begin" | "write_extraction" | "write_map" | "check" | "cover"
@@ -65,7 +65,7 @@ function today(): string {
 }
 
 function normalizeRawPath(input: string): string {
-  return input.replace(/\\/g, "/").replace(/^\.?\//, "")
+  return normalizeExtractionPath(input)
 }
 
 function wikilinkTarget(rawPath: string): string {
@@ -136,7 +136,8 @@ export function formatExtractionMarkdown(input: {
     rows.set(normalizeRawPath(packet.path), packet.status ?? "extracted")
   }
   const processed = [...rows.entries()]
-  const extracted = input.packets.filter((p) => (p.status ?? "extracted") === "extracted").length
+  const extracted = processed.filter(([, status]) => status === "extracted").length
+  const accounted = processed.filter(([, status]) => status === "extracted" || status === "unreadable").length
   const table = [
     "| File Path | Status |",
     "|---|---|",
@@ -146,6 +147,8 @@ export function formatExtractionMarkdown(input: {
     "---",
     "type: extraction_batch",
     `batch_id: ${input.batchId}`,
+    `files_expected: ${processed.length}`,
+    `files_accounted: ${accounted}`,
     `files_processed: ${extracted}`,
     `created: ${today()}`,
     "---",
@@ -188,14 +191,6 @@ export function formatMapMarkdown(input: {
     body,
     "",
   ].join("\n")
-}
-
-function filesProcessedCount(text: string): number {
-  const yaml = parseYamlFrontmatter(text)
-  const n = Number(yaml.files_processed ?? yaml.filesprocessed ?? "")
-  if (Number.isFinite(n) && n > 0) return n
-  const m = text.match(/files?_processed:\s*(\d+)/i)
-  return m ? Number(m[1]) : 0
 }
 
 function extractLinkedTargets(text: string): string[] {
@@ -287,15 +282,35 @@ async function beginBatch(input: SpinosaMapInput): Promise<SpinosaMapResult> {
   }
   const files = (input.files ?? []).map(normalizeRawPath)
   if (files.length === 0) return fail("begin needs at least one raw/ file path")
+  if (new Set(files).size !== files.length) return fail("begin files must be unique")
   const bad = files.find((f) => !f.startsWith("raw/") || !contained(input.workspacePath, f))
   if (bad) return fail(`file path must stay under raw/: ${bad}`)
 
   const relativePath = extractionPathFor(batchId)
   const existing = await readWorkspaceFile(input.workspacePath, relativePath)
-  if (existing && filesProcessedCount(existing) > 0) {
-    return ok("Extraction already present", [
-      `<map action="begin" skip="true" path="${relativePath}">`,
-      `Existing extraction has files_processed=${filesProcessedCount(existing)}. Do not rewrite it.`,
+  if (existing) {
+    const completeness = extractionCompleteness(existing, files)
+    const checked = await validateArtifact({
+      workspacePath: input.workspacePath,
+      relativePath,
+      validator: "extraction",
+    })
+    if (checked.ok && completeness.complete) {
+      return ok("Extraction already present", [
+        `<map action="begin" skip="true" path="${relativePath}">`,
+        "Existing extraction accounts for the exact assigned file set. Do not rewrite it.",
+        "</map>",
+      ])
+    }
+    const reasons = [
+      ...(checked.ok ? [] : [`validation failed: ${checked.error}`]),
+      ...(completeness.complete ? [] : [completeness.reason]),
+    ]
+    const reason = reasons.join("; ") || "existing extraction must be rewritten"
+    return ok("Extraction needs completion", [
+      `<map action="begin" skip="false" path="${relativePath}">`,
+      `Existing extraction is not complete: ${reason}.`,
+      "Rewrite the full assigned batch with write_extraction, including unreadable files.",
       "</map>",
     ])
   }
@@ -331,6 +346,18 @@ async function writeExtraction(input: SpinosaMapInput): Promise<SpinosaMapResult
   }
   const packets = input.packets ?? []
   if (packets.length === 0) return fail("write_extraction needs packets")
+  const files = (input.files ?? []).map(normalizeRawPath)
+  if (files.length === 0) return fail("write_extraction needs the complete assigned files list")
+  if (new Set(files).size !== files.length) return fail("write_extraction files must be unique")
+  const badAssignedFile = files.find((file) => !file.startsWith("raw/") || !contained(input.workspacePath, file))
+  if (badAssignedFile) return fail(`file path must stay under raw/: ${badAssignedFile}`)
+  const packetPaths = packets.map((packet) => normalizeRawPath(packet.path))
+  if (new Set(packetPaths).size !== packetPaths.length) return fail("write_extraction packet paths must be unique")
+  const expected = [...files].sort()
+  const actual = [...packetPaths].sort()
+  if (expected.length !== actual.length || expected.some((file, index) => file !== actual[index])) {
+    return fail("write_extraction packets must exactly match the assigned files list")
+  }
   for (const packet of packets) {
     const rel = normalizeRawPath(packet.path)
     if (!rel.startsWith("raw/") || !contained(input.workspacePath, rel)) {
@@ -344,7 +371,7 @@ async function writeExtraction(input: SpinosaMapInput): Promise<SpinosaMapResult
   const relativePath = extractionPathFor(batchId)
   const markdown = formatExtractionMarkdown({
     batchId,
-    files: input.files,
+    files,
     packets: packets.map((p) => ({ ...p, path: normalizeRawPath(p.path) })),
   })
   try {
@@ -362,6 +389,8 @@ async function writeExtraction(input: SpinosaMapInput): Promise<SpinosaMapResult
   const unreadable = packets.length - extracted
   return ok(`Wrote extraction (${extracted} files)`, [
     `<map action="write_extraction" path="${relativePath}">`,
+    `Files expected: ${files.length}`,
+    `Files accounted: ${packets.length}`,
     `Files processed: ${extracted}`,
     `Files unreadable: ${unreadable}`,
     "Return this path to the orchestrator. Do not paste packets in chat.",
@@ -468,7 +497,18 @@ async function coverMaps(input: SpinosaMapInput): Promise<SpinosaMapResult> {
   if (!relativePath) return fail("cover needs relativePath or batchId of an extraction")
   const extraction = await readWorkspaceFile(input.workspacePath, relativePath)
   if (!extraction) return fail(`missing extraction: ${relativePath}`)
-  const needed = extractPacketPaths(extraction).filter((p) => p.startsWith("raw/"))
+  // Table rows carry the on-disk form (raw/foo.md) while packet **Path:**
+  // lines use the wikilink form (raw/foo). Dedupe by extension-stripped key
+  // so one file is never reported missing twice.
+  const seen = new Set<string>()
+  const needed: string[] = []
+  for (const candidate of extractPacketPaths(extraction)) {
+    if (!candidate.startsWith("raw/")) continue
+    const key = candidate.replace(/\.md$/i, "")
+    if (seen.has(key)) continue
+    seen.add(key)
+    needed.push(candidate)
+  }
   const maps = await listMaps(input.workspacePath)
   const mapTexts: string[] = []
   for (const mapPath of maps) {

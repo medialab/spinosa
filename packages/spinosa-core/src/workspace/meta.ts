@@ -168,18 +168,13 @@ export function getFrameworkHealth(workspacePath: string): { label: string; ok: 
   for (const agent of SPINOSA_AGENT_FILES) {
     const skill = agent.replace(/\.md$/, "")
     for (const relative of [
-      path.join(".opencode", "agents", agent),
-      path.join(".claude", "agents", agent),
-      path.join(".codex", "agents", `${skill}.toml`),
-      path.join(".opencode", "skills", skill, "SKILL.md"),
-      path.join(".claude", "skills", skill, "SKILL.md"),
-      path.join(".codex", "skills", skill, "SKILL.md"),
-      path.join(".hermes", "skills", skill, "SKILL.md"),
+      path.join(".spinosa", "agents", agent),
+      path.join(".agents", "skills", skill, "SKILL.md"),
     ]) {
       checks.push({
         label: relative,
         ok: existsSync(path.join(workspacePath, relative)),
-        detail: "agent mirrors should be pre-baked in workspace-template",
+        detail: "Spinosa agents and portable skills should be pre-baked in workspace-template",
       })
     }
   }

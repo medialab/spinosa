@@ -124,6 +124,7 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
     grouped,
     filter: () => store.filter,
     flat,
+    loading: () => grouped.loading,
     reset,
     refetch,
     clear: () => setStore("filter", ""),
