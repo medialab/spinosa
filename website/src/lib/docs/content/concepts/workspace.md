@@ -1,40 +1,32 @@
 # Workspace Structure
 
-When you create a Spinosa workspace, a folder is created with this layout:
+A workspace is a folder containing imported source copies, research context, agent guidance, and generated reports. Spinosa leaves the folder you imported from in place.
 
 ```text
-your-workspace/
-  raw/              Converted copies of your source documents (markdown)
-  maps/             Navigation maps for searching and routing
-  system/           Configuration, context, dictionary, index
-  agent_reports/    Reports produced by agents
-  logs/             Request history and metrics
-  .agents/          Agent definitions and skills
-  .bin/             CLI scripts and converters
-  .trash/           Archived process artifacts
+workspace/
+  raw/             Imported source copies and extracted text
+  maps/            Navigation maps for searching the corpus
+  system/          Workspace configuration and shared context
+  agent_reports/   Durable reports and workflow outputs
+  .agents/         Portable agent guidance, skills, and references
+  .spinosa/        Native agents, run state, memory, and workspace marker
+  .logs/           Workspace logs
 ```
 
-## Key files
+## Common files and folders
 
-**`raw/`** — The working corpus. Agents search here, quote from here, and verify against here. Each file has a YAML header identifying its source, language, type, and key entities.
+- **`raw/`** is the source corpus used for research. Do not rewrite source-file bodies; add new material with `spinosa add`.
+- **`maps/`** helps the search workflow navigate a large corpus.
+- **`system/configuration.md`** and **`system/context.md`** hold workspace settings and researcher-provided context.
+- **`agent_reports/`** holds durable reports and other workflow outputs.
+- **`.agents/`** contains portable skills and shared guidance. **`.spinosa/`** contains Spinosa's native agent definitions and runtime state.
 
-**`system/configuration.md`** — Operating settings (source location, conversion policy).
+Add more documents with:
 
-**`system/context.md`** — Project scope, research vocabulary, key actors, known gaps.
+```bash
+spinosa add ~/research/new-files --workspace /path/to/workspace
+```
 
-**`system/dictionary.md`** — Vocabulary extracted from the corpus: names, places, organizations, concepts, aliases.
+Use `spinosa list` to see registered workspaces and `spinosa status /path/to/workspace` to inspect one.
 
-**`system/workspace_index.md`** — Coverage and health: file counts, map coverage, extraction progress.
-
-## Working with the workspace safely
-
-- Treat `raw/` as evidence, not a drafting surface.
-- Edit metadata headers carefully if needed, but avoid rewriting source bodies.
-- Use `spinosa add` or the TUI add-files wizard when new documents arrive.
-- Use `spinosa update` when framework files need refreshing.
-
-## Related
-
-- [Agents](/spinosa/docs/agents) — who reads and verifies these files
-- [Reports](/spinosa/docs/reports) — what the output looks like
-- [CLI Reference](/spinosa/docs/cli-reference) — commands for add, update, and check
+See [Agents and Workflows](/docs/agents) for how files are used and [Reports](/docs/reports) for where results appear.

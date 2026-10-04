@@ -1,73 +1,23 @@
-# Reports & Charts
+# Reports and Evidence
 
-Every substantial answer from Spinosa comes back as a markdown report in the chat. Reports show the answer, the evidence behind it, the interpretation, limitations, and a verification status.
+Simple requests may receive a direct answer in the chat. Research workflows that need evidence or analysis can produce a durable report in `agent_reports/`.
 
-## Report sections
+## Read the report
 
-**Answer** — The shortest direct response to your question.
+Look for the answer, quoted evidence, source paths, analysis, and limitations. Open important source files and check the quoted passage in context. The report status summarizes the workflow's checks; it is not a guarantee of completeness or correctness.
 
-**Evidence** — Quoted passages from your documents with source paths and confidence labels. This is what you read when you need to know exactly what the corpus supports.
+## Report statuses
 
-**Analysis** — Interpretation built from the evidence.
+| Status                  | Meaning                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `pass`                  | All claims were verified; no corrections were needed.                                        |
+| `pass_with_corrections` | Minor errors were corrected; the report is usable with those changes.                        |
+| `partial`               | Some claims were supported, but missing sources or unresolved questions prevent a full pass. |
+| `fail`                  | Important claims did not hold against the sources; do not treat them as established.         |
+| `blocked`               | The workflow could not open a source or a required source path was missing.                  |
 
-**Limitations** — What is missing, ambiguous, or out of scope.
+## Charts
 
-**Sources** — The file paths used to ground the answer.
+When a research workflow requests a chart, Spinosa can include a text-based figure in the report. Supported forms are bars, sparklines, stacked bars, and status matrices. Check each chart's units and source notes before interpreting it.
 
-**Status** — The verification outcome (see below).
-
-## Verification statuses
-
-| Status | Meaning |
-|--------|---------|
-| `○ pending` | Draft exists, verification not finished yet |
-| `✓ verified` | Claims and quotes passed source review |
-| `⚠ corrections` | Minor fixes made during verification, still usable |
-| `✗ failed` | Important claims could not be supported reliably |
-
-Trust reports by reading the status and the evidence together.
-
-## Navigation dashboard
-
-Many reports open with a compact dashboard:
-
-```text
-┌─ Corpus Navigation ──────────────────────────────────────────────┐
-│ Maps   ▓▓▓▓▓▓░░░░░░░░░░  6 consulted                            │
-│ Raw    ▓▓▓▓▓▓▓▓▓▓░░░░░░  45 scanned · 12 read                   │
-│ Source ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  18 cited                               │
-│ Status ✓ verified                                               │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-- **Maps** — how many navigation maps were searched
-- **Raw** — how many files were scanned vs read in depth
-- **Source** — how many sources made it into the final answer
-- **Status** — verification outcome
-
-## Chart types
-
-Spinosa uses simple Unicode charts readable in plain text.
-
-| Chart | Characters | Meaning |
-|-------|-----------|---------|
-| Distribution bars | `▓░█` | Done versus total |
-| Progress bar | `▓░` | Linear progress |
-| Status matrix | `✓⚠✗○◉` | Health across categories |
-| Gauge | `◐◑◉` | Single health score |
-| Sparkline | `▁▂▃▄▅▆▇█` | Trend over time |
-| Stacked bar | `█▓▒░` | Total split into parts |
-
-## Reading reports well
-
-- Read the Answer first, then check it against the Evidence.
-- Use Limitations to decide whether to ask a narrower follow-up.
-- Open cited files when a claim matters and you want surrounding context.
-- Treat failed or pending status as a reason to pause, not decoration.
-
-## Related
-
-- [Tour](/spinosa/docs/tour) — first report walkthrough
-- [Agents](/spinosa/docs/agents) — how reports are assembled and verified
-- [Workspace](/spinosa/docs/workspace) — where reports and source files live
-- [FAQ](/spinosa/docs/faq) — troubleshooting reports
+See [Agents and Workflows](/docs/agents) for how checks are selected and [Workspace Structure](/docs/workspace) for where reports are saved.

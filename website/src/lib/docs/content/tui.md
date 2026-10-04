@@ -1,148 +1,47 @@
-# Spinosa TUI Guide
+# TUI Guide
 
-The Spinosa TUI (terminal UI) is the main way to use Spinosa. Launch it with:
+The terminal interface is where you chat with an AI model, inspect its work, and manage a research session.
+
+## Open a workspace
+
+Start Spinosa in a workspace directory:
 
 ```bash
-spinosa
+spinosa /path/to/workspace
 ```
 
-This guide covers navigation, keyboard shortcuts, and each screen.
+If you have created more than one workspace, use the path printed by `spinosa new` or find registered workspaces with `spinosa list`.
 
-## Screens (routes)
+## Ask and follow up
 
-| Screen | When you see it | What it does |
-|--------|-----------------|-------------|
-| **Home** | Default startup screen | Shows recent workspaces, chat prompt, and boot health |
-| **Workspace picker** | Press `W` or click Workspaces | Lists all registered workspaces, sort and select |
-| **Onboarding wizard** | Click + New workspace | 11-step wizard to create a workspace from documents |
-| **Chat session** | Select a workspace and ask a question | Chat with your documents through AI agents |
-| **Visualizer** | Look for Visualizer in top menu | Explore conversation flow, file access, activity timeline |
-| **Add-files wizard** | Press `I` or click Import files | Add new documents to an existing workspace |
+Type a request in the prompt and press **Enter**. Ask for source passages and file names when you need evidence. Read those passages and any stated limitations before using an answer.
 
-## Global keyboard shortcuts
+To start or switch sessions, open the command palette with `Ctrl+P` and search for **New session** or **Switch session**. Type `/help` in the prompt to see available slash commands.
 
-| Key | Action |
-|-----|--------|
-| `Ctrl+P` or `/` | Command palette |
-| `S` | Settings |
-| `A` | Agents |
-| `K` | Keys / model provider |
-| `W` | Workspaces (workspace picker) |
-| `M` | Models |
-| `N` | New chat session |
-| `I` | Import / add files |
-| `Escape` | Go back or close dialog |
-| `Ctrl+C` | Exit TUI (or cancel current operation) |
-| `↑` `↓` or `j` `k` | Navigate lists |
-| `Enter` | Confirm / open selected |
-| `Tab` | Auto-complete in prompt |
-| `?` | Show help |
+## Connect a provider and choose a model
 
-## Home screen
+Open the command palette with `Ctrl+P` and choose **Connect provider** to sign in or add credentials. Use **Switch model** to select a model from a connected provider. With a cloud provider, prompts and relevant context are sent to that service.
 
-When you launch `spinosa`, the home screen shows:
+Default keyboard chords use `Ctrl+X` as the leader key:
 
-- **Recent workspaces** — up to 4 recently accessed workspaces. Click one to open it.
-- **Chat prompt** — at the bottom. Type your question and press Enter.
-- **Boot health** — startup checks (version check, workspace index, maintenance)
-- **Footer** — keyboard labels for Settings, Agents, Keys, Workspaces, Models
+| Keys               | Action                         |
+| ------------------ | ------------------------------ |
+| `Ctrl+P`           | Open the command palette       |
+| `Ctrl+X`, then `N` | Start a new session            |
+| `Ctrl+X`, then `L` | Switch sessions                |
+| `Ctrl+X`, then `M` | Switch model                   |
+| `Ctrl+X`, then `A` | Switch agent                   |
+| `Esc`              | Interrupt the current response |
 
-If no workspace is active, the chat prompt is empty. Select a workspace first, or create one.
+Key bindings can be changed in configuration. The command palette shows actions available in your current context.
 
-## Workspace picker
+## Useful terminal commands
 
-Press `W` to open the workspace picker. It shows a sortable table:
+```bash
+spinosa list                         # List registered workspaces
+spinosa add ~/research/new-files \
+  --workspace /path/to/workspace     # Add documents to a workspace
+spinosa doctor                       # Diagnose installation or workspace health
+```
 
-| Column | Description |
-|--------|-------------|
-| Name | Workspace name |
-| Parent | Parent folder path |
-| Status | Current setup status |
-| Ver | Framework version |
-| Accessed | Last access time |
-
-Click column headers to sort. Use `↑` `↓` to navigate and `Enter` to open. The **+ New workspace** button starts the onboarding wizard.
-
-Stale workspace entries (pointing to deleted folders) can be cleaned up with the **Delete stale** button in the top header.
-
-## Chat session
-
-When you open a workspace or start a new session, you enter the chat view:
-
-- Type your question at the prompt and press `Enter`
-- Spinosa agents search your documents, draft a report, and verify the evidence
-- Reports are displayed inline with evidence quotes, source paths, and verification status
-- Use `↑` `↓` to scroll through the conversation
-- Ask follow-up questions in the same chat
-
-## Onboarding wizard
-
-The onboarding wizard creates a new workspace from a folder of documents. Steps:
-
-1. **Path** — Enter the folder path with your documents
-2. **Name** — Name the workspace
-3. **Tools** — Verify document converters are installed
-4. **Scan** — Classifies files and shows what was found
-5. **Import** — Choose which file types to import
-6–9. **Processing** — Files are converted in phases
-10. **Provider** — Choose your AI coding tool
-11. **Done** — Summary and "Open workspace" button
-
-Each processing phase pauses between steps so you can review before proceeding.
-
-## Add-files wizard
-
-Press `I` from the home screen to add files to an existing workspace. The wizard:
-
-1. Asks for the source folder path
-2. Scans and classifies files
-3. Converts and copies them to the workspace's `raw/` directory
-4. Shows an import summary
-
-## Visualizer
-
-The visualizer shows how your AI agents worked through a question. Open it from the workspace picker or top menu.
-
-Three view modes:
-
-| Mode | Key | What it shows |
-|------|-----|---------------|
-| **Files** | `1` | Heatmap of which files in the workspace were accessed |
-| **Flow** | `2` | Graph of tool calls the agents made, in sequence |
-| **Activity** | `3` | Timeline of the conversation |
-
-Controls:
-
-| Key | Action |
-|-----|--------|
-| `1` `2` `3` | Switch modes |
-| `+` `-` | Zoom in/out |
-| `0` | Fit graph to view |
-| `←` `→` | Select marks/nodes |
-| `Enter` | Inspect selected node details |
-| `Shift` + arrows | Pan |
-| Drag | Pan (mouse) |
-| `Ctrl` + wheel | Zoom (mouse) |
-| `e` | Export graph (SVG, CSV, JSON) |
-| `?` | Show help overlay |
-
-## Command palette
-
-Press `Ctrl+P` or `/` to open the command palette. Type to filter commands:
-
-- `/session` commands — switch, create new
-- `/model` — switch model, cycle recent/favorite
-- `/agent` — switch agent
-- `/theme` — switch theme, mode
-- `/workspace` — manage workspaces
-- `/help` — show help
-
-## Model provider
-
-Press `K` to configure your AI model provider. You can connect to:
-
-- Local models (via Ollama, oMLX)
-- Cloud providers (OpenAI, Anthropic, Google, etc.)
-- GitHub Copilot
-
-Press `M` to switch between configured models.
+See the [CLI reference](/docs/cli-reference) for more commands.

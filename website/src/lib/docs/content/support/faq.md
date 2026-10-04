@@ -2,75 +2,55 @@
 
 ## Install and setup
 
-**Command not found: `spinosa`**
-Make sure `~/.spinosa/bin` is on your `PATH`, then open a new terminal. If it still fails, re-run the install script.
+**Which platforms are supported?**
+Spinosa supports macOS and Linux on ARM64 or x64. Linux needs glibc 2.39 or newer. Windows, Alpine Linux, and other musl-based systems are not supported.
 
-**I installed Spinosa, but `spinosa` opens something unexpected**
-Make sure you have the latest version by running `spinosa upgrade`.
+**The `spinosa` command is not found.**
+Open a new terminal so it reloads your PATH. The installer adds `~/.spinosa/bin`; if the command still fails, rerun the stable installer.
 
-**The TUI looks garbled or misaligned**
-Your terminal needs to support Unicode and true color (24-bit). Most modern terminals do. If you're using an older terminal, try a different one (iTerm2, Kitty, Alacritty, or the latest Terminal.app).
+**How do I start?**
+Create a workspace with `spinosa new ~/path/to/documents`, then start it with `spinosa /path/to/workspace`. The first command prints the workspace path.
 
-## TUI usage
+**How do I connect a model?**
+Open the TUI command palette with `Ctrl+P` and choose **Connect provider**. Follow the sign-in or credential steps, then choose a model.
 
-**How do I create a workspace?**
-Press `W` to open the workspace picker, then click **+ New workspace**. The onboarding wizard guides you through the steps.
+## Documents and privacy
 
-**How do I add more documents to an existing workspace?**
-Press `I` from the home screen, or run `spinosa add <folder>` from the terminal.
+**Are my documents uploaded?**
+Imported copies and workspace files stay on your machine. If you choose a cloud model, Spinosa sends your prompt and relevant context to that provider. A cloud vision model also receives selected images when it transcribes scans.
 
-**How do I switch between workspaces?**
-Press `W` to open the workspace picker, then select a different workspace.
+**Does Spinosa include OCR?**
+No local OCR engine is bundled. Machine-readable PDF text is extracted locally. Scanned PDFs and images are transcribed only with a selected vision-capable model; otherwise they are kept without extracted text.
 
-**How do I change the AI model?**
-Press `K` to configure providers, then `M` to switch between models.
+**How do I add more documents?**
+Run `spinosa add ~/path/to/new-files --workspace /path/to/workspace`.
 
-**What are the keyboard shortcuts?**
-Press `?` or `Ctrl+P` and type `/help` to see all shortcuts. Key ones: `S` Settings, `A` Agents, `K` Keys, `W` Workspaces, `M` Models, `N` New session, `I` Import files.
+## Answers and reports
 
-## Startup and indexing
+**Why did I get a short answer instead of a report?**
+Simple requests may get a direct answer. Ask for quoted evidence, source file paths, and limitations when you need a research report.
 
-**Startup takes too long**
-Startup time depends on corpus size and file mix. If it stalls, cancel and start again — Spinosa resumes rather than starting over.
+**What do report statuses mean?**
+`pass` means claims were verified without corrections; `pass_with_corrections` means minor corrections were applied; `partial` means evidence gaps remain; `fail` means important claims did not hold; and `blocked` means required sources were unavailable. Read the sources and limitations alongside every status.
 
-**The OCR output is garbled**
-Check the original image quality. Blurry, low-contrast, or skewed images produce poor OCR. Replace the source and re-run intake.
+**Spinosa did not find a source I expected.**
+Try alternate names or terms, or narrow the question to a date range or source group. Confirm the document is in the workspace's `raw/` folder. If you add or replace files, run `spinosa add` again.
 
-**Can I add more files after creating a workspace?**
-Yes. Press `I` in the TUI or run `spinosa add <folder>`.
+## Updates and workspace care
 
-## Reports
+**How do I update Spinosa?**
+Run `spinosa upgrade`. To check without installing, run `spinosa upgrade --check`. To switch from beta to stable, run `spinosa upgrade --channel stable`.
 
-**My question returned a short answer instead of a full report**
-Ask more explicitly for evidence from your documents. Operational questions get fast answers; evidence requests trigger the full pipeline.
+**How do I check for installation problems?**
+Run `spinosa doctor` and follow the diagnostic output.
 
-**I see `○ pending` on a report**
-The draft exists but verification hasn't finished. Wait for the Verifier before treating it as settled.
+**Can I uninstall without deleting my workspaces?**
+Yes. `spinosa uninstall --yes` removes the Spinosa runtime and leaves your workspace folders in place.
 
-**The report says `⚠ corrections` or `✗ failed`**
-This is a real signal, not decoration. `⚠ corrections` means verification found issues but repaired them. `✗ failed` means important claims couldn't be supported.
-
-**I know the answer is in my files, but Spinosa found nothing**
-Rephrase using alternative words, names, or dates. If it persists, try re-indexing: press `I` or run `spinosa add` on the same folder.
+**Where are my workspaces?**
+Each workspace is a folder created on your machine. `spinosa list` shows registered workspaces; the registry is stored under `~/.spinosa/metadata/`.
 
 ## External agents (MCP)
 
-**Can I use Spinosa from Claude, Codex, or Cursor?**
-Yes. Run `spinosa mcp-server` as an MCP server. The host model stays the LLM; Spinosa exposes workspace tools and skills. See [MCP for agents](/spinosa/docs/mcp).
-
-**Does the MCP search my documents for me?**
-No. The host agent searches `raw/` with its own tools, guided by Spinosa skill playbooks. MCP provides workspace selection, skills, and checks such as `spinosa_gate` and `spinosa_verify`.
-
-## Maintenance
-
-**How do I update Spinosa?**
-Run `spinosa upgrade` to install the latest release. When you launch `spinosa` or run `bun run dev`, you will see `checking for updates...` before the TUI opens. Use `spinosa upgrade --check` to check without installing.
-
-**How do I clean up stale workspace entries?**
-Open the workspace picker (`W`) and click **Delete stale** in the top header. This removes entries pointing to deleted folders.
-
-**Can I uninstall without losing my workspaces?**
-Yes. `spinosa uninstall --yes` removes the framework runtime under `~/.spinosa` (and application cache/data under XDG paths) but leaves your workspace folders and `~/.spinosa/metadata/` in place.
-
-**Where are my workspaces stored?**
-Each workspace is a folder on your filesystem. You choose the location during creation. The global workspace registry is at `~/.spinosa/metadata/workspaces.json`.
+**Can I use Spinosa with Claude, Codex, or Cursor?**
+Yes. Configure `spinosa mcp-server` in your MCP host. The host agent supplies the model; Spinosa provides workspace tools and skills. See [MCP for agents](/docs/mcp).

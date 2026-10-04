@@ -33,7 +33,7 @@ const docRegistry: DocPage[] = [
 		title: 'Welcome',
 		slug: 'welcome',
 		description:
-			'Turn your documents into a searchable workspace where AI agents find evidence, write reports, and verify every claim against your original files.',
+			'A local workspace for asking questions across research documents and reviewing answers against their sources.',
 		sourcePath: 'get-started/welcome.md',
 		groupId: 'get-started',
 		groupTitle: 'Get Started',
@@ -44,8 +44,7 @@ const docRegistry: DocPage[] = [
 	{
 		title: 'Tour',
 		slug: 'tour',
-		description:
-			'A 10-minute walkthrough from install to your first verified report.',
+		description: 'Create a workspace, ask a question, review evidence, and add more files.',
 		sourcePath: 'get-started/tour.md',
 		groupId: 'get-started',
 		groupTitle: 'Get Started',
@@ -55,7 +54,7 @@ const docRegistry: DocPage[] = [
 	{
 		title: 'TUI Guide',
 		slug: 'tui',
-		description: 'How to navigate the Spinosa dashboard, keyboard shortcuts, and all available screens.',
+		description: 'Open a workspace, ask questions, connect a model, and find actions in the TUI.',
 		sourcePath: 'tui.md',
 		groupId: 'get-started',
 		groupTitle: 'Get Started',
@@ -63,9 +62,9 @@ const docRegistry: DocPage[] = [
 		pageOrder: 30
 	},
 	{
-		title: 'Agents & Pipeline',
+		title: 'Agents & Workflows',
 		slug: 'agents',
-		description: 'How the 7 specialized sub-agents work and how the orchestrator dispatches them.',
+		description: 'How Spinosa selects specialized roles and workflows for research requests.',
 		sourcePath: 'concepts/agents.md',
 		groupId: 'concepts',
 		groupTitle: 'Concepts',
@@ -95,7 +94,7 @@ const docRegistry: DocPage[] = [
 	{
 		title: 'CLI Reference',
 		slug: 'cli-reference',
-		description: 'Complete command reference for every spinosa subcommand and flag.',
+		description: 'Core commands to create, use, update, and diagnose Spinosa workspaces.',
 		sourcePath: 'reference/cli-reference.md',
 		groupId: 'reference',
 		groupTitle: 'Reference',

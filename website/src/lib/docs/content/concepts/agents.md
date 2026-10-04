@@ -1,53 +1,24 @@
-# Agents & Pipeline
+# Agents and Workflows
 
-Spinosa uses specialized AI agents to answer your questions. Each agent handles one part of the workflow. The orchestrator decides which agents to run based on your question.
+Spinosa can answer a bounded request directly or run a workflow when it needs source evidence, analysis, or a durable report. The runtime chooses the steps for each request. There is no fixed agent chain, and not every request runs every role.
 
-## The agents
+## Agent roles
 
-| Agent | Job | When it runs |
-|-------|-----|-------------|
-| **Searcher** | Finds relevant passages in your documents | Every research question |
-| **Analyst** | Adds context and flags missing angles | Alongside Searcher |
-| **Serendippo** | Looks for non-obvious cross-document links | After core evidence work |
-| **Writer** | Turns evidence into a readable report | After search is complete |
-| **Verifier** | Checks claims and quotes against the source | After writing |
-| **Mapper** | Builds navigation maps during startup | Setup and re-indexing |
-| **Janitor** | Audits workspace hygiene | On request |
+| Role           | What it does                                                        |
+| -------------- | ------------------------------------------------------------------- |
+| **Mapper**     | Extracts information from the corpus and maintains navigation maps. |
+| **Searcher**   | Finds passages in imported sources and records evidence.            |
+| **Analyst**    | Adds context and identifies gaps in the supplied evidence.          |
+| **Serendippo** | Looks for supported connections across sources.                     |
+| **Writer**     | Produces a readable report when the workflow needs one.             |
+| **Verifier**   | Checks claims, quotations, and citations against sources.           |
+| **Evaluator**  | Audits a completed workflow.                                        |
+| **Evolver**    | Applies an approved, scoped update to workspace guidance.           |
+| **Janitor**    | Audits workspace hygiene and proposes cleanup.                      |
+| **Overseer**   | Audits evidence coverage when scheduled by a workflow.              |
 
-## Typical pipelines
+## How to use the results
 
-The orchestrator doesn't run the same chain every time. It picks the shortest path that answers your question.
+Reports and other durable outputs are saved in `agent_reports/`. Read the cited passages in `raw/` and check any limitations. A verification status describes the checks that ran; it does not guarantee that the answer is complete or correct.
 
-| Question type | Typical sequence |
-|--------------|-----------------|
-| "What files do I have?" | Fast path, no report |
-| "Find documents about X" | Searcher → Verifier |
-| "What does the corpus say about X?" | Searcher + Analyst → Serendippo → Writer → Verifier |
-| "Compare A and B" | Searcher × multiple + Analyst → Serendippo → Writer → Verifier |
-| "Is this quote accurate?" | Verifier only |
-| "Re-index the workspace" | Mapper → Verifier |
-
-Searcher and Analyst can run in parallel. Writer waits for their outputs. Verifier is always last.
-
-## How agents coordinate
-
-Agents communicate through files on disk, not hidden memory. This makes their work inspectable.
-
-```text
-Searcher output + Analyst output
-                ↓
-             Writer draft
-                ↓
-          Verifier review
-                ↓
-         Final report status
-```
-
-Intermediate files can be cleaned up later. Final reports stay in `agent_reports/`.
-
-## Related
-
-- [Reports](/spinosa/docs/reports) — how to read the output
-- [Workspace](/spinosa/docs/workspace) — where files live on disk
-- [CLI Reference](/spinosa/docs/cli-reference) — commands for prepare, check, sync
-- [MCP for agents](/spinosa/docs/mcp) — use Spinosa from Claude, Codex, or Cursor without a nested Spinosa model
+For simple questions, ask directly. For research tasks, name the groups, time period, or source coverage you want and ask for quotations and file paths. See [Reports](/docs/reports) for status meanings and [Workspace Structure](/docs/workspace) for file locations.

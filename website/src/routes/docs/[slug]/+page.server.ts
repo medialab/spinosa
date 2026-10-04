@@ -5,7 +5,7 @@ import { getDocContent } from '$lib/docs/loader';
 import type { PageServerLoad } from './$types';
 
 function fixLinks(html: string): string {
-	return html.replace(/href="\/docs\//g, `href="${base}/docs/`);
+	return html.replace(/href="\/(?:spinosa\/)?docs\//g, `href="${base}/docs/`);
 }
 
 export const entries = (() => {

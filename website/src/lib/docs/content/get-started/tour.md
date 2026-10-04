@@ -1,97 +1,58 @@
-# Tour — From Install to Your First Report
+# First Research Session
 
-This walkthrough takes you from zero to your first verified report in about 10 minutes.
+This guide takes you from a folder of documents to a source-grounded answer.
 
 ## 1. Install Spinosa
 
-Open a terminal and run:
+Spinosa supports macOS and Linux on ARM64 or x64. Linux needs glibc 2.39 or newer. Windows and Alpine Linux are not supported.
 
 ```bash
-# Beta — current development / prerelease channel (recommended while Spinosa is in beta)
-curl -fsSL https://github.com/medialab/spinosa/releases/download/beta/install.sh | bash
-
-# Stable — production channel (when published)
-# curl -fsSL https://github.com/medialab/spinosa/releases/download/stable/install.sh | bash
+curl -fsSL https://github.com/medialab/spinosa/releases/download/stable/install.sh | bash
 ```
 
-This installs the `spinosa` command and all its dependencies (Bun runtime, document converters, OCR engine). After install, open a new terminal window.
+The installer puts `spinosa` on your PATH. Open a new terminal if the command is not found.
 
-## 2. Launch the dashboard
+## 2. Create a workspace
+
+Point Spinosa at the folder with your documents:
 
 ```bash
-spinosa
+spinosa new ~/research/interviews --name interviews
 ```
 
-This opens the Spinosa TUI (terminal UI) dashboard. If this is your first time, you'll see:
+Spinosa scans and imports supported files into a new workspace. The command prints the workspace path when it finishes; keep that path for the next step. The originals remain in their source folder.
 
-- A welcome screen with the Spinosa logo and version
-- A list of workspaces (empty on first run)
-- A **+ New workspace** button in the bottom-right area
+## 3. Connect a model and open the workspace
 
-Press `W` or click **Workspaces** in the footer to open the workspace picker.
-
-## 3. Create a workspace
-
-In the workspace picker, click **+ New workspace**. This starts the onboarding wizard.
-
-The wizard guides you through these steps:
-
-1. **Path** — Enter the folder path containing your research documents (PDFs, Word files, images, etc.)
-2. **Name** — Give your workspace a name
-3. **Tools** — Verify that the document processing tools are installed (OCR, MarkItDown)
-4. **Scan** — Spinosa scans your folder and classifies each file by type
-5. **Import** — Select which file types to import
-6. **Setup** — Workspace folder is created and registered
-7–9. **Convert** — Files are copied and converted to markdown in phases
-10. **Provider** — Choose which AI coding tool you use (Claude Code, OpenCode, Gemini, etc.)
-11. **Done** — Summary of what was imported
-
-> **Tip:** If you already have a workspace folder, you can skip the wizard and just point the workspace picker to it.
-
-## 4. Start a chat session
-
-When the wizard finishes, you'll return to the home screen with a chat prompt at the bottom. Type a question about your documents, for example:
-
-```
-What did the interviews say about coastal erosion?
+```bash
+spinosa /path/to/workspace
 ```
 
-Press **Enter** to send. Spinosa's agents search your documents, assemble evidence, and return a markdown report.
+If Spinosa asks you to connect a provider, use the command palette (`Ctrl+P`) and choose **Connect provider**. Follow the provider's sign-in or credential steps, then choose a model. Local and cloud options depend on the provider you connect.
 
-## 5. Read the report
+With a cloud model, prompts and relevant context go to that provider. To transcribe scanned pages or images, choose a vision-capable model during import; those files go to that model too. Otherwise, Spinosa keeps scans and images without extracting their text.
 
-Every answer comes back with:
+## 4. Ask an evidence-focused question
 
-- A direct answer to your question
-- Quoted evidence with source file paths
-- Analysis that separates interpretation from source text
-- A verification status showing whether the claims passed source checks
-- Limitations so you can judge scope and confidence
+Ask a question that names the evidence you need. For example:
 
-You can navigate the report with `↑↓`, open cited files, or ask follow-up questions in the same chat.
+```text
+Compare what the interviews say about coastal erosion. Quote the passages and name their source files.
+```
 
-## 6. Visualize your session
+Simple requests may get a direct answer. Requests that need evidence may run a longer workflow and create a report. Read the quoted passages and limitations before relying on the answer.
 
-Press `W` and select a workspace, then look for **Visualizer** in the top menu. The visualizer shows:
+## 5. Add documents later
 
-- **Files view** (press `1`) — heatmap of which files were accessed
-- **Flow view** (press `2`) — graph of tool calls the agents made
-- **Activity view** (press `3`) — timeline of the conversation
+```bash
+spinosa add ~/research/new-interviews --workspace /path/to/workspace
+```
 
-Use `+`/`-` to zoom, click and drag to pan, and `Enter` to inspect details.
+Then reopen the workspace and ask a new question. Use `spinosa version` to see the installed release and `spinosa doctor` if you need a system diagnostic.
 
-## 7. Keep going
+## Continue
 
-After your first report, the normal loop is simple:
-
-1. Ask follow-up questions in the same chat
-2. Add new documents: press `I` or use the add-files wizard
-3. Switch between workspaces: press `W` to open the workspace picker
-4. Start a new chat session: press `N`
-
-## Next reads
-
-- [TUI Guide](/spinosa/docs/tui) — keyboard shortcuts and navigation
-- [Agents](/spinosa/docs/agents) — how the agents divide the work
-- [Reports](/spinosa/docs/reports) — how to read verification statuses and charts
-- [Workspace](/spinosa/docs/workspace) — what's on disk and how the file layout works
+- [TUI guide](/docs/tui) — navigate sessions and find commands
+- [Workspace structure](/docs/workspace) — understand the imported files
+- [Reports](/docs/reports) — interpret evidence and verification results
+- [FAQ](/docs/faq) — setup and troubleshooting
