@@ -2,56 +2,47 @@
 
 ## Core terms
 
-| Term | Meaning |
-|------|---------|
-| **Corpus** | Your collection of source documents (PDFs, transcripts, notes, images) |
-| **Workspace** | The folder Spinosa creates from your corpus, with `raw/`, `maps/`, `system/`, `agent_reports/` |
-| **Orchestrator** | The coordinator that decides which agents to run for your question |
-| **Pipeline** | The sequence of agent steps used to answer a request |
-| **Sub-agent** | A specialized helper (Searcher, Analyst, Writer, Verifier, etc.) |
-| **MCP** | Model Context Protocol — how external agents (Claude, Codex, Cursor) load Spinosa tools without a nested Spinosa model |
+| Term          | Meaning                                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Corpus**    | The document collection imported into a workspace.                                                          |
+| **Workspace** | The folder containing source copies, context, guidance, and reports.                                        |
+| **Workflow**  | The steps selected for a request that needs research or other structured work.                              |
+| **Agent**     | A specialized role, such as Searcher, Analyst, Writer, or Verifier. The runtime decides which roles to use. |
+| **Provider**  | A local or cloud service that supplies the AI model used by Spinosa.                                        |
+| **MCP**       | Model Context Protocol — a way for external agents such as Claude or Codex to use Spinosa tools.            |
 
 ## TUI terms
 
-| Term | Meaning |
-|------|---------|
-| **TUI** | Terminal User Interface — the dashboard launched by `spinosa` |
-| **Home** | Main screen with recent workspaces, chat prompt, and boot health |
-| **Workspace picker** | Dialog showing all registered workspaces, press `W` to open |
-| **Onboarding wizard** | Step-by-step flow to create a workspace from documents |
-| **Visualizer** | Tool for exploring conversation flow, file access, and activity |
-| **Command palette** | Quick command menu, press `Ctrl+P` or `/` |
+| Term                | Meaning                                                              |
+| ------------------- | -------------------------------------------------------------------- |
+| **TUI**             | Terminal user interface — the interactive app launched by `spinosa`. |
+| **Session**         | A conversation and its tool activity inside a workspace.             |
+| **Command palette** | The action menu opened with `Ctrl+P`.                                |
 
 ## Workspace terms
 
-| Term | Meaning |
-|------|---------|
-| **raw/** | Converted source documents, the evidence layer agents search and cite |
-| **maps/** | Navigation maps for finding relevant files and themes |
-| **system/** | Settings and index files (configuration, context, dictionary, index) |
-| **Dictionary** | Vocabulary extracted from the corpus: names, places, concepts |
-| **agent_reports/** | Reports produced by agents (answers, startup reports) |
-| **YAML header** | Metadata block at the top of each `raw/` file describing its source |
+| Term                 | Meaning                                                       |
+| -------------------- | ------------------------------------------------------------- |
+| **`raw/`**           | Imported source copies and extracted text used for research.  |
+| **`maps/`**          | Navigation maps that help search the corpus.                  |
+| **`system/`**        | Shared workspace settings and context.                        |
+| **`agent_reports/`** | Durable reports and workflow outputs.                         |
+| **`.spinosa/`**      | Spinosa-native agents, runtime state, and workspace metadata. |
+| **`.agents/`**       | Portable agent guidance, skills, and references.              |
 
-## Report terms
+## Report and conversion terms
 
-| Term | Meaning |
-|------|---------|
-| **Verification status** | Result after source checking: pending, verified, corrected, or failed |
-| **Evidence** | Quoted passages with source paths and confidence labels |
-| **Confidence level** | How directly a passage supports a point (high, medium, low) |
-
-## Conversion terms
-
-| Term | Meaning |
-|------|---------|
-| **OCR** | Optical Character Recognition — turning scanned images into searchable text |
-| **MarkItDown** | Converter for Office docs, EPUB, HTML, and text-based PDFs |
+| Term                    | Meaning                                                                                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Evidence**            | A source passage and location used to support a claim.                                                                                                                    |
+| **Verification status** | A summary of the source checks completed for a report. See [Reports](/docs/reports).                                                                                      |
+| **OCR**                 | Optical character recognition. Spinosa does not bundle a local OCR engine; a vision-capable model can transcribe scans, or Spinosa can keep them without text extraction. |
+| **MarkItDown**          | A converter used for supported document formats.                                                                                                                          |
 
 ## Related
 
-- [Workspace Structure](/spinosa/docs/workspace) — file layout
-- [Agents](/spinosa/docs/agents) — agent names and responsibilities
-- [Reports](/spinosa/docs/reports) — report anatomy and statuses
-- [MCP for agents](/spinosa/docs/mcp) — external-agent tools over MCP
-- [FAQ](/spinosa/docs/faq) — troubleshooting
+- [Workspace Structure](/docs/workspace) — file layout
+- [Agents and Workflows](/docs/agents) — roles and routing
+- [Reports](/docs/reports) — evidence and status meanings
+- [MCP for agents](/docs/mcp) — tools for external agents
+- [FAQ](/docs/faq) — troubleshooting

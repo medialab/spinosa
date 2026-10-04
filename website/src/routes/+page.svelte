@@ -1,45 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
 	import { base } from '$app/paths';
 	import BgCanvas from '$lib/BgCanvas.svelte';
 	import github from '$lib/assets/github.png';
 	import { devInstallCmd, stableInstallCmd } from '$lib/install-urls';
+	import { siteUrl } from '$lib/site';
 	import { fade } from 'svelte/transition';
-
-	const origin = $derived($page.url.origin);
 
 	let beta = $state(false);
 	const CMD = $derived(beta ? devInstallCmd() : stableInstallCmd());
 
-	const words = [
-		'understands',
-		'illuminates',
-		'synthesizes',
-		'articulates',
-		'assimilates',
-		'understands'
-	];
-	let wordIndex = $state(0);
 	let showToast = $state(false);
 	let entered = $state(false);
 	let bashHovered = $state(false);
 
 	onMount(() => {
-		const interval = setInterval(() => {
-			const next = wordIndex + 1;
-			if (next >= words.length - 1) {
-				wordIndex = 0;
-			} else {
-				wordIndex = next;
-			}
-		}, 2200);
-
 		entered = true;
-
-		return () => {
-			clearInterval(interval);
-		};
 	});
 
 	function handleCopy() {
@@ -53,7 +29,7 @@
 	<title>Spinosa — Chat with your research documents, locally</title>
 	<meta
 		name="description"
-		content="Spinosa turns your research documents into a workspace you can chat with. Ask questions in plain language, get verified answers with source citations."
+		content="Spinosa is a local workspace for asking questions across research documents and reviewing answers against their sources."
 	/>
 	<meta
 		name="keywords"
@@ -64,12 +40,12 @@
 	<meta property="og:site_name" content="Spinosa" />
 	<meta
 		property="og:description"
-		content="Spinosa turns your research documents into a workspace you can chat with. Ask questions in plain language, get verified answers with source citations."
+		content="A local workspace for asking questions across research documents and reviewing answers against their sources."
 	/>
 	<meta property="og:type" content="website" />
-	<meta property="og:url" content="{origin}{base}/" />
+	<meta property="og:url" content={siteUrl(`${base}/`)} />
 	<meta property="og:locale" content="en_US" />
-	<meta property="og:image" content="{origin}{base}/og-image.jpg" />
+	<meta property="og:image" content={siteUrl(`${base}/og-image.jpg`)} />
 	<meta property="og:image:width" content="3848" />
 	<meta property="og:image:height" content="2402" />
 
@@ -77,27 +53,27 @@
 	<meta name="twitter:title" content="Spinosa — Chat with your research documents" />
 	<meta
 		name="twitter:description"
-		content="Spinosa turns your documents into a searchable local workspace. Ask questions, get verified answers with source citations."
+		content="A local workspace for asking questions across research documents and reviewing answers against their sources."
 	/>
-	<meta name="twitter:image" content="{origin}{base}/og-image.jpg" />
+	<meta name="twitter:image" content={siteUrl(`${base}/og-image.jpg`)} />
 
-	<link rel="canonical" href="{origin}{base}/" />
+	<link rel="canonical" href={siteUrl(`${base}/`)} />
 
 	<script type="application/ld+json">
-		{JSON.stringify({
+		{
 			"@context": "https://schema.org",
 			"@type": "SoftwareApplication",
 			"name": "Spinosa",
 			"applicationCategory": "DataScience",
 			"operatingSystem": "macOS, Linux",
-			"description": "Spinosa turns research documents into a local workspace you can chat with. AI agents search your files, draft answers, and verify every claim against the original text.",
-			"url": `${origin}${base}/`,
+			"description": "A local workspace for asking questions across research documents and reviewing answers against their sources.",
+			"url": "https://spinosa.medialab.sciencespo.fr/",
 			"author": {
 				"@type": "Organization",
 				"name": "medialab",
 				"url": "https://medialab.sciencespo.fr/"
 			}
-		})}
+		}
 	</script>
 </svelte:head>
 
@@ -120,21 +96,12 @@
 			</a>
 			<div class="inline-block bg-white px-1 py-0.5">
 				<h1 class="text-[2.25rem] font-normal leading-[1] tracking-[-0.02em] text-basalt/85">
-					An LLM framework that
-					<span
-						class="inline-block align-bottom overflow-hidden"
-						style="height:2.25rem;vertical-align:bottom"
-						>{#key wordIndex}<span
-								class="block h-[2.25rem] leading-[2.25rem] italic animate-crossfade"
-								>{words[wordIndex]}</span
-							>{/key}</span
-					>
-					<br />your research
+					Ask questions across your research documents
 				</h1>
 			</div>
 			<div class="mt-1 inline-block bg-white px-1 py-0.5">
 				<h2 class="text-[0.875rem] font-normal leading-[1.4] text-basalt/50">
-					The local data layer for your LLM CLI
+					A local workspace for answers grounded in your files, with sources you can check.
 				</h2>
 			</div>
 			<div class="mt-2 inline-block bg-white px-1 py-0.5">
@@ -143,6 +110,14 @@
 					class="text-[0.8rem] text-sun-cured-terracotta hover:opacity-70 transition-opacity"
 				>
 					Read the docs →
+				</a>
+			</div>
+			<div class="inline-block bg-white px-1 py-0.5">
+				<a
+					href={base + '/install'}
+					class="text-[0.8rem] text-basalt hover:opacity-70 transition-opacity"
+				>
+					Install stable →
 				</a>
 			</div>
 		</div>
@@ -166,18 +141,10 @@
 			<h1
 				class="max-w-[45ch] text-[3rem] font-normal leading-[1] tracking-[-0.02em] text-basalt/85"
 			>
-				An LLM framework<br />that
-				<span
-					class="inline-block align-bottom overflow-hidden"
-					style="height:3rem;vertical-align:bottom"
-					>{#key wordIndex}<span class="block h-[3rem] leading-[3rem] italic animate-crossfade"
-							>{words[wordIndex]}</span
-						>{/key}</span
-				>
-				<br />your research
+				Ask questions across<br />your research documents
 			</h1>
 			<h2 class="max-w-[45ch] text-[1rem] font-normal leading-[1.3] text-basalt/50">
-				The local data layer for your LLM CLI
+				A local workspace for answers grounded in your files, with sources you can check.
 			</h2>
 			<a
 				href={base + '/docs/welcome'}
@@ -196,7 +163,9 @@
 				<label
 					class="flex items-center gap-2 text-[0.7rem] tracking-wide cursor-pointer select-none w-fit group"
 				>
-					<span class={!beta ? 'text-basalt' : 'text-basalt/40 group-hover:text-basalt/70'}>stable</span>
+					<span class={!beta ? 'text-basalt' : 'text-basalt/40 group-hover:text-basalt/70'}
+						>stable</span
+					>
 					<button
 						type="button"
 						role="switch"
@@ -214,10 +183,15 @@
 							style="transform: translateX({beta ? '14px' : '2px'})"
 						></span>
 					</button>
-					<span class={beta ? 'text-sun-cured-terracotta' : 'text-basalt/40 group-hover:text-basalt/70'}>beta</span>
+					<span
+						class={beta ? 'text-sun-cured-terracotta' : 'text-basalt/40 group-hover:text-basalt/70'}
+						>beta</span
+					>
 				</label>
 				<div
 					class="relative flex flex-wrap items-center justify-start gap-[5px]"
+					role="group"
+					aria-label="Installation command"
 					onmouseenter={() => (bashHovered = true)}
 					onmouseleave={() => (bashHovered = false)}
 				>
@@ -295,21 +269,6 @@
 
 	.animate-toast-in {
 		animation: toast-in 0.2s ease-out both;
-	}
-
-	.animate-crossfade {
-		animation: crossfade-in 0.35s ease-out both;
-	}
-
-	@keyframes crossfade-in {
-		from {
-			opacity: 0;
-			translate: 0 0.5em;
-		}
-		to {
-			opacity: 1;
-			translate: 0 0;
-		}
 	}
 
 	@keyframes toast-in {

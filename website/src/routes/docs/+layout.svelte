@@ -4,6 +4,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { getDefaultDoc, getDocPages } from '$lib/docs/docs';
 	import { devInstallCmd, stableInstallCmd } from '$lib/install-urls';
+	import { siteUrl } from '$lib/site';
 	import gitIcon from '$lib/assets/github.png';
 	import docFooterImg from '$lib/assets/docs_footer.png';
 	import { fade } from 'svelte/transition';
@@ -13,8 +14,8 @@
 
 	const docTitle = $derived($page.data?.doc?.title ?? '');
 	const docDesc = $derived($page.data?.doc?.description ?? '');
+	const docSlug = $derived($page.data?.doc?.slug ?? '');
 	const pageTitle = $derived(docTitle ? `${docTitle} — Spinosa Docs` : 'Spinosa Docs');
-	const siteOrigin = $derived($page.url.origin);
 
 	afterNavigate(() => {
 		window.scrollTo(0, 0);
@@ -26,6 +27,9 @@
 	const docPages = getDocPages();
 	const defaultDoc = getDefaultDoc();
 	const defaultSlug = defaultDoc?.slug;
+	const canonicalPath = $derived(
+		docSlug === defaultSlug ? `${base}/docs` : `${base}/docs/${docSlug}`
+	);
 
 	function normalizePath(pathname: string) {
 		const p = pathname.startsWith(base) ? pathname.slice(base.length) : pathname;
@@ -60,12 +64,12 @@
 	<meta property="og:title" content={pageTitle} />
 	<meta property="og:description" content={docDesc} />
 	<meta property="og:type" content="article" />
-	<meta property="og:url" content={siteOrigin + base + $page.url.pathname} />
-	<meta property="og:image" content={siteOrigin + base + '/og-image.jpg'} />
+	<meta property="og:url" content={siteUrl(canonicalPath)} />
+	<meta property="og:image" content={siteUrl(`${base}/og-image.jpg`)} />
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content={pageTitle} />
 	<meta name="twitter:description" content={docDesc} />
-	<link rel="canonical" href={siteOrigin + base + $page.url.pathname} />
+	<link rel="canonical" href={siteUrl(canonicalPath)} />
 </svelte:head>
 
 <header
@@ -80,7 +84,9 @@
 				: 'bg-black hover:bg-neutral-800'}"
 			aria-label="Copy install command"
 		>
-			{#key CMD}<p in:fade={{ duration: 150 }} class="text-[0.65rem] leading-normal text-nowrap">{CMD}</p>{/key}
+			{#key CMD}<p in:fade={{ duration: 150 }} class="text-[0.65rem] leading-normal text-nowrap">
+					{CMD}
+				</p>{/key}
 		</button>
 		{#if showCopied}
 			<div
@@ -92,7 +98,9 @@
 		<label
 			class="flex items-center gap-1.5 text-[0.6rem] tracking-wide cursor-pointer select-none group"
 		>
-			<span class={!beta ? 'text-black' : 'text-neutral-400 group-hover:text-neutral-600'}>stable</span>
+			<span class={!beta ? 'text-black' : 'text-neutral-400 group-hover:text-neutral-600'}
+				>stable</span
+			>
 			<button
 				type="button"
 				role="switch"
@@ -110,7 +118,9 @@
 					style="transform: translateX({beta ? '12px' : '2px'})"
 				></span>
 			</button>
-			<span class={beta ? 'text-red-500' : 'text-neutral-400 group-hover:text-neutral-600'}>beta</span>
+			<span class={beta ? 'text-red-500' : 'text-neutral-400 group-hover:text-neutral-600'}
+				>beta</span
+			>
 		</label>
 	</div>
 	<a

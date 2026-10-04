@@ -4,10 +4,10 @@ Use Spinosa from Claude, Codex, Cursor, or any MCP host **without** running Spin
 
 ## How the pieces fit
 
-| Piece | Role |
-|-------|------|
-| **Host agent** | Reads and writes files, follows skill playbooks, answers the question |
-| **`spinosa` CLI** | Creates and updates workspaces (`new`, `add`, `delete`, …) |
+| Piece                    | Role                                                                        |
+| ------------------------ | --------------------------------------------------------------------------- |
+| **Host agent**           | Reads and writes files, follows skill playbooks, answers the question       |
+| **`spinosa` CLI**        | Creates and updates workspaces (`new`, `add`, `delete`, …)                  |
 | **`spinosa mcp-server`** | Lists and selects workspaces; exposes gate, verify, figure, map, and skills |
 
 Do not use `spinosa serve` for this path. That starts Spinosa’s session stack and models.
@@ -18,12 +18,12 @@ Add Spinosa to your host’s MCP config (Cursor example: `~/.cursor/mcp.json`):
 
 ```json
 {
-  "mcpServers": {
-    "spinosa": {
-      "command": "spinosa",
-      "args": ["mcp-server"]
-    }
-  }
+	"mcpServers": {
+		"spinosa": {
+			"command": "spinosa",
+			"args": ["mcp-server"]
+		}
+	}
 }
 ```
 
@@ -31,12 +31,12 @@ Optional: pre-select a workspace at startup:
 
 ```json
 {
-  "mcpServers": {
-    "spinosa": {
-      "command": "spinosa",
-      "args": ["mcp-server", "--workspace", "/path/to/workspace"]
-    }
-  }
+	"mcpServers": {
+		"spinosa": {
+			"command": "spinosa",
+			"args": ["mcp-server", "--workspace", "/path/to/workspace"]
+		}
+	}
 }
 ```
 
@@ -69,31 +69,32 @@ spinosa new /path/to/docs --extensions md,pdf --cli other --launch copy --json
 
 ### Workspace
 
-| Tool | Purpose |
-|------|---------|
-| `workspace_list` | List registered workspaces |
-| `workspace_use` | Bind this MCP session to a workspace path |
-| `workspace_info` | Show the current bind |
-| `workspace_clear` | Unbind |
+| Tool               | Purpose                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `workspace_list`   | List registered workspaces                                                      |
+| `workspace_use`    | Bind this MCP session to a workspace path                                       |
+| `workspace_info`   | Show the current bind                                                           |
+| `workspace_clear`  | Unbind                                                                          |
 | `workspace_delete` | Trash a present folder (or unregister a missing path). Requires `confirm: true` |
 
 Same delete action from the CLI: `spinosa delete <path> --yes`.
 
 ### Skills
 
-| Tool | Purpose |
-|------|---------|
+| Tool          | Purpose                                     |
+| ------------- | ------------------------------------------- |
 | `list_skills` | List skill playbooks in the bound workspace |
-| `read_skill` | Return a `SKILL.md` body |
+| `read_skill`  | Return a `SKILL.md` body                    |
 
 ### Mechanisms
 
-| Tool | Purpose |
-|------|---------|
-| `spinosa_gate` | Evidence coverage counts (deterministic, not an LLM judgment) |
+| Tool             | Purpose                                                           |
+| ---------------- | ----------------------------------------------------------------- |
+| `spinosa_gate`   | Evidence coverage counts (deterministic, not an LLM judgment)     |
 | `spinosa_verify` | Artifact **shape** checks (not quote-level truth against sources) |
-| `spinosa_figure` | Markdown chart blocks for reports |
-| `spinosa_map` | Extraction / map helpers (`begin`, `write_extraction`, …) |
+| `spinosa_report` | Write a draft report to the path assigned by the workflow         |
+| `spinosa_figure` | Markdown chart blocks for reports                                 |
+| `spinosa_map`    | Extraction / map helpers (`begin`, `write_extraction`, …)         |
 
 Every mechanism tool accepts an optional `workspacePath` for a one-shot override without changing the session bind.
 
@@ -106,7 +107,7 @@ Host agent (you)
     ├─ MCP: read_skill (searcher, writer, verifier, …)
     ├─ Host filesystem: grep / read raw/, maps/, system/
     ├─ Host filesystem: write agent_reports/
-    └─ MCP: spinosa_gate / spinosa_verify / spinosa_figure / spinosa_map
+    └─ MCP: spinosa_gate / spinosa_verify / spinosa_report / spinosa_figure / spinosa_map
 ```
 
 MCP does **not** search the corpus for you. Content search stays with the host agent, guided by Spinosa skill playbooks.
@@ -119,13 +120,13 @@ MCP does **not** search the corpus for you. Content search stays with the host a
 
 ## CLI flags agents care about
 
-| Flag | Effect |
-|------|--------|
-| `--json` | Progress as NDJSON on stderr; final result as JSON on stdout |
-| `--quiet` | Suppress normal output; errors still on stderr |
+| Flag      | Effect                                                       |
+| --------- | ------------------------------------------------------------ |
+| `--json`  | Progress as NDJSON on stderr; final result as JSON on stdout |
+| `--quiet` | Suppress normal output; errors still on stderr               |
 
 ## Related
 
-- [CLI Reference](/spinosa/docs/cli-reference) — `new`, `delete`, `list`, and other commands
-- [Agents & Pipeline](/spinosa/docs/agents) — how Spinosa’s own TUI agents work
-- [Workspace Structure](/spinosa/docs/workspace) — `raw/`, `maps/`, `agent_reports/`
+- [CLI Reference](/docs/cli-reference) — `new`, `delete`, `list`, and other commands
+- [Agents & Workflows](/docs/agents) — how Spinosa selects worker roles
+- [Workspace Structure](/docs/workspace) — `raw/`, `maps/`, `agent_reports/`
